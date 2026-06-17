@@ -1,0 +1,25 @@
+version: 2
+updates:
+  # GitHub Actions used by the build/CodeQL workflows.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      actions:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: "ci"
+
+  # NuGet packages (MQTTnet, NAudio, ServiceController, ...).
+  - package-ecosystem: "nuget"
+    directory: "/src/HASS.Agent.NET10"
+    schedule:
+      interval: "weekly"
+    groups:
+      nuget:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: "deps"
