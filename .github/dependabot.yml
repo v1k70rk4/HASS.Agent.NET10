@@ -1,25 +1,27 @@
+# Dependabot: weekly update PRs for GitHub Actions and NuGet packages.
+# Security updates are opened automatically once "Dependabot alerts" is enabled on the repo
+# (Settings -> Code security). Grouped so each ecosystem lands as a single PR, not one per package.
 version: 2
 updates:
-  # GitHub Actions used by the build/CodeQL workflows.
+  # GitHub Actions referenced in .github/workflows/*
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
-    groups:
-      actions:
-        patterns:
-          - "*"
     commit-message:
       prefix: "ci"
+    groups:
+      actions:
+        patterns: ["*"]
 
-  # NuGet packages (MQTTnet, NAudio, ServiceController, ...).
+  # NuGet packages for the app project
   - package-ecosystem: "nuget"
     directory: "/src/HASS.Agent.NET10"
     schedule:
       interval: "weekly"
-    groups:
-      nuget:
-        patterns:
-          - "*"
+    open-pull-requests-limit: 10
     commit-message:
       prefix: "deps"
+    groups:
+      nuget:
+        patterns: ["*"]
