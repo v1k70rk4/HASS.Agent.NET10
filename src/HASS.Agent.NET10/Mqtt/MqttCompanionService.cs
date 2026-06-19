@@ -44,6 +44,16 @@ internal sealed class MqttCompanionService : IDisposable
     private string? _pendingUpdateCompletedFrom;
     private int _updateInstallInProgress;
 
+    // Event-driven ("push") sensor updates: interactive state sources (monitor power,
+    // session lock, AC/battery) signal here so the sensor loop publishes immediately
+    // instead of waiting for the next poll. Debounced to coalesce rapid changes.
+    private static readonly TimeSpan PushDebounce = TimeSpan.FromMilliseconds(600);
+    private static readonly IReadOnlySet<SensorPollingProfile> PushProfiles =
+        new HashSet<SensorPollingProfile> { SensorPollingProfile.Fast, SensorPollingProfile.Normal };
+    private readonly SemaphoreSlim _pushSignal = new(0, 1);
+    private readonly object _pushDebounceLock = new();
+    private System.Threading.Timer? _pushDebounceTimer;
+
     // Connection state tracking — when only capabilities/sensors change,
     // we refresh discovery without restarting the whole MQTT connection.
     private string? _connectedHost;
@@ -459,6 +469,7 @@ internal sealed class MqttCompanionService : IDisposable
 
         if (publishOffline)
         {
+            await PublishAvailabilityAsync(online: false);
             await PublishDiscoveryAsync(offline: true);
         }
         if (_mediaSessionService is not null)
@@ -498,6 +509,12 @@ internal sealed class MqttCompanionService : IDisposable
     {
         StopAsync().GetAwaiter().GetResult();
         _haWs?.Dispose();
+        lock (_pushDebounceLock)
+        {
+            _pushDebounceTimer?.Dispose();
+            _pushDebounceTimer = null;
+        }
+        _pushSignal.Dispose();
     }
 
     private async Task RunAsync(CancellationToken cancellationToken)
@@ -570,6 +587,7 @@ internal sealed class MqttCompanionService : IDisposable
                 await PublishLegacyTopicCleanupAsync();
                 if (_role == CompanionRuntimeRole.App)
                 {
+                    await PublishAvailabilityAsync(online: true);
                     await PublishUpdateStateAsync();
                     await PublishPendingUpdateNotificationAsync();
                 }
@@ -716,6 +734,7 @@ internal sealed class MqttCompanionService : IDisposable
         await PublishDiscoveryViaWebSocketAsync(wsCts.Token);
         if (_role == CompanionRuntimeRole.App)
         {
+            await PublishAvailabilityAsync(online: true);
             await PublishPendingUpdateNotificationAsync();
         }
 
@@ -736,6 +755,14 @@ internal sealed class MqttCompanionService : IDisposable
         if (ShouldPublishSystemSensors() && _systemMetricsService is not null)
         {
             sensorTask = Task.Run(() => PublishSystemSensorsViaWebSocketLoopAsync(wsCts.Token), wsCts.Token);
+        }
+
+        // Heartbeat: the WS transport has no broker Last Will, so the integration
+        // marks the device offline if these stop arriving (crash / network loss).
+        Task? heartbeatTask = null;
+        if (_role == CompanionRuntimeRole.App)
+        {
+            heartbeatTask = Task.Run(() => PublishWebSocketHeartbeatLoopAsync(wsCts.Token), wsCts.Token);
         }
 
         try
@@ -771,6 +798,11 @@ internal sealed class MqttCompanionService : IDisposable
             if (sensorTask is not null)
             {
                 try { await sensorTask; } catch (OperationCanceledException) { }
+            }
+
+            if (heartbeatTask is not null)
+            {
+                try { await heartbeatTask; } catch (OperationCanceledException) { }
             }
 
             try { await receiveTask; } catch (OperationCanceledException) { }
@@ -813,6 +845,27 @@ internal sealed class MqttCompanionService : IDisposable
         }, cancellationToken);
     }
 
+    private async Task PublishWebSocketHeartbeatLoopAsync(CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested && _haWs is not null)
+        {
+            try
+            {
+                await _haWs.PublishAvailabilityAsync(online: true, cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _log.Debug($"WS heartbeat failed: {ex.Message}");
+            }
+
+            await Task.Delay(TimeSpan.FromSeconds(30), cancellationToken);
+        }
+    }
+
     private async Task PublishSystemSensorsViaWebSocketLoopAsync(CancellationToken cancellationToken)
     {
         var intervals = new Dictionary<SensorPollingProfile, TimeSpan>
@@ -844,7 +897,23 @@ internal sealed class MqttCompanionService : IDisposable
             {
                 var next = nextDue.Values.Min();
                 var delay = next > now ? next - now : TimeSpan.FromSeconds(1);
-                await Task.Delay(delay, cancellationToken);
+                var pushed = await WaitForPushOrDelayAsync(delay, cancellationToken);
+                if (pushed)
+                {
+                    var pushData = _systemMetricsService?.Read(
+                        _settings.CustomSensors,
+                        _role == CompanionRuntimeRole.Service,
+                        PushProfiles);
+                    if (pushData is not null)
+                    {
+                        await _haWs!.PublishSensorStateAsync(new
+                        {
+                            serial_number = _settings.SerialNumber,
+                            sensors = pushData
+                        }, cancellationToken);
+                    }
+                }
+
                 continue;
             }
 
@@ -923,6 +992,15 @@ internal sealed class MqttCompanionService : IDisposable
             options.WillTopic = ServiceStateTopic;
             options.WillPayload = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(BuildServiceStatus(online: false), JsonOptions));
             options.WillQualityOfServiceLevel = MqttQualityOfServiceLevel.AtMostOnce;
+            options.WillRetain = true;
+        }
+        else
+        {
+            // Tray app: Last Will marks the device offline if the connection drops
+            // (crash, shutdown, network loss) so HA shows the entities as unavailable.
+            options.WillTopic = AvailabilityTopic;
+            options.WillPayload = Encoding.UTF8.GetBytes("offline");
+            options.WillQualityOfServiceLevel = MqttQualityOfServiceLevel.AtLeastOnce;
             options.WillRetain = true;
         }
 
@@ -1132,6 +1210,24 @@ internal sealed class MqttCompanionService : IDisposable
         await PublishJsonAsync($"hass.agent/media_player/{TopicId}/state", state, retain: false);
     }
 
+    /// <summary>Publishes the device availability (online/offline) for HA's unavailable handling.</summary>
+    private async Task PublishAvailabilityAsync(bool online)
+    {
+        if (_role != CompanionRuntimeRole.App)
+        {
+            return;
+        }
+
+        if (_isOnWebSocket && _haWs is not null)
+        {
+            // Use None: a graceful offline must still send after the worker token is cancelled.
+            await _haWs.PublishAvailabilityAsync(online, CancellationToken.None);
+            return;
+        }
+
+        await PublishRawAsync(AvailabilityTopic, Encoding.UTF8.GetBytes(online ? "online" : "offline"), retain: true);
+    }
+
     private async Task PublishUpdateLoopAsync(CancellationToken cancellationToken)
     {
         while (!cancellationToken.IsCancellationRequested)
@@ -1179,6 +1275,55 @@ internal sealed class MqttCompanionService : IDisposable
             retain: _settings.MqttRetainDiscovery);
     }
 
+    /// <summary>
+    /// Requests an immediate (debounced) sensor publish. Called by interactive state
+    /// sources (monitor power, session lock, AC/battery) so changes reach HA at once.
+    /// </summary>
+    public void TriggerPushUpdate()
+    {
+        if (_role != CompanionRuntimeRole.App)
+        {
+            return;
+        }
+
+        lock (_pushDebounceLock)
+        {
+            _pushDebounceTimer ??= new System.Threading.Timer(_ =>
+            {
+                try
+                {
+                    _pushSignal.Release();
+                }
+                catch (SemaphoreFullException)
+                {
+                    // A push is already pending; the loop will pick it up.
+                }
+            });
+            _pushDebounceTimer.Change(PushDebounce, Timeout.InfiniteTimeSpan);
+        }
+    }
+
+    /// <summary>Waits for either the poll delay or a push signal. Returns true if a push woke us.</summary>
+    private async Task<bool> WaitForPushOrDelayAsync(TimeSpan delay, CancellationToken cancellationToken)
+    {
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var signalTask = _pushSignal.WaitAsync(cts.Token);
+        var delayTask = Task.Delay(delay, cts.Token);
+        var completed = await Task.WhenAny(signalTask, delayTask);
+
+        cts.Cancel(); // cancel the loser so it doesn't linger / consume a permit later
+        try
+        {
+            await Task.WhenAll(signalTask, delayTask);
+        }
+        catch
+        {
+            // Expected cancellation of the losing task.
+        }
+
+        return completed == signalTask && signalTask.IsCompletedSuccessfully;
+    }
+
     private async Task PublishSystemSensorsLoopAsync(CancellationToken cancellationToken)
     {
         var intervals = new Dictionary<SensorPollingProfile, TimeSpan>
@@ -1210,7 +1355,17 @@ internal sealed class MqttCompanionService : IDisposable
             {
                 var next = nextDue.Values.Min();
                 var delay = next > now ? next - now : TimeSpan.FromSeconds(1);
-                await Task.Delay(delay, cancellationToken);
+                var pushed = await WaitForPushOrDelayAsync(delay, cancellationToken);
+                if (pushed)
+                {
+                    // Interactive state changed — publish the push profiles immediately.
+                    await PublishJsonAsync(
+                        $"hass.agent/sensors/{TopicId}/state",
+                        _systemMetricsService?.Read(_settings.CustomSensors, _role == CompanionRuntimeRole.Service, PushProfiles)
+                            ?? throw new InvalidOperationException("System metrics service is not available."),
+                        retain: false);
+                }
+
                 continue;
             }
 
@@ -1270,7 +1425,9 @@ internal sealed class MqttCompanionService : IDisposable
                 SensorPollingProfiles.ToKey(sensor.PollingProfile),
                 sensor.HasMultipleValues,
                 sensor.DefaultAttributePath,
-                sensor.AttributePaths))
+                sensor.AttributePaths,
+                sensor.DeviceClass,
+                sensor.Options))
             .ToList();
     }
 
@@ -1375,6 +1532,8 @@ internal sealed class MqttCompanionService : IDisposable
     private string UpdateInstallTopic => $"hass.agent/update/{TopicId}/install";
 
     private string PersistentNotificationTopic => $"hass.agent/persistent_notification/{TopicId}";
+
+    private string AvailabilityTopic => $"hass.agent/devices/{TopicId}/availability";
 }
 
 internal sealed record MqttDiscoveryMessage(

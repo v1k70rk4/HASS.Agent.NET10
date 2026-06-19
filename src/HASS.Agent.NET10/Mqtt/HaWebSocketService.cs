@@ -232,6 +232,16 @@ internal sealed class HaWebSocketService : IDisposable
         }, cancellationToken);
     }
 
+    /// <summary>Reports device availability (online/offline) over the WebSocket transport.</summary>
+    public async Task PublishAvailabilityAsync(bool online, CancellationToken cancellationToken)
+    {
+        await FireEventAsync("hass_agent_availability", new
+        {
+            serial_number = _settings.SerialNumber,
+            online
+        }, cancellationToken);
+    }
+
     /// <summary>
     /// Tests the connection by connecting, reading the HA and integration versions, and disconnecting.
     /// Returns version details on success, or throws on connection/auth failure.

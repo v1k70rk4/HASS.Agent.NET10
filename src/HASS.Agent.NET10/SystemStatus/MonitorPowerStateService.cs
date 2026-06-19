@@ -18,6 +18,9 @@ internal sealed class MonitorPowerStateService : NativeWindow, IDisposable
         _registrationHandle = RegisterPowerSettingNotification(Handle, ConsoleDisplayState, DeviceNotifyWindowHandle);
     }
 
+    /// <summary>Raised when the monitor power state actually changes (on/off/dimmed) — drives push updates.</summary>
+    public event EventHandler? StateChanged;
+
     public string State { get; private set; } = "unknown";
 
     public void Dispose()
@@ -38,13 +41,19 @@ internal sealed class MonitorPowerStateService : NativeWindow, IDisposable
             var settings = Marshal.PtrToStructure<PowerBroadcastSetting>(message.LParam);
             if (settings.PowerSetting == ConsoleDisplayState)
             {
-                State = settings.Data switch
+                var newState = settings.Data switch
                 {
                     0 => "off",
                     1 => "on",
                     2 => "dimmed",
                     _ => "unknown"
                 };
+
+                if (newState != State)
+                {
+                    State = newState;
+                    StateChanged?.Invoke(this, EventArgs.Empty);
+                }
 
                 message.Result = (IntPtr)1;
                 return;

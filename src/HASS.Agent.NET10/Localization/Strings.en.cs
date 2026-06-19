@@ -195,6 +195,7 @@ internal static partial class Strings
             ["PollingProfile.normal"] = "Normal",
             ["PollingProfile.hourly"] = "Hourly",
             ["PollingProfile.startup"] = "Startup",
+            ["PollingProfile.push"] = "Push",
 
             // Service page
             ["Service.Title"] = "Service",

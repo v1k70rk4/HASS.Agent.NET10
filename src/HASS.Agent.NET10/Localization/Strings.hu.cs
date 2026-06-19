@@ -195,6 +195,7 @@ internal static partial class Strings
             ["PollingProfile.normal"] = "Normál",
             ["PollingProfile.hourly"] = "Órás",
             ["PollingProfile.startup"] = "Indításkor",
+            ["PollingProfile.push"] = "Push",
 
             // Service page
             ["Service.Title"] = "Szolgáltatás",

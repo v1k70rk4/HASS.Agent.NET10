@@ -2010,7 +2010,7 @@ internal sealed class MainForm : Form
                 s?.TrayApp ?? def.SupportsTrayApp,
                 s?.Service ?? def.SupportsService,
                 S($"Sensor.{def.Key}"),
-                GetPollingProfileDisplayName(def.PollingProfile),
+                def.PushDriven ? S("PollingProfile.push") : GetPollingProfileDisplayName(def.PollingProfile),
                 def.HasMultipleValues ? "+" : string.Empty);
             _builtInGrid.Rows[ri].Tag = def.Key;
             if (!def.SupportsTrayApp) { _builtInGrid.Rows[ri].Cells["TrayApp"].ReadOnly = true; _builtInGrid.Rows[ri].Cells["TrayApp"].Style.BackColor = SystemColors.Control; }

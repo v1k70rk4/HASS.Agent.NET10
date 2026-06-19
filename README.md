@@ -2,7 +2,7 @@
 
 ![Windows](https://img.shields.io/badge/Windows-10%202004%2B%20%7C%2011-0078D4?logo=windows&logoColor=white)
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet&logoColor=white)
-![Version](https://img.shields.io/badge/version-10.3.0-brightgreen)
+![Version](https://img.shields.io/badge/version-10.4.0-brightgreen)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-MQTT%20%7C%20WebSocket%20API-41BDF5?logo=homeassistant&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 [![Website](https://img.shields.io/badge/website-v1k70rk4.github.io-41bdf5?logo=github)](https://v1k70rk4.github.io/HASS.Agent.NET10/)
@@ -36,6 +36,7 @@ The modern .NET10 line starts at **version 10.0.0**. The pre-.NET10 client remai
   - [Built-in Sensors](#built-in-sensors)
   - [Sensor Attributes](#sensor-attributes)
   - [Sensor Polling Profiles](#sensor-polling-profiles)
+  - [Availability](#availability)
   - [Custom Sensors](#custom-sensors)
 - [Home Assistant Integration](#home-assistant-integration)
   - [Connection Modes](#connection-modes)
@@ -53,6 +54,14 @@ The modern .NET10 line starts at **version 10.0.0**. The pre-.NET10 client remai
 ---
 
 ## What Changed
+
+### 10.4.0
+
+- Added **event-driven (push) sensor updates**: monitor power state, session lock/unlock, AC/battery power source, and audio (volume, mute, output device, microphone mute) now report to Home Assistant within ~600 ms of changing instead of waiting for the next poll. Rapid changes (e.g. dragging the volume slider) are debounced.
+- Added **enum sensor states**: `monitor_power_state`, `power_status`, and `session_state` are now `enum` sensors, so Home Assistant knows their possible values (selectable in automations; `dimmed` is a first-class monitor state).
+- Added **device availability**: the device publishes an MQTT availability topic with a Last Will, and a heartbeat over the HA API transport. On a clean shutdown — or a crash / network loss — the entities turn **unavailable** in Home Assistant instead of keeping stale values.
+- The **Sensors** page now shows a **Push** profile for push-driven sensors.
+- Moved the Bluetooth sensor from hourly to normal polling.
 
 ### 10.3.0
 
@@ -263,9 +272,9 @@ Built-in sensors are predefined system metrics. Each one can be enabled/disabled
 | Boot time | startup | yes | yes |
 | Battery level | normal | yes | yes |
 | Battery time remaining | normal | yes | yes |
-| Power status | normal | yes | yes |
+| Power status | **push** | yes | yes |
 | LAN IP | normal | yes | yes |
-| Session state | normal | yes | yes |
+| Session state | **push** | yes | yes |
 | Logged in user | normal | yes | yes |
 | Logged in users (count) | normal | yes | yes |
 | RDP sessions | normal | yes | yes |
@@ -273,23 +282,23 @@ Built-in sensors are predefined system metrics. Each one can be enabled/disabled
 | VPN connected | normal | yes | yes |
 | Wi-Fi SSID | normal | yes | yes |
 | Wi-Fi signal | normal | yes | yes |
-| Bluetooth enabled | hourly | yes | yes |
+| Bluetooth enabled | normal | yes | yes |
 | Windows Update pending | hourly | yes | yes |
 | Recent Event Log errors | hourly | yes | yes |
 | Last shutdown reason | startup | yes | yes |
 | Active window | fast | | yes |
 | Active process | fast | | yes |
 | Foreground app & window | fast | | yes |
-| Volume | fast | | yes |
-| Muted | fast | | yes |
-| Monitor power state | normal | | yes |
+| Volume | **push** | | yes |
+| Muted | **push** | | yes |
+| Monitor power state | **push** | | yes |
 | Active displays | normal | | yes |
 | Idle time | fast | | yes |
-| Session locked | fast | | yes |
-| User present | fast | | yes |
+| Session locked | **push** | | yes |
+| User present | **push** | | yes |
 | Clipboard text available | fast | | yes |
-| Audio output device | normal | | yes |
-| Microphone muted | normal | | yes |
+| Audio output device | **push** | | yes |
+| Microphone muted | **push** | | yes |
 
 <p align="center"><img src="docs/images/ui-sensors-built-in.png" width="700" alt="Built-in sensors tab"></p>
 
@@ -312,12 +321,17 @@ Sensors are refreshed by profile instead of one global interval. Each profile in
 
 | Profile | Default | Description |
 |---------|---------|-------------|
-| **fast** | 10 sec | CPU, memory, active window, volume, etc. |
-| **normal** | 60 sec | Disk, battery, network, session state, etc. |
-| **hourly** | 3600 sec | Bluetooth, Windows Update, Event Log, etc. |
+| **push** | on change | Event-driven — reports within ~600 ms of a change (monitor power, session lock, power source, volume/mute/audio device). A poll still runs as a safety net. |
+| **fast** | 10 sec | CPU, memory, active window, etc. |
+| **normal** | 60 sec | Disk, battery, network, Bluetooth, etc. |
+| **hourly** | 3600 sec | Windows Update, Event Log, etc. |
 | **startup** | once | Boot time, last shutdown reason |
 
-Minimum interval is 10 seconds for all profiles.
+Minimum interval is 10 seconds for the timed profiles.
+
+### Availability
+
+The device publishes its online/offline state to Home Assistant — over MQTT with a **Last Will** message, and over the HA API transport with a **heartbeat**. On a clean shutdown, a crash, or a network loss, the entities turn **unavailable** in Home Assistant instead of keeping their last value.
 
 ### Custom Sensors
 

@@ -40,9 +40,15 @@ internal sealed class SystemMetricsService : IDisposable
     private IReadOnlyList<EventLogErrorInfo> _lastRecentErrors = [];
     private ShutdownInfo _lastShutdown = new(string.Empty, string.Empty, null, 0, string.Empty);
 
-    public SystemMetricsService(FileLog log, MonitorPowerStateService? monitorPowerStateService, bool includeInteractiveMetrics = true)
+    public SystemMetricsService(
+        FileLog log,
+        MonitorPowerStateService? monitorPowerStateService,
+        AudioEndpointService? audioEndpointService = null,
+        bool includeInteractiveMetrics = true)
     {
-        _audioEndpointService = includeInteractiveMetrics ? new AudioEndpointService(log) : null;
+        // The audio service is owned by the caller (it pushes change events), so
+        // it is injected rather than created/disposed here.
+        _audioEndpointService = audioEndpointService;
         _monitorPowerStateService = monitorPowerStateService;
         _includeInteractiveMetrics = includeInteractiveMetrics;
     }

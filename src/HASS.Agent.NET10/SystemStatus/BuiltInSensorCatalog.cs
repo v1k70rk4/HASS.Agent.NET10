@@ -7,7 +7,10 @@ internal sealed record BuiltInSensorDefinition(
     bool SupportsService,
     bool SupportsTrayApp,
     SensorPollingProfile PollingProfile,
-    IReadOnlyList<string>? AttributePaths = null)
+    IReadOnlyList<string>? AttributePaths = null,
+    string? DeviceClass = null,
+    IReadOnlyList<string>? Options = null,
+    bool PushDriven = false)
 {
     public bool HasMultipleValues => AttributePaths is { Count: > 0 };
 
@@ -29,7 +32,9 @@ internal sealed record BuiltInSensorDescriptor(
     [property: JsonPropertyName("polling_profile")] string PollingProfile,
     [property: JsonPropertyName("multiple_values")] bool MultipleValues,
     [property: JsonPropertyName("default_attribute_path")] string? DefaultAttributePath,
-    [property: JsonPropertyName("attribute_paths")] IReadOnlyList<string>? AttributePaths);
+    [property: JsonPropertyName("attribute_paths")] IReadOnlyList<string>? AttributePaths,
+    [property: JsonPropertyName("device_class")] string? DeviceClass,
+    [property: JsonPropertyName("options")] IReadOnlyList<string>? Options);
 
 internal static class BuiltInSensorCatalog
 {
@@ -42,14 +47,16 @@ internal static class BuiltInSensorCatalog
         new("system_drive_free_gb", SupportsService: true, SupportsTrayApp: true, SensorPollingProfile.Normal),
         new("uptime_seconds", SupportsService: true, SupportsTrayApp: true, SensorPollingProfile.Fast),
         new("battery_level", SupportsService: true, SupportsTrayApp: true, SensorPollingProfile.Normal),
-        new("power_status", SupportsService: true, SupportsTrayApp: true, SensorPollingProfile.Normal),
+        new("power_status", SupportsService: true, SupportsTrayApp: true, SensorPollingProfile.Normal,
+            DeviceClass: "enum", Options: ["no_battery", "charging", "plugged_in", "battery", "unknown"], PushDriven: true),
         new("network_address", SupportsService: true, SupportsTrayApp: true, SensorPollingProfile.Normal,
         [
             "network_address.addresses[0].adapter",
             "network_address.addresses[0].description",
             "network_address.addresses[0].address"
         ]),
-        new("session_state", SupportsService: true, SupportsTrayApp: true, SensorPollingProfile.Normal),
+        new("session_state", SupportsService: true, SupportsTrayApp: true, SensorPollingProfile.Normal,
+            DeviceClass: "enum", Options: ["active", "connected", "connect_query", "shadow", "disconnected", "idle", "listen", "reset", "down", "init", "none", "unknown"], PushDriven: true),
         new("logged_in_user", SupportsService: true, SupportsTrayApp: true, SensorPollingProfile.Normal),
         new("pending_reboot", SupportsService: true, SupportsTrayApp: true, SensorPollingProfile.Normal),
         new("boot_time", SupportsService: true, SupportsTrayApp: true, SensorPollingProfile.Startup),
@@ -59,7 +66,7 @@ internal static class BuiltInSensorCatalog
         new("wifi_signal", SupportsService: true, SupportsTrayApp: true, SensorPollingProfile.Normal),
         new("logged_in_users", SupportsService: true, SupportsTrayApp: true, SensorPollingProfile.Normal),
         new("rdp_sessions", SupportsService: true, SupportsTrayApp: true, SensorPollingProfile.Normal),
-        new("bluetooth_enabled", SupportsService: true, SupportsTrayApp: true, SensorPollingProfile.Hourly),
+        new("bluetooth_enabled", SupportsService: true, SupportsTrayApp: true, SensorPollingProfile.Normal),
         new("windows_update_pending", SupportsService: true, SupportsTrayApp: true, SensorPollingProfile.Hourly),
         new("event_log_errors_recent", SupportsService: true, SupportsTrayApp: true, SensorPollingProfile.Hourly,
         [
@@ -80,9 +87,10 @@ internal static class BuiltInSensorCatalog
         new("active_window", SupportsService: false, SupportsTrayApp: true, SensorPollingProfile.Fast),
         new("active_process", SupportsService: false, SupportsTrayApp: true, SensorPollingProfile.Fast),
         new("foreground_app_title", SupportsService: false, SupportsTrayApp: true, SensorPollingProfile.Fast),
-        new("volume", SupportsService: false, SupportsTrayApp: true, SensorPollingProfile.Fast),
-        new("muted", SupportsService: false, SupportsTrayApp: true, SensorPollingProfile.Fast),
-        new("monitor_power_state", SupportsService: false, SupportsTrayApp: true, SensorPollingProfile.Normal),
+        new("volume", SupportsService: false, SupportsTrayApp: true, SensorPollingProfile.Fast, PushDriven: true),
+        new("muted", SupportsService: false, SupportsTrayApp: true, SensorPollingProfile.Fast, PushDriven: true),
+        new("monitor_power_state", SupportsService: false, SupportsTrayApp: true, SensorPollingProfile.Normal,
+            DeviceClass: "enum", Options: ["off", "on", "dimmed", "unknown"], PushDriven: true),
         new("active_display", SupportsService: false, SupportsTrayApp: true, SensorPollingProfile.Normal,
         [
             "active_display.displays[0].name",
@@ -93,11 +101,11 @@ internal static class BuiltInSensorCatalog
             "active_display.displays[0].y"
         ]),
         new("idle_time_seconds", SupportsService: false, SupportsTrayApp: true, SensorPollingProfile.Fast),
-        new("session_locked", SupportsService: false, SupportsTrayApp: true, SensorPollingProfile.Fast),
-        new("user_present", SupportsService: false, SupportsTrayApp: true, SensorPollingProfile.Fast),
+        new("session_locked", SupportsService: false, SupportsTrayApp: true, SensorPollingProfile.Fast, PushDriven: true),
+        new("user_present", SupportsService: false, SupportsTrayApp: true, SensorPollingProfile.Fast, PushDriven: true),
         new("clipboard_text_available", SupportsService: false, SupportsTrayApp: true, SensorPollingProfile.Fast),
-        new("audio_output_device", SupportsService: false, SupportsTrayApp: true, SensorPollingProfile.Normal),
-        new("microphone_muted", SupportsService: false, SupportsTrayApp: true, SensorPollingProfile.Normal)
+        new("audio_output_device", SupportsService: false, SupportsTrayApp: true, SensorPollingProfile.Normal, PushDriven: true),
+        new("microphone_muted", SupportsService: false, SupportsTrayApp: true, SensorPollingProfile.Normal, PushDriven: true)
     ];
 
     public static IReadOnlySet<string> AllKeys { get; } = Sensors

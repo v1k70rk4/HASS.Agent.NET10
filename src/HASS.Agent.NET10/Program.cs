@@ -127,8 +127,10 @@ internal static class Program
 
         using var trayContext = new TrayApplicationContext(settings, paths, log);
         using var monitorPowerStateService = new MonitorPowerStateService();
+        using var sessionPowerWatcher = new SessionPowerWatcher();
+        using var audioEndpointService = new AudioEndpointService(log);
         using var mediaSessionService = new MediaSessionService(log);
-        using var systemMetricsService = new SystemMetricsService(log, monitorPowerStateService);
+        using var systemMetricsService = new SystemMetricsService(log, monitorPowerStateService, audioEndpointService);
         using var systemCommandService = new SystemCommandService(log);
         using var mqttService = new MqttCompanionService(
             settings,
@@ -139,6 +141,12 @@ internal static class Program
             CompanionRuntimeRole.App,
             log);
         using var localApi = new LocalApiServer(settings, trayContext, log);
+
+        // Event-driven sensor pushes: interactive state changes publish immediately
+        // instead of waiting for the next poll (monitor power, session lock, AC/battery).
+        monitorPowerStateService.StateChanged += (_, _) => mqttService.TriggerPushUpdate();
+        sessionPowerWatcher.StateChanged += (_, _) => mqttService.TriggerPushUpdate();
+        audioEndpointService.StateChanged += (_, _) => mqttService.TriggerPushUpdate();
 
         trayContext.NotificationActionRequested += (_, args) =>
         {
