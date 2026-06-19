@@ -129,9 +129,9 @@ internal static class Program
         using var monitorPowerStateService = new MonitorPowerStateService();
         using var sessionPowerWatcher = new SessionPowerWatcher();
         using var audioEndpointService = new AudioEndpointService(log);
-        using var mediaSessionService = new MediaSessionService(log);
+        using var mediaSessionService = new MediaSessionService(log, audioEndpointService);
         using var systemMetricsService = new SystemMetricsService(log, monitorPowerStateService, audioEndpointService);
-        using var systemCommandService = new SystemCommandService(log);
+        using var systemCommandService = new SystemCommandService(log, audioEndpointService);
         using var mqttService = new MqttCompanionService(
             settings,
             trayContext,

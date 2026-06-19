@@ -15,11 +15,15 @@ internal sealed class SystemCommandService : IDisposable
 
     private readonly FileLog _log;
     private readonly AudioEndpointService _audioEndpointService;
+    private readonly bool _ownsAudioEndpoint;
 
-    public SystemCommandService(FileLog log)
+    // In the tray app the audio endpoint is shared (passed in) so all WASAPI COM
+    // access goes through one instance; the service role passes null and owns its own.
+    public SystemCommandService(FileLog log, AudioEndpointService? audioEndpointService = null)
     {
         _log = log;
-        _audioEndpointService = new AudioEndpointService(log);
+        _audioEndpointService = audioEndpointService ?? new AudioEndpointService(log);
+        _ownsAudioEndpoint = audioEndpointService is null;
     }
 
     public Task HandleCommandAsync(SystemCommandMessage message)
@@ -75,6 +79,10 @@ internal sealed class SystemCommandService : IDisposable
 
     public void Dispose()
     {
+        if (_ownsAudioEndpoint)
+        {
+            _audioEndpointService.Dispose();
+        }
     }
 
     private void Lock()

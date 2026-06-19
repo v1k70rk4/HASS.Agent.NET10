@@ -19,10 +19,13 @@ internal sealed class MediaSessionService : IDisposable
     private Func<byte[]?, Task>? _publishThumbnail;
     private string? _lastThumbnailHash;
 
-    public MediaSessionService(FileLog log)
+    // The audio endpoint is shared with SystemMetricsService: two instances would
+    // each create their own WASAPI COM objects and deadlock against each other
+    // during an audio device change (e.g. monitor power-off dropping HDMI audio).
+    public MediaSessionService(FileLog log, AudioEndpointService audioEndpoint)
     {
         _log = log;
-        _audioEndpoint = new AudioEndpointService(log);
+        _audioEndpoint = audioEndpoint;
     }
 
     public async Task StartAsync(Func<MediaStateMessage, Task> publishState, Func<byte[]?, Task>? publishThumbnail, CancellationToken cancellationToken)

@@ -83,7 +83,7 @@ internal sealed class SystemMetricsService : IDisposable
         if (updateNormal)
         {
             _lastNetworkAddresses = ReadNetworkAddresses();
-            _lastDisplays = _includeInteractiveMetrics ? ReadDisplays() : [];
+            _lastDisplays = _includeInteractiveMetrics ? ReadDisplaysSafe() : [];
         }
 
         if (updateHourly)
@@ -313,6 +313,25 @@ internal sealed class SystemMetricsService : IDisposable
                     !address.Address.ToString().StartsWith("169.254.", StringComparison.Ordinal))
                 .Select(address => new NetworkAddressInfo(adapter.Name, adapter.Description, address.Address.ToString())))
             .ToList();
+    }
+
+    /// <summary>
+    /// Reads displays with a timeout. Screen.AllScreens can block while Windows
+    /// reconfigures the display subsystem during a monitor power transition
+    /// (dimmed/off) — exactly when a push update fires — so fall back to the last
+    /// known displays instead of freezing the whole sensor loop.
+    /// </summary>
+    private IReadOnlyList<DisplayInfo> ReadDisplaysSafe()
+    {
+        try
+        {
+            var task = Task.Run(ReadDisplays);
+            return task.Wait(TimeSpan.FromSeconds(2)) ? task.Result : _lastDisplays;
+        }
+        catch
+        {
+            return _lastDisplays;
+        }
     }
 
     private static IReadOnlyList<DisplayInfo> ReadDisplays()

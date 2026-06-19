@@ -43,14 +43,22 @@ internal sealed class MqttCompanionService : IDisposable
     private bool _isOnWebSocket;
     private string? _pendingUpdateCompletedFrom;
     private int _updateInstallInProgress;
+    private volatile bool _forceReconnect;
 
     // Event-driven ("push") sensor updates: interactive state sources (monitor power,
     // session lock, AC/battery) signal here so the sensor loop publishes immediately
     // instead of waiting for the next poll. Debounced to coalesce rapid changes.
+    // A publish must never block forever: when the monitor powers off, Wi-Fi power
+    // save can leave the TCP connection half-open and the socket write hangs. Cap it
+    // and drop the connection so the run loop reconnects.
+    private static readonly TimeSpan PublishTimeout = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan PushDebounce = TimeSpan.FromMilliseconds(600);
     private static readonly IReadOnlySet<SensorPollingProfile> PushProfiles =
         new HashSet<SensorPollingProfile> { SensorPollingProfile.Fast, SensorPollingProfile.Normal };
     private readonly SemaphoreSlim _pushSignal = new(0, 1);
+    // Serializes publishes so the push extra-publish never races the media/sensor
+    // publish on the shared MQTT client (a likely cause of the dimmed-state freeze).
+    private readonly SemaphoreSlim _publishLock = new(1, 1);
     private readonly object _pushDebounceLock = new();
     private System.Threading.Timer? _pushDebounceTimer;
 
@@ -515,6 +523,7 @@ internal sealed class MqttCompanionService : IDisposable
             _pushDebounceTimer = null;
         }
         _pushSignal.Dispose();
+        _publishLock.Dispose();
     }
 
     private async Task RunAsync(CancellationToken cancellationToken)
@@ -582,6 +591,7 @@ internal sealed class MqttCompanionService : IDisposable
                 await _client.ConnectAsync(options, cancellationToken);
 
                 _log.Info("MQTT connected.");
+                _forceReconnect = false;
                 await SubscribeAsync(cancellationToken);
                 await PublishDiscoveryAsync();
                 await PublishLegacyTopicCleanupAsync();
@@ -634,9 +644,14 @@ internal sealed class MqttCompanionService : IDisposable
                         connectionCts.Token);
                 }
 
-                while (_client.IsConnected && !cancellationToken.IsCancellationRequested)
+                while (_client.IsConnected && !_forceReconnect && !cancellationToken.IsCancellationRequested)
                 {
                     await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
+                }
+
+                if (_forceReconnect)
+                {
+                    _log.Warning("Forcing MQTT reconnect after a stuck publish.");
                 }
             }
             catch (OperationCanceledException)
@@ -1324,6 +1339,29 @@ internal sealed class MqttCompanionService : IDisposable
         return completed == signalTask && signalTask.IsCompletedSuccessfully;
     }
 
+    // Reads and publishes the sensor state. A read failure (e.g. a transient COM/WMI
+    // hiccup) must not kill the loop, so it is caught and logged with a full stack.
+    private async Task PublishSensorsAsync(IReadOnlySet<SensorPollingProfile> profiles)
+    {
+        if (_systemMetricsService is null)
+        {
+            return;
+        }
+
+        SystemMetricsMessage message;
+        try
+        {
+            message = _systemMetricsService.Read(_settings.CustomSensors, _role == CompanionRuntimeRole.Service, profiles);
+        }
+        catch (Exception ex)
+        {
+            _log.Warning($"Sensor read failed, skipping this cycle: {ex}");
+            return;
+        }
+
+        await PublishJsonAsync($"hass.agent/sensors/{TopicId}/state", message, retain: false);
+    }
+
     private async Task PublishSystemSensorsLoopAsync(CancellationToken cancellationToken)
     {
         var intervals = new Dictionary<SensorPollingProfile, TimeSpan>
@@ -1359,20 +1397,13 @@ internal sealed class MqttCompanionService : IDisposable
                 if (pushed)
                 {
                     // Interactive state changed — publish the push profiles immediately.
-                    await PublishJsonAsync(
-                        $"hass.agent/sensors/{TopicId}/state",
-                        _systemMetricsService?.Read(_settings.CustomSensors, _role == CompanionRuntimeRole.Service, PushProfiles)
-                            ?? throw new InvalidOperationException("System metrics service is not available."),
-                        retain: false);
+                    await PublishSensorsAsync(PushProfiles);
                 }
 
                 continue;
             }
 
-            await PublishJsonAsync(
-                $"hass.agent/sensors/{TopicId}/state",
-                _systemMetricsService?.Read(_settings.CustomSensors, _role == CompanionRuntimeRole.Service, dueProfiles) ?? throw new InvalidOperationException("System metrics service is not available."),
-                retain: false);
+            await PublishSensorsAsync(dueProfiles);
 
             foreach (var profile in dueProfiles)
             {
@@ -1471,7 +1502,8 @@ internal sealed class MqttCompanionService : IDisposable
 
     private async Task PublishJsonAsync(string topic, object payload, bool retain)
     {
-        if (_client is not { IsConnected: true })
+        var client = _client;
+        if (client is not { IsConnected: true })
         {
             return;
         }
@@ -1484,13 +1516,16 @@ internal sealed class MqttCompanionService : IDisposable
             .WithRetainFlag(retain)
             .Build();
 
-        await _client.PublishAsync(message);
-        _log.Debug($"MQTT → {topic} ({json.Length} B)");
+        if (await TryPublishAsync(client, message, topic))
+        {
+            _log.Debug($"MQTT → {topic} ({json.Length} B)");
+        }
     }
 
     private async Task PublishRawAsync(string topic, byte[]? payload, bool retain)
     {
-        if (_client is not { IsConnected: true })
+        var client = _client;
+        if (client is not { IsConnected: true })
         {
             return;
         }
@@ -1502,7 +1537,65 @@ internal sealed class MqttCompanionService : IDisposable
             .WithRetainFlag(retain)
             .Build();
 
-        await _client.PublishAsync(message);
+        await TryPublishAsync(client, message, topic);
+    }
+
+    /// <summary>
+    /// Publishes with a caller-side timeout. MQTTnet's PublishAsync can get stuck in a
+    /// way its own cancellation token does not unblock, which would freeze every
+    /// publisher (sensors, media) on the shared client. Task.WhenAny guarantees we
+    /// return after the timeout regardless; a stuck publish is orphaned and the run
+    /// loop is told to reconnect via _forceReconnect.
+    /// </summary>
+    private async Task<bool> TryPublishAsync(IMqttClient client, MqttApplicationMessage message, string topic)
+    {
+        if (!await _publishLock.WaitAsync(PublishTimeout))
+        {
+            _log.Warning($"MQTT publish lock stuck >{PublishTimeout.TotalSeconds:0}s before {topic}; forcing reconnect.");
+            _forceReconnect = true;
+            return false;
+        }
+
+        try
+        {
+            Task publishTask;
+            try
+            {
+                publishTask = client.PublishAsync(message, CancellationToken.None);
+            }
+            catch (Exception ex)
+            {
+                _log.Warning($"MQTT publish to {topic} threw ({ex.GetType().Name}); forcing reconnect.");
+                _forceReconnect = true;
+                return false;
+            }
+
+            var winner = await Task.WhenAny(publishTask, Task.Delay(PublishTimeout));
+            if (winner != publishTask)
+            {
+                // Stuck publish — leave it orphaned (observe its exception later) and reconnect.
+                _ = publishTask.ContinueWith(static t => { _ = t.Exception; }, TaskScheduler.Default);
+                _log.Warning($"MQTT publish to {topic} stuck >{PublishTimeout.TotalSeconds:0}s; forcing reconnect.");
+                _forceReconnect = true;
+                return false;
+            }
+
+            try
+            {
+                await publishTask;
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _log.Warning($"MQTT publish to {topic} failed ({ex.GetType().Name}); forcing reconnect.");
+                _forceReconnect = true;
+                return false;
+            }
+        }
+        finally
+        {
+            _publishLock.Release();
+        }
     }
 
     private static string ReadPayload(MqttApplicationMessage message)

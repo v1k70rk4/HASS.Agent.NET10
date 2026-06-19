@@ -34,85 +34,114 @@ internal sealed class AudioEndpointService : IDisposable
     /// <summary>Raised on volume/mute change or default output device change — drives push updates.</summary>
     public event EventHandler? StateChanged;
 
+    // All audio COM access is serialized through _gate. Concurrent access during an
+    // audio device change (e.g. monitor/HDMI output disappearing when the screen
+    // powers off) deadlocks inside the WASAPI COM layer (Marshal.ReleaseComObject),
+    // which froze the push update, the media loop and the device-change callback.
+
     public int GetVolume()
     {
-        try
+        lock (_gate)
         {
-            using var device = GetDefaultDevice();
-            return Convert.ToInt32(Math.Round(device.AudioEndpointVolume.MasterVolumeLevelScalar * 100, 0));
-        }
-        catch (Exception ex)
-        {
-            _log.Warning($"Unable to read default audio volume: {ex.Message}");
-            return 0;
+            try
+            {
+                if (_disposed) return 0;
+                using var device = GetDefaultDevice(DataFlow.Render);
+                return Convert.ToInt32(Math.Round(device.AudioEndpointVolume.MasterVolumeLevelScalar * 100, 0));
+            }
+            catch (Exception ex)
+            {
+                _log.Warning($"Unable to read default audio volume: {ex.Message}");
+                return 0;
+            }
         }
     }
 
     public bool GetMuted()
     {
-        try
+        lock (_gate)
         {
-            using var device = GetDefaultDevice();
-            return device.AudioEndpointVolume.Mute;
-        }
-        catch (Exception ex)
-        {
-            _log.Warning($"Unable to read default audio mute state: {ex.Message}");
-            return false;
+            try
+            {
+                if (_disposed) return false;
+                using var device = GetDefaultDevice(DataFlow.Render);
+                return device.AudioEndpointVolume.Mute;
+            }
+            catch (Exception ex)
+            {
+                _log.Warning($"Unable to read default audio mute state: {ex.Message}");
+                return false;
+            }
         }
     }
 
     public string GetOutputDeviceName()
     {
-        try
+        lock (_gate)
         {
-            using var device = GetDefaultDevice(DataFlow.Render);
-            return device.FriendlyName;
-        }
-        catch (Exception ex)
-        {
-            _log.Warning($"Unable to read default audio output device: {ex.Message}");
-            return string.Empty;
+            try
+            {
+                if (_disposed) return string.Empty;
+                using var device = GetDefaultDevice(DataFlow.Render);
+                return device.FriendlyName;
+            }
+            catch (Exception ex)
+            {
+                _log.Warning($"Unable to read default audio output device: {ex.Message}");
+                return string.Empty;
+            }
         }
     }
 
     public bool? GetMicrophoneMuted()
     {
-        try
+        lock (_gate)
         {
-            using var device = GetDefaultDevice(DataFlow.Capture);
-            return device.AudioEndpointVolume.Mute;
-        }
-        catch (Exception ex)
-        {
-            _log.Warning($"Unable to read default microphone mute state: {ex.Message}");
-            return null;
+            try
+            {
+                if (_disposed) return null;
+                using var device = GetDefaultDevice(DataFlow.Capture);
+                return device.AudioEndpointVolume.Mute;
+            }
+            catch (Exception ex)
+            {
+                _log.Warning($"Unable to read default microphone mute state: {ex.Message}");
+                return null;
+            }
         }
     }
 
     public void SetVolume(int volume)
     {
-        try
+        lock (_gate)
         {
-            using var device = GetDefaultDevice();
-            device.AudioEndpointVolume.MasterVolumeLevelScalar = Math.Clamp(volume, 0, 100) / 100f;
-        }
-        catch (Exception ex)
-        {
-            _log.Warning($"Unable to set default audio volume: {ex.Message}");
+            try
+            {
+                if (_disposed) return;
+                using var device = GetDefaultDevice(DataFlow.Render);
+                device.AudioEndpointVolume.MasterVolumeLevelScalar = Math.Clamp(volume, 0, 100) / 100f;
+            }
+            catch (Exception ex)
+            {
+                _log.Warning($"Unable to set default audio volume: {ex.Message}");
+            }
         }
     }
 
     public void SetMuted(bool muted)
     {
-        try
+        lock (_gate)
         {
-            using var device = GetDefaultDevice();
-            device.AudioEndpointVolume.Mute = muted;
-        }
-        catch (Exception ex)
-        {
-            _log.Warning($"Unable to set default audio mute state: {ex.Message}");
+            try
+            {
+                if (_disposed) return;
+                using var device = GetDefaultDevice(DataFlow.Render);
+                device.AudioEndpointVolume.Mute = muted;
+            }
+            catch (Exception ex)
+            {
+                _log.Warning($"Unable to set default audio mute state: {ex.Message}");
+            }
         }
     }
 
@@ -169,19 +198,22 @@ internal sealed class AudioEndpointService : IDisposable
     // Called by the notification client when the default output device changes.
     internal void OnDefaultRenderDeviceChanged()
     {
-        SubscribeRenderDevice();
-        StateChanged?.Invoke(this, EventArgs.Empty);
+        // CRITICAL: this runs inside an IMMNotificationClient callback, which holds a
+        // WASAPI lock. Doing COM work here (re-subscribe disposes MMDevice →
+        // ReleaseComObject) deadlocks against that lock. Defer to a background thread
+        // so the callback returns immediately and frees the WASAPI lock.
+        Task.Run(() =>
+        {
+            SubscribeRenderDevice();
+            StateChanged?.Invoke(this, EventArgs.Empty);
+        });
     }
 
-    private static MMDevice GetDefaultDevice()
+    // Caller must hold _gate. Uses the shared enumerator instead of creating a new
+    // COM enumerator on every call, reducing COM churn during device changes.
+    private MMDevice GetDefaultDevice(DataFlow dataFlow)
     {
-        return GetDefaultDevice(DataFlow.Render);
-    }
-
-    private static MMDevice GetDefaultDevice(DataFlow dataFlow)
-    {
-        using var enumerator = new MMDeviceEnumerator();
-        return enumerator.GetDefaultAudioEndpoint(dataFlow, Role.Multimedia);
+        return _enumerator.GetDefaultAudioEndpoint(dataFlow, Role.Multimedia);
     }
 
     public void Dispose()

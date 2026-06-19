@@ -13,7 +13,7 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <PlatformTarget>x64</PlatformTarget>
     <Platforms>x64</Platforms>
-    <Version>10.4.0</Version>
+    <Version>10.5.0</Version>
     <Company>v1k70rk4</Company>
     <Authors>v1k70rk4</Authors>
     <Description>Modern .NET 10 Windows client for the HASS.Agent Home Assistant integration.</Description>

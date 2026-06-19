@@ -2,7 +2,7 @@
 
 ![Windows](https://img.shields.io/badge/Windows-10%202004%2B%20%7C%2011-0078D4?logo=windows&logoColor=white)
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet&logoColor=white)
-![Version](https://img.shields.io/badge/version-10.4.0-brightgreen)
+![Version](https://img.shields.io/badge/version-10.5.0-brightgreen)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-MQTT%20%7C%20WebSocket%20API-41BDF5?logo=homeassistant&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 [![Website](https://img.shields.io/badge/website-v1k70rk4.github.io-41bdf5?logo=github)](https://v1k70rk4.github.io/HASS.Agent.NET10/)
@@ -55,7 +55,12 @@ The modern .NET10 line starts at **version 10.0.0**. The pre-.NET10 client remai
 
 ## What Changed
 
-### 10.4.0
+### 10.5.0
+
+- Fixed a freeze that could stop all reporting when the monitor powered off: multiple audio components held separate WASAPI COM instances and deadlocked during an audio device change (e.g. HDMI audio disappearing). Audio access is now a single, serialized endpoint, and the device-change handler no longer does COM work inside the notification callback.
+- The system sensor loop now survives a transient read error instead of stopping, and logs the full stack trace if one occurs.
+
+### 10.4.0 (Yanked)
 
 - Added **event-driven (push) sensor updates**: monitor power state, session lock/unlock, AC/battery power source, and audio (volume, mute, output device, microphone mute) now report to Home Assistant within ~600 ms of changing instead of waiting for the next poll. Rapid changes (e.g. dragging the volume slider) are debounced.
 - Added **enum sensor states**: `monitor_power_state`, `power_status`, and `session_state` are now `enum` sensors, so Home Assistant knows their possible values (selectable in automations; `dimmed` is a first-class monitor state).
