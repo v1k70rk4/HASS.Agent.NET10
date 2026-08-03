@@ -118,6 +118,8 @@ internal sealed class CompanionSettings
 
     public List<CustomSensorDefinition> CustomSensors { get; set; } = [];
 
+    public List<CustomCommandDefinition> CustomCommands { get; set; } = [];
+
     public List<BuiltInSensorSetting> BuiltInSensors { get; set; } = [];
 
     [JsonIgnore]
@@ -240,8 +242,9 @@ internal sealed class CompanionSettings
             .Where(command => SystemCommandCatalog.ServiceCapableCommands.Contains(command))
             .ToList();
         CustomSensors = NormalizeCustomSensors(CustomSensors);
+        CustomCommands = NormalizeCustomCommands(CustomCommands);
         BuiltInSensors = NormalizeBuiltInSensors(BuiltInSensors);
-        MqttButtonsEnabled = TrayAppCommands.Count > 0;
+        MqttButtonsEnabled = TrayAppCommands.Count > 0 || CustomCommands.Any(command => command.Enabled);
     }
 
     private static string NormalizeText(string value, string fallback)
@@ -305,6 +308,35 @@ internal sealed class CompanionSettings
             }
 
             normalized.Add(sensor);
+        }
+
+        return normalized;
+    }
+
+    private static List<CustomCommandDefinition> NormalizeCustomCommands(List<CustomCommandDefinition>? commands)
+    {
+        if (commands is null)
+        {
+            return [];
+        }
+
+        var usedIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var normalized = new List<CustomCommandDefinition>();
+
+        foreach (var command in commands)
+        {
+            command.Id = NormalizeCustomSensorId(command.Id, usedIds);
+            command.Type = CustomCommandTypes.Normalize(command.Type);
+            command.Name = NormalizeText(command.Name, command.Type);
+            command.Command = (command.Command ?? string.Empty).Trim();
+            command.Arguments = (command.Arguments ?? string.Empty).Trim();
+
+            if (string.IsNullOrWhiteSpace(command.Command))
+            {
+                continue;
+            }
+
+            normalized.Add(command);
         }
 
         return normalized;

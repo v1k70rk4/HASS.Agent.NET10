@@ -163,7 +163,7 @@ internal sealed class MqttCompanionService : IDisposable
             || _connectedHaApiToken != _settings.GetHaApiToken()
             || _subscribedNotifications != _settings.MqttNotificationsEnabled
             || _subscribedMediaPlayer != _settings.MqttMediaPlayerEnabled
-            || _subscribedButtons != (_settings.MqttButtonsEnabled && _settings.TrayAppCommands.Count > 0);
+            || _subscribedButtons != _settings.MqttButtonsEnabled;
     }
 
     public async Task PublishNotificationActionAsync(string action)
@@ -615,7 +615,7 @@ internal sealed class MqttCompanionService : IDisposable
                 _connectedHaApiToken = _settings.GetHaApiToken();
                 _subscribedNotifications = _settings.MqttNotificationsEnabled;
                 _subscribedMediaPlayer = _settings.MqttMediaPlayerEnabled;
-                _subscribedButtons = _settings.MqttButtonsEnabled && _settings.TrayAppCommands.Count > 0;
+                _subscribedButtons = _settings.MqttButtonsEnabled;
 
                 connectionCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
@@ -834,7 +834,7 @@ internal sealed class MqttCompanionService : IDisposable
     private async Task PublishDiscoveryViaWebSocketAsync(CancellationToken cancellationToken)
     {
         var systemSensorsEnabled = _settings.MqttSystemSensorsEnabled;
-        var buttonsEnabled = _settings.MqttButtonsEnabled && _settings.TrayAppCommands.Count > 0;
+        var buttonsEnabled = _settings.MqttButtonsEnabled;
 
         var apis = new ApiCapabilitiesResponse(
             _settings.MqttNotificationsEnabled,
@@ -844,7 +844,8 @@ internal sealed class MqttCompanionService : IDisposable
             true,
             buttonsEnabled ? BuildCommandDescriptors(_settings.TrayAppCommands) : [],
             systemSensorsEnabled ? BuildCustomSensorDescriptors(serviceRole: false) : [],
-            systemSensorsEnabled ? BuildStandardSensorDescriptors(serviceRole: false) : []);
+            systemSensorsEnabled ? BuildStandardSensorDescriptors(serviceRole: false) : [],
+            buttonsEnabled ? BuildCustomCommandDescriptors(serviceRole: false) : []);
 
         await _haWs!.PublishDeviceDiscoveryAsync(new
         {
@@ -1057,7 +1058,7 @@ internal sealed class MqttCompanionService : IDisposable
             hasSubscriptions = true;
         }
 
-        if (_settings.MqttButtonsEnabled && _settings.TrayAppCommands.Count > 0)
+        if (_settings.MqttButtonsEnabled)
         {
             builder.WithTopicFilter($"hass.agent/buttons/{TopicId}/cmd", MqttQualityOfServiceLevel.AtMostOnce);
             hasSubscriptions = true;
@@ -1106,9 +1107,22 @@ internal sealed class MqttCompanionService : IDisposable
                 if (command is not null)
                 {
                     var commandName = GetSystemCommandName(command);
-                    if (commandName is null || !_settings.IsTrayAppCommandEnabled(commandName))
+                    if (commandName is null)
                     {
-                        _log.Warning($"Unsupported tray app command received: {commandName ?? "(empty)"}");
+                        _log.Warning("Received empty tray app command.");
+                        return;
+                    }
+
+                    var customCommand = FindCustomCommand(commandName, serviceRole: false);
+                    if (customCommand is not null)
+                    {
+                        await _systemCommandService.RunCustomCommandAsync(customCommand);
+                        return;
+                    }
+
+                    if (!_settings.IsTrayAppCommandEnabled(commandName))
+                    {
+                        _log.Warning($"Unsupported tray app command received: {commandName}");
                         return;
                     }
 
@@ -1145,9 +1159,22 @@ internal sealed class MqttCompanionService : IDisposable
                         return;
                     }
 
-                    if (commandName is null || !_settings.IsServiceCommandEnabled(commandName))
+                    if (commandName is null)
                     {
-                        _log.Warning($"Unsupported system service command received: {commandName ?? "(empty)"}");
+                        _log.Warning("Received empty system service command.");
+                        return;
+                    }
+
+                    var customCommand = FindCustomCommand(commandName, serviceRole: true);
+                    if (customCommand is not null)
+                    {
+                        await _systemCommandService.RunCustomCommandAsync(customCommand);
+                        return;
+                    }
+
+                    if (!_settings.IsServiceCommandEnabled(commandName))
+                    {
+                        _log.Warning($"Unsupported system service command received: {commandName}");
                         return;
                     }
 
@@ -1174,10 +1201,10 @@ internal sealed class MqttCompanionService : IDisposable
         }
 
         var systemSensorsEnabled = !offline && _settings.MqttSystemSensorsEnabled;
-        var buttonsEnabled = !offline && _settings.MqttButtonsEnabled && _settings.TrayAppCommands.Count > 0;
+        var buttonsEnabled = !offline && _settings.MqttButtonsEnabled;
 
         var apis = offline
-            ? new ApiCapabilitiesResponse(false, false, false, false, false, [], [], [])
+            ? new ApiCapabilitiesResponse(false, false, false, false, false, [], [], [], [])
             : new ApiCapabilitiesResponse(
                 _settings.MqttNotificationsEnabled,
                 _settings.MqttMediaPlayerEnabled,
@@ -1186,7 +1213,8 @@ internal sealed class MqttCompanionService : IDisposable
                 true,
                 buttonsEnabled ? BuildCommandDescriptors(_settings.TrayAppCommands) : [],
                 systemSensorsEnabled ? BuildCustomSensorDescriptors(serviceRole: false) : [],
-                systemSensorsEnabled ? BuildStandardSensorDescriptors(serviceRole: false) : []);
+                systemSensorsEnabled ? BuildStandardSensorDescriptors(serviceRole: false) : [],
+                buttonsEnabled ? BuildCustomCommandDescriptors(serviceRole: false) : []);
 
         await PublishJsonAsync(
             $"hass.agent/devices/{TopicId}",
@@ -1429,7 +1457,8 @@ internal sealed class MqttCompanionService : IDisposable
             systemSensorsEnabled,
             systemSensorsEnabled ? BuildCustomSensorDescriptors(serviceRole: true) : [],
             systemSensorsEnabled ? BuildStandardSensorDescriptors(serviceRole: true) : [],
-            DateTimeOffset.UtcNow);
+            DateTimeOffset.UtcNow,
+            online ? BuildCustomCommandDescriptors(serviceRole: true) : []);
     }
 
     private static IReadOnlyList<SystemCommandDescriptor> BuildCommandDescriptors(IEnumerable<string> commands)
@@ -1498,6 +1527,22 @@ internal sealed class MqttCompanionService : IDisposable
         return message.RestartCancel
             ? "restart_cancel"
             : message.Command?.Trim().ToLowerInvariant();
+    }
+
+    private IReadOnlyList<CustomCommandDescriptor> BuildCustomCommandDescriptors(bool serviceRole)
+    {
+        return _settings.CustomCommands
+            .Where(command => command.Enabled && (serviceRole ? command.Service : command.TrayApp))
+            .Select(command => new CustomCommandDescriptor(command.Id, command.Name))
+            .ToList();
+    }
+
+    private CustomCommandDefinition? FindCustomCommand(string id, bool serviceRole)
+    {
+        return _settings.CustomCommands.FirstOrDefault(command =>
+            command.Enabled &&
+            (serviceRole ? command.Service : command.TrayApp) &&
+            string.Equals(command.Id, id, StringComparison.OrdinalIgnoreCase));
     }
 
     private async Task PublishJsonAsync(string topic, object payload, bool retain)
@@ -1647,7 +1692,8 @@ internal sealed record MqttServiceStatusMessage(
     [property: JsonPropertyName("system_sensors")] bool SystemSensors,
     [property: JsonPropertyName("custom_sensors")] IReadOnlyList<CustomSensorDescriptor> CustomSensors,
     [property: JsonPropertyName("standard_sensors")] IReadOnlyList<BuiltInSensorDescriptor> StandardSensors,
-    [property: JsonPropertyName("published_at")] DateTimeOffset PublishedAt);
+    [property: JsonPropertyName("published_at")] DateTimeOffset PublishedAt,
+    [property: JsonPropertyName("custom_commands")] IReadOnlyList<CustomCommandDescriptor>? CustomCommands = null);
 
 internal sealed record MqttUpdateDiscoveryConfig(
     [property: JsonPropertyName("name")] string Name,

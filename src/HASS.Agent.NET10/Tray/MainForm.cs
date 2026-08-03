@@ -87,6 +87,7 @@ internal sealed class MainForm : Form
 
     private readonly DataGridView _builtInGrid = new();
     private readonly DataGridView _customGrid = new();
+    private readonly DataGridView _customCommandGrid = new();
 
     private readonly CheckBox _dangerZoneCheck = new();
     private readonly ListView _dangerList = new();
@@ -873,6 +874,43 @@ internal sealed class MainForm : Form
             y += 30;
         }
 
+        var customY = cmdY + (50 + SystemCommandCatalog.Commands.Count * 30 + 16) + 20;
+        var card3 = MakeCard(page, 28, customY, 600, 250, S("Cap.CustomCommands"));
+
+        card3.Controls.Add(new Label
+        {
+            Text = S("Cap.CustomCommandsHelp"), Location = Pt(20, 40),
+            Size = Sz(560, 32), ForeColor = TextMuted, Font = new Font("Segoe UI", 8.5F)
+        });
+
+        SetupCustomCommandGrid();
+        _customCommandGrid.Location = Pt(20, 76);
+        _customCommandGrid.Size = Sz(560, 130);
+        card3.Controls.Add(_customCommandGrid);
+
+        var addCmdBtn = MakeSecondaryButton(S("Sensors.Add"), 110, 30);
+        addCmdBtn.Location = Pt(20, 212);
+        addCmdBtn.Click += (_, _) => AddCustomCommandRow(new CustomCommandDefinition
+        {
+            Enabled = true,
+            TrayApp = true,
+            Service = false,
+            Type = CustomCommandTypes.Process,
+            Name = S("Cap.CustomCommandNew"),
+            Command = "notepad.exe",
+            Arguments = string.Empty
+        });
+        card3.Controls.Add(addCmdBtn);
+
+        var removeCmdBtn = MakeSecondaryButton(S("Sensors.Remove"), 90, 30);
+        removeCmdBtn.Location = new Point(addCmdBtn.Right + D(8), D(212));
+        removeCmdBtn.Click += (_, _) =>
+        {
+            if (_customCommandGrid.CurrentRow is { IsNewRow: false } row)
+                _customCommandGrid.Rows.Remove(row);
+        };
+        card3.Controls.Add(removeCmdBtn);
+
         return page;
     }
 
@@ -1065,6 +1103,55 @@ internal sealed class MainForm : Form
             Name = "Value", HeaderText = S("Sensors.Value"), AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill,
             MinimumWidth = D(110), ReadOnly = true
         });
+    }
+
+    private void SetupCustomCommandGrid()
+    {
+        StyleGrid(_customCommandGrid);
+        _customCommandGrid.Columns.Add(new DataGridViewCheckBoxColumn { Name = "Enabled", HeaderText = S("Sensors.Active"), Width = D(50) });
+        _customCommandGrid.Columns.Add(new DataGridViewCheckBoxColumn { Name = "TrayApp", HeaderText = "Tray", Width = D(50) });
+        _customCommandGrid.Columns.Add(new DataGridViewCheckBoxColumn { Name = "Service", HeaderText = "Svc", Width = D(50) });
+        var commandTypes = new[]
+        {
+            CustomCommandTypes.Process,
+            CustomCommandTypes.PowerShell,
+            CustomCommandTypes.Pwsh
+        }
+            .Select(t => new KeyValuePair<string, string>(t, S($"CmdType.{t}")))
+            .ToArray();
+        _customCommandGrid.Columns.Add(new DataGridViewComboBoxColumn
+        {
+            Name = "Type", HeaderText = S("Sensors.Type"), Width = D(110),
+            DataSource = commandTypes, ValueMember = "Key", DisplayMember = "Value"
+        });
+        _customCommandGrid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Name", HeaderText = S("Sensors.Name"), Width = D(120) });
+        _customCommandGrid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Command", HeaderText = S("Cap.CommandColumn"), Width = D(150) });
+        _customCommandGrid.Columns.Add(new DataGridViewTextBoxColumn
+        {
+            Name = "Arguments", HeaderText = S("Cap.ArgumentsColumn"),
+            AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill, MinimumWidth = D(90)
+        });
+        _customCommandGrid.CurrentCellDirtyStateChanged += (_, _) =>
+        {
+            if (_customCommandGrid.IsCurrentCellDirty)
+            {
+                _customCommandGrid.CommitEdit(DataGridViewDataErrorContexts.Commit);
+            }
+        };
+    }
+
+    private int AddCustomCommandRow(CustomCommandDefinition command)
+    {
+        var rowIndex = _customCommandGrid.Rows.Add(
+            command.Enabled,
+            command.TrayApp,
+            command.Service,
+            CustomCommandTypes.Normalize(command.Type),
+            command.Name,
+            command.Command,
+            command.Arguments);
+        _customCommandGrid.Rows[rowIndex].Tag = command.Id;
+        return rowIndex;
     }
 
     private Panel BuildCustomSensorInfoPanel()
@@ -2027,6 +2114,12 @@ internal sealed class MainForm : Form
             AddCustomSensorRow(sensor);
         }
         MarkAllCustomSensorValuesNotTested();
+
+        _customCommandGrid.Rows.Clear();
+        foreach (var command in _settings.CustomCommands)
+        {
+            AddCustomCommandRow(command);
+        }
     }
 
     private int AddCustomSensorRow(CustomSensorDefinition sensor)
@@ -2287,6 +2380,31 @@ internal sealed class MainForm : Form
             });
         }
         _settings.CustomSensors = sensors;
+
+        _customCommandGrid.EndEdit();
+        var customCommands = new List<CustomCommandDefinition>();
+        foreach (DataGridViewRow row in _customCommandGrid.Rows)
+        {
+            if (row.IsNewRow) continue;
+            var commandText = Convert.ToString(row.Cells["Command"].Value) ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(commandText)) continue;
+            var type = CustomCommandTypes.Normalize(Convert.ToString(row.Cells["Type"].Value) ?? CustomCommandTypes.Process);
+            var name = Convert.ToString(row.Cells["Name"].Value) ?? string.Empty;
+            customCommands.Add(new CustomCommandDefinition
+            {
+                Id = Convert.ToString(row.Tag) ?? Guid.NewGuid().ToString("N"),
+                Enabled = Convert.ToBoolean(row.Cells["Enabled"].Value ?? true),
+                Type = type,
+                Name = string.IsNullOrWhiteSpace(name) ? commandText : name.Trim(),
+                Command = commandText.Trim(),
+                Arguments = (Convert.ToString(row.Cells["Arguments"].Value) ?? string.Empty).Trim(),
+                TrayApp = Convert.ToBoolean(row.Cells["TrayApp"].Value ?? false),
+                Service = Convert.ToBoolean(row.Cells["Service"].Value ?? false)
+            });
+        }
+        _settings.CustomCommands = customCommands;
+        _settings.MqttButtonsEnabled = _settings.TrayAppCommands.Count > 0
+            || customCommands.Any(command => command.Enabled);
 
         SettingsStore.Save(_paths, _settings);
         SettingsSaved?.Invoke(this, EventArgs.Empty);

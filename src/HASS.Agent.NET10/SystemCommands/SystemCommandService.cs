@@ -77,6 +77,60 @@ internal sealed class SystemCommandService : IDisposable
         return Task.CompletedTask;
     }
 
+    /// <summary>
+    /// Runs a user-defined custom command: a program with arguments, or a Windows
+    /// PowerShell / pwsh inline command or .ps1 script. The command is chosen from the
+    /// user's own list in settings — Home Assistant only triggers it by id.
+    /// </summary>
+    public Task RunCustomCommandAsync(CustomCommandDefinition command)
+    {
+        _log.Info($"Executing custom command '{command.Name}' ({command.Type}).");
+        try
+        {
+            var startInfo = BuildCustomCommandStartInfo(command);
+            using var process = System.Diagnostics.Process.Start(startInfo);
+            if (process is null)
+            {
+                _log.Warning($"Custom command '{command.Name}' could not be started.");
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.Warning($"Custom command '{command.Name}' failed: {ex.Message}");
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private static System.Diagnostics.ProcessStartInfo BuildCustomCommandStartInfo(CustomCommandDefinition command)
+    {
+        if (command.IsPowerShell || command.IsPwsh)
+        {
+            var shell = command.IsPwsh ? "pwsh.exe" : "powershell.exe";
+            var isScriptFile = command.Command.EndsWith(".ps1", StringComparison.OrdinalIgnoreCase);
+            var arguments = isScriptFile
+                ? $"-NoProfile -ExecutionPolicy Bypass -File \"{command.Command}\" {command.Arguments}".Trim()
+                : $"-NoProfile -ExecutionPolicy Bypass -Command \"{command.Command}\"";
+
+            return new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = shell,
+                Arguments = arguments,
+                CreateNoWindow = true,
+                UseShellExecute = false
+            };
+        }
+
+        // process: launch the program (ShellExecute resolves PATH and lets GUI apps
+        // show in the user session when run from the tray app).
+        return new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = command.Command,
+            Arguments = command.Arguments,
+            UseShellExecute = true
+        };
+    }
+
     public void Dispose()
     {
         if (_ownsAudioEndpoint)

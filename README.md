@@ -2,7 +2,7 @@
 
 ![Windows](https://img.shields.io/badge/Windows-10%202004%2B%20%7C%2011-0078D4?logo=windows&logoColor=white)
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet&logoColor=white)
-![Version](https://img.shields.io/badge/version-10.5.0-brightgreen)
+![Version](https://img.shields.io/badge/version-10.6.0--beta.1-orange)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-MQTT%20%7C%20WebSocket%20API-41BDF5?logo=homeassistant&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 [![Website](https://img.shields.io/badge/website-v1k70rk4.github.io-41bdf5?logo=github)](https://v1k70rk4.github.io/HASS.Agent.NET10/)
@@ -54,6 +54,11 @@ The modern .NET10 line starts at **version 10.0.0**. The pre-.NET10 client remai
 ---
 
 ## What Changed
+
+### 10.6.0-beta.1
+
+- Added **custom commands**: define your own programs (with arguments) or PowerShell scripts/commands in the Capabilities window, and Home Assistant gets a button per command. Both Windows PowerShell (`powershell.exe`) and PowerShell 7 (`pwsh.exe`) are supported, for inline commands or `.ps1` scripts. Commands can run from the tray app, the Windows service, or both.
+- **Security**: you define what each command runs — Home Assistant only triggers a command by its id, so it can never send an arbitrary command or script to your PC. Requires the HA integration 10.6.0+ to see the buttons; older integrations simply ignore custom commands.
 
 ### 10.5.0
 
@@ -214,6 +219,20 @@ data:
   time: 30
   comment: "Restarted from Home Assistant"
 ```
+
+### Custom Commands
+
+Beyond the built-in commands, you can define your own in the **Capabilities** window. Each custom command becomes a button in Home Assistant.
+
+| Type | `Command / script` field | `Arguments` field |
+|------|--------------------------|-------------------|
+| **Program** | Executable path or name (e.g. `notepad.exe`, `C:\Tools\backup.exe`) | Command-line arguments |
+| **PowerShell** | Inline command, or a `.ps1` path | Script arguments (used only for `.ps1`) |
+| **PowerShell 7 (pwsh)** | Same as PowerShell, run with `pwsh.exe` | Same as PowerShell |
+
+- **Program** commands launch via the shell, so GUI apps show in your session; PowerShell runs hidden with `-NoProfile -ExecutionPolicy Bypass`.
+- Tick **Tray**, **Svc**, or both to choose where a command runs. Service-run commands execute in the `SYSTEM` session (no visible UI).
+- **Security:** you own the command list — Home Assistant only sends the command's id to trigger it, never the program or script itself. It cannot run arbitrary code on your PC. Requires the HA integration 10.6.0+ to show the buttons.
 
 ### Windows Service
 

@@ -73,4 +73,5 @@ internal sealed record ApiCapabilitiesResponse(
     [property: JsonPropertyName("update")] bool Update,
     [property: JsonPropertyName("commands")] IReadOnlyList<SystemCommandDescriptor> Commands,
     [property: JsonPropertyName("custom_sensors")] IReadOnlyList<HASS.Agent.Companion.SystemStatus.CustomSensorDescriptor>? CustomSensors = null,
-    [property: JsonPropertyName("standard_sensors")] IReadOnlyList<HASS.Agent.Companion.SystemStatus.BuiltInSensorDescriptor>? StandardSensors = null);
+    [property: JsonPropertyName("standard_sensors")] IReadOnlyList<HASS.Agent.Companion.SystemStatus.BuiltInSensorDescriptor>? StandardSensors = null,
+    [property: JsonPropertyName("custom_commands")] IReadOnlyList<HASS.Agent.Companion.SystemCommands.CustomCommandDescriptor>? CustomCommands = null);
