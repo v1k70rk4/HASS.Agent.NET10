@@ -2,7 +2,7 @@
 
 ![Windows](https://img.shields.io/badge/Windows-10%202004%2B%20%7C%2011-0078D4?logo=windows&logoColor=white)
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet&logoColor=white)
-![Version](https://img.shields.io/badge/version-10.6.0--beta.1-orange)
+![Version](https://img.shields.io/badge/version-10.6.0--beta.2-orange)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-MQTT%20%7C%20WebSocket%20API-41BDF5?logo=homeassistant&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 [![Website](https://img.shields.io/badge/website-v1k70rk4.github.io-41bdf5?logo=github)](https://v1k70rk4.github.io/HASS.Agent.NET10/)
@@ -54,6 +54,10 @@ The modern .NET10 line starts at **version 10.0.0**. The pre-.NET10 client remai
 ---
 
 ## What Changed
+
+### 10.6.0-beta.2
+
+- Fixed **custom commands** of the *program* type failing with "cannot find the specified file" when a whole command line (e.g. `taskkill /F /IM app.exe /T`) was typed into the command field. The executable is now split from its inline arguments, so both a bare program + separate arguments and a full command line pasted into one field work. Quoted or existing paths with spaces are kept intact.
 
 ### 10.6.0-beta.1
 
@@ -226,7 +230,7 @@ Beyond the built-in commands, you can define your own in the **Capabilities** wi
 
 | Type | `Command / script` field | `Arguments` field |
 |------|--------------------------|-------------------|
-| **Program** | Executable path or name (e.g. `notepad.exe`, `C:\Tools\backup.exe`) | Command-line arguments |
+| **Program** | Executable path or name (e.g. `notepad.exe`, `C:\Tools\backup.exe`), or a full command line (e.g. `taskkill /F /IM app.exe /T`) | Command-line arguments (optional; can also be put inline in the command field) |
 | **PowerShell** | Inline command, or a `.ps1` path | Script arguments (used only for `.ps1`) |
 | **PowerShell 7 (pwsh)** | Same as PowerShell, run with `pwsh.exe` | Same as PowerShell |
 

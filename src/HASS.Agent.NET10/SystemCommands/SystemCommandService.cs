@@ -121,14 +121,60 @@ internal sealed class SystemCommandService : IDisposable
             };
         }
 
-        // process: launch the program (ShellExecute resolves PATH and lets GUI apps
-        // show in the user session when run from the tray app).
+        // process: launch a program. The user may type just the executable and put its
+        // arguments in the Arguments field, or paste a whole command line
+        // ("taskkill /F /IM x.exe /T") into the command field. Split the executable from
+        // any inline arguments so Windows does not look for a file literally named after
+        // the whole line. ShellExecute resolves PATH and lets GUI apps show in the user
+        // session when run from the tray app.
+        var (fileName, inlineArguments) = SplitProcessCommand(command.Command);
+        var processArguments = inlineArguments;
+        if (!string.IsNullOrWhiteSpace(command.Arguments))
+        {
+            processArguments = string.IsNullOrWhiteSpace(inlineArguments)
+                ? command.Arguments
+                : $"{inlineArguments} {command.Arguments}";
+        }
+
         return new System.Diagnostics.ProcessStartInfo
         {
-            FileName = command.Command,
-            Arguments = command.Arguments,
+            FileName = fileName,
+            Arguments = processArguments,
             UseShellExecute = true
         };
+    }
+
+    // Splits "C:\app.exe --flag" or "taskkill /F /IM x /T" into the executable and its
+    // inline arguments. A quoted path, or an unquoted path that exists as-is, is kept
+    // whole so paths containing spaces still work; otherwise the first whitespace-
+    // delimited token is treated as the executable.
+    private static (string FileName, string Arguments) SplitProcessCommand(string command)
+    {
+        var trimmed = (command ?? string.Empty).Trim();
+        if (trimmed.Length == 0)
+        {
+            return (trimmed, string.Empty);
+        }
+
+        if (trimmed[0] == '"')
+        {
+            var closingQuote = trimmed.IndexOf('"', 1);
+            return closingQuote > 0
+                ? (trimmed[1..closingQuote], trimmed[(closingQuote + 1)..].Trim())
+                : (trimmed, string.Empty);
+        }
+
+        // A path that exists as-is (e.g. C:\Program Files\app\app.exe with no inline
+        // arguments) must stay intact even though it contains spaces.
+        if (System.IO.File.Exists(trimmed))
+        {
+            return (trimmed, string.Empty);
+        }
+
+        var firstSpace = trimmed.IndexOf(' ');
+        return firstSpace < 0
+            ? (trimmed, string.Empty)
+            : (trimmed[..firstSpace], trimmed[(firstSpace + 1)..].Trim());
     }
 
     public void Dispose()
