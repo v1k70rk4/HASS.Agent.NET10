@@ -182,10 +182,20 @@ jobs:
           name: HASS.Agent.NET10-Setup
           path: artifacts/installer/*.exe
 
+      # Use the annotated tag's own message as the release notes (softprops does not
+      # do this on its own, and generate_release_notes only produced a PR list).
+      - name: Prepare release notes from tag
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          $notes = git for-each-ref "refs/tags/$env:GITHUB_REF_NAME" --format='%(contents)'
+          if ([string]::IsNullOrWhiteSpace($notes)) { $notes = "$env:GITHUB_REF_NAME" }
+          Set-Content -Path "$env:RUNNER_TEMP\RELEASE_NOTES.md" -Value $notes -Encoding utf8
+
       - name: Upload release assets
         if: github.event_name == 'release' || startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
         with:
+          body_path: ${{ runner.temp }}/RELEASE_NOTES.md
           prerelease: ${{ contains(github.ref_name, '-') }}
           files: |
             artifacts/installer/*.exe
