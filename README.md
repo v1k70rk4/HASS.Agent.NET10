@@ -2,7 +2,7 @@
 
 ![Windows](https://img.shields.io/badge/Windows-10%202004%2B%20%7C%2011-0078D4?logo=windows&logoColor=white)
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet&logoColor=white)
-![Version](https://img.shields.io/badge/version-10.6.0--beta.2-orange)
+![Version](https://img.shields.io/badge/version-10.6.0--beta.3-orange)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-MQTT%20%7C%20WebSocket%20API-41BDF5?logo=homeassistant&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 [![Website](https://img.shields.io/badge/website-v1k70rk4.github.io-41bdf5?logo=github)](https://v1k70rk4.github.io/HASS.Agent.NET10/)
@@ -54,6 +54,10 @@ The modern .NET10 line starts at **version 10.0.0**. The pre-.NET10 client remai
 ---
 
 ## What Changed
+
+### 10.6.0-beta.3
+
+- Added **command sensors**: a custom sensor whose value is the output of a program or PowerShell script you run on the PC — e.g. GPU temperature via `nvidia-smi`, or anything else that prints a value. Three types: **Command (program)** runs an executable directly, **Command (PowerShell)** and **Command (PowerShell 7)** run an inline command or a `.ps1`. The first non-empty line of the output becomes the sensor value (numbers are published numerically). An optional **Unit** column shows the unit in Home Assistant and marks the sensor as a numeric `measurement` for statistics/graphs. Commands run with a timeout so a hung command can't stall reporting; use the Normal/Hourly polling profile. Like custom command buttons, you define what runs — Home Assistant only reads the resulting value. No Home Assistant integration update needed.
 
 ### 10.6.0-beta.2
 
@@ -489,6 +493,30 @@ Parameter: network_address.addresses[1].address
 ```text
 Name: "Last shutdown"
 Parameter: last_shutdown_reason.reason
+```
+
+#### `command` / `command_powershell` / `command_pwsh`
+
+Runs a program or PowerShell script and uses its **output** as the sensor value — for anything Windows has no built-in sensor for, such as GPU temperature.
+
+| Type | Parameter | Runs as |
+|------|-----------|---------|
+| **Command (program)** | A program or full command line (e.g. `nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader,nounits`) | The executable directly (fast, no shell) |
+| **Command (PowerShell)** | An inline command or a `.ps1` path | `powershell.exe -NoProfile -ExecutionPolicy Bypass` |
+| **Command (PowerShell 7)** | Same as above | `pwsh.exe -NoProfile -ExecutionPolicy Bypass` |
+
+- The **first non-empty line** of the output (trimmed, max 255 chars) becomes the sensor state — format your command to print a single value. A plain number is published as a numeric value.
+- Set an optional **Unit** (e.g. `°C`) to show it in Home Assistant; a unit also marks the sensor as a numeric `measurement`, so Home Assistant keeps long-term statistics and graphs it.
+- Each run has a timeout (~10 s) so a hung command can't stall reporting. Pick the **Normal** or **Hourly** profile, not Fast.
+- **Security**: you define what runs — Home Assistant only reads the resulting value, it cannot send commands. No Home Assistant integration update is required for these.
+
+```text
+Name: "GPU temperature"
+Type: Command (program)
+Parameter: nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader,nounits
+Unit: °C
+Profile: normal
+State: 54 °C
 ```
 
 ---

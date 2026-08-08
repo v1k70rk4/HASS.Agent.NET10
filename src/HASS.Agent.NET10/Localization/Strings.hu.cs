@@ -181,6 +181,7 @@ internal static partial class Strings
             ["Sensors.Type"] = "Típus",
             ["Sensors.Name"] = "Név",
             ["Sensors.Parameter"] = "Paraméter",
+            ["Sensors.Unit"] = "M.egys.",
             ["Sensors.Profile"] = "Profil",
             ["Sensors.Value"] = "Érték",
             ["Sensors.Add"] = "Hozzáadás",
@@ -193,7 +194,7 @@ internal static partial class Strings
             ["Sensors.CustomRemove"] = "Egyedi törlés",
             ["Sensors.MultiValueTooltip"] = "Ez a szenzor több értéket is ad. Kattints egy attribútum alapú egyedi szenzor hozzáadásához.",
             ["Sensors.AttributeSensorName"] = "{0}: {1}",
-            ["Sensors.CustomHelp"] = "Paraméterek: process_running = processz név, service_status = Windows service név, disk_free = meghajtó betűjel/útvonal. Beépített attribútumhoz kattints a + ikonra; minden elérhető attribútum bekerül, listáknál [0] indexszel.",
+            ["Sensors.CustomHelp"] = "Paraméterek: process_running = processz név, service_status = Windows service név, disk_free = meghajtó betűjel/útvonal. Parancs típusok = a program/parancssor (pl. nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader,nounits); a kimenet első sora lesz az érték — használd a Normál/Óránkénti profilt. Beépített attribútumhoz kattints a + ikonra; minden elérhető attribútum bekerül, listáknál [0] indexszel.",
             ["Sensors.ValueLoading"] = "olvasás...",
             ["Sensors.ValueNotTested"] = "nincs tesztelve",
             ["Sensors.ValueMissingParameter"] = "hiányzó paraméter",
@@ -319,5 +320,8 @@ internal static partial class Strings
             ["SensorType.service_status"] = "Szolgáltatás állapot",
             ["SensorType.disk_free"] = "Szabad lemezterület",
             ["SensorType.built_in_attribute"] = "Beépített attribútum",
+            ["SensorType.command"] = "Parancs (program)",
+            ["SensorType.command_powershell"] = "Parancs (PowerShell)",
+            ["SensorType.command_pwsh"] = "Parancs (PowerShell 7)",
     };
 }

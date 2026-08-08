@@ -1078,7 +1078,10 @@ internal sealed class MainForm : Form
             CustomSensorTypes.ProcessRunning,
             CustomSensorTypes.ServiceStatus,
             CustomSensorTypes.DiskFree,
-            CustomSensorTypes.BuiltInAttribute
+            CustomSensorTypes.BuiltInAttribute,
+            CustomSensorTypes.Command,
+            CustomSensorTypes.CommandPowerShell,
+            CustomSensorTypes.CommandPwsh
         }
             .Select(t => new KeyValuePair<string, string>(t, S($"SensorType.{t}")))
             .ToArray();
@@ -1097,6 +1100,10 @@ internal sealed class MainForm : Form
         {
             Name = "Parameter", HeaderText = S("Sensors.Parameter"),
             Width = D(170), MinimumWidth = D(80)
+        });
+        _customGrid.Columns.Add(new DataGridViewTextBoxColumn
+        {
+            Name = "Unit", HeaderText = S("Sensors.Unit"), Width = D(60), MinimumWidth = D(45)
         });
         _customGrid.Columns.Add(new DataGridViewTextBoxColumn
         {
@@ -2131,7 +2138,8 @@ internal sealed class MainForm : Form
             sensor.Type,
             sensor.Name,
             SensorPollingProfiles.NormalizeKey(sensor.PollingProfile, SensorPollingProfile.Normal),
-            sensor.Parameter);
+            sensor.Parameter,
+            sensor.Unit);
         _customGrid.Rows[rowIndex].Tag = sensor.Id;
         return rowIndex;
     }
@@ -2214,6 +2222,7 @@ internal sealed class MainForm : Form
         var type = Convert.ToString(row.Cells["Type"].Value) ?? CustomSensorTypes.ProcessRunning;
         var name = Convert.ToString(row.Cells["Name"].Value) ?? string.Empty;
         var parameter = Convert.ToString(row.Cells["Parameter"].Value) ?? string.Empty;
+        var unit = Convert.ToString(row.Cells["Unit"].Value) ?? string.Empty;
         var pollingProfile = Convert.ToString(row.Cells["Profile"].Value) ?? SensorPollingProfiles.ToKey(SensorPollingProfile.Normal);
         return new CustomSensorDefinition
         {
@@ -2222,6 +2231,7 @@ internal sealed class MainForm : Form
             Type = type,
             Name = string.IsNullOrWhiteSpace(name) ? type : name.Trim(),
             Parameter = parameter.Trim(),
+            Unit = unit.Trim(),
             PollingProfile = SensorPollingProfiles.NormalizeKey(pollingProfile, SensorPollingProfile.Normal),
             Service = forceEnabled || Convert.ToBoolean(row.Cells["Service"].Value ?? false),
             TrayApp = forceEnabled || Convert.ToBoolean(row.Cells["TrayApp"].Value ?? false)
@@ -2366,6 +2376,7 @@ internal sealed class MainForm : Form
             if (string.IsNullOrWhiteSpace(param)) continue;
             var type = Convert.ToString(row.Cells["Type"].Value) ?? CustomSensorTypes.ProcessRunning;
             var name = Convert.ToString(row.Cells["Name"].Value) ?? string.Empty;
+            var unit = Convert.ToString(row.Cells["Unit"].Value) ?? string.Empty;
             var pollingProfile = Convert.ToString(row.Cells["Profile"].Value) ?? SensorPollingProfiles.ToKey(SensorPollingProfile.Normal);
             sensors.Add(new CustomSensorDefinition
             {
@@ -2374,6 +2385,7 @@ internal sealed class MainForm : Form
                 Type = type,
                 Name = string.IsNullOrWhiteSpace(name) ? type : name.Trim(),
                 Parameter = param.Trim(),
+                Unit = unit.Trim(),
                 PollingProfile = SensorPollingProfiles.NormalizeKey(pollingProfile, SensorPollingProfile.Normal),
                 Service = Convert.ToBoolean(row.Cells["Service"].Value ?? false),
                 TrayApp = Convert.ToBoolean(row.Cells["TrayApp"].Value ?? false)

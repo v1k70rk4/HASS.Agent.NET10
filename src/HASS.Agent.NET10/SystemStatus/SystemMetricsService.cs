@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Diagnostics.Eventing.Reader;
+using System.Globalization;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
@@ -13,6 +14,7 @@ using Microsoft.Win32;
 using System.Windows.Forms;
 using HASS.Agent.Companion.Logging;
 using HASS.Agent.Companion.Media;
+using HASS.Agent.Companion.SystemCommands;
 
 namespace HASS.Agent.Companion.SystemStatus;
 
@@ -863,7 +865,7 @@ internal sealed class SystemMetricsService : IDisposable
     /// </summary>
     public static object? TestCustomSensorValue(CustomSensorDefinition sensor, FileLog log)
     {
-        if (sensor.IsProcessRunning || sensor.IsServiceStatus || sensor.IsDiskFree)
+        if (sensor.IsProcessRunning || sensor.IsServiceStatus || sensor.IsDiskFree || sensor.IsAnyCommand)
         {
             var empty = new Dictionary<string, IReadOnlyDictionary<string, object?>>();
             return ReadCustomSensor(sensor, empty).Value;
@@ -928,6 +930,11 @@ internal sealed class SystemMetricsService : IDisposable
             {
                 return new CustomSensorState(sensor.Id, ReadBuiltInAttributeValue(sensor.Parameter, attributes));
             }
+
+            if (sensor.IsAnyCommand)
+            {
+                return new CustomSensorState(sensor.Id, ReadCommandSensorValue(sensor));
+            }
         }
         catch
         {
@@ -935,6 +942,102 @@ internal sealed class SystemMetricsService : IDisposable
         }
 
         return new CustomSensorState(sensor.Id, null);
+    }
+
+    // A command sensor runs a program (or PowerShell / pwsh command / .ps1) and uses its
+    // captured stdout as the value. The command is defined by the user; Home Assistant
+    // only reads the resulting value. Runs with a bounded wait so a hung command cannot
+    // stall the polling thread.
+    private const int CommandSensorTimeoutMs = 10_000;
+
+    private static object? ReadCommandSensorValue(CustomSensorDefinition sensor)
+    {
+        var parameter = sensor.Parameter?.Trim() ?? string.Empty;
+        if (parameter.Length == 0)
+        {
+            return null;
+        }
+
+        var startInfo = new ProcessStartInfo
+        {
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true,
+            UseShellExecute = false
+        };
+
+        if (sensor.IsCommandPowerShell || sensor.IsCommandPwsh)
+        {
+            startInfo.FileName = sensor.IsCommandPwsh ? "pwsh.exe" : "powershell.exe";
+            var isScriptFile = parameter.EndsWith(".ps1", StringComparison.OrdinalIgnoreCase);
+            startInfo.Arguments = isScriptFile
+                ? $"-NoProfile -ExecutionPolicy Bypass -File \"{parameter}\""
+                : $"-NoProfile -ExecutionPolicy Bypass -Command \"{parameter}\"";
+        }
+        else
+        {
+            var (fileName, arguments) = SystemCommandService.SplitProcessCommand(parameter);
+            startInfo.FileName = fileName;
+            startInfo.Arguments = arguments;
+        }
+
+        using var process = Process.Start(startInfo);
+        if (process is null)
+        {
+            return null;
+        }
+
+        // Read stdout before waiting so a large output cannot fill the pipe and deadlock.
+        var stdoutTask = process.StandardOutput.ReadToEndAsync();
+        if (!process.WaitForExit(CommandSensorTimeoutMs))
+        {
+            try
+            {
+                process.Kill(entireProcessTree: true);
+            }
+            catch
+            {
+                // Ignore — the process may already be exiting.
+            }
+
+            return null;
+        }
+
+        var output = stdoutTask.GetAwaiter().GetResult();
+        return ExtractFirstLine(output);
+    }
+
+    private static object? ExtractFirstLine(string output)
+    {
+        if (string.IsNullOrWhiteSpace(output))
+        {
+            return null;
+        }
+
+        foreach (var line in output.Split('\n'))
+        {
+            var trimmed = line.Trim();
+            if (trimmed.Length == 0)
+            {
+                continue;
+            }
+
+            // Publish a numeric value when the output is a plain number (invariant culture),
+            // so a unit + measurement state class produces a proper numeric HA sensor.
+            if (long.TryParse(trimmed, NumberStyles.Integer, CultureInfo.InvariantCulture, out var longValue))
+            {
+                return longValue;
+            }
+
+            if (double.TryParse(trimmed, NumberStyles.Float, CultureInfo.InvariantCulture, out var doubleValue))
+            {
+                return doubleValue;
+            }
+
+            return trimmed.Length <= 255 ? trimmed : trimmed[..255];
+        }
+
+        return null;
     }
 
     private static object? ReadBuiltInAttributeValue(

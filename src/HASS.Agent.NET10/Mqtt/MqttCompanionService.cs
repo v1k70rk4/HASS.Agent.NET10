@@ -1495,23 +1495,35 @@ internal sealed class MqttCompanionService : IDisposable
     {
         return _settings.CustomSensors
             .Where(sensor => sensor.Enabled && (serviceRole ? sensor.Service : sensor.TrayApp))
-            .Select(sensor => new CustomSensorDescriptor(
+            .Select(sensor =>
+            {
+                // A user-set unit (e.g. °C on a command sensor) wins; disk_free keeps its
+                // built-in GiB. Any sensor that carries a unit is a numeric measurement.
+                var unit = !string.IsNullOrWhiteSpace(sensor.Unit)
+                    ? sensor.Unit.Trim()
+                    : (sensor.IsDiskFree ? "GiB" : null);
+
+                return new CustomSensorDescriptor(
                 sensor.Id,
                 sensor.Type,
                 sensor.Name,
                 sensor.Parameter,
                 SensorPollingProfiles.NormalizeKey(sensor.PollingProfile, SensorPollingProfile.Normal),
-                sensor.IsDiskFree ? "GiB" : null,
+                unit,
                 null,
-                sensor.IsDiskFree ? "measurement" : null,
+                unit is not null ? "measurement" : null,
                 sensor.Type switch
                 {
                     CustomSensorTypes.ProcessRunning => "mdi:application-cog",
                     CustomSensorTypes.ServiceStatus => "mdi:cog-sync",
                     CustomSensorTypes.DiskFree => "mdi:harddisk",
                     CustomSensorTypes.BuiltInAttribute => "mdi:table-column-plus-after",
+                    CustomSensorTypes.Command => "mdi:console",
+                    CustomSensorTypes.CommandPowerShell => "mdi:powershell",
+                    CustomSensorTypes.CommandPwsh => "mdi:powershell",
                     _ => "mdi:gauge"
-                }))
+                });
+            })
             .ToList();
     }
 

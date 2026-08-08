@@ -12,6 +12,10 @@ internal sealed class CustomSensorDefinition
 
     public string Parameter { get; set; } = string.Empty;
 
+    // Optional unit of measurement (e.g. "°C"). When set, the sensor is advertised as a
+    // numeric measurement, so Home Assistant shows the unit and keeps long-term statistics.
+    public string Unit { get; set; } = string.Empty;
+
     public string PollingProfile { get; set; } = SensorPollingProfiles.ToKey(SensorPollingProfile.Normal);
 
     public bool Enabled { get; set; } = true;
@@ -33,6 +37,18 @@ internal sealed class CustomSensorDefinition
     public bool IsBuiltInAttribute => string.Equals(Type, CustomSensorTypes.BuiltInAttribute, StringComparison.OrdinalIgnoreCase);
 
     [JsonIgnore]
+    public bool IsCommand => string.Equals(Type, CustomSensorTypes.Command, StringComparison.OrdinalIgnoreCase);
+
+    [JsonIgnore]
+    public bool IsCommandPowerShell => string.Equals(Type, CustomSensorTypes.CommandPowerShell, StringComparison.OrdinalIgnoreCase);
+
+    [JsonIgnore]
+    public bool IsCommandPwsh => string.Equals(Type, CustomSensorTypes.CommandPwsh, StringComparison.OrdinalIgnoreCase);
+
+    [JsonIgnore]
+    public bool IsAnyCommand => IsCommand || IsCommandPowerShell || IsCommandPwsh;
+
+    [JsonIgnore]
     public SensorPollingProfile EffectivePollingProfile => SensorPollingProfiles.FromKey(PollingProfile, SensorPollingProfile.Normal);
 }
 
@@ -42,13 +58,19 @@ internal static class CustomSensorTypes
     public const string ServiceStatus = "service_status";
     public const string DiskFree = "disk_free";
     public const string BuiltInAttribute = "built_in_attribute";
+    public const string Command = "command";
+    public const string CommandPowerShell = "command_powershell";
+    public const string CommandPwsh = "command_pwsh";
 
     public static IReadOnlySet<string> All { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
         ProcessRunning,
         ServiceStatus,
         DiskFree,
-        BuiltInAttribute
+        BuiltInAttribute,
+        Command,
+        CommandPowerShell,
+        CommandPwsh
     };
 
     public static string Normalize(string value)
