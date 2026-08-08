@@ -2297,7 +2297,13 @@ internal sealed class MainForm : Form
                 MessageBoxIcon.Information);
             if (open == DialogResult.Yes)
             {
-                Process.Start(new ProcessStartInfo(targetPath) { UseShellExecute = true });
+                // Launch detached from this process tree: the installer closes the running
+                // app with `taskkill /IM ... /T`, which would also kill the installer if it
+                // were our child. It self-elevates (UAC) and relaunches the app when done.
+                if (!DetachedUpdateLauncher.TryLaunchInstaller(targetPath, _log))
+                {
+                    Process.Start(new ProcessStartInfo(targetPath) { UseShellExecute = true, Verb = "runas" });
+                }
             }
         }
         catch (Exception ex)

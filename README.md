@@ -2,7 +2,7 @@
 
 ![Windows](https://img.shields.io/badge/Windows-10%202004%2B%20%7C%2011-0078D4?logo=windows&logoColor=white)
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet&logoColor=white)
-![Version](https://img.shields.io/badge/version-10.6.0--beta.3-orange)
+![Version](https://img.shields.io/badge/version-10.6.0-brightgreen)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-MQTT%20%7C%20WebSocket%20API-41BDF5?logo=homeassistant&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 [![Website](https://img.shields.io/badge/website-v1k70rk4.github.io-41bdf5?logo=github)](https://v1k70rk4.github.io/HASS.Agent.NET10/)
@@ -12,6 +12,8 @@
 A modern Windows companion app for Home Assistant.
 
 🌐 **[Website & screenshots](https://v1k70rk4.github.io/HASS.Agent.NET10/)**
+
+> ⭐ **Enjoying HASS.Agent?** Please star this repo — and the [Home Assistant integration](https://github.com/v1k70rk4/HASS.Agent.NET10-Integration) too. It helps others find the project and keeps it going!
 
 This fork refreshes the classic HASS.Agent idea into **HASS.Agent .NET10**, a lightweight .NET 10 client built for current Windows desktops. The original client was a .NET 6-era application; this version focuses on a smaller, cleaner runtime, Home Assistant integration via MQTT or WebSocket API, Windows 11-friendly UX, and a split tray app/system service model.
 
@@ -54,6 +56,15 @@ The modern .NET10 line starts at **version 10.0.0**. The pre-.NET10 client remai
 ---
 
 ## What Changed
+
+### 10.6.0
+
+Stable release of the custom commands & command sensors line.
+
+- **Custom command buttons** — run your own programs or PowerShell/pwsh scripts from Home Assistant. You define what runs; Home Assistant only triggers a command by its id (it can't send arbitrary code). Also handles a full command line typed into the command field (e.g. `taskkill /F /IM app.exe /T`).
+- **Command sensors** — a custom sensor whose value is the output of a program or PowerShell script (e.g. GPU temperature via `nvidia-smi`), with an optional **unit** that makes it a numeric `measurement` (graphs & statistics in Home Assistant).
+- **Fixed in-app updates** (from the About page) aborting: the installer closes the running app with `taskkill /… /T`, which also killed the installer when it was launched as a child of the app. It now runs detached, so it survives, installs, and relaunches the app. Updating from Home Assistant was unaffected.
+- **Update the Home Assistant integration too** — it's now in the **HACS default store**, so no custom repository is needed (search "HASS.Agent").
 
 ### 10.6.0-beta.3
 

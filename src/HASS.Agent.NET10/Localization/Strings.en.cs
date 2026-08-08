@@ -227,7 +227,7 @@ internal static partial class Strings
             ["About.DownloadingUpdate"] = "Downloading...",
             ["About.NoUpdates"] = "You are up to date. Latest release: {0}.",
             ["About.UpdateAvailable"] = "A newer release is available: {0}\n\nInstalled version: {1}\n\nDownload it now?",
-            ["About.UpdateDownloaded"] = "Update downloaded to:\n{0}\n\nOpen it now?",
+            ["About.UpdateDownloaded"] = "Update downloaded to:\n{0}\n\nOpen it now? The app will close during the install and reopen when it finishes.",
             ["About.UpdateCheckFailed"] = "Unable to read the latest release from GitHub.",
             ["About.UpdateError"] = "Update check failed: {0}",
 

@@ -227,7 +227,7 @@ internal static partial class Strings
             ["About.DownloadingUpdate"] = "Letöltés...",
             ["About.NoUpdates"] = "Naprakész verziót használsz. Legfrissebb release: {0}.",
             ["About.UpdateAvailable"] = "Elérhető egy újabb release: {0}\n\nTelepített verzió: {1}\n\nLetöltöd most?",
-            ["About.UpdateDownloaded"] = "A frissítés letöltve ide:\n{0}\n\nMegnyitod most?",
+            ["About.UpdateDownloaded"] = "A frissítés letöltve ide:\n{0}\n\nMegnyitod most? Az app a telepítés alatt bezárul, majd a végén újraindul.",
             ["About.UpdateCheckFailed"] = "Nem sikerült lekérni a legfrissebb GitHub release-t.",
             ["About.UpdateError"] = "Frissítés ellenőrzési hiba: {0}",
 
