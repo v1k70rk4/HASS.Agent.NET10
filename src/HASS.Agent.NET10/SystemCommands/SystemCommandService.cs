@@ -148,7 +148,7 @@ internal sealed class SystemCommandService : IDisposable
     // inline arguments. A quoted path, or an unquoted path that exists as-is, is kept
     // whole so paths containing spaces still work; otherwise the first whitespace-
     // delimited token is treated as the executable.
-    private static (string FileName, string Arguments) SplitProcessCommand(string command)
+    internal static (string FileName, string Arguments) SplitProcessCommand(string command)
     {
         var trimmed = (command ?? string.Empty).Trim();
         if (trimmed.Length == 0)
