@@ -524,11 +524,15 @@ State: 54 °C
 
 ## Home Assistant Integration
 
-Install the companion custom integration:
+Install the companion integration — it's in the **HACS default store**, so no custom repository is needed:
 
-[v1k70rk4/HASS.Agent.NET10-Integration](https://github.com/v1k70rk4/HASS.Agent.NET10-Integration)
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=v1k70rk4&repository=HASS.Agent.NET10-Integration&category=integration)
 
-The integration creates Home Assistant entities dynamically based on the agent's advertised capabilities.
+Open HACS, search for **HASS.Agent** (or use the button), download it, restart Home Assistant, then add the integration:
+
+[![Open your Home Assistant instance and start setting up a new integration.](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=hass_agent)
+
+Repository: [v1k70rk4/HASS.Agent.NET10-Integration](https://github.com/v1k70rk4/HASS.Agent.NET10-Integration). The integration creates Home Assistant entities dynamically based on the agent's advertised capabilities.
 
 ### Connection Modes
 
