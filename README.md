@@ -66,19 +66,6 @@ Stable release of the custom commands & command sensors line.
 - **Fixed in-app updates** (from the About page) aborting: the installer closes the running app with `taskkill /… /T`, which also killed the installer when it was launched as a child of the app. It now runs detached, so it survives, installs, and relaunches the app. Updating from Home Assistant was unaffected.
 - **Update the Home Assistant integration too** — it's now in the **HACS default store**, so no custom repository is needed (search "HASS.Agent").
 
-### 10.6.0-beta.3
-
-- Added **command sensors**: a custom sensor whose value is the output of a program or PowerShell script you run on the PC — e.g. GPU temperature via `nvidia-smi`, or anything else that prints a value. Three types: **Command (program)** runs an executable directly, **Command (PowerShell)** and **Command (PowerShell 7)** run an inline command or a `.ps1`. The first non-empty line of the output becomes the sensor value (numbers are published numerically). An optional **Unit** column shows the unit in Home Assistant and marks the sensor as a numeric `measurement` for statistics/graphs. Commands run with a timeout so a hung command can't stall reporting; use the Normal/Hourly polling profile. Like custom command buttons, you define what runs — Home Assistant only reads the resulting value. No Home Assistant integration update needed.
-
-### 10.6.0-beta.2
-
-- Fixed **custom commands** of the *program* type failing with "cannot find the specified file" when a whole command line (e.g. `taskkill /F /IM app.exe /T`) was typed into the command field. The executable is now split from its inline arguments, so both a bare program + separate arguments and a full command line pasted into one field work. Quoted or existing paths with spaces are kept intact.
-
-### 10.6.0-beta.1
-
-- Added **custom commands**: define your own programs (with arguments) or PowerShell scripts/commands in the Capabilities window, and Home Assistant gets a button per command. Both Windows PowerShell (`powershell.exe`) and PowerShell 7 (`pwsh.exe`) are supported, for inline commands or `.ps1` scripts. Commands can run from the tray app, the Windows service, or both.
-- **Security**: you define what each command runs — Home Assistant only triggers a command by its id, so it can never send an arbitrary command or script to your PC. Requires the HA integration 10.6.0+ to see the buttons; older integrations simply ignore custom commands.
-
 ### 10.5.0
 
 - Fixed a freeze that could stop all reporting when the monitor powered off: multiple audio components held separate WASAPI COM instances and deadlocked during an audio device change (e.g. HDMI audio disappearing). Audio access is now a single, serialized endpoint, and the device-change handler no longer does COM work inside the notification callback.
