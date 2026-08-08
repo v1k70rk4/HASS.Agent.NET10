@@ -884,14 +884,34 @@ internal sealed class SystemMetricsService : IDisposable
     {
         var previousById = previousStates.ToDictionary(state => state.Id, StringComparer.OrdinalIgnoreCase);
 
-        return sensors
+        var active = sensors
             .Where(sensor => sensor.Enabled && (serviceRole ? sensor.Service : sensor.TrayApp))
+            .ToList();
+
+        bool IsDue(CustomSensorDefinition sensor) =>
+            dueProfiles.Contains(sensor.EffectivePollingProfile) || !previousById.ContainsKey(sensor.Id);
+
+        // Command sensors can each block up to the command timeout, so run the due ones
+        // concurrently — a slow or hung command then delays the snapshot by roughly one
+        // timeout instead of the sum of all of them.
+        var commandTasks = active
+            .Where(sensor => sensor.IsAnyCommand && IsDue(sensor))
+            .ToDictionary(
+                sensor => sensor.Id,
+                sensor => Task.Run(() => ReadCustomSensor(sensor, attributes)),
+                StringComparer.OrdinalIgnoreCase);
+
+        return active
             .Select(sensor =>
             {
-                var profile = sensor.EffectivePollingProfile;
-                return dueProfiles.Contains(profile) || !previousById.TryGetValue(sensor.Id, out var previous)
+                if (commandTasks.TryGetValue(sensor.Id, out var task))
+                {
+                    return task.GetAwaiter().GetResult();
+                }
+
+                return IsDue(sensor)
                     ? ReadCustomSensor(sensor, attributes)
-                    : previous;
+                    : previousById[sensor.Id];
             })
             .ToList();
     }
@@ -987,8 +1007,11 @@ internal sealed class SystemMetricsService : IDisposable
             return null;
         }
 
-        // Read stdout before waiting so a large output cannot fill the pipe and deadlock.
+        // Drain both pipes before waiting: if a command writes a lot to stdout or stderr,
+        // an unread pipe fills up and blocks the child, which would then hit the timeout
+        // and discard otherwise-valid output.
         var stdoutTask = process.StandardOutput.ReadToEndAsync();
+        var stderrTask = process.StandardError.ReadToEndAsync();
         if (!process.WaitForExit(CommandSensorTimeoutMs))
         {
             try
@@ -1004,6 +1027,7 @@ internal sealed class SystemMetricsService : IDisposable
         }
 
         var output = stdoutTask.GetAwaiter().GetResult();
+        _ = stderrTask.GetAwaiter().GetResult();
         return ExtractFirstLine(output);
     }
 
@@ -1029,7 +1053,11 @@ internal sealed class SystemMetricsService : IDisposable
                 return longValue;
             }
 
-            if (double.TryParse(trimmed, NumberStyles.Float, CultureInfo.InvariantCulture, out var doubleValue))
+            // Guard against NaN / Infinity: double.TryParse accepts "NaN"/"Infinity",
+            // which System.Text.Json cannot serialize by default — keep those as strings.
+            if (double.TryParse(trimmed, NumberStyles.Float, CultureInfo.InvariantCulture, out var doubleValue)
+                && !double.IsNaN(doubleValue)
+                && !double.IsInfinity(doubleValue))
             {
                 return doubleValue;
             }

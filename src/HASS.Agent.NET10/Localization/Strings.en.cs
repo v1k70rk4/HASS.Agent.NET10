@@ -194,7 +194,7 @@ internal static partial class Strings
             ["Sensors.CustomRemove"] = "Remove custom",
             ["Sensors.MultiValueTooltip"] = "This sensor has additional values. Click to add a custom sensor from an attribute.",
             ["Sensors.AttributeSensorName"] = "{0}: {1}",
-            ["Sensors.CustomHelp"] = "Parameters: process_running = process name, service_status = Windows service name, disk_free = drive letter/path. Command types = the program/command line (e.g. nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader,nounits); the first line of its output becomes the value — use the Normal/Hourly profile. For built-in attributes, click + on a built-in sensor; every available attribute is added with [0] for list values.",
+            ["Sensors.CustomHelp"] = "Parameters: process_running = process name, service_status = Windows service name, disk_free = drive letter/path. Command types = the program/command line (e.g. nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader,nounits); the first non-empty line of its output becomes the value — use the Normal/Hourly profile. For built-in attributes, click + on a built-in sensor; every available attribute is added with [0] for list values.",
             ["Sensors.ValueLoading"] = "reading...",
             ["Sensors.ValueNotTested"] = "not tested",
             ["Sensors.ValueMissingParameter"] = "missing parameter",

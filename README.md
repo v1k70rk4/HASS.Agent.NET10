@@ -372,6 +372,7 @@ Custom sensors are parameterized sensors you can add multiple times with differe
 - **Type** - what kind of sensor it is
 - **Name** - the entity name in Home Assistant
 - **Parameter** - what to monitor (depends on type)
+- **Unit** - optional unit of measurement shown in Home Assistant (marks the sensor as a numeric `measurement`)
 - **Profile** - polling interval (fast / normal / hourly / startup)
 
 <p align="center"><img src="docs/images/ui-sensors-custom.png" width="900" alt="Custom sensors tab"></p>

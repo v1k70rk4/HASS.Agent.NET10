@@ -194,7 +194,7 @@ internal static partial class Strings
             ["Sensors.CustomRemove"] = "Egyedi törlés",
             ["Sensors.MultiValueTooltip"] = "Ez a szenzor több értéket is ad. Kattints egy attribútum alapú egyedi szenzor hozzáadásához.",
             ["Sensors.AttributeSensorName"] = "{0}: {1}",
-            ["Sensors.CustomHelp"] = "Paraméterek: process_running = processz név, service_status = Windows service név, disk_free = meghajtó betűjel/útvonal. Parancs típusok = a program/parancssor (pl. nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader,nounits); a kimenet első sora lesz az érték — használd a Normál/Óránkénti profilt. Beépített attribútumhoz kattints a + ikonra; minden elérhető attribútum bekerül, listáknál [0] indexszel.",
+            ["Sensors.CustomHelp"] = "Paraméterek: process_running = processz név, service_status = Windows service név, disk_free = meghajtó betűjel/útvonal. Parancs típusok = a program/parancssor (pl. nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader,nounits); a kimenet első nem-üres sora lesz az érték — használd a Normál/Óránkénti profilt. Beépített attribútumhoz kattints a + ikonra; minden elérhető attribútum bekerül, listáknál [0] indexszel.",
             ["Sensors.ValueLoading"] = "olvasás...",
             ["Sensors.ValueNotTested"] = "nincs tesztelve",
             ["Sensors.ValueMissingParameter"] = "hiányzó paraméter",
