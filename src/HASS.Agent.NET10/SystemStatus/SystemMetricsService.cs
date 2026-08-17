@@ -309,16 +309,17 @@ internal sealed class SystemMetricsService : IDisposable
         {
             foreach (var adapter in NetworkInterface.GetAllNetworkInterfaces())
             {
-                if (adapter.OperationalStatus != OperationalStatus.Up ||
-                    adapter.NetworkInterfaceType == NetworkInterfaceType.Loopback)
-                {
-                    continue;
-                }
-
                 try
                 {
-                    // GetIPProperties() can throw on an adapter that is mid-reinitialization
-                    // after startup/resume; skip it instead of failing the whole read.
+                    // Any adapter property (status, GetIPProperties, …) can throw on an adapter
+                    // that is mid-reinitialization after startup/resume; skip just that adapter
+                    // instead of failing the whole read.
+                    if (adapter.OperationalStatus != OperationalStatus.Up ||
+                        adapter.NetworkInterfaceType == NetworkInterfaceType.Loopback)
+                    {
+                        continue;
+                    }
+
                     foreach (var address in adapter.GetIPProperties().UnicastAddresses)
                     {
                         if (address.Address.AddressFamily == AddressFamily.InterNetwork &&
@@ -396,24 +397,43 @@ internal sealed class SystemMetricsService : IDisposable
     private static bool ReadVpnConnected()
     {
         string[] vpnHints = ["vpn", "wireguard", "tailscale", "zerotier", "tap", "tun", "openvpn", "nord", "proton", "surfshark"];
+        NetworkInterface[] adapters;
         try
         {
-            // Right after startup/resume an adapter can be "Up" but still have a null
-            // Name/Description while the network stack re-initializes — guard against it.
-            return NetworkInterface.GetAllNetworkInterfaces()
-                .Where(adapter => adapter.OperationalStatus == OperationalStatus.Up)
-                .Any(adapter =>
-                {
-                    var name = adapter.Name ?? string.Empty;
-                    var description = adapter.Description ?? string.Empty;
-                    return vpnHints.Any(hint => name.Contains(hint, StringComparison.OrdinalIgnoreCase)) ||
-                           vpnHints.Any(hint => description.Contains(hint, StringComparison.OrdinalIgnoreCase));
-                });
+            adapters = NetworkInterface.GetAllNetworkInterfaces();
         }
         catch
         {
             return false;
         }
+
+        foreach (var adapter in adapters)
+        {
+            try
+            {
+                // Right after startup/resume an adapter can be "Up" but still have a null
+                // Name/Description while the network stack re-initializes. Guard each adapter
+                // on its own so one flaky adapter doesn't hide a VPN on a later one.
+                if (adapter.OperationalStatus != OperationalStatus.Up)
+                {
+                    continue;
+                }
+
+                var name = adapter.Name ?? string.Empty;
+                var description = adapter.Description ?? string.Empty;
+                if (vpnHints.Any(hint => name.Contains(hint, StringComparison.OrdinalIgnoreCase)) ||
+                    vpnHints.Any(hint => description.Contains(hint, StringComparison.OrdinalIgnoreCase)))
+                {
+                    return true;
+                }
+            }
+            catch
+            {
+                // Skip this adapter and keep checking the rest.
+            }
+        }
+
+        return false;
     }
 
     private static (string Ssid, int? Signal) ReadWifiStatus()

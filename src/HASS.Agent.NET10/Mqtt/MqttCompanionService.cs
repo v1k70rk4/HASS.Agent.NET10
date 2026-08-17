@@ -28,6 +28,7 @@ internal sealed class MqttCompanionService : IDisposable
     private static readonly TimeSpan UpdateCheckThrottle = TimeSpan.FromHours(1);
     private DateTimeOffset _lastUpdateCheck = DateTimeOffset.MinValue;
     private AppUpdateState? _lastUpdateState;
+    private bool _lastUpdateBeta;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -1295,9 +1296,13 @@ internal sealed class MqttCompanionService : IDisposable
         // Only hit the GitHub API when forced (the 6-hour loop) or once the throttle window
         // has elapsed; otherwise re-publish the cached result. This keeps frequent reconnects
         // from exhausting the unauthenticated GitHub rate limit (403).
-        if (forceCheck || _lastUpdateState is null || now - _lastUpdateCheck >= UpdateCheckThrottle)
+        if (forceCheck
+            || _lastUpdateState is null
+            || _lastUpdateBeta != _settings.BetaUpdatesEnabled
+            || now - _lastUpdateCheck >= UpdateCheckThrottle)
         {
             _lastUpdateState = await AppUpdateService.CheckAsync(_settings.SoftwareVersion, _settings.BetaUpdatesEnabled);
+            _lastUpdateBeta = _settings.BetaUpdatesEnabled;
             _lastUpdateCheck = now;
             if (!string.IsNullOrWhiteSpace(_lastUpdateState.Error))
             {
