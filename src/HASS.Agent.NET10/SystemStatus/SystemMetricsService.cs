@@ -304,17 +304,46 @@ internal sealed class SystemMetricsService : IDisposable
 
     private static IReadOnlyList<NetworkAddressInfo> ReadNetworkAddresses()
     {
-        return NetworkInterface.GetAllNetworkInterfaces()
-            .Where(adapter =>
-                adapter.OperationalStatus == OperationalStatus.Up &&
-                adapter.NetworkInterfaceType != NetworkInterfaceType.Loopback)
-            .SelectMany(adapter => adapter.GetIPProperties().UnicastAddresses
-                .Where(address =>
-                    address.Address.AddressFamily == AddressFamily.InterNetwork &&
-                    !IPAddress.IsLoopback(address.Address) &&
-                    !address.Address.ToString().StartsWith("169.254.", StringComparison.Ordinal))
-                .Select(address => new NetworkAddressInfo(adapter.Name, adapter.Description, address.Address.ToString())))
-            .ToList();
+        var result = new List<NetworkAddressInfo>();
+        try
+        {
+            foreach (var adapter in NetworkInterface.GetAllNetworkInterfaces())
+            {
+                if (adapter.OperationalStatus != OperationalStatus.Up ||
+                    adapter.NetworkInterfaceType == NetworkInterfaceType.Loopback)
+                {
+                    continue;
+                }
+
+                try
+                {
+                    // GetIPProperties() can throw on an adapter that is mid-reinitialization
+                    // after startup/resume; skip it instead of failing the whole read.
+                    foreach (var address in adapter.GetIPProperties().UnicastAddresses)
+                    {
+                        if (address.Address.AddressFamily == AddressFamily.InterNetwork &&
+                            !IPAddress.IsLoopback(address.Address) &&
+                            !address.Address.ToString().StartsWith("169.254.", StringComparison.Ordinal))
+                        {
+                            result.Add(new NetworkAddressInfo(
+                                adapter.Name ?? string.Empty,
+                                adapter.Description ?? string.Empty,
+                                address.Address.ToString()));
+                        }
+                    }
+                }
+                catch
+                {
+                    // Ignore this adapter and keep going.
+                }
+            }
+        }
+        catch
+        {
+            // Enumerating interfaces failed entirely — return whatever was collected.
+        }
+
+        return result;
     }
 
     /// <summary>
@@ -367,11 +396,24 @@ internal sealed class SystemMetricsService : IDisposable
     private static bool ReadVpnConnected()
     {
         string[] vpnHints = ["vpn", "wireguard", "tailscale", "zerotier", "tap", "tun", "openvpn", "nord", "proton", "surfshark"];
-        return NetworkInterface.GetAllNetworkInterfaces()
-            .Where(adapter => adapter.OperationalStatus == OperationalStatus.Up)
-            .Any(adapter =>
-                vpnHints.Any(hint => adapter.Name.Contains(hint, StringComparison.OrdinalIgnoreCase)) ||
-                vpnHints.Any(hint => adapter.Description.Contains(hint, StringComparison.OrdinalIgnoreCase)));
+        try
+        {
+            // Right after startup/resume an adapter can be "Up" but still have a null
+            // Name/Description while the network stack re-initializes — guard against it.
+            return NetworkInterface.GetAllNetworkInterfaces()
+                .Where(adapter => adapter.OperationalStatus == OperationalStatus.Up)
+                .Any(adapter =>
+                {
+                    var name = adapter.Name ?? string.Empty;
+                    var description = adapter.Description ?? string.Empty;
+                    return vpnHints.Any(hint => name.Contains(hint, StringComparison.OrdinalIgnoreCase)) ||
+                           vpnHints.Any(hint => description.Contains(hint, StringComparison.OrdinalIgnoreCase));
+                });
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private static (string Ssid, int? Signal) ReadWifiStatus()

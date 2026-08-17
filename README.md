@@ -2,7 +2,7 @@
 
 ![Windows](https://img.shields.io/badge/Windows-10%202004%2B%20%7C%2011-0078D4?logo=windows&logoColor=white)
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet&logoColor=white)
-![Version](https://img.shields.io/badge/version-10.6.0-brightgreen)
+![Version](https://img.shields.io/badge/version-10.6.1-brightgreen)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-MQTT%20%7C%20WebSocket%20API-41BDF5?logo=homeassistant&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 [![Website](https://img.shields.io/badge/website-v1k70rk4.github.io-41bdf5?logo=github)](https://v1k70rk4.github.io/HASS.Agent.NET10/)
@@ -56,6 +56,11 @@ The modern .NET10 line starts at **version 10.0.0**. The pre-.NET10 client remai
 ---
 
 ## What Changed
+
+### 10.6.1
+
+- Fixed a **`NullReferenceException` in the sensor loop** that could make the device go (and stay) **unavailable** in Home Assistant, typically after startup or resume from sleep. A transient network adapter with a null name/description (common with VPN/virtual adapters mid-initialization) threw inside the network reads, aborting every sensor cycle. The network reads are now null-safe and fault-isolated.
+- Fixed **GitHub update-check `403 (rate limit exceeded)`**: the update state was queried on every reconnect, which — with frequent reconnects and several devices behind one IP — exhausted the unauthenticated GitHub API limit. The result is now cached/throttled (at most once per hour outside the 6-hour poll).
 
 ### 10.6.0
 

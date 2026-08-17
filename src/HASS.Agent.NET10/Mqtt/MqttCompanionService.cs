@@ -21,6 +21,14 @@ internal sealed class MqttCompanionService : IDisposable
 {
     private static readonly TimeSpan UpdateCheckInterval = TimeSpan.FromHours(6);
 
+    // The connect handler publishes the update state on every (re)connect. The unauthenticated
+    // GitHub API allows only 60 requests/hour per IP, so with frequent reconnects (and several
+    // devices behind one IP) that hits a 403 rate limit. Reuse a cached result within this
+    // window and only actually query GitHub once it has elapsed.
+    private static readonly TimeSpan UpdateCheckThrottle = TimeSpan.FromHours(1);
+    private DateTimeOffset _lastUpdateCheck = DateTimeOffset.MinValue;
+    private AppUpdateState? _lastUpdateState;
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNameCaseInsensitive = true,
@@ -1276,19 +1284,28 @@ internal sealed class MqttCompanionService : IDisposable
         while (!cancellationToken.IsCancellationRequested)
         {
             await Task.Delay(UpdateCheckInterval, cancellationToken);
-            await PublishUpdateStateAsync();
+            await PublishUpdateStateAsync(forceCheck: true);
         }
     }
 
-    private async Task PublishUpdateStateAsync()
+    private async Task PublishUpdateStateAsync(bool forceCheck = false)
     {
-        var update = await AppUpdateService.CheckAsync(_settings.SoftwareVersion, _settings.BetaUpdatesEnabled);
-        if (!string.IsNullOrWhiteSpace(update.Error))
+        var now = DateTimeOffset.UtcNow;
+
+        // Only hit the GitHub API when forced (the 6-hour loop) or once the throttle window
+        // has elapsed; otherwise re-publish the cached result. This keeps frequent reconnects
+        // from exhausting the unauthenticated GitHub rate limit (403).
+        if (forceCheck || _lastUpdateState is null || now - _lastUpdateCheck >= UpdateCheckThrottle)
         {
-            _log.Warning($"Unable to publish update state: {update.Error}");
+            _lastUpdateState = await AppUpdateService.CheckAsync(_settings.SoftwareVersion, _settings.BetaUpdatesEnabled);
+            _lastUpdateCheck = now;
+            if (!string.IsNullOrWhiteSpace(_lastUpdateState.Error))
+            {
+                _log.Warning($"Unable to publish update state: {_lastUpdateState.Error}");
+            }
         }
 
-        await PublishJsonAsync(UpdateStateTopic, update, retain: true);
+        await PublishJsonAsync(UpdateStateTopic, _lastUpdateState, retain: true);
     }
 
     private async Task PublishHomeAssistantUpdateDiscoveryAsync()
