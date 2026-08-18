@@ -487,7 +487,16 @@ internal sealed class MqttCompanionService : IDisposable
         if (publishOffline)
         {
             await PublishAvailabilityAsync(online: false);
-            await PublishDiscoveryAsync(offline: true);
+
+            // Only the service role publishes an offline state here: that just tells Home
+            // Assistant the service-handled commands are gone. The app role must NOT clear
+            // its discovery — the availability topic above already marks the entities
+            // unavailable, and publishing empty capabilities would make Home Assistant
+            // delete them instead of keeping them (greyed out) until the device is back.
+            if (_role == CompanionRuntimeRole.Service)
+            {
+                await PublishDiscoveryAsync(offline: true);
+            }
         }
         if (_mediaSessionService is not null)
         {
