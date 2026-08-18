@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Diagnostics.Eventing.Reader;
 using System.Globalization;
+using System.Runtime.CompilerServices;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
@@ -28,6 +29,7 @@ internal sealed class SystemMetricsService : IDisposable
     };
 
     private readonly object _cpuLock = new();
+    private readonly FileLog _log;
     private readonly AudioEndpointService? _audioEndpointService;
     private readonly MonitorPowerStateService? _monitorPowerStateService;
     private readonly bool _includeInteractiveMetrics;
@@ -50,6 +52,7 @@ internal sealed class SystemMetricsService : IDisposable
     {
         // The audio service is owned by the caller (it pushes change events), so
         // it is injected rather than created/disposed here.
+        _log = log;
         _audioEndpointService = audioEndpointService;
         _monitorPowerStateService = monitorPowerStateService;
         _includeInteractiveMetrics = includeInteractiveMetrics;
@@ -100,7 +103,7 @@ internal sealed class SystemMetricsService : IDisposable
 
         var attributes = BuildAttributes(_lastNetworkAddresses, _lastDisplays, _lastRecentErrors, _lastShutdown);
         var message = new SystemMetricsMessage(
-            CpuUsage: updateFast ? ReadCpuUsage() : previous!.CpuUsage,
+            CpuUsage: updateFast ? Safe(ReadCpuUsage, previous?.CpuUsage ?? 0) : previous!.CpuUsage,
             MemoryUsage: memory.UsagePercent,
             MemoryAvailableMb: memory.AvailableMb,
             SystemDriveFreePercent: drive.FreePercent,
@@ -109,34 +112,34 @@ internal sealed class SystemMetricsService : IDisposable
             ActiveWindow: updateFast && _includeInteractiveMetrics ? LimitState(activeWindow.Title) : previous!.ActiveWindow,
             ActiveProcess: updateFast && _includeInteractiveMetrics ? LimitState(activeWindow.ProcessName) : previous!.ActiveProcess,
             ForegroundAppTitle: updateFast && _includeInteractiveMetrics ? BuildForegroundAppTitle(activeWindow) : previous!.ForegroundAppTitle,
-            Volume: updateFast ? _audioEndpointService?.GetVolume() : previous!.Volume,
-            Muted: updateFast ? _audioEndpointService?.GetMuted() : previous!.Muted,
-            AudioOutputDevice: updateNormal && _includeInteractiveMetrics ? LimitState(_audioEndpointService?.GetOutputDeviceName() ?? string.Empty) : previous!.AudioOutputDevice,
-            MicrophoneMuted: updateNormal && _includeInteractiveMetrics ? _audioEndpointService?.GetMicrophoneMuted() : previous!.MicrophoneMuted,
+            Volume: updateFast ? Safe(() => _audioEndpointService?.GetVolume(), previous?.Volume) : previous!.Volume,
+            Muted: updateFast ? Safe(() => _audioEndpointService?.GetMuted(), previous?.Muted) : previous!.Muted,
+            AudioOutputDevice: updateNormal && _includeInteractiveMetrics ? Safe(() => LimitState(_audioEndpointService?.GetOutputDeviceName() ?? string.Empty), previous?.AudioOutputDevice ?? string.Empty) : previous!.AudioOutputDevice,
+            MicrophoneMuted: updateNormal && _includeInteractiveMetrics ? Safe(() => _audioEndpointService?.GetMicrophoneMuted(), previous?.MicrophoneMuted) : previous!.MicrophoneMuted,
             BatteryLevel: power.BatteryLevel,
             PowerStatus: power.Status,
             BatteryTimeRemaining: power.TimeRemainingSeconds,
-            MonitorPowerState: updateNormal ? _monitorPowerStateService?.State : previous!.MonitorPowerState,
-            ActiveDisplay: updateNormal && _includeInteractiveMetrics ? FormatDisplayState(_lastDisplays) : previous!.ActiveDisplay,
+            MonitorPowerState: updateNormal ? Safe(() => _monitorPowerStateService?.State, previous?.MonitorPowerState) : previous!.MonitorPowerState,
+            ActiveDisplay: updateNormal && _includeInteractiveMetrics ? Safe(() => FormatDisplayState(_lastDisplays), previous?.ActiveDisplay ?? string.Empty) : previous!.ActiveDisplay,
             NetworkAddress: updateNormal ? _lastNetworkAddresses.FirstOrDefault()?.Address ?? string.Empty : previous!.NetworkAddress,
-            VpnConnected: updateNormal ? ReadVpnConnected() : previous!.VpnConnected,
+            VpnConnected: updateNormal ? Safe(ReadVpnConnected, previous?.VpnConnected ?? false) : previous!.VpnConnected,
             WifiSsid: wifi.Ssid,
             WifiSignal: wifi.Signal,
-            IdleTimeSeconds: updateFast && _includeInteractiveMetrics ? ReadIdleTimeSeconds() : previous!.IdleTimeSeconds,
+            IdleTimeSeconds: updateFast && _includeInteractiveMetrics ? Safe(ReadIdleTimeSeconds, previous?.IdleTimeSeconds) : previous!.IdleTimeSeconds,
             SessionLocked: sessionLocked,
             UserPresent: updateFast && _includeInteractiveMetrics ? session.State == "active" && sessionLocked is false && !string.IsNullOrWhiteSpace(session.User) : previous!.UserPresent,
-            ClipboardTextAvailable: updateFast && _includeInteractiveMetrics ? ReadClipboardTextAvailable() : previous!.ClipboardTextAvailable,
+            ClipboardTextAvailable: updateFast && _includeInteractiveMetrics ? Safe(ReadClipboardTextAvailable, previous?.ClipboardTextAvailable) : previous!.ClipboardTextAvailable,
             SessionState: session.State,
             LoggedInUser: session.User,
             LoggedInUsers: sessions.LoggedInUsers,
             RdpSessions: sessions.RdpSessions,
-            PendingReboot: updateNormal ? ReadPendingReboot() : previous!.PendingReboot,
-            WindowsUpdatePending: updateHourly ? ReadWindowsUpdatePending() : previous!.WindowsUpdatePending,
-            BluetoothEnabled: updateHourly ? ReadBluetoothEnabled() : previous!.BluetoothEnabled,
+            PendingReboot: updateNormal ? Safe(ReadPendingReboot, previous?.PendingReboot ?? false) : previous!.PendingReboot,
+            WindowsUpdatePending: updateHourly ? Safe(ReadWindowsUpdatePending, previous?.WindowsUpdatePending ?? false) : previous!.WindowsUpdatePending,
+            BluetoothEnabled: updateHourly ? Safe(ReadBluetoothEnabled, previous?.BluetoothEnabled ?? false) : previous!.BluetoothEnabled,
             EventLogErrorsRecent: _lastRecentErrors.Count,
             LastShutdownReason: _lastShutdown.Summary,
             BootTime: updateStartup ? DateTimeOffset.Now.AddMilliseconds(-Environment.TickCount64) : previous!.BootTime,
-            CustomSensors: ReadCustomSensors(customSensors ?? [], serviceRole, attributes, profiles, previous?.CustomSensors ?? []),
+            CustomSensors: Safe(() => ReadCustomSensors(customSensors ?? [], serviceRole, attributes, profiles, previous?.CustomSensors ?? []), previous?.CustomSensors ?? []),
             Attributes: attributes,
             UpdatedAt: DateTimeOffset.UtcNow);
 
@@ -146,6 +149,22 @@ internal sealed class SystemMetricsService : IDisposable
 
     public void Dispose()
     {
+    }
+
+    // Isolates a single metric read: on failure it logs which read threw (and the full
+    // exception, so the real method shows even when the Release build inlines the caller)
+    // and returns a fallback, so one bad read can't take the whole sensor cycle offline.
+    private T Safe<T>(Func<T> read, T fallback, [CallerArgumentExpression(nameof(read))] string name = "")
+    {
+        try
+        {
+            return read();
+        }
+        catch (Exception ex)
+        {
+            _log.Warning($"Metric read failed [{name}]: {ex}");
+            return fallback;
+        }
     }
 
     private double ReadCpuUsage()
