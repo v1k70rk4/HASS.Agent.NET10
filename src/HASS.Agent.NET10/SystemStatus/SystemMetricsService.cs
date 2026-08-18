@@ -75,30 +75,30 @@ internal sealed class SystemMetricsService : IDisposable
         var updateHourly = profiles.Contains(SensorPollingProfile.Hourly);
         var updateStartup = profiles.Contains(SensorPollingProfile.Startup);
 
-        var memory = updateFast ? ReadMemory() : (UsagePercent: previous!.MemoryUsage, AvailableMb: previous.MemoryAvailableMb);
-        var activeWindow = updateFast && _includeInteractiveMetrics ? ReadActiveWindow() : (Title: previous?.ActiveWindow ?? string.Empty, ProcessName: previous?.ActiveProcess ?? string.Empty);
-        var sessionLocked = updateFast && _includeInteractiveMetrics ? ReadSessionLocked() : previous?.SessionLocked;
+        var memory = updateFast ? Safe(ReadMemory, (UsagePercent: previous?.MemoryUsage ?? 0, AvailableMb: previous?.MemoryAvailableMb ?? 0)) : (UsagePercent: previous!.MemoryUsage, AvailableMb: previous.MemoryAvailableMb);
+        var activeWindow = updateFast && _includeInteractiveMetrics ? Safe(ReadActiveWindow, (Title: previous?.ActiveWindow ?? string.Empty, ProcessName: previous?.ActiveProcess ?? string.Empty)) : (Title: previous?.ActiveWindow ?? string.Empty, ProcessName: previous?.ActiveProcess ?? string.Empty);
+        var sessionLocked = updateFast && _includeInteractiveMetrics ? Safe(ReadSessionLocked, previous?.SessionLocked) : previous?.SessionLocked;
 
-        var drive = updateNormal ? ReadSystemDrive() : (FreePercent: previous!.SystemDriveFreePercent, FreeGb: previous.SystemDriveFreeGb);
-        var power = updateNormal ? ReadPowerStatus() : (BatteryLevel: previous!.BatteryLevel, Status: previous.PowerStatus, TimeRemainingSeconds: previous.BatteryTimeRemaining);
-        var session = updateNormal ? ReadSessionStatus() : (State: previous!.SessionState, User: previous.LoggedInUser);
-        var wifi = updateNormal ? ReadWifiStatus() : (Ssid: previous!.WifiSsid, Signal: previous.WifiSignal);
-        var sessions = updateNormal ? ReadSessionCounts() : (LoggedInUsers: previous!.LoggedInUsers, RdpSessions: previous.RdpSessions);
+        var drive = updateNormal ? Safe(ReadSystemDrive, (FreePercent: previous?.SystemDriveFreePercent ?? 0, FreeGb: previous?.SystemDriveFreeGb ?? 0)) : (FreePercent: previous!.SystemDriveFreePercent, FreeGb: previous.SystemDriveFreeGb);
+        var power = updateNormal ? Safe(ReadPowerStatus, (BatteryLevel: previous?.BatteryLevel, Status: previous?.PowerStatus ?? "unknown", TimeRemainingSeconds: previous?.BatteryTimeRemaining)) : (BatteryLevel: previous!.BatteryLevel, Status: previous.PowerStatus, TimeRemainingSeconds: previous.BatteryTimeRemaining);
+        var session = updateNormal ? Safe(ReadSessionStatus, (State: previous?.SessionState ?? "none", User: previous?.LoggedInUser ?? string.Empty)) : (State: previous!.SessionState, User: previous.LoggedInUser);
+        var wifi = updateNormal ? Safe(ReadWifiStatus, (Ssid: previous?.WifiSsid ?? string.Empty, Signal: previous?.WifiSignal)) : (Ssid: previous!.WifiSsid, Signal: previous.WifiSignal);
+        var sessions = updateNormal ? Safe(ReadSessionCounts, (LoggedInUsers: previous?.LoggedInUsers ?? 0, RdpSessions: previous?.RdpSessions ?? 0)) : (LoggedInUsers: previous!.LoggedInUsers, RdpSessions: previous.RdpSessions);
 
         if (updateNormal)
         {
-            _lastNetworkAddresses = ReadNetworkAddresses();
-            _lastDisplays = _includeInteractiveMetrics ? ReadDisplaysSafe() : [];
+            _lastNetworkAddresses = Safe(ReadNetworkAddresses, _lastNetworkAddresses);
+            _lastDisplays = _includeInteractiveMetrics ? Safe(ReadDisplaysSafe, _lastDisplays) : [];
         }
 
         if (updateHourly)
         {
-            _lastRecentErrors = ReadRecentEventLogErrors(TimeSpan.FromHours(1));
+            _lastRecentErrors = Safe(() => ReadRecentEventLogErrors(TimeSpan.FromHours(1)), _lastRecentErrors);
         }
 
         if (updateStartup)
         {
-            _lastShutdown = ReadLastShutdownInfo();
+            _lastShutdown = Safe(ReadLastShutdownInfo, _lastShutdown);
         }
 
         var attributes = BuildAttributes(_lastNetworkAddresses, _lastDisplays, _lastRecentErrors, _lastShutdown);
