@@ -2,7 +2,7 @@
 
 ![Windows](https://img.shields.io/badge/Windows-10%202004%2B%20%7C%2011-0078D4?logo=windows&logoColor=white)
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet&logoColor=white)
-![Version](https://img.shields.io/badge/version-10.6.2--beta.1-orange)
+![Version](https://img.shields.io/badge/version-10.6.2--beta.2-orange)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-MQTT%20%7C%20WebSocket%20API-41BDF5?logo=homeassistant&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 [![Website](https://img.shields.io/badge/website-v1k70rk4.github.io-41bdf5?logo=github)](https://v1k70rk4.github.io/HASS.Agent.NET10/)
@@ -56,6 +56,10 @@ The modern .NET10 line starts at **version 10.0.0**. The pre-.NET10 client remai
 ---
 
 ## What Changed
+
+### 10.6.2-beta.2
+
+- Fixed the actual cause of the sensor-loop `NullReferenceException` from #15: the **Windows service** runs with interactive metrics disabled, and those fields fell back to `previous!` — which is `null` on the first read after the service (re)loads, so the first snapshot threw before it could be stored and the service never recovered (device stayed unavailable). The interactive fields now fall back to a safe default when there is no previous snapshot. Affected setups where the **service** publishes system sensors; the tray app was unaffected. The per-read fault isolation + logging from beta.1 is kept.
 
 ### 10.6.2-beta.1
 
