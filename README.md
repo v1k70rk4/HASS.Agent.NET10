@@ -59,7 +59,7 @@ The modern .NET10 line starts at **version 10.0.0**. The pre-.NET10 client remai
 
 ### 10.6.2-beta.3
 
-- Entities no longer **disappear** from Home Assistant when the app shuts down cleanly. A graceful exit published an empty capability list, which Home Assistant reads as "this device has nothing" and deletes the entities. Now only the availability state goes offline, so the entities stay and simply show as **unavailable** until the device is back — the same as after a crash or network loss. (Turning MQTT off in settings still removes them on purpose.)
+- Entities no longer **disappear** from Home Assistant when the app shuts down cleanly. A graceful exit published an empty capability list, which Home Assistant reads as "this device has nothing" and deletes the entities. Now only the availability state goes offline, so the entities stay and simply show as **unavailable** until the device is back — the same as after a crash or network loss. (Turning off both MQTT and the HA API in settings still removes them on purpose.)
 
 ### 10.6.2-beta.2
 
