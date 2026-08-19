@@ -100,38 +100,6 @@ jobs:
           -p:PublishSingleFile=true
           -o $env:PUBLISH_DIR
 
-      # ── Code signing (SignPath) ──────────────────────────────────────
-      # The signing steps activate automatically once the SignPath secrets
-      # and variables are configured in the repository settings:
-      #   secret  SIGNPATH_API_TOKEN
-      #   vars    SIGNPATH_ORG_ID, SIGNPATH_PROJECT_SLUG, SIGNPATH_POLICY_SLUG
-      # Until then they are skipped and the build stays unsigned.
-      - name: Check code signing configuration
-        run: |
-          $configured = ("${{ secrets.SIGNPATH_API_TOKEN }}" -ne "") -and ("${{ vars.SIGNPATH_ORG_ID }}" -ne "")
-          $isRelease = ("${{ github.event_name }}" -eq "release") -or ("${{ github.ref }}".StartsWith("refs/tags/")) -or ("${{ github.event_name }}" -eq "workflow_dispatch")
-          "SIGNPATH_ENABLED=$(($configured -and $isRelease).ToString().ToLower())" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-
-      - name: Upload unsigned app executable
-        if: env.SIGNPATH_ENABLED == 'true'
-        id: unsigned-exe
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: unsigned-app-exe
-          path: ${{ env.PUBLISH_DIR }}/HASS.Agent.NET10.exe
-
-      - name: Sign app executable
-        if: env.SIGNPATH_ENABLED == 'true'
-        uses: signpath/github-action-submit-signing-request@b9d91eadd323de506c0c81cf0c7fe7438f3360fd # v2.2
-        with:
-          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
-          organization-id: ${{ vars.SIGNPATH_ORG_ID }}
-          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
-          signing-policy-slug: ${{ vars.SIGNPATH_POLICY_SLUG }}
-          github-artifact-id: ${{ steps.unsigned-exe.outputs.artifact-id }}
-          wait-for-completion: true
-          output-artifact-directory: ${{ env.PUBLISH_DIR }}
-
       - name: Install Inno Setup
         run: choco install innosetup --yes --no-progress
 
@@ -142,26 +110,6 @@ jobs:
             throw "Inno Setup compiler not found at $iscc"
           }
           & $iscc "installer\HASS.Agent.NET10.iss" "/DMyAppVersion=$env:APP_VERSION"
-
-      - name: Upload unsigned installer
-        if: env.SIGNPATH_ENABLED == 'true'
-        id: unsigned-installer
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: unsigned-installer-exe
-          path: artifacts/installer/*.exe
-
-      - name: Sign installer
-        if: env.SIGNPATH_ENABLED == 'true'
-        uses: signpath/github-action-submit-signing-request@b9d91eadd323de506c0c81cf0c7fe7438f3360fd # v2.2
-        with:
-          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
-          organization-id: ${{ vars.SIGNPATH_ORG_ID }}
-          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
-          signing-policy-slug: ${{ vars.SIGNPATH_POLICY_SLUG }}
-          github-artifact-id: ${{ steps.unsigned-installer.outputs.artifact-id }}
-          wait-for-completion: true
-          output-artifact-directory: artifacts/installer
 
       - name: Package published app
         run: |
