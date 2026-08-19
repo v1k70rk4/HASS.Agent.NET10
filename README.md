@@ -48,7 +48,6 @@ The modern .NET10 line starts at **version 10.0.0**. The pre-.NET10 client remai
 - [Local HTTP API](#local-http-api)
 - [Installer](#installer)
 - [Build from Source](#build-from-source)
-- [Code Signing Policy](#code-signing-policy)
 - [Privacy Policy](#privacy-policy)
 - [Windows Firewall](#windows-firewall)
 - [Minimal Development Setup](#minimal-development-setup)
@@ -712,15 +711,6 @@ This repository includes a Windows GitHub Actions workflow:
 - release assets on `v*` tags or published GitHub Releases:
   - `HASS.Agent.NET10-Setup-<version>.exe`
   - `HASS.Agent.NET10-win-x64-<version>.zip`
-
-## Code Signing Policy
-
-Free code signing provided by [SignPath.io](https://signpath.io), certificate by [SignPath Foundation](https://signpath.org).
-
-- Committers and reviewers: [@v1k70rk4](https://github.com/v1k70rk4)
-- Approvers: [@v1k70rk4](https://github.com/v1k70rk4)
-
-Release binaries are built and signed exclusively from this repository's source code by the GitHub Actions workflow above. Manually built binaries are never signed.
 
 ## Privacy Policy
 
