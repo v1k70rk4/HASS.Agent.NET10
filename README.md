@@ -2,7 +2,7 @@
 
 ![Windows](https://img.shields.io/badge/Windows-10%202004%2B%20%7C%2011-0078D4?logo=windows&logoColor=white)
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet&logoColor=white)
-![Version](https://img.shields.io/badge/version-10.6.2--beta.3-orange)
+![Version](https://img.shields.io/badge/version-10.6.2-brightgreen)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-MQTT%20%7C%20WebSocket%20API-41BDF5?logo=homeassistant&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 [![Website](https://img.shields.io/badge/website-v1k70rk4.github.io-41bdf5?logo=github)](https://v1k70rk4.github.io/HASS.Agent.NET10/)
@@ -57,17 +57,13 @@ The modern .NET10 line starts at **version 10.0.0**. The pre-.NET10 client remai
 
 ## What Changed
 
-### 10.6.2-beta.3
+### 10.6.2
 
-- Entities no longer **disappear** from Home Assistant when the app shuts down cleanly. A graceful exit published an empty capability list, which Home Assistant reads as "this device has nothing" and deletes the entities. Now only the availability state goes offline, so the entities stay and simply show as **unavailable** until the device is back — the same as after a crash or network loss. (Turning off both MQTT and the HA API in settings still removes them on purpose.)
+- Fixed a **`NullReferenceException` in the sensor loop** that left the device permanently **unavailable** in Home Assistant. The Windows service runs with interactive metrics disabled, and those fields fell back to the previous snapshot — which doesn't exist yet on the first read after the service (re)loads, so the very first read threw before a snapshot could be stored, and every cycle after it repeated the same failure. Affected setups where the **service** publishes system sensors; the tray app was unaffected.
+- **Entities no longer disappear** from Home Assistant when the app shuts down cleanly. A graceful exit also published an empty capability list, which Home Assistant reads as "this device has nothing left" and deletes the entities. Now only the availability state goes offline, so the entities stay and show as **unavailable** until the device is back — the same as after a crash or network loss. (Turning off both MQTT and the HA API in settings still removes them on purpose.)
+- **Sensor reads are now fault-isolated**: a failing metric read falls back to its previous value instead of aborting the whole cycle, and the log names the exact read that failed — so one misbehaving read can no longer take the device offline, and diagnosing one is much quicker.
 
-### 10.6.2-beta.2
-
-- Fixed the actual cause of the sensor-loop `NullReferenceException` from #15: the **Windows service** runs with interactive metrics disabled, and those fields fell back to `previous!` — which is `null` on the first read after the service (re)loads, so the first snapshot threw before it could be stored and the service never recovered (device stayed unavailable). The interactive fields now fall back to a safe default when there is no previous snapshot. Affected setups where the **service** publishes system sensors; the tray app was unaffected. The per-read fault isolation + logging from beta.1 is kept.
-
-### 10.6.2-beta.1
-
-- **Diagnostic / resilience build** for a lingering `NullReferenceException` in the sensor loop (reported in #15) that 10.6.1's network-read fix didn't fully cover. Each individual metric read is now **fault-isolated**: if one read throws, it falls back to the previous value instead of aborting the whole cycle (so the device stays online), and the log names the **exact** read that failed — so the remaining culprit can be pinpointed instead of guessed at.
+Thanks to [@Taomyn](https://github.com/Taomyn) for the detailed reports and for testing the beta builds — these were tracked down entirely from his logs and feedback.
 
 ### 10.6.1
 
