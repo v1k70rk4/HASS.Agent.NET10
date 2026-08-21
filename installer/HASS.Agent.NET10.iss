@@ -54,7 +54,10 @@ hungarian.StatusFirewall=Tűzfal beállítása...
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 Name: "autostart"; Description: "{cm:TaskAutostart}"; GroupDescription: "{cm:TaskGroupStartup}"
 Name: "installservice"; Description: "{cm:TaskInstallService}"; GroupDescription: "{cm:TaskGroupOptional}"; Flags: unchecked
-Name: "cleaninstall"; Description: "{cm:TaskCleanInstall}"; GroupDescription: "{cm:TaskGroupAdvanced}"; Flags: unchecked
+; checkedonce: Setup remembers task selections across runs (UsePreviousTasks),
+; so one past clean install would silently repeat on every later update.
+; This keeps the task available but never pre-ticked on an upgrade.
+Name: "cleaninstall"; Description: "{cm:TaskCleanInstall}"; GroupDescription: "{cm:TaskGroupAdvanced}"; Flags: unchecked checkedonce
 
 [Files]
 Source: "..\artifacts\HASS.Agent.NET10\win-x64\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -169,7 +172,9 @@ begin
       Sleep(1500);
     end;
 
-    if WizardIsTaskSelected('cleaninstall') then
+    { Destructive, so never in silent mode: unattended updates (from Home
+      Assistant or in-app) must not wipe settings under any circumstances. }
+    if WizardIsTaskSelected('cleaninstall') and (not WizardSilent()) then
     begin
       DelTree(ExpandConstant('{commonappdata}\HASS.Agent.NET10'), True, True, True);
       { Also remove legacy directories so the migration does not restore old settings. }
