@@ -2,7 +2,7 @@ using HASS.Agent.Companion.Runtime;
 
 namespace HASS.Agent.Companion.Configuration;
 
-internal sealed record AppPaths(string ConfigDirectory, string SettingsFile, string LogFile)
+internal sealed record AppPaths(string ConfigDirectory, string SettingsFile, string LogFile, string DeviceIdFile)
 {
     public static AppPaths Create()
     {
@@ -33,6 +33,10 @@ internal sealed record AppPaths(string ConfigDirectory, string SettingsFile, str
         return new AppPaths(
             configDirectory,
             settingsFile,
-            Path.Combine(configDirectory, "hass-agent-net10.log"));
+            Path.Combine(configDirectory, "hass-agent-net10.log"),
+            // Mirrors the device serial so losing settings.json does not create a new
+            // device in Home Assistant. It lives in the config directory on purpose: a
+            // deliberate clean install wipes that directory and should give a fresh identity.
+            Path.Combine(configDirectory, "device-id"));
     }
 }

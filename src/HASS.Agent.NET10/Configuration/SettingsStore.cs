@@ -16,27 +16,71 @@ internal static class SettingsStore
     {
         CompanionSettings settings;
         string? originalJson = null;
+        var restoredFromBackup = false;
+
         if (File.Exists(paths.SettingsFile))
         {
             originalJson = File.ReadAllText(paths.SettingsFile);
-            settings = JsonSerializer.Deserialize<CompanionSettings>(originalJson, JsonOptions) ?? new CompanionSettings();
+            try
+            {
+                settings = JsonSerializer.Deserialize<CompanionSettings>(originalJson, JsonOptions) ?? new CompanionSettings();
+            }
+            catch (JsonException) when (TryReadBackup(paths, out var backupJson, out var backupSettings))
+            {
+                // The settings file is unreadable (a truncated write, for example) but the
+                // backup still parses — recover instead of starting from scratch.
+                settings = backupSettings!;
+                originalJson = backupJson;
+                restoredFromBackup = true;
+            }
+        }
+        else if (TryReadBackup(paths, out var backupJson, out var backupSettings))
+        {
+            settings = backupSettings!;
+            originalJson = backupJson;
+            restoredFromBackup = true;
         }
         else
         {
             settings = new CompanionSettings();
         }
 
+        // Restore the device serial from its sidecar before Normalize() would mint a new
+        // one: a lost settings file must not turn this PC into a new Home Assistant device.
+        var adoptedSerial = false;
+        if (string.IsNullOrWhiteSpace(settings.SerialNumber))
+        {
+            var storedSerial = ReadDeviceId(paths);
+            if (storedSerial is not null)
+            {
+                settings.SerialNumber = storedSerial;
+                adoptedSerial = true;
+            }
+        }
+
         settings.Normalize();
+        WriteDeviceId(paths, settings.SerialNumber);
         var migratedPassword = settings.MigratePlainTextPassword();
         var migratedPasswordScope = settings.MigrateProtectedPasswordToMachineScope();
         var migratedHaApiToken = settings.MigrateHaApiPlainTextToken();
         var normalizedJson = Serialize(settings);
-        if (originalJson is null || migratedPassword || migratedPasswordScope || migratedHaApiToken || !JsonEquals(originalJson, normalizedJson))
+        // restoredFromBackup/adoptedSerial force a write: the settings file itself is
+        // missing or unreadable in those cases and has to be rebuilt, even when the
+        // recovered content happens to match what we would have written.
+        if (originalJson is null || restoredFromBackup || adoptedSerial || migratedPassword || migratedPasswordScope || migratedHaApiToken || !JsonEquals(originalJson, normalizedJson))
         {
             Write(paths, normalizedJson);
         }
 
         log.Info($"Loaded settings from {paths.SettingsFile}.");
+        if (restoredFromBackup)
+        {
+            log.Warning($"Settings were unreadable or missing; restored from {Path.GetFileName(BackupFile(paths))}.");
+        }
+        if (adoptedSerial)
+        {
+            log.Warning("Settings were reset; kept the existing device serial so Home Assistant sees the same device.");
+        }
         if (migratedPassword)
         {
             log.Info("Migrated MQTT password to Windows protected storage.");
@@ -76,10 +120,117 @@ internal static class SettingsStore
         return settings;
     }
 
+    private static string BackupFile(AppPaths paths) => paths.SettingsFile + ".bak";
+
+    private static bool TryReadBackup(AppPaths paths, out string? json, out CompanionSettings? settings)
+    {
+        json = null;
+        settings = null;
+        var backup = BackupFile(paths);
+        if (!File.Exists(backup))
+        {
+            return false;
+        }
+
+        try
+        {
+            var backupJson = File.ReadAllText(backup);
+            var parsed = JsonSerializer.Deserialize<CompanionSettings>(backupJson, JsonOptions);
+            if (parsed is null)
+            {
+                return false;
+            }
+
+            json = backupJson;
+            settings = parsed;
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static string? ReadDeviceId(AppPaths paths)
+    {
+        try
+        {
+            if (!File.Exists(paths.DeviceIdFile))
+            {
+                return null;
+            }
+
+            var value = File.ReadAllText(paths.DeviceIdFile).Trim();
+            return value.Length > 0 ? value : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static void WriteDeviceId(AppPaths paths, string serialNumber)
+    {
+        if (string.IsNullOrWhiteSpace(serialNumber) || ReadDeviceId(paths) == serialNumber)
+        {
+            return;
+        }
+
+        try
+        {
+            Directory.CreateDirectory(paths.ConfigDirectory);
+            File.WriteAllText(paths.DeviceIdFile, serialNumber);
+        }
+        catch
+        {
+            // Best effort: the serial in settings.json remains the source of truth.
+        }
+    }
+
+    /// <summary>
+    /// Writes the settings atomically. A plain write truncates the file first, so a process
+    /// kill at the wrong moment (the installer force-closes the app during an update) could
+    /// leave it empty. Writing to a temp file and replacing keeps the previous content as a
+    /// backup and never leaves a half-written settings file behind.
+    /// </summary>
     private static void Write(AppPaths paths, string json)
     {
         Directory.CreateDirectory(paths.ConfigDirectory);
-        File.WriteAllText(paths.SettingsFile, json);
+        var target = paths.SettingsFile;
+        var temp = target + ".tmp";
+
+        try
+        {
+            File.WriteAllText(temp, json);
+            if (File.Exists(target))
+            {
+                File.Replace(temp, target, BackupFile(paths), ignoreMetadataErrors: true);
+            }
+            else
+            {
+                File.Move(temp, target);
+            }
+
+            return;
+        }
+        catch
+        {
+            try
+            {
+                if (File.Exists(temp))
+                {
+                    File.Delete(temp);
+                }
+            }
+            catch
+            {
+                // Ignore: the direct write below is what matters.
+            }
+        }
+
+        // Fall back to a direct write so a locked file or a failed replace can never stop
+        // settings from being saved at all.
+        File.WriteAllText(target, json);
     }
 
     private static string Serialize(CompanionSettings settings)

@@ -390,7 +390,10 @@ internal sealed class MqttCompanionService : IDisposable
     {
         RunSchtasks($"/delete /tn \"{taskName}\" /f", ignoreErrors: true);
         var runAs = asSystem ? " /ru SYSTEM /rl HIGHEST" : string.Empty;
-        RunSchtasks($"/create /tn \"{taskName}\" /tr \"{batchPath}\" /sc once /st 00:00{runAs} /f");
+        // /z makes Windows delete the task after its final run so these one-shot tasks do
+        // not pile up in Task Scheduler (where users are tempted to run them by hand).
+        // /z is rejected without an end boundary, hence /et.
+        RunSchtasks($"/create /tn \"{taskName}\" /tr \"{batchPath}\" /sc once /st 00:00 /et 23:59 /z{runAs} /f");
         RunSchtasks($"/run /tn \"{taskName}\"");
     }
 

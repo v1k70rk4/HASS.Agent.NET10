@@ -2,7 +2,7 @@
 
 ![Windows](https://img.shields.io/badge/Windows-10%202004%2B%20%7C%2011-0078D4?logo=windows&logoColor=white)
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet&logoColor=white)
-![Version](https://img.shields.io/badge/version-10.6.2-brightgreen)
+![Version](https://img.shields.io/badge/version-10.6.3-brightgreen)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-MQTT%20%7C%20WebSocket%20API-41BDF5?logo=homeassistant&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 [![Website](https://img.shields.io/badge/website-v1k70rk4.github.io-41bdf5?logo=github)](https://v1k70rk4.github.io/HASS.Agent.NET10/)
@@ -55,6 +55,12 @@ The modern .NET10 line starts at **version 10.0.0**. The pre-.NET10 client remai
 ---
 
 ## What Changed
+
+### 10.6.3
+
+- **Settings can no longer be lost when an update closes the app.** They were written by truncating the file first and then writing it, so a badly timed force-close could leave it empty. Settings are now written atomically and the previous version is kept as a backup, which is restored automatically if the main file ever turns up missing or unreadable.
+- **A lost configuration no longer creates a duplicate device in Home Assistant.** The device serial is what identifies the PC, and it used to live only in the settings file — so losing that file minted a new serial and the machine reappeared as a brand new device (with the old entities left behind on the broker). The serial is now mirrored next to the settings and reused. A deliberate *Clean install* still gives a fresh identity, as it should.
+- **One-shot update tasks clean themselves up.** The scheduled tasks used to run an update were left behind in Task Scheduler, where they piled up and invited being run by hand. They now delete themselves after running, and leftovers from earlier versions are removed on start.
 
 ### 10.6.2
 
