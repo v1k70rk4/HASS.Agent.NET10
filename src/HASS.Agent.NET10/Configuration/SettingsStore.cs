@@ -69,7 +69,7 @@ internal static class SettingsStore
         // recovered content happens to match what we would have written.
         if (originalJson is null || restoredFromBackup || adoptedSerial || migratedPassword || migratedPasswordScope || migratedHaApiToken || !JsonEquals(originalJson, normalizedJson))
         {
-            Write(paths, normalizedJson);
+            Write(paths, normalizedJson, rotateBackup: !restoredFromBackup);
         }
 
         log.Info($"Loaded settings from {paths.SettingsFile}.");
@@ -193,18 +193,22 @@ internal static class SettingsStore
     /// leave it empty. Writing to a temp file and replacing keeps the previous content as a
     /// backup and never leaves a half-written settings file behind.
     /// </summary>
-    private static void Write(AppPaths paths, string json)
+    private static void Write(AppPaths paths, string json, bool rotateBackup = true)
     {
         Directory.CreateDirectory(paths.ConfigDirectory);
         var target = paths.SettingsFile;
-        var temp = target + ".tmp";
+        // Unique per write: the tray app and the service both save settings, so a shared
+        // temp path would let one process commit the other's content.
+        var temp = $"{target}.{Environment.ProcessId}.{Guid.NewGuid():N}.tmp";
 
         try
         {
             File.WriteAllText(temp, json);
             if (File.Exists(target))
             {
-                File.Replace(temp, target, BackupFile(paths), ignoreMetadataErrors: true);
+                // rotateBackup is off when recovering from the backup: the file we are
+                // replacing is the unreadable one, and it must not overwrite the good copy.
+                File.Replace(temp, target, rotateBackup ? BackupFile(paths) : null, ignoreMetadataErrors: true);
             }
             else
             {
