@@ -58,7 +58,7 @@ The modern .NET10 line starts at **version 10.0.0**. The pre-.NET10 client remai
 
 ### 10.6.3
 
-- **Settings can no longer be lost when an update closes the app.** They were written by truncating the file first and then writing it, so a badly timed force-close could leave it empty. Settings are now written atomically and the previous version is kept as a backup, which is restored automatically if the main file ever turns up missing or unreadable.
+- **Settings are far harder to lose when an update closes the app.** They were written by truncating the file first and then writing it, so a badly timed force-close could leave it empty. Settings are now written atomically and the previous version is kept as a backup, which is restored automatically if the main file ever turns up missing or unreadable.
 - **A lost configuration no longer creates a duplicate device in Home Assistant.** The device serial is what identifies the PC, and it used to live only in the settings file — so losing that file minted a new serial and the machine reappeared as a brand new device (with the old entities left behind on the broker). The serial is now mirrored next to the settings and reused. A deliberate *Clean install* still gives a fresh identity, as it should.
 - **One-shot update tasks clean themselves up.** The scheduled tasks used to run an update were left behind in Task Scheduler, where they piled up and invited being run by hand. They now delete themselves after running, and leftovers from earlier versions are removed on start.
 
