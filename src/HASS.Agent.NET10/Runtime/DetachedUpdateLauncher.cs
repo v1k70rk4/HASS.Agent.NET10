@@ -40,7 +40,9 @@ internal static class DetachedUpdateLauncher
                 $"start \"\" \"{installerPath}\"" + Environment.NewLine);
 
             RunSchtasks($"/delete /tn \"{TaskName}\" /f", log, ignoreErrors: true);
-            if (!RunSchtasks($"/create /tn \"{TaskName}\" /tr \"\\\"{batchPath}\\\"\" /sc once /st 00:00 /f", log))
+            // /z deletes the task after it runs (it needs an end boundary, hence /et) so
+            // one-shot update tasks do not accumulate in Task Scheduler.
+            if (!RunSchtasks($"/create /tn \"{TaskName}\" /tr \"\\\"{batchPath}\\\"\" /sc once /st 00:00 /et 23:59 /z /f", log))
             {
                 return false;
             }
@@ -57,6 +59,19 @@ internal static class DetachedUpdateLauncher
         {
             log.Warning($"Detached installer launch failed: {ex.Message}");
             return false;
+        }
+    }
+
+    /// <summary>
+    /// Removes one-shot update tasks left behind by earlier versions. They served their
+    /// purpose long before the app is running again, and leaving them in Task Scheduler
+    /// invites users to run them by hand — which is not something they are built for.
+    /// </summary>
+    public static void CleanUpLeftoverTasks(FileLog log)
+    {
+        foreach (var name in new[] { TaskName, "HASSAgentNet10Update", "HASSAgentNet10Relaunch" })
+        {
+            RunSchtasks($"/delete /tn \"{name}\" /f", log, ignoreErrors: true);
         }
     }
 

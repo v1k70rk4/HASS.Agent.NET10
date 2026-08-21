@@ -1,5 +1,5 @@
 ﻿#ifndef MyAppVersion
-#define MyAppVersion "10.6.2"
+#define MyAppVersion "10.6.3"
 #endif
 
 #define MyAppName "HASS.Agent .NET10"

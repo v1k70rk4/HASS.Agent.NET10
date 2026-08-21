@@ -109,6 +109,10 @@ internal static class Program
 
         Localization.Strings.Language = settings.Language;
         Localization.Strings.HaLanguage = settings.HaLanguage;
+
+        // If an update ran, its one-shot scheduled tasks have already done their job by the
+        // time we are up again. Clear any left behind (older versions never removed them).
+        _ = Task.Run(() => DetachedUpdateLauncher.CleanUpLeftoverTasks(log));
         try
         {
             if (!settings.AutoStartOnLogin && StartupManager.IsEnabled())
