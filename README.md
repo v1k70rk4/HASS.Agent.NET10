@@ -2,7 +2,7 @@
 
 ![Windows](https://img.shields.io/badge/Windows-10%202004%2B%20%7C%2011-0078D4?logo=windows&logoColor=white)
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet&logoColor=white)
-![Version](https://img.shields.io/badge/version-10.6.3-brightgreen)
+![Version](https://img.shields.io/badge/version-10.6.4-brightgreen)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-MQTT%20%7C%20WebSocket%20API-41BDF5?logo=homeassistant&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 [![Website](https://img.shields.io/badge/website-v1k70rk4.github.io-41bdf5?logo=github)](https://v1k70rk4.github.io/HASS.Agent.NET10/)
@@ -55,6 +55,15 @@ The modern .NET10 line starts at **version 10.0.0**. The pre-.NET10 client remai
 ---
 
 ## What Changed
+
+### 10.6.4
+
+Both fixes address the update problems reported in #22.
+
+- **Updates now start on battery.** The one-shot tasks that run an update carried Task Scheduler's default battery conditions ("start only on AC power", "stop when switching to battery"), so on a notebook running on battery the update never started — the tasks just sat *Queued*. The tasks are now created from an explicit definition that allows battery power, and they still remove themselves afterwards.
+- **"Clean install" is never remembered and never runs silently.** The installer remembers task selections from previous runs, so ticking *Clean install* once made **every later update** on that machine silently repeat it — wiping the settings and the device id, which is why the PC kept reappearing in Home Assistant as a new device. The tick now always starts unchecked on an upgrade, and an unattended (silent) update can never wipe settings at all.
+
+Thanks to [@AdmiralRaccoon](https://github.com/AdmiralRaccoon) for the report and for methodically confirming both causes — registry value and Task Scheduler conditions included.
 
 ### 10.6.3
 

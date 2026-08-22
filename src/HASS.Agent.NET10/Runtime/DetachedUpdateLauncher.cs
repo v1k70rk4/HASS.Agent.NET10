@@ -39,15 +39,7 @@ internal static class DetachedUpdateLauncher
                 "@echo off" + Environment.NewLine +
                 $"start \"\" \"{installerPath}\"" + Environment.NewLine);
 
-            RunSchtasks($"/delete /tn \"{TaskName}\" /f", log, ignoreErrors: true);
-            // /z deletes the task after it runs (it needs an end boundary, hence /et) so
-            // one-shot update tasks do not accumulate in Task Scheduler.
-            if (!RunSchtasks($"/create /tn \"{TaskName}\" /tr \"\\\"{batchPath}\\\"\" /sc once /st 00:00 /et 23:59 /z /f", log))
-            {
-                return false;
-            }
-
-            if (!RunSchtasks($"/run /tn \"{TaskName}\"", log))
+            if (!DetachedTaskRunner.RunOnce(TaskName, batchPath, asSystem: false, log))
             {
                 return false;
             }
@@ -71,46 +63,8 @@ internal static class DetachedUpdateLauncher
     {
         foreach (var name in new[] { TaskName, "HASSAgentNet10Update", "HASSAgentNet10Relaunch" })
         {
-            RunSchtasks($"/delete /tn \"{name}\" /f", log, ignoreErrors: true);
+            DetachedTaskRunner.Delete(name, log);
         }
     }
 
-    private static bool RunSchtasks(string arguments, FileLog log, bool ignoreErrors = false)
-    {
-        try
-        {
-            using var process = Process.Start(new ProcessStartInfo
-            {
-                FileName = "schtasks.exe",
-                Arguments = arguments,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true
-            });
-
-            if (process is null)
-            {
-                return false;
-            }
-
-            process.WaitForExit(10_000);
-            if (process.ExitCode != 0)
-            {
-                if (!ignoreErrors)
-                {
-                    log.Warning($"schtasks {arguments} exited with code {process.ExitCode}: {process.StandardError.ReadToEnd().Trim()}");
-                }
-
-                return false;
-            }
-
-            return true;
-        }
-        catch (Exception ex) when (ignoreErrors)
-        {
-            log.Debug($"schtasks {arguments} failed (ignored): {ex.Message}");
-            return false;
-        }
-    }
 }
