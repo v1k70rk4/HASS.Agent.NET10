@@ -385,47 +385,11 @@ internal sealed class MqttCompanionService : IDisposable
     /// <summary>
     /// Runs a batch file via a one-shot scheduled task, fully detached from this
     /// process tree so it survives both service stop and taskkill /T on the tray app.
+    /// The task is battery-friendly and deletes itself (see DetachedTaskRunner).
     /// </summary>
     private void RunDetachedTask(string taskName, string batchPath, bool asSystem)
     {
-        RunSchtasks($"/delete /tn \"{taskName}\" /f", ignoreErrors: true);
-        var runAs = asSystem ? " /ru SYSTEM /rl HIGHEST" : string.Empty;
-        // /z makes Windows delete the task after its final run so these one-shot tasks do
-        // not pile up in Task Scheduler (where users are tempted to run them by hand).
-        // /z is rejected without an end boundary, hence /et.
-        RunSchtasks($"/create /tn \"{taskName}\" /tr \"{batchPath}\" /sc once /st 00:00 /et 23:59 /z{runAs} /f");
-        RunSchtasks($"/run /tn \"{taskName}\"");
-    }
-
-    private void RunSchtasks(string arguments, bool ignoreErrors = false)
-    {
-        try
-        {
-            using var process = Process.Start(new ProcessStartInfo
-            {
-                FileName = "schtasks.exe",
-                Arguments = arguments,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true
-            });
-
-            if (process is null)
-            {
-                return;
-            }
-
-            process.WaitForExit(10_000);
-            if (process.ExitCode != 0 && !ignoreErrors)
-            {
-                _log.Warning($"schtasks {arguments} exited with code {process.ExitCode}: {process.StandardError.ReadToEnd().Trim()}");
-            }
-        }
-        catch (Exception ex) when (ignoreErrors)
-        {
-            _log.Debug($"schtasks {arguments} failed (ignored): {ex.Message}");
-        }
+        DetachedTaskRunner.RunOnce(taskName, batchPath, asSystem, _log);
     }
 
     private static bool IsInstallerAsset(string? assetName)
