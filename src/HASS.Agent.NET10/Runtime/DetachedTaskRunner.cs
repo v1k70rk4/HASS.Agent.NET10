@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Security;
 using System.Security.Principal;
 using System.Text;
 using HASS.Agent.Companion.Logging;
@@ -63,7 +64,9 @@ internal static class DetachedTaskRunner
             "  </Settings>\n" +
             "  <Actions Context=\"Author\">\n" +
             "    <Exec>\n" +
-            $"      <Command>\"{commandPath}\"</Command>\n" +
+            // XML-escaped: & or similar in the path (user-profile names can contain
+            // them, and the batch lives under the user's temp) would break the XML.
+            $"      <Command>\"{SecurityElement.Escape(commandPath)}\"</Command>\n" +
             "    </Exec>\n" +
             "  </Actions>\n" +
             "</Task>\n";
@@ -127,7 +130,17 @@ internal static class DetachedTaskRunner
                 return false;
             }
 
-            process.WaitForExit(10_000);
+            // On timeout the process is still running, so ExitCode would throw.
+            if (!process.WaitForExit(10_000))
+            {
+                if (!ignoreErrors)
+                {
+                    log.Warning($"schtasks {arguments} timed out.");
+                }
+
+                return false;
+            }
+
             if (process.ExitCode != 0)
             {
                 if (!ignoreErrors)

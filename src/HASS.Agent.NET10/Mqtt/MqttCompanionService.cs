@@ -389,7 +389,12 @@ internal sealed class MqttCompanionService : IDisposable
     /// </summary>
     private void RunDetachedTask(string taskName, string batchPath, bool asSystem)
     {
-        DetachedTaskRunner.RunOnce(taskName, batchPath, asSystem, _log);
+        if (!DetachedTaskRunner.RunOnce(taskName, batchPath, asSystem, _log))
+        {
+            // Loudly: a silently missing update task is exactly how the battery-condition
+            // problem stayed invisible in the logs (#22).
+            _log.Warning($"Detached task '{taskName}' could not be created or started.");
+        }
     }
 
     private static bool IsInstallerAsset(string? assetName)
