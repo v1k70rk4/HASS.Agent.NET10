@@ -58,7 +58,10 @@ The modern .NET10 line starts at **version 10.0.0**. The pre-.NET10 client remai
 
 ### 10.6.5
 
+Requires the Home Assistant integration **10.6.5** or newer when using the HA API (WebSocket) transport.
+
 - **Custom commands now work over the Home Assistant API (WebSocket) transport.** Pressing a custom command button did nothing when running without MQTT — the log only showed `Unsupported app WebSocket command received: <id>`. Built-in commands were unaffected. Each transport carried its own copy of the "what does this button mean" logic, and only the MQTT one knew about custom commands; all transports now share a single implementation, so they cannot drift apart again.
+- **The system service is now a first-class citizen on the HA API transport.** It had no channel of its own there — unlike MQTT, where the app and the service each advertise what they can handle and Home Assistant merges the two. Over the WebSocket the service announced itself *as the app*, advertising the tray app's commands and then refusing them, so with the tray app closed only commands enabled for both sides happened to work, and every button press left a stray warning in the log. The service now has its own channel, and Home Assistant names the side a command is meant for — so each press runs exactly once, on the right side, whether the tray app is running or not.
 
 Thanks to [@CookSleep](https://github.com/CookSleep) for the report — including the root cause and a suggested fix.
 

@@ -467,7 +467,21 @@ internal sealed class MqttCompanionService : IDisposable
             // delete them instead of keeping them (greyed out) until the device is back.
             if (_role == CompanionRuntimeRole.Service)
             {
-                await PublishDiscoveryAsync(offline: true);
+                if (_isOnWebSocket && _haWs is not null)
+                {
+                    // The WebSocket has no Last Will, so a stopping service has to say so
+                    // itself — otherwise Home Assistant keeps routing commands to it.
+                    // None: this must still send after the worker token is cancelled.
+                    await _haWs.PublishServiceStatusAsync(new
+                    {
+                        serial_number = _settings.SerialNumber,
+                        status = BuildServiceStatus(online: false)
+                    }, CancellationToken.None);
+                }
+                else
+                {
+                    await PublishDiscoveryAsync(offline: true);
+                }
             }
         }
         if (_mediaSessionService is not null)
@@ -533,8 +547,17 @@ internal sealed class MqttCompanionService : IDisposable
                     _ = _mediaSessionService.HandleCommandAsync(command);
                 }
             };
-            _haWs.ButtonCommandReceived += command =>
+            _haWs.ButtonCommandReceived += (command, target) =>
             {
+                // Over MQTT the integration routes by topic; over the WebSocket every
+                // instance sees the same event, so it names the role it meant instead.
+                // Older integrations send no target — then each role judges for itself,
+                // which is how it behaved before.
+                if (target is not null && !string.Equals(target, _role.Token(), StringComparison.OrdinalIgnoreCase))
+                {
+                    return;
+                }
+
                 _ = ExecuteButtonCommandAsync(
                     command,
                     serviceRole: _role == CompanionRuntimeRole.Service,
@@ -816,6 +839,19 @@ internal sealed class MqttCompanionService : IDisposable
 
     private async Task PublishDiscoveryViaWebSocketAsync(CancellationToken cancellationToken)
     {
+        // The service has its own channel, exactly like its dedicated MQTT topic: it must
+        // not announce itself as the app, or it would advertise tray-app capabilities and
+        // then refuse the very commands it advertised.
+        if (_role == CompanionRuntimeRole.Service)
+        {
+            await _haWs!.PublishServiceStatusAsync(new
+            {
+                serial_number = _settings.SerialNumber,
+                status = BuildServiceStatus(online: true)
+            }, cancellationToken);
+            return;
+        }
+
         var systemSensorsEnabled = _settings.MqttSystemSensorsEnabled;
         var buttonsEnabled = _settings.MqttButtonsEnabled;
 
