@@ -535,17 +535,10 @@ internal sealed class MqttCompanionService : IDisposable
             };
             _haWs.ButtonCommandReceived += command =>
             {
-                var commandName = GetSystemCommandName(command);
-                var enabled = _role == CompanionRuntimeRole.Service
-                    ? commandName is not null && _settings.IsServiceCommandEnabled(commandName)
-                    : commandName is not null && _settings.IsTrayAppCommandEnabled(commandName);
-                if (enabled)
-                {
-                    _ = _systemCommandService.HandleCommandAsync(command);
-                    return;
-                }
-
-                _log.Warning($"Unsupported {_role.Token()} WebSocket command received: {commandName ?? "(empty)"}");
+                _ = ExecuteButtonCommandAsync(
+                    command,
+                    serviceRole: _role == CompanionRuntimeRole.Service,
+                    transport: "the HA API WebSocket");
             };
         }
 
@@ -1096,27 +1089,7 @@ internal sealed class MqttCompanionService : IDisposable
                 var command = JsonSerializer.Deserialize<SystemCommandMessage>(payload, JsonOptions);
                 if (command is not null)
                 {
-                    var commandName = GetSystemCommandName(command);
-                    if (commandName is null)
-                    {
-                        _log.Warning("Received empty tray app command.");
-                        return;
-                    }
-
-                    var customCommand = FindCustomCommand(commandName, serviceRole: false);
-                    if (customCommand is not null)
-                    {
-                        await _systemCommandService.RunCustomCommandAsync(customCommand);
-                        return;
-                    }
-
-                    if (!_settings.IsTrayAppCommandEnabled(commandName))
-                    {
-                        _log.Warning($"Unsupported tray app command received: {commandName}");
-                        return;
-                    }
-
-                    await _systemCommandService.HandleCommandAsync(command);
+                    await ExecuteButtonCommandAsync(command, serviceRole: false, transport: "MQTT");
                 }
             }
 
@@ -1135,11 +1108,9 @@ internal sealed class MqttCompanionService : IDisposable
                 var command = JsonSerializer.Deserialize<SystemCommandMessage>(payload, JsonOptions);
                 if (command is not null)
                 {
-                    var commandName = GetSystemCommandName(command);
-
                     // Internal command, not user-configurable: the tray app asks the
                     // SYSTEM service to install an update without a UAC prompt.
-                    if (commandName == "install_update")
+                    if (GetSystemCommandName(command) == "install_update")
                     {
                         if (_role == CompanionRuntimeRole.Service)
                         {
@@ -1149,26 +1120,7 @@ internal sealed class MqttCompanionService : IDisposable
                         return;
                     }
 
-                    if (commandName is null)
-                    {
-                        _log.Warning("Received empty system service command.");
-                        return;
-                    }
-
-                    var customCommand = FindCustomCommand(commandName, serviceRole: true);
-                    if (customCommand is not null)
-                    {
-                        await _systemCommandService.RunCustomCommandAsync(customCommand);
-                        return;
-                    }
-
-                    if (!_settings.IsServiceCommandEnabled(commandName))
-                    {
-                        _log.Warning($"Unsupported system service command received: {commandName}");
-                        return;
-                    }
-
-                    await _systemCommandService.HandleCommandAsync(command);
+                    await ExecuteButtonCommandAsync(command, serviceRole: true, transport: "MQTT");
                 }
             }
         }
@@ -1535,6 +1487,49 @@ internal sealed class MqttCompanionService : IDisposable
         return _role == CompanionRuntimeRole.Service
             ? _settings.MqttServiceSystemSensorsEnabled
             : _settings.MqttSystemSensorsEnabled;
+    }
+
+    /// <summary>
+    /// Decides what an incoming button command means and runs it: a user-defined custom
+    /// command, an enabled built-in system command, or neither. Every transport routes
+    /// through here — MQTT and the HA API WebSocket each used to carry their own copy of
+    /// this decision, and the WebSocket one silently never ran custom commands (#26).
+    /// </summary>
+    private async Task ExecuteButtonCommandAsync(SystemCommandMessage command, bool serviceRole, string transport)
+    {
+        var scope = serviceRole ? "system service" : "tray app";
+        try
+        {
+            var commandName = GetSystemCommandName(command);
+            if (commandName is null)
+            {
+                _log.Warning($"Received empty {scope} command over {transport}.");
+                return;
+            }
+
+            var customCommand = FindCustomCommand(commandName, serviceRole);
+            if (customCommand is not null)
+            {
+                await _systemCommandService.RunCustomCommandAsync(customCommand);
+                return;
+            }
+
+            var enabled = serviceRole
+                ? _settings.IsServiceCommandEnabled(commandName)
+                : _settings.IsTrayAppCommandEnabled(commandName);
+            if (!enabled)
+            {
+                _log.Warning($"Unsupported {scope} command received over {transport}: {commandName}");
+                return;
+            }
+
+            await _systemCommandService.HandleCommandAsync(command);
+        }
+        catch (Exception ex)
+        {
+            // The WebSocket transport invokes this without an outer handler.
+            _log.Warning($"Failed to run {scope} command from {transport}: {ex.Message}");
+        }
     }
 
     private static string? GetSystemCommandName(SystemCommandMessage message)
