@@ -19,7 +19,7 @@ namespace HASS.Agent.Companion.Mqtt;
 internal sealed class HaWebSocketService : IDisposable
 {
     public const string IntegrationDomain = "hass_agent";
-    public const string MinimumIntegrationVersion = "10.2.0";
+    public const string MinimumIntegrationVersion = "10.6.5";
 
     private static readonly TimeSpan HeartbeatInterval = TimeSpan.FromSeconds(30);
 
@@ -43,7 +43,12 @@ internal sealed class HaWebSocketService : IDisposable
     public event Action<MediaCommand>? MediaCommandReceived;
 
     /// <summary>Fired when a button/system command is received from HA via the event bus.</summary>
-    public event Action<SystemCommandMessage>? ButtonCommandReceived;
+    /// <summary>
+    /// Raised for an incoming button command. The second argument is the role the
+    /// integration addressed it to ("app"/"service"), or null when it came from an
+    /// older integration that does not target commands.
+    /// </summary>
+    public event Action<SystemCommandMessage, string?>? ButtonCommandReceived;
 
     public bool IsConnected => _ws is { State: WebSocketState.Open };
 
@@ -181,6 +186,16 @@ internal sealed class HaWebSocketService : IDisposable
     public async Task PublishDeviceDiscoveryAsync(object discoveryPayload, CancellationToken cancellationToken)
     {
         await FireEventAsync("hass_agent_device_update", discoveryPayload, cancellationToken);
+    }
+
+    /// <summary>
+    /// Publishes the system service's own status as a hass_agent_service_update event.
+    /// Mirrors the dedicated MQTT service topic: the app and the service each advertise
+    /// what they can handle, and the integration merges the two.
+    /// </summary>
+    public async Task PublishServiceStatusAsync(object statusPayload, CancellationToken cancellationToken)
+    {
+        await FireEventAsync("hass_agent_service_update", statusPayload, cancellationToken);
     }
 
     /// <summary>Publishes sensor state data as a hass_agent_sensor_update event.</summary>
@@ -573,7 +588,10 @@ internal sealed class HaWebSocketService : IDisposable
                         var command = JsonSerializer.Deserialize<SystemCommandMessage>(btnPayload.GetRawText(), JsonOptions);
                         if (command is not null)
                         {
-                            ButtonCommandReceived?.Invoke(command);
+                            var target = data.TryGetProperty("target", out var targetElement)
+                                ? targetElement.GetString()
+                                : null;
+                            ButtonCommandReceived?.Invoke(command, target);
                         }
                     }
                     break;
