@@ -581,7 +581,7 @@ The agent supports three connection modes. You can use MQTT and HA API together 
 | Command buttons | yes | yes | |
 | Update entity | yes | yes | |
 | Auto-discovery | yes | yes | |
-| Service integration | yes | | |
+| Service integration | yes | yes | |
 | Retained state on restart | yes | | |
 | Last Will (offline detection) | yes | | |
 | Remote access (Nabu Casa) | | yes | |
@@ -636,7 +636,8 @@ When using HA API mode, the agent communicates through Home Assistant's event bu
 Events fired by the agent:
 
 ```text
-hass_agent_device_update          # discovery + capabilities
+hass_agent_device_update          # discovery + capabilities (tray app)
+hass_agent_service_update         # Windows service status + capabilities
 hass_agent_sensor_update          # sensor values
 hass_agent_media_update           # media player state
 hass_agent_media_thumbnail        # media thumbnail (base64)
@@ -649,9 +650,14 @@ Commands sent by the integration to the agent:
 {
   "serial_number": "agent-serial",
   "command_type": "notification | media_command | button_command",
+  "target": "app | service",
   "payload": { }
 }
 ```
+
+`target` names which side should act on a button command — the tray app or the Windows
+service — the same choice MQTT makes by picking a topic. It is optional: without it each
+side falls back to deciding for itself, which is how integrations older than 10.6.5 behave.
 
 All events and commands are targeted by `serial_number`, so renaming the device in Home Assistant does not break routing.
 

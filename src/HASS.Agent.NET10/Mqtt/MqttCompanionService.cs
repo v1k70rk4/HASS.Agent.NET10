@@ -454,10 +454,27 @@ internal sealed class MqttCompanionService : IDisposable
             return;
         }
 
+        // The WebSocket has no Last Will, so a stopping service has to announce itself —
+        // and it must do so *before* cancelling: cancellation unwinds the WebSocket worker,
+        // which clears _isOnWebSocket and disconnects. Nothing re-publishes service status
+        // afterwards, so sending it early cannot be overwritten.
+        var announcedServiceOffline = false;
+        if (publishOffline && _role == CompanionRuntimeRole.Service && _isOnWebSocket && _haWs is not null)
+        {
+            await _haWs.PublishServiceStatusAsync(new
+            {
+                serial_number = _settings.SerialNumber,
+                status = BuildServiceStatus(online: false)
+            }, CancellationToken.None);
+            announcedServiceOffline = true;
+        }
+
         await _cts.CancelAsync();
 
         if (publishOffline)
         {
+            // Availability stays after cancellation on purpose: the heartbeat would
+            // otherwise race us and mark the device online again.
             await PublishAvailabilityAsync(online: false);
 
             // Only the service role publishes an offline state here: that just tells Home
@@ -465,23 +482,9 @@ internal sealed class MqttCompanionService : IDisposable
             // its discovery — the availability topic above already marks the entities
             // unavailable, and publishing empty capabilities would make Home Assistant
             // delete them instead of keeping them (greyed out) until the device is back.
-            if (_role == CompanionRuntimeRole.Service)
+            if (_role == CompanionRuntimeRole.Service && !announcedServiceOffline)
             {
-                if (_isOnWebSocket && _haWs is not null)
-                {
-                    // The WebSocket has no Last Will, so a stopping service has to say so
-                    // itself — otherwise Home Assistant keeps routing commands to it.
-                    // None: this must still send after the worker token is cancelled.
-                    await _haWs.PublishServiceStatusAsync(new
-                    {
-                        serial_number = _settings.SerialNumber,
-                        status = BuildServiceStatus(online: false)
-                    }, CancellationToken.None);
-                }
-                else
-                {
-                    await PublishDiscoveryAsync(offline: true);
-                }
+                await PublishDiscoveryAsync(offline: true);
             }
         }
         if (_mediaSessionService is not null)
