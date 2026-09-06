@@ -2,7 +2,7 @@
 
 ![Windows](https://img.shields.io/badge/Windows-10%202004%2B%20%7C%2011-0078D4?logo=windows&logoColor=white)
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet&logoColor=white)
-![Version](https://img.shields.io/badge/version-10.6.5-brightgreen)
+![Version](https://img.shields.io/badge/version-10.6.6-brightgreen)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-MQTT%20%7C%20WebSocket%20API-41BDF5?logo=homeassistant&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 [![Website](https://img.shields.io/badge/website-v1k70rk4.github.io-41bdf5?logo=github)](https://v1k70rk4.github.io/HASS.Agent.NET10/)
@@ -55,6 +55,17 @@ The modern .NET10 line starts at **version 10.0.0**. The pre-.NET10 client remai
 ---
 
 ## What Changed
+
+### 10.6.6
+
+> 🚧 **Not released yet** — in testing. There is no download for this version on the Releases page.
+
+Requires the Home Assistant integration **10.6.6** or newer.
+
+- **Closing the tray app no longer takes the whole device offline.** With the Windows service installed, everything in Home Assistant turned unavailable the moment the tray app was closed or you logged out — even though the service was still running and reporting CPU, memory and disk. Only the tray app ever published the device's availability, so leaving declared the *device* dead rather than just itself. The tray app and the service are now treated as two independent providers: the device stays reachable while either is running, and each entity follows whichever side actually feeds it. Entities that only the tray app can provide (media player, active window, notifications) go **unavailable** rather than disappearing, and come straight back when it starts again.
+- **A stopped provider no longer deletes its entities.** The service used to report an empty capability list while offline, so Home Assistant removed its sensors instead of greying them out. It now always reports what it handles, and reports separately whether it is running — so its entities stay put and simply show as unavailable. Turning a capability off in the settings still removes those entities, as it should.
+
+Thanks to [@Taomyn](https://github.com/Taomyn) for the report.
 
 ### 10.6.5
 
@@ -174,8 +185,8 @@ Stable release of the custom commands & command sensors line.
 - Home Assistant with **MQTT broker** (recommended, e.g. Mosquitto) **or HA API** (WebSocket, e.g. via Nabu Casa)
 - The companion Home Assistant integration:
   [v1k70rk4/HASS.Agent.NET10-Integration](https://github.com/v1k70rk4/HASS.Agent.NET10-Integration) —
-  **version 10.6.5 or newer** (the agent and the integration are released with matching version numbers,
-  so keep them in step; the HA API transport in particular needs 10.6.5+)
+  **version 10.6.6 or newer** (the agent and the integration are released with matching version numbers,
+  so keep them in step)
 
 Windows versions older than Windows 10 2004 are intentionally blocked. The app targets `net10.0-windows10.0.19041.0` and uses modern Windows APIs for notifications, media sessions, services, sensors, and desktop state.
 
