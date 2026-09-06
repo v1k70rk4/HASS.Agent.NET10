@@ -9,7 +9,7 @@ assignees: ''
 
 Please make sure your feature is not already listed in this repository's GitHub Issues:
 
-https://github.com/v1k70rk4/HASS.Agent/issues
+https://github.com/v1k70rk4/HASS.Agent.NET10/issues
 
 If you are not sure, do not worry, just go ahead and we will discuss it.
 

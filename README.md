@@ -185,7 +185,7 @@ If you download a published self-contained build, you do **not** need to install
 
 1. Install the Home Assistant integration:
    [v1k70rk4/HASS.Agent.NET10-Integration](https://github.com/v1k70rk4/HASS.Agent.NET10-Integration)
-2. Download a release build or the installer from [Releases](https://github.com/v1k70rk4/HASS.Agent/releases), or build from source.
+2. Download a release build or the installer from [Releases](https://github.com/v1k70rk4/HASS.Agent.NET10/releases), or build from source.
 3. Run the installer or start `HASS.Agent.NET10.exe` directly.
 4. Open the tray icon and go to settings.
 5. On the **MQTT** page, enable MQTT and enter your broker address and credentials.

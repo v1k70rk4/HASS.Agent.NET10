@@ -1,7 +1,7 @@
 blank_issues_enabled: false
 contact_links:
   - name: HASS.Agent .NET10 README
-    url: https://github.com/v1k70rk4/HASS.Agent#readme
+    url: https://github.com/v1k70rk4/HASS.Agent.NET10#readme
     about: Stuck, or need help getting started? Check the project README.
   - name: Home Assistant integration
     url: https://github.com/v1k70rk4/HASS.Agent.NET10-Integration

@@ -9,7 +9,7 @@ assignees: ''
 
 For the current HASS.Agent .NET10 development cycle, please check this repository's GitHub Issues:
 
-https://github.com/v1k70rk4/HASS.Agent/issues
+https://github.com/v1k70rk4/HASS.Agent.NET10/issues
 
 The Home Assistant integration lives here:
 
