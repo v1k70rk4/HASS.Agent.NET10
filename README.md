@@ -186,7 +186,7 @@ Stable release of the custom commands & command sensors line.
 - The companion Home Assistant integration:
   [v1k70rk4/HASS.Agent.NET10-Integration](https://github.com/v1k70rk4/HASS.Agent.NET10-Integration) —
   **version 10.6.6 or newer** (the agent and the integration are released with matching version numbers,
-  so keep them in step; the HA API transport in particular needs 10.6.5+)
+  so keep them in step)
 
 Windows versions older than Windows 10 2004 are intentionally blocked. The app targets `net10.0-windows10.0.19041.0` and uses modern Windows APIs for notifications, media sessions, services, sensors, and desktop state.
 
