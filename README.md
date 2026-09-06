@@ -58,6 +58,8 @@ The modern .NET10 line starts at **version 10.0.0**. The pre-.NET10 client remai
 
 ### 10.6.6
 
+> 🚧 **Not released yet** — in testing. There is no download for this version on the Releases page.
+
 Requires the Home Assistant integration **10.6.6** or newer.
 
 - **Closing the tray app no longer takes the whole device offline.** With the Windows service installed, everything in Home Assistant turned unavailable the moment the tray app was closed or you logged out — even though the service was still running and reporting CPU, memory and disk. Only the tray app ever published the device's availability, so leaving declared the *device* dead rather than just itself. The tray app and the service are now treated as two independent providers: the device stays reachable while either is running, and each entity follows whichever side actually feeds it. Entities that only the tray app can provide (media player, active window, notifications) go **unavailable** rather than disappearing, and come straight back when it starts again.
