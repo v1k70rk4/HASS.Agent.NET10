@@ -1440,19 +1440,26 @@ internal sealed class MqttCompanionService : IDisposable
         }
     }
 
+    /// <summary>
+    /// Builds the service's own status. "online" says whether the service is running;
+    /// the descriptors say what it handles when it does, and are reported either way —
+    /// an offline service that reported nothing would make Home Assistant delete its
+    /// entities instead of showing them as unavailable. A capability the user actually
+    /// turned off still reports as empty, so those entities do go away.
+    /// </summary>
     private MqttServiceStatusMessage BuildServiceStatus(bool online)
     {
-        var systemSensorsEnabled = online && _settings.MqttServiceSystemSensorsEnabled;
+        var systemSensorsEnabled = _settings.MqttServiceSystemSensorsEnabled;
 
         return new MqttServiceStatusMessage(
             online,
             _role.Token(),
-            online ? BuildCommandDescriptors(_settings.ServiceCommands) : [],
+            BuildCommandDescriptors(_settings.ServiceCommands),
             systemSensorsEnabled,
             systemSensorsEnabled ? BuildCustomSensorDescriptors(serviceRole: true) : [],
             systemSensorsEnabled ? BuildStandardSensorDescriptors(serviceRole: true) : [],
             DateTimeOffset.UtcNow,
-            online ? BuildCustomCommandDescriptors(serviceRole: true) : []);
+            BuildCustomCommandDescriptors(serviceRole: true));
     }
 
     private static IReadOnlyList<SystemCommandDescriptor> BuildCommandDescriptors(IEnumerable<string> commands)
