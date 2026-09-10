@@ -591,7 +591,7 @@ The agent supports three connection modes. You can use MQTT and HA API together 
 | Notification action events | yes | yes | |
 | System sensors | yes | yes | |
 | Command buttons | yes | yes | |
-| Update entity | yes | yes | |
+| Update entity | yes | | |
 | Auto-discovery | yes | yes | |
 | Service integration | yes | yes | |
 | Retained state on restart | yes | | |
@@ -600,7 +600,7 @@ The agent supports three connection modes. You can use MQTT and HA API together 
 
 **MQTT** (recommended) — The device is discovered automatically via MQTT discovery. All features work. Requires an MQTT broker on the local network (e.g. Mosquitto). If you use Zigbee2MQTT, you already have one.
 
-**HA API (WebSocket)** — The agent connects directly to Home Assistant's WebSocket API using a long-lived access token. Works remotely (e.g. via Nabu Casa) without an MQTT broker. Almost all features work, with some trade-offs: no retained state (sensor values are lost until the agent reconnects after a restart), no MQTT Last Will (no automatic offline detection), and media thumbnails are ~33% larger (base64 encoding). HTTPS is required for remote access.
+**HA API (WebSocket)** — The agent connects directly to Home Assistant's WebSocket API using a long-lived access token. Works remotely (e.g. via Nabu Casa) without an MQTT broker. Almost all features work, with some trade-offs: no retained state (sensor values are lost until the agent reconnects after a restart), no MQTT Last Will (no automatic offline detection), and media thumbnails are ~33% larger (base64 encoding). There is also no update entity — it is published as a native Home Assistant MQTT discovery message, so without MQTT the agent updates itself from its own About page instead of being driven from Home Assistant. HTTPS is required for remote access.
 
 **Local HTTP API** — A minimal fallback. The agent runs a small HTTP server that Home Assistant connects to. Only notifications are supported. Requires manual setup (IP address, port, API key). Use MQTT or HA API instead for full functionality.
 
@@ -609,7 +609,7 @@ The agent supports three connection modes. You can use MQTT and HA API together 
 
 ### Updating from Home Assistant
 
-When a new release is available, the agent publishes an **update entity** to Home Assistant with a working **Install** button. With the Windows service installed, the update is downloaded and applied **fully silently** (no UAC prompt); otherwise a UAC prompt appears on the PC. Home Assistant receives a **persistent notification** for the progress and result.
+When a new release is available, the agent publishes an **update entity** to Home Assistant with a working **Install** button. This uses Home Assistant's own MQTT discovery, so it needs **MQTT** — on the HA API transport there is no update entity, and the agent is updated from its About page instead. With the Windows service installed, the update is downloaded and applied **fully silently** (no UAC prompt); otherwise a UAC prompt appears on the PC. Home Assistant receives a **persistent notification** for the progress and result.
 
 <p align="center"><img src="docs/images/ha-update-alert.png" width="500" alt="Update available in Home Assistant"></p>
 <p align="center"><img src="docs/images/ha-client-updated.png" width="500" alt="Update completed notification"></p>
