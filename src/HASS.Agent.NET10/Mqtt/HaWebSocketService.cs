@@ -19,7 +19,7 @@ namespace HASS.Agent.Companion.Mqtt;
 internal sealed class HaWebSocketService : IDisposable
 {
     public const string IntegrationDomain = "hass_agent";
-    public const string MinimumIntegrationVersion = "10.6.6";
+    public const string MinimumIntegrationVersion = "10.6.7";
 
     private static readonly TimeSpan HeartbeatInterval = TimeSpan.FromSeconds(30);
 
@@ -49,6 +49,9 @@ internal sealed class HaWebSocketService : IDisposable
     /// older integration that does not target commands.
     /// </summary>
     public event Action<SystemCommandMessage, string?>? ButtonCommandReceived;
+
+    /// <summary>Raised when Home Assistant's update entity asks us to install.</summary>
+    public event Action? UpdateInstallRequested;
 
     public bool IsConnected => _ws is { State: WebSocketState.Open };
 
@@ -196,6 +199,16 @@ internal sealed class HaWebSocketService : IDisposable
     public async Task PublishServiceStatusAsync(object statusPayload, CancellationToken cancellationToken)
     {
         await FireEventAsync("hass_agent_service_update", statusPayload, cancellationToken);
+    }
+
+    /// <summary>
+    /// Publishes the app update state as a hass_agent_update_state event. Over MQTT the
+    /// update entity comes from Home Assistant's own discovery, which needs a broker;
+    /// on this transport the integration builds it from these events instead.
+    /// </summary>
+    public async Task PublishUpdateStateAsync(object statePayload, CancellationToken cancellationToken)
+    {
+        await FireEventAsync("hass_agent_update_state", statePayload, cancellationToken);
     }
 
     /// <summary>Publishes sensor state data as a hass_agent_sensor_update event.</summary>
@@ -594,6 +607,10 @@ internal sealed class HaWebSocketService : IDisposable
                             ButtonCommandReceived?.Invoke(command, target);
                         }
                     }
+                    break;
+
+                case "update_install":
+                    UpdateInstallRequested?.Invoke();
                     break;
 
                 default:

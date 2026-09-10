@@ -2,7 +2,7 @@
 
 ![Windows](https://img.shields.io/badge/Windows-10%202004%2B%20%7C%2011-0078D4?logo=windows&logoColor=white)
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet&logoColor=white)
-![Version](https://img.shields.io/badge/version-10.6.6-brightgreen)
+![Version](https://img.shields.io/badge/version-10.6.7-brightgreen)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-MQTT%20%7C%20WebSocket%20API-41BDF5?logo=homeassistant&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 [![Website](https://img.shields.io/badge/website-v1k70rk4.github.io-41bdf5?logo=github)](https://v1k70rk4.github.io/HASS.Agent.NET10/)
@@ -55,6 +55,12 @@ The modern .NET10 line starts at **version 10.0.0**. The pre-.NET10 client remai
 ---
 
 ## What Changed
+
+### 10.6.7
+
+Requires the Home Assistant integration **10.6.7** or newer.
+
+- **The update entity now works on the HA API (WebSocket) transport.** It was built from Home Assistant's own MQTT discovery, so without a broker there was no update entity and no Install button — on the very transport people choose precisely because Home Assistant is not on their local network. The agent now reports the available release over the WebSocket as well, and installs it when asked, so updating from Home Assistant works with or without MQTT.
 
 ### 10.6.6
 
@@ -183,7 +189,7 @@ Stable release of the custom commands & command sensors line.
 - Home Assistant with **MQTT broker** (recommended, e.g. Mosquitto) **or HA API** (WebSocket, e.g. via Nabu Casa)
 - The companion Home Assistant integration:
   [v1k70rk4/HASS.Agent.NET10-Integration](https://github.com/v1k70rk4/HASS.Agent.NET10-Integration) —
-  **version 10.6.6 or newer** (the agent and the integration are released with matching version numbers,
+  **version 10.6.7 or newer** (the agent and the integration are released with matching version numbers,
   so keep them in step)
 
 Windows versions older than Windows 10 2004 are intentionally blocked. The app targets `net10.0-windows10.0.19041.0` and uses modern Windows APIs for notifications, media sessions, services, sensors, and desktop state.
@@ -591,7 +597,7 @@ The agent supports three connection modes. You can use MQTT and HA API together 
 | Notification action events | yes | yes | |
 | System sensors | yes | yes | |
 | Command buttons | yes | yes | |
-| Update entity | yes | | |
+| Update entity | yes | yes | |
 | Auto-discovery | yes | yes | |
 | Service integration | yes | yes | |
 | Retained state on restart | yes | | |
@@ -600,7 +606,7 @@ The agent supports three connection modes. You can use MQTT and HA API together 
 
 **MQTT** (recommended) — The device is discovered automatically via MQTT discovery. All features work. Requires an MQTT broker on the local network (e.g. Mosquitto). If you use Zigbee2MQTT, you already have one.
 
-**HA API (WebSocket)** — The agent connects directly to Home Assistant's WebSocket API using a long-lived access token. Works remotely (e.g. via Nabu Casa) without an MQTT broker. Almost all features work, with some trade-offs: no retained state (sensor values are lost until the agent reconnects after a restart), no MQTT Last Will (no automatic offline detection), and media thumbnails are ~33% larger (base64 encoding). There is also no update entity — it is published as a native Home Assistant MQTT discovery message, so without MQTT the agent updates itself from its own About page instead of being driven from Home Assistant. HTTPS is required for remote access.
+**HA API (WebSocket)** — The agent connects directly to Home Assistant's WebSocket API using a long-lived access token. Works remotely (e.g. via Nabu Casa) without an MQTT broker. Almost all features work, with some trade-offs: no retained state (sensor values are lost until the agent reconnects after a restart), no MQTT Last Will (no automatic offline detection), and media thumbnails are ~33% larger (base64 encoding). HTTPS is required for remote access.
 
 **Local HTTP API** — A minimal fallback. The agent runs a small HTTP server that Home Assistant connects to. Only notifications are supported. Requires manual setup (IP address, port, API key). Use MQTT or HA API instead for full functionality.
 
@@ -609,7 +615,7 @@ The agent supports three connection modes. You can use MQTT and HA API together 
 
 ### Updating from Home Assistant
 
-When a new release is available, the agent publishes an **update entity** to Home Assistant with a working **Install** button. This uses Home Assistant's own MQTT discovery, so it needs **MQTT** — on the HA API transport there is no update entity, and the agent is updated from its About page instead. With the Windows service installed, the update is downloaded and applied **fully silently** (no UAC prompt); otherwise a UAC prompt appears on the PC. Home Assistant receives a **persistent notification** for the progress and result.
+When a new release is available, the agent publishes an **update entity** to Home Assistant with a working **Install** button. Over MQTT this is Home Assistant's own update discovery; on the HA API transport the integration builds the same entity from the agent's events (client and integration 10.6.7+). With the Windows service installed, the update is downloaded and applied **fully silently** (no UAC prompt); otherwise a UAC prompt appears on the PC. Home Assistant receives a **persistent notification** for the progress and result.
 
 <p align="center"><img src="docs/images/ha-update-alert.png" width="500" alt="Update available in Home Assistant"></p>
 <p align="center"><img src="docs/images/ha-client-updated.png" width="500" alt="Update completed notification"></p>
@@ -650,6 +656,7 @@ Events fired by the agent:
 ```text
 hass_agent_device_update          # discovery + capabilities (tray app)
 hass_agent_service_update         # Windows service status + capabilities
+hass_agent_update_state           # available app update (drives the update entity)
 hass_agent_sensor_update          # sensor values
 hass_agent_media_update           # media player state
 hass_agent_media_thumbnail        # media thumbnail (base64)
@@ -661,7 +668,7 @@ Commands sent by the integration to the agent:
 ```json
 {
   "serial_number": "agent-serial",
-  "command_type": "notification | media_command | button_command",
+  "command_type": "notification | media_command | button_command | update_install",
   "target": "app | service",
   "payload": { }
 }
