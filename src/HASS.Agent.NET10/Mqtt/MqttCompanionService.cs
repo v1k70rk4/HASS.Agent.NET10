@@ -550,6 +550,15 @@ internal sealed class MqttCompanionService : IDisposable
                     _ = _mediaSessionService.HandleCommandAsync(command);
                 }
             };
+            _haWs.UpdateInstallRequested += () =>
+            {
+                // Same handler the MQTT update topic uses; it guards against overlap itself.
+                if (_role == CompanionRuntimeRole.App)
+                {
+                    _ = Task.Run(HandleUpdateInstallRequestAsync);
+                }
+            };
+
             _haWs.ButtonCommandReceived += (command, target) =>
             {
                 // Over MQTT the integration routes by topic; over the WebSocket every
@@ -759,6 +768,7 @@ internal sealed class MqttCompanionService : IDisposable
         if (_role == CompanionRuntimeRole.App)
         {
             await PublishAvailabilityAsync(online: true);
+            await PublishUpdateStateAsync();
             await PublishPendingUpdateNotificationAsync();
         }
 
@@ -772,6 +782,14 @@ internal sealed class MqttCompanionService : IDisposable
                 state => _haWs.PublishMediaStateAsync(state, wsCts.Token),
                 thumbnail => _haWs.PublishMediaThumbnailAsync(thumbnail, wsCts.Token),
                 wsCts.Token);
+        }
+
+        // Keep the update entity fed here as well: with no broker there is no MQTT
+        // discovery to build it from, so these events are its only source.
+        Task? wsUpdateTask = null;
+        if (_role == CompanionRuntimeRole.App)
+        {
+            wsUpdateTask = Task.Run(() => PublishUpdateLoopAsync(wsCts.Token), wsCts.Token);
         }
 
         // Start sensor publishing on WS transport.
@@ -818,6 +836,11 @@ internal sealed class MqttCompanionService : IDisposable
         {
             _isOnWebSocket = false;
             await wsCts.CancelAsync();
+
+            if (wsUpdateTask is not null)
+            {
+                try { await wsUpdateTask; } catch (OperationCanceledException) { }
+            }
 
             if (sensorTask is not null)
             {
@@ -1280,6 +1303,16 @@ internal sealed class MqttCompanionService : IDisposable
             {
                 _log.Warning($"Unable to publish update state: {_lastUpdateState.Error}");
             }
+        }
+
+        if (_isOnWebSocket && _haWs is not null)
+        {
+            await _haWs.PublishUpdateStateAsync(new
+            {
+                serial_number = _settings.SerialNumber,
+                state = _lastUpdateState
+            }, CancellationToken.None);
+            return;
         }
 
         await PublishJsonAsync(UpdateStateTopic, _lastUpdateState, retain: true);
