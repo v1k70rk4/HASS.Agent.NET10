@@ -768,7 +768,7 @@ internal sealed class MqttCompanionService : IDisposable
         if (_role == CompanionRuntimeRole.App)
         {
             await PublishAvailabilityAsync(online: true);
-            await PublishUpdateStateAsync();
+            await PublishUpdateStateAsync(cancellationToken: wsCts.Token);
             await PublishPendingUpdateNotificationAsync();
         }
 
@@ -1280,11 +1280,11 @@ internal sealed class MqttCompanionService : IDisposable
         while (!cancellationToken.IsCancellationRequested)
         {
             await Task.Delay(UpdateCheckInterval, cancellationToken);
-            await PublishUpdateStateAsync(forceCheck: true);
+            await PublishUpdateStateAsync(forceCheck: true, cancellationToken);
         }
     }
 
-    private async Task PublishUpdateStateAsync(bool forceCheck = false)
+    private async Task PublishUpdateStateAsync(bool forceCheck = false, CancellationToken cancellationToken = default)
     {
         var now = DateTimeOffset.UtcNow;
 
@@ -1311,7 +1311,7 @@ internal sealed class MqttCompanionService : IDisposable
             {
                 serial_number = _settings.SerialNumber,
                 state = _lastUpdateState
-            }, CancellationToken.None);
+            }, cancellationToken);
             return;
         }
 
