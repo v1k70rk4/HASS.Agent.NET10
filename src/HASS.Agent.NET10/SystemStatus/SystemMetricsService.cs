@@ -588,7 +588,7 @@ internal sealed class SystemMetricsService : IDisposable
                     loggedInUsers.Add(string.IsNullOrWhiteSpace(domain) ? userName : $"{domain}\\{userName}");
                 }
 
-                var clientProtocol = QuerySessionInt(session.SessionId, WtsInfoClass.ClientProtocolType);
+                var clientProtocol = QuerySessionUInt16(session.SessionId, WtsInfoClass.ClientProtocolType);
                 if (clientProtocol == 2)
                 {
                     rdpSessions++;
@@ -679,7 +679,7 @@ internal sealed class SystemMetricsService : IDisposable
         }
     }
 
-    private static int? QuerySessionInt(uint sessionId, WtsInfoClass infoClass)
+    private static ushort? QuerySessionUInt16(uint sessionId, WtsInfoClass infoClass)
     {
         if (!WTSQuerySessionInformation(IntPtr.Zero, sessionId, infoClass, out var buffer, out var bytesReturned))
         {
@@ -688,7 +688,9 @@ internal sealed class SystemMetricsService : IDisposable
 
         try
         {
-            return bytesReturned >= sizeof(int) ? Marshal.ReadInt32(buffer) : null;
+            return bytesReturned >= sizeof(ushort)
+                ? unchecked((ushort)Marshal.ReadInt16(buffer))
+                : null;
         }
         finally
         {
