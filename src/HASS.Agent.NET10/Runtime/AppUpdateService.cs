@@ -42,12 +42,57 @@ internal static class AppUpdateService
                 asset?.DownloadUrl,
                 asset?.Name,
                 DateTimeOffset.UtcNow,
-                null);
+                null,
+                release.Body);
         }
         catch (Exception ex)
         {
             return AppUpdateState.Failed(installedVersion, ex.Message);
         }
+    }
+
+    /// <summary>
+    /// Flattens GitHub release notes (Markdown) into a few plain lines that fit a
+    /// message box: headings and emphasis markers dropped, bullets kept, long
+    /// notes cut after a handful of lines.
+    /// </summary>
+    public static string SummarizeReleaseNotes(string? markdown, int maxLines = 12, int maxLineLength = 160)
+    {
+        if (string.IsNullOrWhiteSpace(markdown))
+        {
+            return string.Empty;
+        }
+
+        var lines = new List<string>();
+        foreach (var raw in markdown.Replace("\r\n", "\n").Split('\n'))
+        {
+            var line = raw.Trim();
+            if (line.Length == 0 || line.StartsWith("<!--", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            line = line.TrimStart('#').Trim();
+            line = line.Replace("**", string.Empty).Replace("`", string.Empty);
+            if (line.StartsWith("- ", StringComparison.Ordinal) || line.StartsWith("* ", StringComparison.Ordinal))
+            {
+                line = "• " + line[2..];
+            }
+
+            if (line.Length > maxLineLength)
+            {
+                line = line[..(maxLineLength - 1)] + "…";
+            }
+
+            lines.Add(line);
+            if (lines.Count == maxLines)
+            {
+                lines.Add("…");
+                break;
+            }
+        }
+
+        return string.Join('\n', lines);
     }
 
     public static async Task<string> DownloadAsync(AppUpdateState update, string targetDirectory, CancellationToken cancellationToken = default)
@@ -191,6 +236,7 @@ internal static class AppUpdateService
         [property: JsonPropertyName("html_url")] string? HtmlUrl,
         [property: JsonPropertyName("draft")] bool Draft,
         [property: JsonPropertyName("prerelease")] bool Prerelease,
+        [property: JsonPropertyName("body")] string? Body,
         [property: JsonPropertyName("assets")] IReadOnlyList<GitHubReleaseAsset>? Assets);
 
     private sealed record GitHubReleaseAsset(
@@ -207,7 +253,10 @@ internal sealed record AppUpdateState(
     [property: JsonPropertyName("download_url")] string? DownloadUrl,
     [property: JsonPropertyName("asset_name")] string? AssetName,
     [property: JsonPropertyName("checked_at")] DateTimeOffset CheckedAt,
-    [property: JsonPropertyName("error")] string? Error)
+    [property: JsonPropertyName("error")] string? Error,
+    // Shown in the in-app update prompt only; the state published to Home
+    // Assistant (MQTT / WebSocket) stays as it was.
+    [property: JsonIgnore] string? ReleaseNotes = null)
 {
     public static AppUpdateState Failed(string installedVersion, string error)
     {

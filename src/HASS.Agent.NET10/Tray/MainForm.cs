@@ -1329,7 +1329,7 @@ internal sealed class MainForm : Form
     {
         var page = MakePage();
 
-        var card = MakeCard(page, 28, 56, 600, 246, null);
+        var card = MakeCard(page, 28, 56, 600, 286, null);
 
         var icon = LoadIcon();
         if (icon is not null)
@@ -1374,8 +1374,19 @@ internal sealed class MainForm : Form
         issueBtn.Click += (_, _) => OpenUrl($"{AppIdentity.GitHubRepositoryUrl}/issues/new");
         card.Controls.Add(issueBtn);
 
+        // Release tags carry a "v" prefix and keep any pre-release suffix (v10.6.2-beta.1).
+        var notesBtn = MakeSecondaryButton(S("About.ReleaseNotes"), 140, 32);
+        notesBtn.Location = new Point(issueBtn.Right + D(8), D(174));
+        notesBtn.Click += (_, _) => OpenUrl($"{AppIdentity.GitHubRepositoryUrl}/releases/tag/v{_settings.SoftwareVersion}");
+        card.Controls.Add(notesBtn);
+
+        var supportBtn = MakeSecondaryButton(S("About.Support"), 190, 32);
+        supportBtn.Location = Pt(28, 214);
+        supportBtn.Click += (_, _) => OpenUrl(AppIdentity.SupportUrl);
+        card.Controls.Add(supportBtn);
+
         var updateBtn = MakePrimaryButton(S("About.CheckUpdates"), 160, 32);
-        updateBtn.Location = new Point(issueBtn.Right + D(8), D(174));
+        updateBtn.Location = new Point(supportBtn.Right + D(8), D(214));
         updateBtn.Click += async (_, _) => await CheckForUpdatesAsync(updateBtn);
         card.Controls.Add(updateBtn);
 
@@ -2270,8 +2281,15 @@ internal sealed class MainForm : Form
                 return;
             }
 
+            var message = string.Format(S("About.UpdateAvailable"), update.LatestVersion, update.InstalledVersion);
+            var notes = AppUpdateService.SummarizeReleaseNotes(update.ReleaseNotes);
+            if (notes.Length > 0)
+            {
+                message = $"{S("About.WhatsNew")}:\n{notes}\n\n{message}";
+            }
+
             var confirm = MessageBox.Show(
-                string.Format(S("About.UpdateAvailable"), update.LatestVersion, update.InstalledVersion),
+                message,
                 AppIdentity.DisplayName,
                 MessageBoxButtons.YesNo,
                 MessageBoxIcon.Information);
