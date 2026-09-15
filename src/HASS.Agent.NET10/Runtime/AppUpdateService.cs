@@ -56,8 +56,11 @@ internal static class AppUpdateService
     /// message box: headings and emphasis markers dropped, bullets kept, long
     /// notes cut after a handful of lines.
     /// </summary>
-    public static string SummarizeReleaseNotes(string? markdown, int maxLines = 12, int maxLineLength = 160)
+    public static string SummarizeReleaseNotes(string? markdown)
     {
+        const int maxLines = 12;
+        const int maxLineLength = 160;
+
         if (string.IsNullOrWhiteSpace(markdown))
         {
             return string.Empty;
@@ -84,12 +87,14 @@ internal static class AppUpdateService
                 line = line[..(maxLineLength - 1)] + "…";
             }
 
-            lines.Add(line);
+            // Mark the cut only when a line is actually left out.
             if (lines.Count == maxLines)
             {
                 lines.Add("…");
                 break;
             }
+
+            lines.Add(line);
         }
 
         return string.Join('\n', lines);
