@@ -2,7 +2,7 @@
 
 ![Windows](https://img.shields.io/badge/Windows-10%202004%2B%20%7C%2011-0078D4?logo=windows&logoColor=white)
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet&logoColor=white)
-![Version](https://img.shields.io/badge/version-10.6.8-brightgreen)
+![Version](https://img.shields.io/badge/version-10.6.9-brightgreen)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-MQTT%20%7C%20WebSocket%20API-41BDF5?logo=homeassistant&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 [![Website](https://img.shields.io/badge/website-v1k70rk4.github.io-41bdf5?logo=github)](https://v1k70rk4.github.io/HASS.Agent.NET10/)
@@ -60,6 +60,12 @@ The modern .NET10 line starts at **version 10.0.0**. The pre-.NET10 client remai
 
 ## What Changed
 
+### 10.6.9
+
+Requires the Home Assistant integration **10.6.7** or newer (no integration change in this release).
+
+- **Installing an update from Home Assistant now works on the HA API (WebSocket) transport with the service installed.** Pressing *Install* started the relaunch watchdog (the brief console window) and posted the "update started" notification, but the actual install command for the service was sent to the MQTT service topic — which, without a broker, was silently dropped. So nothing was installed and the version never changed. The command now travels over the HA API as well, and the service runs the silent install exactly as it does over MQTT.
+- Without the service, the installer started from Home Assistant is launched detached from the tray app instead of as its child process, so the installer's own close-the-running-app step can no longer take the installer down with it.
 ### 10.6.8
 
 Requires the Home Assistant integration **10.6.7** or newer (no integration change in this release).

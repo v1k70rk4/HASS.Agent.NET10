@@ -287,10 +287,26 @@ internal sealed class MqttCompanionService : IDisposable
                 // The SYSTEM service installs without a UAC prompt; a detached
                 // watchdog relaunches this tray app once the installer finishes.
                 SpawnRelaunchWatchdog();
-                await PublishJsonAsync(
-                    ServiceCommandTopic,
-                    new SystemCommandMessage("install_update", Force: false, Time: 0, Comment: null, RestartCancel: false),
-                    retain: false);
+                if (_isOnWebSocket && _haWs is not null)
+                {
+                    // No broker: the service listens for hass_agent_command on the
+                    // WebSocket, so the request goes through Home Assistant's event bus.
+                    // PublishJsonAsync would have dropped it on the floor, unlogged.
+                    await _haWs.FireEventAsync("hass_agent_command", new
+                    {
+                        serial_number = _settings.SerialNumber,
+                        command_type = "install_update",
+                        target = CompanionRuntimeRole.Service.Token(),
+                        payload = new { }
+                    }, CancellationToken.None);
+                }
+                else
+                {
+                    await PublishJsonAsync(
+                        ServiceCommandTopic,
+                        new SystemCommandMessage("install_update", Force: false, Time: 0, Comment: null, RestartCancel: false),
+                        retain: false);
+                }
                 await PublishPersistentNotificationAsync(
                     Strings.GetHa("HaPn.UpdateTitle"),
                     string.Format(Strings.GetHa("HaPn.UpdateStartedSilent"), _settings.DeviceName, update.LatestVersion));
@@ -307,14 +323,20 @@ internal sealed class MqttCompanionService : IDisposable
                 string.Format(Strings.GetHa(messageKey), _settings.DeviceName, update.LatestVersion));
 
             var installerPath = await AppUpdateService.DownloadAsync(update, GetUpdateDownloadDirectory());
+            const string installerArguments = "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART";
             _log.Info($"Starting installer with elevation: {installerPath}");
-            Process.Start(new ProcessStartInfo
+            // Detached, not as our child: the installer closes this app with `taskkill /T`,
+            // which would take a child installer down with it. Same as the About page.
+            if (!DetachedUpdateLauncher.TryLaunchInstaller(installerPath, _log, installerArguments))
             {
-                FileName = installerPath,
-                Arguments = "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART",
-                UseShellExecute = true,
-                Verb = "runas"
-            });
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = installerPath,
+                    Arguments = installerArguments,
+                    UseShellExecute = true,
+                    Verb = "runas"
+                });
+            }
         }
         catch (Exception ex)
         {
@@ -559,6 +581,15 @@ internal sealed class MqttCompanionService : IDisposable
                 if (_role == CompanionRuntimeRole.App)
                 {
                     _ = Task.Run(HandleUpdateInstallRequestAsync);
+                }
+            };
+            _haWs.SilentInstallRequested += target =>
+            {
+                // The WebSocket counterpart of the MQTT service command topic.
+                if (_role == CompanionRuntimeRole.Service
+                    && string.Equals(target, _role.Token(), StringComparison.OrdinalIgnoreCase))
+                {
+                    _ = Task.Run(RunSilentUpdateInstallAsync);
                 }
             };
 

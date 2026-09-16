@@ -52,6 +52,8 @@ internal sealed class HaWebSocketService : IDisposable
 
     /// <summary>Raised when Home Assistant's update entity asks us to install.</summary>
     public event Action? UpdateInstallRequested;
+    /// <summary>The tray app asks the service to run the silent install (internal, addressed to the service role).</summary>
+    public event Action<string?>? SilentInstallRequested;
 
     public bool IsConnected => _ws is { State: WebSocketState.Open };
 
@@ -611,6 +613,13 @@ internal sealed class HaWebSocketService : IDisposable
 
                 case "update_install":
                     UpdateInstallRequested?.Invoke();
+                    break;
+
+                case "install_update":
+                    // Fired by the tray app itself when the broker is not there to carry the
+                    // service command; every instance sees it, so it names the role it means.
+                    SilentInstallRequested?.Invoke(
+                        data.TryGetProperty("target", out var installTarget) ? installTarget.GetString() : null);
                     break;
 
                 default:
