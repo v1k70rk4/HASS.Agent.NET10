@@ -1,157 +1,145 @@
 #Requires -Version 7.0
 <#
 .SYNOPSIS
-    Builds HASS.Agent .NET10 — a standalone .exe for testing, or the signed
-    release assets (installer + zip).
+    HASS.Agent .NET10 build: a standalone .exe for development, or the signed release assets of a tag.
+    Run it without parameters for the plain development build.
 
 .DESCRIPTION
-    Default: publishes a self-contained win-x64 single-file .exe — no .NET
-    runtime is needed on the target machine. The tray icon is embedded, so the
-    .exe runs on its own without any extra files next to it.
+    Pick what to do:
 
-    -Sign signs the built .exe with the Certum SimplySign cloud certificate
-    through `ssign` (https://github.com/Le-Syl21/ssign): you type the current
-    code from the SimplySign mobile app, nothing secret is stored anywhere.
+      (nothing)     Standalone, self-contained, single-file .exe in artifacts\standalone - no .NET runtime is
+                    needed on the target machine, the tray icon is embedded. Offers to replace this machine's
+                    installed copy afterwards (-Deploy skips the question, -NoDeploy the whole step).
+      -Sign         The same standalone .exe, signed. Handy to test a signed binary on this machine.
+      -Tag          Release build for a GitHub tag: the Inno Setup installer (with its uninstaller) and the
+                    win-x64 zip, every Windows asset of a release, all signed, with the exact file names the CI
+                    workflow produces - so they can replace the CI's unsigned assets on the release. Warns when
+                    the working tree is dirty or HEAD does not carry the tag of the version being built.
 
-    -Release builds exactly what CI publishes — the Inno Setup installer and
-    the win-x64 zip, same file names — but signed (implies -Sign): the .exe,
-    the installer and its uninstaller all carry the signature. Every signed
-    file is checked with Microsoft's signtool before the script reports success.
+    Signing happens BEFORE the installer and the zip are assembled, and every produced file is re-read and
+    rejected unless its signature is valid. A signing failure is a build failure: nothing unsigned is packaged
+    as if it were signed, and nothing is uploaded.
+
+    Nothing machine-specific lives in this script. The signing script - which knows the certificate and how to
+    reach it - comes from build.local.psd1 next to this file, which is never committed. Precedence: command-line
+    parameter, then build.local.psd1. Example:
+
+        @{
+            SignScript = 'C:\Claude\ssign\sign.ps1'      # invoked as: & <script> -Path <file>
+        }
+
+.PARAMETER Sign
+    Standalone build, signed by the signing script.
+
+.PARAMETER Tag
+    Release build (installer + zip), signed by the signing script. Never deployed.
+
+.PARAMETER Upload
+    With -Tag: replace the assets on the GitHub release of this version without asking. Without it the script
+    asks when such a release exists. With -Upload, a missing `gh` or a failed upload is an error.
+
+.PARAMETER SignScript
+    Signing script for -Sign and -Tag, invoked as `& $SignScript -Path <file>`. Default: SignScript in
+    build.local.psd1.
 
 .PARAMETER Output
-    Output directory for the standalone .exe. Default: artifacts\standalone
-    (ignored with -Release, which uses the CI layout under artifacts\).
+    Output folder of the standalone .exe. Default: artifacts\standalone. -Tag ignores it and uses the CI layout
+    under artifacts\ (the installer script reads from there).
 
 .PARAMETER Open
     Opens Explorer with the produced .exe selected when finished.
 
 .PARAMETER Deploy
-    Replace the installed copy without asking. Needs an elevated shell.
+    Replace the installed copy without asking. Needs an elevated shell. Not available with -Tag.
 
 .PARAMETER NoDeploy
-    Build only; never ask about replacing the installed copy.
-
-.PARAMETER Sign
-    Sign the .exe with the Certum certificate (asks for the SimplySign code).
-
-.PARAMETER Release
-    Build the signed installer and zip (implies -Sign).
-
-.PARAMETER Upload
-    With -Release: replace the assets on the GitHub release for this version
-    without asking. Without it the script asks when such a release exists.
-
-.PARAMETER SsignPath
-    Path to ssign.exe. Default: $env:SSIGN_EXE, else C:\Claude\ssign\ssign.exe
-
-.PARAMETER CertumEmail
-    Certum account e-mail. Default: $env:CERTUM_EMAIL, else asked.
+    Never ask about replacing the installed copy.
 
 .EXAMPLE
-    .\build-exe.ps1
-    .\build-exe.ps1 -Sign -Deploy
-    .\build-exe.ps1 -Release
-    .\build-exe.ps1 -Release -Upload -NoDeploy
+    # Development build, then replace the installed copy (administrator PowerShell):
+    .\build-exe.ps1 -Deploy
+.EXAMPLE
+    # Signed standalone build for testing:
+    .\build-exe.ps1 -Sign
+.EXAMPLE
+    # Release assets for the tag that was just pushed, then replace the CI's assets on the release:
+    .\build-exe.ps1 -Tag -Upload
 #>
 [CmdletBinding()]
 param(
+    [switch]$Sign,
+    [switch]$Tag,
+    [switch]$Upload,
+    [string]$SignScript,
     [string]$Output = "artifacts\standalone",
     [switch]$Open,
     [switch]$Deploy,
-    [switch]$NoDeploy,
-    [switch]$Sign,
-    [switch]$Release,
-    [switch]$Upload,
-    [string]$SsignPath = $(if ($env:SSIGN_EXE) { $env:SSIGN_EXE } else { "C:\Claude\ssign\ssign.exe" }),
-    [string]$CertumEmail = $env:CERTUM_EMAIL
+    [switch]$NoDeploy
 )
 
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
 
-if ($Release) { $Sign = $true }
-
 $project = "src\HASS.Agent.NET10\HASS.Agent.NET10.csproj"
 $appName = "HASS.Agent .NET10"
-$repoUrl = "https://github.com/v1k70rk4/HASS.Agent.NET10"
 
 if (-not (Test-Path $project)) {
-    Write-Error "Project not found: $project  (run this script from inside the repo)."
-    exit 1
+    throw "Project not found: $project  (run this script from inside the repo)."
+}
+if ($Tag -and $Deploy) { throw "-Tag builds are the public release assets; they are not deployed to this machine." }
+if ($Upload -and -not $Tag) { throw "-Upload goes with -Tag." }
+
+# --- Machine-specific settings (build.local.psd1, never committed) -------------------------------------------
+$localFile = Join-Path $PSScriptRoot "build.local.psd1"
+$localSettings = if (Test-Path $localFile) { Import-PowerShellDataFile $localFile } else { @{} }
+if (-not $SignScript -and $localSettings.ContainsKey('SignScript')) { $SignScript = [string]$localSettings['SignScript'] }
+
+$signing = $Sign -or $Tag
+if ($signing) {
+    if (-not $SignScript) { throw "No signing script configured: set SignScript in $localFile, or pass -SignScript." }
+    # Checked up front: finding out after a full build would waste it.
+    if (-not (Test-Path $SignScript)) { throw "Sign script not found: $SignScript" }
+    $SignScript = (Resolve-Path $SignScript).Path
 }
 
-# Read the version from the csproj: for the message, and for the release file names.
+# Version from the csproj: for the messages, the release file names and the tag check.
 [xml]$proj = Get-Content $project
 $version = ($proj.Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1)
+if ([string]::IsNullOrWhiteSpace($version)) { throw "Project version not found in $project." }
+$tagName = "v$version"
 
-# ---------------------------------------------------------------------------
-# Signing helpers
-# ---------------------------------------------------------------------------
+# --- Helpers ---------------------------------------------------------------------------------------------------
 
-function Find-SignTool {
-    $kits = Join-Path ${env:ProgramFiles(x86)} "Windows Kits\10\bin"
-    if (-not (Test-Path $kits)) { return $null }
-    Get-ChildItem -Path $kits -Directory |
-        Sort-Object { [version]($_.Name -replace '[^\d.]', '') } -Descending |
-        ForEach-Object { Join-Path $_.FullName "x64\signtool.exe" } |
-        Where-Object { Test-Path $_ } |
-        Select-Object -First 1
+function Invoke-SignScript([string]$File) {
+    & $SignScript -Path $File
+    if ($LASTEXITCODE) { throw "Signing $File failed (exit $LASTEXITCODE)." }
 }
 
-function Assert-Signed([string]$SignTool, [string]$File) {
-    # Microsoft's own verifier is the judge, not the signing tool: full chain,
-    # timestamp, and the Authenticode policy Windows itself applies.
-    & $SignTool verify /pa /q $File 2>&1 | Out-Null
-    if ($LASTEXITCODE -ne 0) {
-        & $SignTool verify /pa /v $File
-        Write-Error "signtool could not verify the signature on $File"
-        exit 1
-    }
-    Write-Host "  Verified: $File" -ForegroundColor Green
+# Trust nothing a tool merely reported: re-read the file and insist on a valid, timestamped signature.
+function Assert-Signed([string]$File) {
+    $sig = Get-AuthenticodeSignature -FilePath $File
+    if ($sig.Status -ne 'Valid') { throw "Signature on $File is not valid: $($sig.Status) - $($sig.StatusMessage)" }
+    if (-not $sig.TimeStamperCertificate) { throw "Signature on $File has no timestamp - refusing it." }
 }
 
-function Invoke-Ssign([string]$File) {
-    # -n/-u put the product name and URL into the signature block (shown in the
-    # file's Digital Signatures tab and in the UAC prompt).
-    & $SsignPath -n $appName -u $repoUrl $File
-    if ($LASTEXITCODE -ne 0) {
-        Write-Error "ssign failed on $File (exit code $LASTEXITCODE). A wrong or expired SimplySign code is the usual cause - run the script again with a fresh one."
-        exit 1
-    }
+function Get-SignerName([string]$File) {
+    $sig = Get-AuthenticodeSignature -FilePath $File
+    if (-not $sig.SignerCertificate) { return '' }
+    return $sig.SignerCertificate.GetNameInfo([System.Security.Cryptography.X509Certificates.X509NameType]::SimpleName, $false)
 }
 
-$signTool = $null
-if ($Sign) {
-    if (-not (Test-Path $SsignPath)) {
-        Write-Error "ssign.exe not found at $SsignPath - download it from https://github.com/Le-Syl21/ssign/releases or pass -SsignPath / set SSIGN_EXE."
-        exit 1
+# --- A release build has to match its tag: the signed assets replace the CI's assets of exactly that commit. ---
+if ($Tag -and (Get-Command git -ErrorAction SilentlyContinue)) {
+    if (git status --porcelain 2>$null) {
+        Write-Host "WARNING: the working tree has uncommitted changes - these assets will not match any tag." -ForegroundColor Yellow
     }
-    $signTool = Find-SignTool
-    if (-not $signTool) {
-        Write-Error "signtool.exe not found under the Windows Kits - install the Windows SDK (Signing Tools) to verify signatures."
-        exit 1
-    }
-    if ([string]::IsNullOrWhiteSpace($CertumEmail)) {
-        $CertumEmail = Read-Host "Certum account e-mail"
-    }
-    # ssign reads the credentials from the environment, so nothing lands in the
-    # command line or the shell history. The code is single-use and expires in
-    # 30 seconds; ssign caches the cloud session for ~20 minutes, so the
-    # installer and uninstaller signed later by Inno Setup reuse this login.
-    $env:CERTUM_EMAIL = $CertumEmail
-    $env:CERTUM_TOKEN = Read-Host "SimplySign code (6 digits, from the mobile app)" -MaskInput
-    if ($env:CERTUM_TOKEN -notmatch '^\d{6}$') {
-        Remove-Item Env:CERTUM_TOKEN
-        Write-Error "That is not a 6-digit code."
-        exit 1
-    }
+    $headTags = @(git tag --points-at HEAD 2>$null)
+    if ($headTags -contains $tagName) { Write-Host "Release tag: $tagName" -ForegroundColor DarkGray }
+    elseif ($headTags.Count -gt 0) { Write-Host "WARNING: HEAD is tagged $($headTags -join ', ') but the project version is $version." -ForegroundColor Yellow }
+    else { Write-Host "WARNING: HEAD carries no tag - tag the release ($tagName) first, so the signed assets match it." -ForegroundColor Yellow }
 }
 
-try {
-
-# ---------------------------------------------------------------------------
-# Build
-# ---------------------------------------------------------------------------
+# --- Build -----------------------------------------------------------------------------------------------------
 
 $publishArgs = @(
     "publish", $project,
@@ -161,10 +149,11 @@ $publishArgs = @(
     "-p:PublishSingleFile=true"
 )
 
-if ($Release) {
-    # Same layout and flags as the CI workflow, so the installer script's
-    # Source path and the zip contents match what a tag build would produce.
+if ($Tag) {
+    # Same layout and flags as the CI workflow: the installer script's Source path and the zip contents match a
+    # tag build. Recreated from scratch so nothing from an earlier local build ends up in the release.
     $Output = "artifacts\HASS.Agent.NET10\win-x64"
+    if (Test-Path $Output) { Remove-Item $Output -Recurse -Force }
     Write-Host "Building $appName $version  (release layout, win-x64)..." -ForegroundColor Cyan
 }
 else {
@@ -173,65 +162,44 @@ else {
 }
 
 dotnet @publishArgs -o $Output
-
-if ($LASTEXITCODE -ne 0) {
-    Write-Error "Build failed (dotnet publish exit code $LASTEXITCODE)."
-    exit $LASTEXITCODE
-}
+if ($LASTEXITCODE -ne 0) { throw "Build failed (dotnet publish exit code $LASTEXITCODE)." }
 
 $exe = Join-Path $Output "HASS.Agent.NET10.exe"
-if (-not (Test-Path $exe)) {
-    Write-Error "Build finished but the .exe was not found at $exe."
-    exit 1
-}
-
+if (-not (Test-Path $exe)) { throw "Build finished but the .exe was not found at $exe." }
 $fullPath = (Resolve-Path $exe).Path
-$sizeMb = [math]::Round((Get-Item $exe).Length / 1MB, 1)
 
 Write-Host ""
-Write-Host "Built ✓" -ForegroundColor Green
-Write-Host "  $fullPath  ($sizeMb MB)" -ForegroundColor Green
+Write-Host "Built ✓  $fullPath  ($([math]::Round((Get-Item $exe).Length / 1MB, 1)) MB)" -ForegroundColor Green
 
-# ---------------------------------------------------------------------------
-# Sign the executable
-# ---------------------------------------------------------------------------
-
-if ($Sign) {
+# --- Sign the executable -----------------------------------------------------------------------------------------
+if ($signing) {
     Write-Host ""
-    Write-Host "Signing the executable..." -ForegroundColor Cyan
-    Invoke-Ssign $fullPath
-    Assert-Signed $signTool $fullPath
+    Write-Host "[sign] using $SignScript" -ForegroundColor Cyan
+    Invoke-SignScript $fullPath
+    Assert-Signed $fullPath
 }
 
-# ---------------------------------------------------------------------------
-# Release assets: signed installer (+ uninstaller) and the zip, CI file names
-# ---------------------------------------------------------------------------
-
+# --- Release assets: signed installer (+ uninstaller) and the zip, CI file names ----------------------------------
 $releaseFiles = @()
-if ($Release) {
+if ($Tag) {
     $iscc = @(
         (Join-Path $env:LOCALAPPDATA "Programs\Inno Setup 6\ISCC.exe"),
         (Join-Path ${env:ProgramFiles(x86)} "Inno Setup 6\ISCC.exe")
     ) | Where-Object { Test-Path $_ } | Select-Object -First 1
-    if (-not $iscc) {
-        Write-Error "Inno Setup 6 compiler (ISCC.exe) not found."
-        exit 1
-    }
+    if (-not $iscc) { throw "Inno Setup 6 compiler (ISCC.exe) not found." }
 
     Write-Host ""
     Write-Host "Building the installer..." -ForegroundColor Cyan
-    # /DSignSetup turns on the SignTool directive in the .iss; /Sssign=... is the
-    # command Inno runs for Setup.exe and the uninstaller. $f arrives quoted, $q
-    # is a literal quote - single-quoted here so PowerShell leaves them alone.
-    $signCommand = '/Sssign=$q' + $SsignPath + '$q -n $q' + $appName + '$q -u $q' + $repoUrl + '$q $f'
+    # /DSignSetup turns on the SignTool directive in the .iss; /Srelease=... is the command Inno runs for Setup.exe
+    # and the uninstaller: the same signing script through pwsh. $f arrives quoted, $q is a literal quote - kept in
+    # single quotes so PowerShell leaves them alone.
+    $pwsh = (Get-Command pwsh.exe).Source
+    $signCommand = '/Srelease=$q' + $pwsh + '$q -NoProfile -ExecutionPolicy Bypass -File $q' + $SignScript + '$q -Path $f'
     & $iscc "installer\HASS.Agent.NET10.iss" "/DMyAppVersion=$version" "/DSignSetup" $signCommand
-    if ($LASTEXITCODE -ne 0) {
-        Write-Error "Inno Setup failed (exit code $LASTEXITCODE)."
-        exit 1
-    }
+    if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed (exit code $LASTEXITCODE)." }
 
     $installer = (Resolve-Path "artifacts\installer\HASS.Agent.NET10-Setup-$version.exe").Path
-    Assert-Signed $signTool $installer
+    Assert-Signed $installer
 
     Write-Host ""
     Write-Host "Packaging the zip..." -ForegroundColor Cyan
@@ -242,59 +210,65 @@ if ($Release) {
     $zip = (Resolve-Path $zip).Path
 
     $releaseFiles = @($installer, $zip)
-    Write-Host ""
-    Write-Host "Release assets ✓" -ForegroundColor Green
-    foreach ($file in $releaseFiles) {
-        Write-Host "  $file  ($([math]::Round((Get-Item $file).Length / 1MB, 1)) MB)" -ForegroundColor Green
+}
+
+if ($Open) { Start-Process explorer.exe "/select,`"$fullPath`"" }
+
+# --- Summary: only what this run produced. The signer column shows which certificate a hash belongs to. ---------
+Write-Host ""
+$rows = foreach ($file in @($fullPath) + $releaseFiles) {
+    $item = Get-Item $file
+    [pscustomobject]@{
+        File    = $item.Name
+        Version = if ($item.Extension -eq '.exe') { $item.VersionInfo.FileVersion } else { $version }
+        Signed  = if ($item.Extension -eq '.exe') { (Get-AuthenticodeSignature $file).Status } else { '-' }
+        Signer  = if ($item.Extension -eq '.exe') { Get-SignerName $file } else { '' }
+        MB      = [math]::Round($item.Length / 1MB, 1)
+        SHA256  = (Get-FileHash $file -Algorithm SHA256).Hash
     }
 }
+$rows | Format-Table -AutoSize
 
-}
-finally {
-    if ($Sign) { Remove-Item Env:CERTUM_TOKEN -ErrorAction SilentlyContinue }
-}
-
-if ($Open) {
-    Start-Process explorer.exe "/select,`"$fullPath`""
-}
-
-# ---------------------------------------------------------------------------
-# Optionally replace the assets on the GitHub release for this version
-# ---------------------------------------------------------------------------
-
-if ($Release -and (Get-Command gh -ErrorAction SilentlyContinue)) {
-    $tag = "v$version"
-    gh release view $tag --json tagName 2>&1 | Out-Null
-    if ($LASTEXITCODE -eq 0) {
-        Write-Host ""
-        Write-Host "GitHub release $tag exists." -ForegroundColor Cyan
-        $doUpload = $Upload
-        if (-not $doUpload) {
-            $answer = Read-Host "Replace its assets with these signed files? [y/N]"
-            $doUpload = $answer -match '^(y|yes|i|igen)$'
-        }
-        if ($doUpload) {
-            gh release upload $tag @releaseFiles --clobber
-            if ($LASTEXITCODE -ne 0) {
-                Write-Error "gh release upload failed (exit code $LASTEXITCODE)."
-                exit 1
-            }
-            Write-Host "Release assets replaced on $tag" -ForegroundColor Green
-        }
-        else {
-            Write-Host "Release left untouched." -ForegroundColor DarkGray
-        }
+# --- Replace the assets on the GitHub release of this version ----------------------------------------------------
+if ($Tag) {
+    $gh = Get-Command gh -ErrorAction SilentlyContinue
+    if (-not $gh) {
+        if ($Upload) { throw "-Upload needs the GitHub CLI (gh) on PATH." }
+        Write-Host "No gh on PATH - to replace the release's assets: gh release upload $tagName <files> --clobber" -ForegroundColor DarkGray
     }
     else {
-        Write-Host ""
-        Write-Host "No GitHub release $tag yet - push the tag first, then re-run with -Release to replace the CI assets." -ForegroundColor DarkGray
+        # "release not found" is the one failure that means "nothing to replace"; anything else (auth, network)
+        # must not pass for a missing release.
+        $view = gh release view $tagName --json tagName 2>&1
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "GitHub release $tagName exists." -ForegroundColor Cyan
+            $doUpload = $Upload
+            if (-not $doUpload) {
+                $answer = Read-Host "Replace its assets with these signed files? [y/N]"
+                $doUpload = $answer -match '^(y|yes|i|igen)$'
+            }
+            if ($doUpload) {
+                gh release upload $tagName @releaseFiles --clobber
+                if ($LASTEXITCODE -ne 0) { throw "gh release upload failed (exit code $LASTEXITCODE)." }
+                Write-Host "Release assets replaced on $tagName" -ForegroundColor Green
+            }
+            else {
+                Write-Host "Release left untouched." -ForegroundColor DarkGray
+            }
+        }
+        elseif ("$view" -match 'release not found') {
+            $hint = "No GitHub release $tagName yet - push the tag, let CI create the release, then re-run with -Tag to replace its assets."
+            if ($Upload) { throw $hint }
+            Write-Host $hint -ForegroundColor Yellow
+        }
+        else {
+            throw "gh could not read release ${tagName}: $view"
+        }
     }
+    return
 }
 
-# ---------------------------------------------------------------------------
-# Optionally replace the installed copy, so a build can be tested for real
-# without going through the installer.
-# ---------------------------------------------------------------------------
+# --- Optionally replace the installed copy, so a build can be tested for real without the installer. -------------
 
 $installDir = Join-Path $env:ProgramFiles "HASS.Agent .NET10"
 $installedExe = Join-Path $installDir "HASS.Agent.NET10.exe"
@@ -304,12 +278,10 @@ $processName = "HASS.Agent.NET10"
 if ($NoDeploy) { return }
 
 if (-not (Test-Path $installedExe)) {
-    Write-Host ""
     Write-Host "No installed copy found at $installDir - nothing to replace." -ForegroundColor DarkGray
     return
 }
 
-Write-Host ""
 Write-Host "Installed copy found: $installedExe" -ForegroundColor Cyan
 
 if (-not $Deploy) {
@@ -323,8 +295,7 @@ if (-not $Deploy) {
 $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
     [Security.Principal.WindowsBuiltInRole]::Administrator)
 if (-not $isAdmin) {
-    Write-Error "Replacing the installed copy needs an elevated shell (Program Files and the service). Re-run as administrator."
-    exit 1
+    throw "Replacing the installed copy needs an elevated shell (Program Files and the service). Re-run as administrator."
 }
 
 function Invoke-Agent([string]$Exe, [string]$Arguments) {
@@ -368,8 +339,7 @@ try {
     Copy-Item -LiteralPath $fullPath -Destination $installedExe -Force
 }
 catch {
-    Write-Error "Could not replace $installedExe : $($_.Exception.Message)"
-    exit 1
+    throw "Could not replace $installedExe : $($_.Exception.Message)"
 }
 
 if ($serviceWasRunning) {

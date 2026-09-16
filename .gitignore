@@ -67,3 +67,6 @@ $RECYCLE.BIN/
 
 ## dotnet tool
 .dotnet/
+
+## Machine-specific build settings (signing script), see build-exe.ps1
+build.local.psd1

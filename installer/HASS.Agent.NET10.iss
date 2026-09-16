@@ -28,11 +28,11 @@ MinVersion=10.0
 UninstallDisplayIcon={app}\{#MyAppExeName}
 CloseApplications=yes
 RestartApplications=no
-; Signed builds come from build-exe.ps1 -Release, which defines SignSetup and
-; hands over the "ssign" sign tool command on the ISCC command line. Without
-; it (CI, plain local builds) the installer is produced unsigned.
+; Signed builds come from build-exe.ps1 -Tag, which defines SignSetup and hands
+; over the "release" sign tool command on the ISCC command line. Without it
+; (CI, plain local builds) the installer is produced unsigned.
 #ifdef SignSetup
-SignTool=ssign
+SignTool=release
 SignedUninstaller=yes
 #endif
 
