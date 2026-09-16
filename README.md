@@ -227,7 +227,7 @@ To check a download, open its **Properties → Digital Signatures** tab, or from
 signtool verify /pa /v HASS.Agent.NET10-Setup-10.6.8.exe
 ```
 
-Signing happens on the maintainer's machine with a one-time code from the SimplySign app; the private key lives in Certum's cloud HSM and is never exported. The GitHub Actions build itself is unsigned — the signed files replace its assets on the release. A certificate this new has no SmartScreen reputation yet, so Windows may still show a *"Windows protected your PC"* prompt for a while; the publisher name on that prompt is what confirms the file is genuine.
+Signing happens on the maintainer's machine through SimplySign, unlocked with a one-time code from the SimplySign app; the private key lives in Certum's cloud HSM and is never exported. The GitHub Actions build itself is unsigned — the signed files replace its assets on the release. A certificate this new has no SmartScreen reputation yet, so Windows may still show a *"Windows protected your PC"* prompt for a while; the publisher name on that prompt is what confirms the file is genuine.
 
 ## Quick Start
 
@@ -780,7 +780,7 @@ src\HASS.Agent.NET10\bin\Release\net10.0-windows10.0.19041.0\win-x64\publish\HAS
 
 To build the installer, also install [Inno Setup](https://jrsoftware.org/isinfo.php) and compile `installer\HASS.Agent.NET10.iss`.
 
-`build-exe.ps1` wraps the common cases: on its own it produces a standalone `.exe` and offers to swap it into the installed copy; `-Release` builds the signed installer and zip with the CI file names (see [Code Signing](#code-signing) — it needs the maintainer's certificate, so this is a release tool rather than a build step).
+`build-exe.ps1` wraps the common cases: on its own it produces a standalone `.exe` and offers to swap it into the installed copy; `-Tag` builds the signed installer and zip with the CI file names (see [Code Signing](#code-signing) — it needs the maintainer's certificate, so this is a release tool rather than a build step).
 
 ## GitHub Actions
 
