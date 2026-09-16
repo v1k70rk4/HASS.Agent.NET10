@@ -234,21 +234,27 @@ if ($Tag) {
     $gh = Get-Command gh -ErrorAction SilentlyContinue
     if (-not $gh) {
         if ($Upload) { throw "-Upload needs the GitHub CLI (gh) on PATH." }
-        Write-Host "No gh on PATH - to replace the release's assets: gh release upload $tagName <files> --clobber" -ForegroundColor DarkGray
+        Write-Host "No gh on PATH - to replace the release's assets: gh release upload $tagName <files> --clobber -R <owner/repo>" -ForegroundColor DarkGray
     }
     else {
+        # Always name the repository: this checkout also has an "upstream" remote (the original HASS.Agent),
+        # and gh would otherwise pick that one - and look for, or upload to, the release of the wrong project.
+        $originUrl = git remote get-url origin 2>$null
+        if ($originUrl -notmatch 'github\.com[:/](?<repo>[^/]+/[^/]+?)(\.git)?/?$') { throw "Cannot tell the GitHub repository from the origin remote: $originUrl" }
+        $repo = $Matches['repo']
+
         # "release not found" is the one failure that means "nothing to replace"; anything else (auth, network)
         # must not pass for a missing release.
-        $view = gh release view $tagName --json tagName 2>&1
+        $view = gh release view $tagName -R $repo --json tagName 2>&1
         if ($LASTEXITCODE -eq 0) {
-            Write-Host "GitHub release $tagName exists." -ForegroundColor Cyan
+            Write-Host "GitHub release $tagName exists on $repo." -ForegroundColor Cyan
             $doUpload = $Upload
             if (-not $doUpload) {
                 $answer = Read-Host "Replace its assets with these signed files? [y/N]"
                 $doUpload = $answer -match '^(y|yes|i|igen)$'
             }
             if ($doUpload) {
-                gh release upload $tagName @releaseFiles --clobber
+                gh release upload $tagName @releaseFiles --clobber -R $repo
                 if ($LASTEXITCODE -ne 0) { throw "gh release upload failed (exit code $LASTEXITCODE)." }
                 Write-Host "Release assets replaced on $tagName" -ForegroundColor Green
             }
