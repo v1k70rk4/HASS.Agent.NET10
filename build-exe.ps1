@@ -110,10 +110,10 @@ if ($signing) {
 
 # Version from the csproj: for the messages, the release file names and the tag check.
 [xml]$proj = Get-Content $project
-$version = ($proj.Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1)
-if ([string]::IsNullOrWhiteSpace($version)) { throw "Project version not found in $project." }
-if ($Version) { $version = $Version }
-$tagName = "v$version"
+$appVersion = ($proj.Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1)
+if ([string]::IsNullOrWhiteSpace($appVersion)) { throw "Project version not found in $project." }
+if ($Version) { $appVersion = $Version }   # the parameter; PowerShell names are case-insensitive, hence the different name
+$tagName = "v$appVersion"
 
 # --- Helpers ---------------------------------------------------------------------------------------------------
 
@@ -142,7 +142,7 @@ if ($Tag -and (Get-Command git -ErrorAction SilentlyContinue)) {
     }
     $headTags = @(git tag --points-at HEAD 2>$null)
     if ($headTags -contains $tagName) { Write-Host "Release tag: $tagName" -ForegroundColor DarkGray }
-    elseif ($headTags.Count -gt 0) { Write-Host "WARNING: HEAD is tagged $($headTags -join ', ') but the project version is $version." -ForegroundColor Yellow }
+    elseif ($headTags.Count -gt 0) { Write-Host "WARNING: HEAD is tagged $($headTags -join ', ') but the project version is $appVersion." -ForegroundColor Yellow }
     else { Write-Host "WARNING: HEAD carries no tag - tag the release ($tagName) first, so the signed assets match it." -ForegroundColor Yellow }
 }
 
@@ -162,11 +162,11 @@ if ($Tag) {
     # tag build. Recreated from scratch so nothing from an earlier local build ends up in the release.
     $Output = "artifacts\HASS.Agent.NET10\win-x64"
     if (Test-Path $Output) { Remove-Item $Output -Recurse -Force }
-    Write-Host "Building $appName $version  (release layout, win-x64)..." -ForegroundColor Cyan
+    Write-Host "Building $appName $appVersion  (release layout, win-x64)..." -ForegroundColor Cyan
 }
 else {
     $publishArgs += "-p:IncludeNativeLibrariesForSelfExtract=true"
-    Write-Host "Building $appName $version  (standalone, self-contained, win-x64)..." -ForegroundColor Cyan
+    Write-Host "Building $appName $appVersion  (standalone, self-contained, win-x64)..." -ForegroundColor Cyan
 }
 
 dotnet @publishArgs -o $Output
@@ -203,17 +203,17 @@ if ($Tag) {
     # single quotes so PowerShell leaves them alone.
     $pwsh = (Get-Command pwsh.exe).Source
     $signCommand = '/Srelease=$q' + $pwsh + '$q -NoProfile -ExecutionPolicy Bypass -File $q' + $SignScript + '$q -Path $f'
-    & $iscc "installer\HASS.Agent.NET10.iss" "/DMyAppVersion=$version" "/DSignSetup" $signCommand
+    & $iscc "installer\HASS.Agent.NET10.iss" "/DMyAppVersion=$appVersion" "/DSignSetup" $signCommand
     if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed (exit code $LASTEXITCODE)." }
 
-    $installer = (Resolve-Path "artifacts\installer\HASS.Agent.NET10-Setup-$version.exe").Path
+    $installer = (Resolve-Path "artifacts\installer\HASS.Agent.NET10-Setup-$appVersion.exe").Path
     Assert-Signed $installer
 
     Write-Host ""
     Write-Host "Packaging the zip..." -ForegroundColor Cyan
     $packageDir = "artifacts\package"
     New-Item -ItemType Directory -Force -Path $packageDir | Out-Null
-    $zip = Join-Path $packageDir "HASS.Agent.NET10-win-x64-$version.zip"
+    $zip = Join-Path $packageDir "HASS.Agent.NET10-win-x64-$appVersion.zip"
     Compress-Archive -Path "$Output\*" -DestinationPath $zip -Force
     $zip = (Resolve-Path $zip).Path
 
@@ -228,7 +228,7 @@ $rows = foreach ($file in @($fullPath) + $releaseFiles) {
     $item = Get-Item $file
     [pscustomobject]@{
         File    = $item.Name
-        Version = if ($item.Extension -eq '.exe') { $item.VersionInfo.FileVersion } else { $version }
+        Version = if ($item.Extension -eq '.exe') { $item.VersionInfo.FileVersion } else { $appVersion }
         Signed  = if ($item.Extension -eq '.exe') { (Get-AuthenticodeSignature $file).Status } else { '-' }
         Signer  = if ($item.Extension -eq '.exe') { Get-SignerName $file } else { '' }
         MB      = [math]::Round($item.Length / 1MB, 1)
