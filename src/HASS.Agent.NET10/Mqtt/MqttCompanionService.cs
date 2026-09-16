@@ -364,6 +364,17 @@ internal sealed class MqttCompanionService : IDisposable
     /// </summary>
     private async Task RunSilentUpdateInstallAsync()
     {
+        // One installer at a time: a second Install while the first is still downloading
+        // must not schedule a second setup. Once scheduled, the installer stops this
+        // service anyway; the flag is released only when nothing was scheduled, or after
+        // a grace period in case the scheduled installer never ran.
+        if (Interlocked.Exchange(ref _updateInstallInProgress, 1) == 1)
+        {
+            _log.Info("Silent update install already in progress, ignoring request.");
+            return;
+        }
+
+        var scheduled = false;
         try
         {
             _log.Info("Silent update install requested (service role).");
@@ -390,11 +401,24 @@ internal sealed class MqttCompanionService : IDisposable
                 $"@echo off{Environment.NewLine}" +
                 $"\"{installerPath}\" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SILENTUPDATE{Environment.NewLine}");
             RunDetachedTask("HASSAgentNet10Update", batch, asSystem: true);
+            scheduled = true;
             _log.Info("Silent installer scheduled via Task Scheduler.");
         }
         catch (Exception ex)
         {
             _log.Warning($"Silent update install failed: {ex.Message}");
+        }
+        finally
+        {
+            if (!scheduled)
+            {
+                Interlocked.Exchange(ref _updateInstallInProgress, 0);
+            }
+            else
+            {
+                _ = Task.Delay(TimeSpan.FromMinutes(10))
+                    .ContinueWith(_ => Interlocked.Exchange(ref _updateInstallInProgress, 0), TaskScheduler.Default);
+            }
         }
     }
 
