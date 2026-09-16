@@ -30,6 +30,7 @@ The modern .NET10 line starts at **version 10.0.0**. The pre-.NET10 client remai
 
 - [What Changed](#what-changed)
 - [Requirements](#requirements)
+- [Code Signing](#code-signing)
 - [Quick Start](#quick-start)
 - [Features](#features)
   - [Notifications](#notifications)
@@ -63,6 +64,7 @@ The modern .NET10 line starts at **version 10.0.0**. The pre-.NET10 client remai
 
 Requires the Home Assistant integration **10.6.7** or newer (no integration change in this release).
 
+- **Signed releases.** The installer, its uninstaller and the executable are signed with a Certum code signing certificate issued to *Open Source Developer Viktor Revesz*, so Windows no longer shows them as coming from an unknown publisher. See [Code signing](#code-signing) for how to verify a download.
 - **The `rdp_sessions` sensor now counts Remote Desktop sessions.** It always reported `0`: the session's client protocol type was read as a 4-byte integer, but Windows returns a 2-byte value, so the protocol type of every session came back unreadable and no session was ever counted as RDP. Thanks to [@ThorgarIV](https://github.com/ThorgarIV) for the report and the fix.
 - **Release notes in the app.** The About page has a *Release notes* button for the installed version, and the update prompt now shows what changed in the new release before asking to download it.
 - **Support the project.** A *Buy me a coffee* button on the About page links to [Ko-fi](https://ko-fi.com/v1k70rk4).
@@ -207,6 +209,25 @@ Stable release of the custom commands & command sensors line.
 Windows versions older than Windows 10 2004 are intentionally blocked. The app targets `net10.0-windows10.0.19041.0` and uses modern Windows APIs for notifications, media sessions, services, sensors, and desktop state.
 
 If you download a published self-contained build, you do **not** need to install the .NET runtime separately. If you want to build from source, install the **.NET 10 SDK**.
+
+## Code Signing
+
+Starting with 10.6.8, the release assets (`HASS.Agent.NET10-Setup-<version>.exe`, its uninstaller, and `HASS.Agent.NET10.exe` in the zip) are signed with a Certum *Open Source* code signing certificate:
+
+| | |
+|---|---|
+| Issued to | `Open Source Developer Viktor Revesz` |
+| Issued by | `Certum Code Signing 2021 CA` |
+| SHA-1 thumbprint | `0C09522639318AF1069507568599DFC5B7F86EE4` |
+| Timestamp | `time.certum.pl` (the signature stays valid after the certificate expires) |
+
+To check a download, open its **Properties → Digital Signatures** tab, or from the Windows SDK:
+
+```powershell
+signtool verify /pa /v HASS.Agent.NET10-Setup-10.6.8.exe
+```
+
+Signing happens on the maintainer's machine with a one-time code from the SimplySign app; the private key lives in Certum's cloud HSM and is never exported. The GitHub Actions build itself is unsigned — the signed files replace its assets on the release. A certificate this new has no SmartScreen reputation yet, so Windows may still show a *"Windows protected your PC"* prompt for a while; the publisher name on that prompt is what confirms the file is genuine.
 
 ## Quick Start
 
@@ -758,6 +779,8 @@ src\HASS.Agent.NET10\bin\Release\net10.0-windows10.0.19041.0\win-x64\publish\HAS
 ```
 
 To build the installer, also install [Inno Setup](https://jrsoftware.org/isinfo.php) and compile `installer\HASS.Agent.NET10.iss`.
+
+`build-exe.ps1` wraps the common cases: on its own it produces a standalone `.exe` and offers to swap it into the installed copy; `-Release` builds the signed installer and zip with the CI file names (see [Code Signing](#code-signing) — it needs the maintainer's certificate, so this is a release tool rather than a build step).
 
 ## GitHub Actions
 
