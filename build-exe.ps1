@@ -265,7 +265,8 @@ if ($Tag) {
             throw "gh could not read release ${tagName}: $view"
         }
     }
-    return
+    # A release build ends here; a failed `gh release view` above must not leak out as this script's exit code.
+    exit 0
 }
 
 # --- Optionally replace the installed copy, so a build can be tested for real without the installer. -------------

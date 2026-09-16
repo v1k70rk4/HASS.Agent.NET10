@@ -64,7 +64,7 @@ The modern .NET10 line starts at **version 10.0.0**. The pre-.NET10 client remai
 
 Requires the Home Assistant integration **10.6.7** or newer (no integration change in this release).
 
-- **Signed releases.** The installer, its uninstaller and the executable are signed with a Certum code signing certificate issued to *Open Source Developer Viktor Revesz*, so Windows no longer shows them as coming from an unknown publisher. See [Code signing](#code-signing) for how to verify a download.
+- **Signed releases.** The installer, its uninstaller and the executable are signed with a Certum code signing certificate issued to *Open Source Developer Viktor Révész*, so Windows no longer shows them as coming from an unknown publisher. See [Code signing](#code-signing) for how to verify a download.
 - **The `rdp_sessions` sensor now counts Remote Desktop sessions.** It always reported `0`: the session's client protocol type was read as a 4-byte integer, but Windows returns a 2-byte value, so the protocol type of every session came back unreadable and no session was ever counted as RDP. Thanks to [@ThorgarIV](https://github.com/ThorgarIV) for the report and the fix.
 - **Release notes in the app.** The About page has a *Release notes* button for the installed version, and the update prompt now shows what changed in the new release before asking to download it.
 - **Support the project.** A *Buy me a coffee* button on the About page links to [Ko-fi](https://ko-fi.com/v1k70rk4).
@@ -216,7 +216,7 @@ Starting with 10.6.8, the release assets (`HASS.Agent.NET10-Setup-<version>.exe`
 
 | | |
 |---|---|
-| Issued to | `Open Source Developer Viktor Revesz` |
+| Issued to | `Open Source Developer Viktor Révész` |
 | Issued by | `Certum Code Signing 2021 CA` |
 | SHA-1 thumbprint | `0C09522639318AF1069507568599DFC5B7F86EE4` |
 | Timestamp | `time.certum.pl` (the signature stays valid after the certificate expires) |
