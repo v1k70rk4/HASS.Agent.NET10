@@ -97,6 +97,27 @@ internal static class SettingsStore
         return settings;
     }
 
+    /// <summary>
+    /// Removes every file the next start could rebuild the settings from. Deleting only
+    /// settings.json is not a reset: LoadOrCreate restores it from the backup, adopts the
+    /// serial from the device-id sidecar, and AppPaths.Create migrates a legacy file back.
+    /// </summary>
+    public static void FactoryReset(AppPaths paths, FileLog log)
+    {
+        var files = new List<string> { paths.SettingsFile, BackupFile(paths), paths.DeviceIdFile };
+        files.AddRange(paths.LegacySettingsFiles);
+        foreach (var file in files)
+        {
+            if (!File.Exists(file))
+            {
+                continue;
+            }
+
+            File.Delete(file);
+            log.Info($"Factory reset: deleted {file}.");
+        }
+    }
+
     public static void Save(AppPaths paths, CompanionSettings settings)
     {
         settings.Normalize();

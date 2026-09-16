@@ -66,9 +66,13 @@ Requires the Home Assistant integration **10.6.7** or newer (no integration chan
 
 - **Signed releases.** The installer, its uninstaller and the executable are signed with a Certum code signing certificate issued to *Open Source Developer Viktor Révész*, so Windows no longer shows them as coming from an unknown publisher. See [Code signing](#code-signing) for how to verify a download.
 - **The `rdp_sessions` sensor now counts Remote Desktop sessions.** It always reported `0`: the session's client protocol type was read as a 4-byte integer, but Windows returns a 2-byte value, so the protocol type of every session came back unreadable and no session was ever counted as RDP. Thanks to [@ThorgarIV](https://github.com/ThorgarIV) for the report and the fix.
+- **Factory reset now actually resets.** Since 10.6.4 the settings file has had a backup and a device-id sidecar so a damaged file cannot lose your configuration — but the *Factory reset* button only deleted the settings file, and the next start quietly restored everything (connection, credentials, serial number) from those. It now removes the backup, the sidecar and any legacy settings the migration would have picked up, so the device really starts over.
+- **MQTT drops are logged, with the reason, and the reconnect backs off.** When the broker closed a session right after connecting (a rejected login, a user or ACL removed from Mosquitto, a duplicate client ID) the log showed nothing but `Connecting…` / `MQTT connected.` repeating at full speed. The agent now logs the broker's verdict for a refused connection and the disconnect reason for a dropped one, and waits 5 → 60 s between attempts when sessions keep dying, with a hint about the usual causes.
 - **Release notes in the app.** The About page has a *Release notes* button for the installed version, and the update prompt now shows what changed in the new release before asking to download it.
 - **Support the project.** A *Buy me a coffee* button on the About page links to [Ko-fi](https://ko-fi.com/v1k70rk4).
 - The GitHub links in the app point at the renamed repository (`HASS.Agent.NET10`) instead of relying on the redirect from the old name.
+
+Thanks to [@ThorgarIV](https://github.com/ThorgarIV) for the RDP report and fix, and to [@phuzzyday](https://github.com/phuzzyday) for the migration write-up that surfaced the reset and logging problems.
 
 ### 10.6.7
 

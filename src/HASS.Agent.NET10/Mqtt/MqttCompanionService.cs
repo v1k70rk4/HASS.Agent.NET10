@@ -53,6 +53,9 @@ internal sealed class MqttCompanionService : IDisposable
     private string? _pendingUpdateCompletedFrom;
     private int _updateInstallInProgress;
     private volatile bool _forceReconnect;
+    // Consecutive MQTT sessions that died within seconds of connecting: the reconnect
+    // backs off instead of hammering a broker that keeps dropping us.
+    private int _shortLivedConnections;
 
     // Event-driven ("push") sensor updates: interactive state sources (monitor power,
     // session lock, AC/battery) signal here so the sensor loop publishes immediately
@@ -582,6 +585,7 @@ internal sealed class MqttCompanionService : IDisposable
             CancellationTokenSource? connectionCts = null;
             Task? systemSensorsTask = null;
             Task? updateTask = null;
+            TimeSpan? reconnectDelay = null;
 
             try
             {
@@ -602,6 +606,7 @@ internal sealed class MqttCompanionService : IDisposable
                 _client?.Dispose();
                 _client = _factory.CreateMqttClient();
                 _client.ApplicationMessageReceivedAsync += HandleMessageAsync;
+                _client.DisconnectedAsync += LogDisconnectAsync;
 
                 var options = BuildOptions();
                 _log.Info($"Connecting MQTT to {_settings.MqttHost}:{_settings.MqttPort}.");
@@ -609,6 +614,7 @@ internal sealed class MqttCompanionService : IDisposable
                 await _client.ConnectAsync(options, cancellationToken);
 
                 _log.Info("MQTT connected.");
+                var connectedAt = DateTime.UtcNow;
                 _forceReconnect = false;
                 await SubscribeAsync(cancellationToken);
                 await PublishDiscoveryAsync();
@@ -670,6 +676,21 @@ internal sealed class MqttCompanionService : IDisposable
                 if (_forceReconnect)
                 {
                     _log.Warning("Forcing MQTT reconnect after a stuck publish.");
+                }
+                else if (!cancellationToken.IsCancellationRequested)
+                {
+                    // The broker (or the network) closed the session; LogDisconnectAsync has
+                    // already said why. Without this the loop reconnected at once and in
+                    // silence, so a broker that rejects every session produced nothing but
+                    // an endless run of "MQTT connected." lines.
+                    var lifetime = DateTime.UtcNow - connectedAt;
+                    _shortLivedConnections = lifetime < TimeSpan.FromSeconds(30) ? _shortLivedConnections + 1 : 0;
+                    var seconds = Math.Min(60, 5 << Math.Min(_shortLivedConnections, 4));
+                    reconnectDelay = TimeSpan.FromSeconds(seconds);
+                    var hint = _shortLivedConnections >= 2
+                        ? " Sessions that keep dying right after connecting usually mean the broker is closing them: another client using the same client ID, a user or ACL that was removed, or a broker restart loop."
+                        : string.Empty;
+                    _log.Warning($"MQTT connection lost after {lifetime.TotalSeconds:0}s; reconnecting in {seconds}s.{hint}");
                 }
             }
             catch (OperationCanceledException)
@@ -747,7 +768,40 @@ internal sealed class MqttCompanionService : IDisposable
                     await _mediaSessionService.StopAsync();
                 }
             }
+
+            if (reconnectDelay is { } delay)
+            {
+                await Task.Delay(delay, cancellationToken);
+            }
         }
+    }
+
+    private Task LogDisconnectAsync(MqttClientDisconnectedEventArgs args)
+    {
+        var reason = string.IsNullOrWhiteSpace(args.ReasonString) ? string.Empty : $" ({args.ReasonString})";
+        if (!args.ClientWasConnected)
+        {
+            // A refused CONNECT: the loop's catch logs the exception, this adds the broker's
+            // verdict, which is what actually tells the user what to fix.
+            if (args.ConnectResult is { ResultCode: not MqttClientConnectResultCode.Success } result)
+            {
+                _log.Warning($"MQTT broker refused the connection: {result.ResultCode}{reason}. Check the username and password, and the broker's ACL.");
+            }
+
+            return Task.CompletedTask;
+        }
+
+        var error = args.Exception is null ? string.Empty : $": {args.Exception.Message}";
+        if (args.Reason == MqttClientDisconnectReason.NormalDisconnection && args.Exception is null)
+        {
+            _log.Info($"MQTT disconnected{reason}.");
+        }
+        else
+        {
+            _log.Warning($"MQTT session closed: {args.Reason}{reason}{error}");
+        }
+
+        return Task.CompletedTask;
     }
 
     /// <summary>

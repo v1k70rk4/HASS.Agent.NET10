@@ -1919,8 +1919,8 @@ internal sealed class MainForm : Form
 
         try
         {
-            File.Delete(_paths.SettingsFile);
-            _log.Info("Factory reset: settings file deleted; restarting.");
+            SettingsStore.FactoryReset(_paths, _log);
+            _log.Info("Factory reset complete; restarting.");
             RestartApplication();
         }
         catch (Exception ex)
