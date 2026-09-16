@@ -55,6 +55,10 @@
 .PARAMETER NoDeploy
     Never ask about replacing the installed copy.
 
+.PARAMETER Version
+    Build with this version instead of the csproj's (e.g. 10.6.8-test.1, which the released 10.6.8 then
+    outranks - handy for testing the update path against a real release). Not allowed with -Tag.
+
 .EXAMPLE
     # Development build, then replace the installed copy (administrator PowerShell):
     .\build-exe.ps1 -Deploy
@@ -74,7 +78,8 @@ param(
     [string]$Output = "artifacts\standalone",
     [switch]$Open,
     [switch]$Deploy,
-    [switch]$NoDeploy
+    [switch]$NoDeploy,
+    [string]$Version
 )
 
 $ErrorActionPreference = "Stop"
@@ -88,6 +93,7 @@ if (-not (Test-Path $project)) {
 }
 if ($Tag -and $Deploy) { throw "-Tag builds are the public release assets; they are not deployed to this machine." }
 if ($Upload -and -not $Tag) { throw "-Upload goes with -Tag." }
+if ($Version -and $Tag) { throw "-Version is for test builds; a -Tag build carries the csproj version." }
 
 # --- Machine-specific settings (build.local.psd1, never committed) -------------------------------------------
 $localFile = Join-Path $PSScriptRoot "build.local.psd1"
@@ -106,6 +112,7 @@ if ($signing) {
 [xml]$proj = Get-Content $project
 $version = ($proj.Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1)
 if ([string]::IsNullOrWhiteSpace($version)) { throw "Project version not found in $project." }
+if ($Version) { $version = $Version }
 $tagName = "v$version"
 
 # --- Helpers ---------------------------------------------------------------------------------------------------
@@ -148,6 +155,7 @@ $publishArgs = @(
     "--self-contained", "true",
     "-p:PublishSingleFile=true"
 )
+if ($Version) { $publishArgs += "-p:Version=$Version" }
 
 if ($Tag) {
     # Same layout and flags as the CI workflow: the installer script's Source path and the zip contents match a

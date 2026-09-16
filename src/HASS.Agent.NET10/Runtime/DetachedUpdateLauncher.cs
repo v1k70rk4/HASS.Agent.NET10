@@ -21,7 +21,7 @@ internal static class DetachedUpdateLauncher
 {
     private const string TaskName = "HASSAgentNet10AppUpdate";
 
-    public static bool TryLaunchInstaller(string installerPath, FileLog log)
+    public static bool TryLaunchInstaller(string installerPath, FileLog log, string? arguments = null)
     {
         try
         {
@@ -37,7 +37,7 @@ internal static class DetachedUpdateLauncher
             File.WriteAllText(
                 batchPath,
                 "@echo off" + Environment.NewLine +
-                $"start \"\" \"{installerPath}\"" + Environment.NewLine);
+                $"start \"\" \"{installerPath}\"" + (string.IsNullOrWhiteSpace(arguments) ? string.Empty : " " + arguments) + Environment.NewLine);
 
             if (!DetachedTaskRunner.RunOnce(TaskName, batchPath, asSystem: false, log))
             {
