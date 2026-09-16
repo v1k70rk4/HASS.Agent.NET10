@@ -2,7 +2,12 @@ using HASS.Agent.Companion.Runtime;
 
 namespace HASS.Agent.Companion.Configuration;
 
-internal sealed record AppPaths(string ConfigDirectory, string SettingsFile, string LogFile, string DeviceIdFile)
+internal sealed record AppPaths(
+    string ConfigDirectory,
+    string SettingsFile,
+    string LogFile,
+    string DeviceIdFile,
+    IReadOnlyList<string> LegacySettingsFiles)
 {
     public static AppPaths Create()
     {
@@ -37,6 +42,9 @@ internal sealed record AppPaths(string ConfigDirectory, string SettingsFile, str
             // Mirrors the device serial so losing settings.json does not create a new
             // device in Home Assistant. It lives in the config directory on purpose: a
             // deliberate clean install wipes that directory and should give a fresh identity.
-            Path.Combine(configDirectory, "device-id"));
+            Path.Combine(configDirectory, "device-id"),
+            // The migration sources above: a factory reset has to remove them as well, or the
+            // next start would simply migrate the old settings back in.
+            [legacyProgramDataSettingsFile, legacySettingsFile]);
     }
 }
