@@ -328,7 +328,6 @@ if ($serviceWasRunning) {
     Write-Host "  Service is running - stopping and uninstalling..." -ForegroundColor Yellow
     [void](Invoke-Agent $installedExe "--stop-service --quiet")
     [void](Invoke-Agent $installedExe "--uninstall-service --quiet")
-    Start-Sleep -Seconds 2
 }
 elseif ($null -ne $service) {
     Write-Host "  Service is installed but not running - leaving it alone." -ForegroundColor DarkGray
@@ -341,38 +340,67 @@ $trayWasRunning = $null -ne (Get-Process -Name $processName -ErrorAction Silentl
 if ($trayWasRunning) {
     Write-Host "  Tray app is running - closing it..." -ForegroundColor Yellow
     [void](Invoke-Agent $installedExe "--exit --quiet")
+}
+
+function Wait-AgentExit([int]$Seconds) {
+    $deadline = (Get-Date).AddSeconds($Seconds)
+    while ((Get-Process -Name $processName -ErrorAction SilentlyContinue) -and (Get-Date) -lt $deadline) {
+        Start-Sleep -Milliseconds 300
+    }
+    return -not (Get-Process -Name $processName -ErrorAction SilentlyContinue)
+}
+
+# "Stopped" is not "gone": the service reports stopped a moment before its process exits, and
+# the exe stays locked until it does. A fixed sleep here used to lose that race now and then -
+# and left the machine with the service uninstalled and the old exe in place.
+if (-not (Wait-AgentExit 20)) {
+    Write-Host "  Still running - forcing it closed." -ForegroundColor Yellow
+    Stop-Process -Name $processName -Force -ErrorAction SilentlyContinue
+    [void](Wait-AgentExit 10)
+}
+
+function Restore-Service {
+    if (-not $serviceWasRunning) { return }
+    Write-Host "  Putting the service back..." -ForegroundColor Yellow
+    [void](Invoke-Agent $installedExe "--install-service --quiet")
     Start-Sleep -Seconds 2
-    if (Get-Process -Name $processName -ErrorAction SilentlyContinue) {
-        Write-Host "  Still running - forcing it closed." -ForegroundColor Yellow
-        Stop-Process -Name $processName -Force -ErrorAction SilentlyContinue
+    $restored = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
+    if ($null -eq $restored) {
+        Write-Warning "The service did not come back - install it from the app's Service page."
+        return
+    }
+    if ($restored.Status -ne 'Running') {
+        [void](Invoke-Agent $installedExe "--start-service --quiet")
+        Start-Sleep -Seconds 1
+        $restored.Refresh()
+    }
+    Write-Host "  Service status: $($restored.Status)" -ForegroundColor Green
+}
+
+Write-Host "  Copying the new build in..." -ForegroundColor Yellow
+$copied = $false
+$copyError = $null
+foreach ($attempt in 1..10) {
+    try {
+        Copy-Item -LiteralPath $fullPath -Destination $installedExe -Force -ErrorAction Stop
+        $copied = $true
+        break
+    }
+    catch {
+        # Usually the virus scanner still holding the exe the process just let go of.
+        $copyError = $_.Exception.Message
         Start-Sleep -Seconds 1
     }
 }
 
-Write-Host "  Copying the new build in..." -ForegroundColor Yellow
-try {
-    Copy-Item -LiteralPath $fullPath -Destination $installedExe -Force
-}
-catch {
-    throw "Could not replace $installedExe : $($_.Exception.Message)"
+if (-not $copied) {
+    # The old exe is untouched, so the service it belongs to goes back exactly as it was.
+    Restore-Service
+    throw "Could not replace $installedExe after 10 attempts - the old build is still installed. Last error: $copyError"
 }
 
 if ($serviceWasRunning) {
-    Write-Host "  Reinstalling and starting the service..." -ForegroundColor Yellow
-    [void](Invoke-Agent $installedExe "--install-service --quiet")
-    Start-Sleep -Seconds 2
-    $service = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
-    if ($null -eq $service) {
-        Write-Warning "The service did not come back - install it from the app's Service page."
-    }
-    else {
-        if ($service.Status -ne 'Running') {
-            [void](Invoke-Agent $installedExe "--start-service --quiet")
-            Start-Sleep -Seconds 1
-            $service.Refresh()
-        }
-        Write-Host "  Service status: $($service.Status)" -ForegroundColor Green
-    }
+    Restore-Service
 }
 
 Write-Host ""
