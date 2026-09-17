@@ -17,6 +17,7 @@ using Microsoft.Win32;
 using System.Windows.Forms;
 using HASS.Agent.Companion.Logging;
 using HASS.Agent.Companion.Media;
+using HASS.Agent.Companion.Runtime;
 using HASS.Agent.Companion.SystemCommands;
 
 namespace HASS.Agent.Companion.SystemStatus;
@@ -841,8 +842,7 @@ internal sealed class SystemMetricsService : IDisposable
     {
         // powercfg writes in the OEM code page: the request reasons are localized
         // ("Egy hangadatfolyam használatban van."), so reading it as UTF-8 mangles them.
-        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
-        var encoding = Encoding.GetEncoding((int)GetOEMCP());
+        var encoding = ConsoleOutputEncoding.Oem;
 
         using var process = Process.Start(new ProcessStartInfo
         {
@@ -1983,9 +1983,6 @@ internal sealed class SystemMetricsService : IDisposable
 
     [DllImport("powrprof.dll")]
     private static extern uint CallNtPowerInformation(int informationLevel, IntPtr inputBuffer, uint inputBufferLength, out uint outputBuffer, uint outputBufferLength);
-
-    [DllImport("kernel32.dll")]
-    private static extern uint GetOEMCP();
 
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool GlobalMemoryStatusEx(ref MemoryStatusEx buffer);

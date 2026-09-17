@@ -303,6 +303,8 @@ internal static partial class Strings
             ["SvcMgr.InstalledNotStarted"] = "A service települt, de nem indult el.",
             ["SvcMgr.InstalledAndStarted"] = "A {0} telepítve és elindítva.",
             ["SvcMgr.ScFailed"] = "Nem sikerült elindítani az sc.exe-t.",
+            ["SvcMgr.AlreadyRunning"] = "A szolgáltatás már fut.",
+            ["SvcMgr.NotRunning"] = "A szolgáltatás nem fut.",
 
             // System commands
             ["Cmd.lock"] = "Gép zárolása",

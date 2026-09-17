@@ -122,7 +122,9 @@ internal static class DetachedTaskRunner
                 UseShellExecute = false,
                 CreateNoWindow = true,
                 RedirectStandardOutput = true,
-                RedirectStandardError = true
+                RedirectStandardError = true,
+                StandardOutputEncoding = ConsoleOutputEncoding.Oem,
+                StandardErrorEncoding = ConsoleOutputEncoding.Oem
             });
 
             if (process is null)

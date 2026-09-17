@@ -304,6 +304,8 @@ internal static partial class Strings
             ["SvcMgr.InstalledNotStarted"] = "Service installed but did not start.",
             ["SvcMgr.InstalledAndStarted"] = "{0} installed and started.",
             ["SvcMgr.ScFailed"] = "Failed to start sc.exe.",
+            ["SvcMgr.AlreadyRunning"] = "The service is already running.",
+            ["SvcMgr.NotRunning"] = "The service is not running.",
 
             ["Cmd.lock"] = "Lock computer",
             ["Cmd.sleep"] = "Sleep",
