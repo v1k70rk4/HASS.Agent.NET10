@@ -205,8 +205,10 @@ internal sealed class SystemMetricsService : IDisposable
             _windowsUpdatePendingState = -1;
             Interlocked.Exchange(ref _windowsUpdateCheckedAtTicks, 0);
         }
-        else if (updateHourly)
+        else if (updateHourly || _windowsUpdatePendingState < 0)
         {
+            // Unknown also means "switched on while running": that must not wait for the
+            // next hourly cycle.
             RefreshWindowsUpdatePending();
         }
 
@@ -1076,8 +1078,13 @@ internal sealed class SystemMetricsService : IDisposable
     /// </summary>
     private void RefreshWindowsUpdatePending()
     {
+        // The cache only spares a repeat search while a result is known. A search that was
+        // still running when the sensor was switched off leaves a fresh timestamp behind, and
+        // that must not stop the search after it is switched back on.
         var checkedAt = Interlocked.Read(ref _windowsUpdateCheckedAtTicks);
-        if (checkedAt != 0 && DateTime.UtcNow.Ticks - checkedAt < WindowsUpdatePendingCacheDuration.Ticks)
+        if (_windowsUpdatePendingState >= 0 &&
+            checkedAt != 0 &&
+            DateTime.UtcNow.Ticks - checkedAt < WindowsUpdatePendingCacheDuration.Ticks)
         {
             return;
         }
