@@ -1133,7 +1133,14 @@ internal sealed class MqttCompanionService : IDisposable
             var options = BuildOptions();
             using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeoutCts.CancelAfter(TimeSpan.FromSeconds(5));
-            await pingClient.ConnectAsync(options, timeoutCts.Token);
+            // A refused login is not a broker that came back: treating it as one left the
+            // HA API failover for an MQTT connection that was refused again at once.
+            var connectResult = await pingClient.ConnectAsync(options, timeoutCts.Token);
+            if (connectResult is { ResultCode: not MqttClientConnectResultCode.Success })
+            {
+                return false;
+            }
+
             await pingClient.DisconnectAsync();
             return true;
         }
