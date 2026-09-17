@@ -213,8 +213,11 @@ internal sealed class SystemMetricsService : IDisposable
             }
         }
 
+        // Null for a role that does not report the sensor: both roles publish to one state
+        // topic, and an empty value from one would blank out what the other reports.
+        var lastWake = Wanted("last_wake_reason") ? _lastWake : null;
         var attributes = BuildAttributes(_lastNetworkAddresses, _lastDisplays, _lastRecentErrors, _lastShutdown,
-            _lastWake, _lastExecutionState, _lastPowerRequests, _lastCameraApps, _lastMicrophoneApps, _lastGpu);
+            lastWake, _lastExecutionState, _lastPowerRequests, _lastCameraApps, _lastMicrophoneApps, _lastGpu);
         var message = new SystemMetricsMessage(
             CpuUsage: updateFast ? Safe(ReadCpuUsage, previous?.CpuUsage ?? 0) : previous!.CpuUsage,
             MemoryUsage: memory.UsagePercent,
@@ -264,7 +267,7 @@ internal sealed class SystemMetricsService : IDisposable
             BluetoothEnabled: updateHourly ? Safe(ReadBluetoothEnabled, previous?.BluetoothEnabled ?? false) : previous!.BluetoothEnabled,
             EventLogErrorsRecent: _lastRecentErrors.Count,
             LastShutdownReason: _lastShutdown.Summary,
-            LastWakeReason: _lastWake.Summary,
+            LastWakeReason: lastWake?.Summary,
             BootTime: updateStartup ? DateTimeOffset.Now.AddMilliseconds(-Environment.TickCount64) : previous!.BootTime,
             CustomSensors: Safe(() => ReadCustomSensors(customSensors ?? [], serviceRole, attributes, profiles, previous?.CustomSensors ?? []), previous?.CustomSensors ?? []),
             Attributes: attributes,
@@ -1547,7 +1550,7 @@ internal sealed class SystemMetricsService : IDisposable
         IReadOnlyList<DisplayInfo> displays,
         IReadOnlyList<EventLogErrorInfo> recentErrors,
         ShutdownInfo lastShutdown,
-        WakeInfo lastWake,
+        WakeInfo? lastWake,
         uint? executionState,
         IReadOnlyList<PowerRequestInfo> powerRequests,
         IReadOnlyList<string>? cameraApps,
@@ -1575,8 +1578,12 @@ internal sealed class SystemMetricsService : IDisposable
                 ["event_id"] = lastShutdown.EventId,
                 ["created_at"] = lastShutdown.CreatedAt,
                 ["message"] = lastShutdown.Message
-            },
-            ["last_wake_reason"] = new Dictionary<string, object?>
+            }
+        };
+
+        if (lastWake is not null)
+        {
+            attributes["last_wake_reason"] = new Dictionary<string, object?>
             {
                 ["source"] = lastWake.Source,
                 ["kind"] = lastWake.Kind,
@@ -1584,8 +1591,8 @@ internal sealed class SystemMetricsService : IDisposable
                 ["duration_seconds"] = lastWake.DurationSeconds,
                 ["sleep_entered"] = lastWake.SleepEntered,
                 ["detail"] = lastWake.Detail
-            }
-        };
+            };
+        }
 
         // No execution state means this role does not report the sensor (see Read).
         if (executionState is { } state)
@@ -2129,7 +2136,7 @@ internal sealed record SystemMetricsMessage(
     [property: JsonPropertyName("bluetooth_enabled")] bool BluetoothEnabled,
     [property: JsonPropertyName("event_log_errors_recent")] int EventLogErrorsRecent,
     [property: JsonPropertyName("last_shutdown_reason")] string LastShutdownReason,
-    [property: JsonPropertyName("last_wake_reason")] string LastWakeReason,
+    [property: JsonPropertyName("last_wake_reason")] string? LastWakeReason,
     [property: JsonPropertyName("boot_time")] DateTimeOffset BootTime,
     [property: JsonPropertyName("custom_sensors")] IReadOnlyList<CustomSensorState> CustomSensors,
     [property: JsonPropertyName("attributes")] IReadOnlyDictionary<string, IReadOnlyDictionary<string, object?>> Attributes,

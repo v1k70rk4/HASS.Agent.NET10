@@ -19,6 +19,11 @@ internal sealed class MediaSessionService : IDisposable
     private Func<byte[]?, Task>? _publishThumbnail;
     private string? _lastThumbnailHash;
 
+    // Start and stop arrive from several places (the MQTT and the HA API path start the
+    // monitor, shutdown stops it from the service's StopAsync and from the connection loop
+    // unwinding at the same moment), so each transition runs to its end before the next.
+    private readonly SemaphoreSlim _lifecycle = new(1, 1);
+
     // The audio endpoint is shared with SystemMetricsService: two instances would
     // each create their own WASAPI COM objects and deadlock against each other
     // during an audio device change (e.g. monitor power-off dropping HDMI audio).
@@ -30,59 +35,80 @@ internal sealed class MediaSessionService : IDisposable
 
     public async Task StartAsync(Func<MediaStateMessage, Task> publishState, Func<byte[]?, Task>? publishThumbnail, CancellationToken cancellationToken)
     {
-        if (_worker is not null)
+        await _lifecycle.WaitAsync(cancellationToken);
+        try
         {
-            return;
+            if (_worker is not null)
+            {
+                return;
+            }
+
+            _publishState = publishState;
+            _publishThumbnail = publishThumbnail;
+            _sessionManager = await GlobalSystemMediaTransportControlsSessionManager.RequestAsync();
+            _localPlayer = new MediaPlayer
+            {
+                AutoPlay = false,
+                IsLoopingEnabled = false
+            };
+
+            _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            // The token, not the field: the worker must not depend on what _cts holds by the
+            // time it gets to run.
+            var token = _cts.Token;
+            _worker = Task.Run(() => MonitorAsync(token), CancellationToken.None);
+            _log.Info("Media session monitor started.");
         }
-
-        _publishState = publishState;
-        _publishThumbnail = publishThumbnail;
-        _sessionManager = await GlobalSystemMediaTransportControlsSessionManager.RequestAsync();
-        _localPlayer = new MediaPlayer
+        finally
         {
-            AutoPlay = false,
-            IsLoopingEnabled = false
-        };
-
-        _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        _worker = Task.Run(() => MonitorAsync(_cts.Token), CancellationToken.None);
-        _log.Info("Media session monitor started.");
+            _lifecycle.Release();
+        }
     }
 
     public async Task StopAsync()
     {
-        // Shutdown stops the monitor from two places at once (the service's StopAsync and the
-        // connection loop unwinding). Whoever takes the token source does the work; the other
-        // call used to get past the null check too, and crashed the app on exit when it
-        // reached Dispose on a field the first one had already cleared.
-        var cts = Interlocked.Exchange(ref _cts, null);
-        if (cts is null)
+        // Two stops used to get past the null check together, and the second crashed the app
+        // on exit when it reached Dispose on a field the first one had already cleared.
+        // A free gate is taken synchronously, so nothing changes for a lone caller; a caller
+        // that had to wait resumes on the thread pool, because Dispose() blocks on this
+        // method and a continuation queued to that blocked thread would never run.
+        await _lifecycle.WaitAsync().ConfigureAwait(false);
+        try
         {
-            return;
+            var cts = _cts;
+            if (cts is null)
+            {
+                return;
+            }
+
+            _cts = null;
+            await cts.CancelAsync();
+
+            if (_worker is not null)
+            {
+                try
+                {
+                    await _worker;
+                }
+                catch (OperationCanceledException)
+                {
+                    // Expected during shutdown.
+                }
+            }
+
+            _localPlayer?.Dispose();
+            _localPlayer = null;
+            _sessionManager = null;
+            cts.Dispose();
+            _worker = null;
+            _publishThumbnail = null;
+            _lastThumbnailHash = null;
+            _log.Info("Media session monitor stopped.");
         }
-
-        await cts.CancelAsync();
-
-        if (_worker is not null)
+        finally
         {
-            try
-            {
-                await _worker;
-            }
-            catch (OperationCanceledException)
-            {
-                // Expected during shutdown.
-            }
+            _lifecycle.Release();
         }
-
-        _localPlayer?.Dispose();
-        _localPlayer = null;
-        _sessionManager = null;
-        cts.Dispose();
-        _worker = null;
-        _publishThumbnail = null;
-        _lastThumbnailHash = null;
-        _log.Info("Media session monitor stopped.");
     }
 
     public async Task HandleCommandAsync(MediaCommand command)
