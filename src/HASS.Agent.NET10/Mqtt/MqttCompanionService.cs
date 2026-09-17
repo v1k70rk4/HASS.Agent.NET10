@@ -1080,7 +1080,8 @@ internal sealed class MqttCompanionService : IDisposable
                     var pushData = _systemMetricsService?.Read(
                         _settings.CustomSensors,
                         _role == CompanionRuntimeRole.Service,
-                        PushProfiles);
+                        PushProfiles,
+                        _settings.BuiltInSensors);
                     if (pushData is not null)
                     {
                         await _haWs!.PublishSensorStateAsync(new
@@ -1097,7 +1098,8 @@ internal sealed class MqttCompanionService : IDisposable
             var sensorData = _systemMetricsService?.Read(
                 _settings.CustomSensors,
                 _role == CompanionRuntimeRole.Service,
-                dueProfiles);
+                dueProfiles,
+                _settings.BuiltInSensors);
 
             if (sensorData is not null)
             {
@@ -1529,7 +1531,7 @@ internal sealed class MqttCompanionService : IDisposable
         SystemMetricsMessage message;
         try
         {
-            message = _systemMetricsService.Read(_settings.CustomSensors, _role == CompanionRuntimeRole.Service, profiles);
+            message = _systemMetricsService.Read(_settings.CustomSensors, _role == CompanionRuntimeRole.Service, profiles, _settings.BuiltInSensors);
         }
         catch (Exception ex)
         {

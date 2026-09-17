@@ -1014,7 +1014,9 @@ internal sealed class MainForm : Form
                     TrayApp = definition.SupportsTrayApp,
                     Service = definition.SupportsService,
                     Type = CustomSensorTypes.BuiltInAttribute,
-                    Name = string.Format(S("Sensors.AttributeSensorName"), S($"Sensor.{definition.Key}"), GetAttributeDisplayName(attributePath)),
+                    // This becomes the entity name in Home Assistant, so it follows that language,
+                    // like the built-in sensor names do.
+                    Name = string.Format(Strings.GetHa("Sensors.AttributeSensorName"), Strings.GetHa($"Sensor.{definition.Key}"), GetAttributeDisplayName(attributePath)),
                     Parameter = attributePath,
                     PollingProfile = SensorPollingProfiles.ToKey(definition.PollingProfile)
                 }));
@@ -1194,8 +1196,10 @@ internal sealed class MainForm : Form
     private static string GetAttributeDisplayName(string attributePath)
     {
         var lastDot = attributePath.LastIndexOf('.');
-        var name = lastDot >= 0 ? attributePath[(lastDot + 1)..] : attributePath;
-        return name.Replace("[0]", string.Empty);
+        var name = (lastDot >= 0 ? attributePath[(lastDot + 1)..] : attributePath).Replace("[0]", string.Empty);
+        var key = $"Attribute.{name}";
+        var translated = Strings.GetHa(key);
+        return translated == key ? name : translated;
     }
 
     private KeyValuePair<string, string>[] BuildPollingProfileOptions()

@@ -51,12 +51,17 @@ internal sealed class MediaSessionService : IDisposable
 
     public async Task StopAsync()
     {
-        if (_cts is null)
+        // Shutdown stops the monitor from two places at once (the service's StopAsync and the
+        // connection loop unwinding). Whoever takes the token source does the work; the other
+        // call used to get past the null check too, and crashed the app on exit when it
+        // reached Dispose on a field the first one had already cleared.
+        var cts = Interlocked.Exchange(ref _cts, null);
+        if (cts is null)
         {
             return;
         }
 
-        await _cts.CancelAsync();
+        await cts.CancelAsync();
 
         if (_worker is not null)
         {
@@ -73,8 +78,7 @@ internal sealed class MediaSessionService : IDisposable
         _localPlayer?.Dispose();
         _localPlayer = null;
         _sessionManager = null;
-        _cts.Dispose();
-        _cts = null;
+        cts.Dispose();
         _worker = null;
         _publishThumbnail = null;
         _lastThumbnailHash = null;
