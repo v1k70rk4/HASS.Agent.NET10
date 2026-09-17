@@ -328,7 +328,6 @@ if ($serviceWasRunning) {
     Write-Host "  Service is running - stopping and uninstalling..." -ForegroundColor Yellow
     [void](Invoke-Agent $installedExe "--stop-service --quiet")
     [void](Invoke-Agent $installedExe "--uninstall-service --quiet")
-    Start-Sleep -Seconds 2
 }
 elseif ($null -ne $service) {
     Write-Host "  Service is installed but not running - leaving it alone." -ForegroundColor DarkGray
@@ -341,39 +340,99 @@ $trayWasRunning = $null -ne (Get-Process -Name $processName -ErrorAction Silentl
 if ($trayWasRunning) {
     Write-Host "  Tray app is running - closing it..." -ForegroundColor Yellow
     [void](Invoke-Agent $installedExe "--exit --quiet")
+}
+
+function Wait-AgentExit([int]$Seconds) {
+    $deadline = (Get-Date).AddSeconds($Seconds)
+    while ((Get-Process -Name $processName -ErrorAction SilentlyContinue) -and (Get-Date) -lt $deadline) {
+        Start-Sleep -Milliseconds 300
+    }
+    return -not (Get-Process -Name $processName -ErrorAction SilentlyContinue)
+}
+
+# "Stopped" is not "gone": the service reports stopped a moment before its process exits, and
+# the exe stays locked until it does. A fixed sleep here used to lose that race now and then -
+# and left the machine with the service uninstalled and the old exe in place.
+if (-not (Wait-AgentExit 20)) {
+    Write-Host "  Still running - forcing it closed." -ForegroundColor Yellow
+    Stop-Process -Name $processName -Force -ErrorAction SilentlyContinue
+    [void](Wait-AgentExit 10)
+}
+
+# Puts the service back with whatever exe is installed at that moment. Returns whether it
+# ended up running, so the caller decides what a service that stayed down means.
+function Restore-Service {
+    if (-not $serviceWasRunning) { return $true }
+    Write-Host "  Putting the service back..." -ForegroundColor Yellow
+    [void](Invoke-Agent $installedExe "--install-service --quiet")
     Start-Sleep -Seconds 2
-    if (Get-Process -Name $processName -ErrorAction SilentlyContinue) {
-        Write-Host "  Still running - forcing it closed." -ForegroundColor Yellow
-        Stop-Process -Name $processName -Force -ErrorAction SilentlyContinue
+    $restored = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
+    if ($null -eq $restored) {
+        Write-Warning "The service did not come back - install it from the app's Service page."
+        return $false
+    }
+    if ($restored.Status -ne 'Running') {
+        [void](Invoke-Agent $installedExe "--start-service --quiet")
+        try { $restored.WaitForStatus('Running', [TimeSpan]::FromSeconds(15)) } catch { }
+        $restored.Refresh()
+    }
+    if ($restored.Status -ne 'Running') {
+        Write-Warning "The service is installed but $($restored.Status), not Running."
+        return $false
+    }
+    Write-Host "  Service status: $($restored.Status)" -ForegroundColor Green
+    return $true
+}
+
+# The new build is staged next to the installed exe first, and the old exe is kept until the
+# service runs again: a copy that fails half way, or a build whose service will not start,
+# ends with the previous build back in place rather than with a broken install.
+$stagedExe = "$installedExe.new"
+$backupExe = "$installedExe.bak"
+
+Write-Host "  Copying the new build in..." -ForegroundColor Yellow
+Copy-Item -LiteralPath $fullPath -Destination $stagedExe -Force -ErrorAction Stop
+
+$swapped = $false
+$swapError = $null
+foreach ($attempt in 1..10) {
+    try {
+        [System.IO.File]::Move($installedExe, $backupExe, $true)
+        try {
+            [System.IO.File]::Move($stagedExe, $installedExe)
+        }
+        catch {
+            [System.IO.File]::Move($backupExe, $installedExe)
+            throw
+        }
+        $swapped = $true
+        break
+    }
+    catch {
+        # Usually the virus scanner still holding the exe the process just let go of.
+        $swapError = $_.Exception.Message
         Start-Sleep -Seconds 1
     }
 }
 
-Write-Host "  Copying the new build in..." -ForegroundColor Yellow
-try {
-    Copy-Item -LiteralPath $fullPath -Destination $installedExe -Force
-}
-catch {
-    throw "Could not replace $installedExe : $($_.Exception.Message)"
+if (-not $swapped) {
+    # The old exe is untouched, so the service it belongs to goes back exactly as it was.
+    if (Test-Path -LiteralPath $stagedExe) { [System.IO.File]::Delete($stagedExe) }
+    [void](Restore-Service)
+    throw "Could not replace $installedExe after 10 attempts - the old build is still installed. Last error: $swapError"
 }
 
-if ($serviceWasRunning) {
-    Write-Host "  Reinstalling and starting the service..." -ForegroundColor Yellow
-    [void](Invoke-Agent $installedExe "--install-service --quiet")
-    Start-Sleep -Seconds 2
-    $service = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
-    if ($null -eq $service) {
-        Write-Warning "The service did not come back - install it from the app's Service page."
-    }
-    else {
-        if ($service.Status -ne 'Running') {
-            [void](Invoke-Agent $installedExe "--start-service --quiet")
-            Start-Sleep -Seconds 1
-            $service.Refresh()
-        }
-        Write-Host "  Service status: $($service.Status)" -ForegroundColor Green
-    }
+if (-not (Restore-Service)) {
+    Write-Host "  The service does not run with the new build - putting the previous build back..." -ForegroundColor Yellow
+    [void](Invoke-Agent $installedExe "--stop-service --quiet")
+    [void](Invoke-Agent $installedExe "--uninstall-service --quiet")
+    [void](Wait-AgentExit 20)
+    [System.IO.File]::Move($backupExe, $installedExe, $true)
+    [void](Restore-Service)
+    throw "The service did not start with the new build; the previous build was restored."
 }
+
+if (Test-Path -LiteralPath $backupExe) { [System.IO.File]::Delete($backupExe) }
 
 Write-Host ""
 Write-Host "Installed copy replaced" -ForegroundColor Green

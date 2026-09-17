@@ -68,8 +68,10 @@ internal sealed class SystemMetricsService : IDisposable
     private ulong? _lastIdleTime;
     private ulong? _lastKernelTime;
     private ulong? _lastUserTime;
-    private DateTimeOffset? _lastWindowsUpdatePendingReadAt;
-    private bool _lastWindowsUpdatePending;
+    private long _windowsUpdateCheckedAtTicks;
+    private int _windowsUpdateCheckRunning;
+    // -1 until the first search has finished, then 0 / 1.
+    private volatile int _windowsUpdatePendingState = -1;
     private SystemMetricsMessage? _lastMessage;
     private IReadOnlyList<NetworkAddressInfo> _lastNetworkAddresses = [];
     private IReadOnlyList<DisplayInfo> _lastDisplays = [];
@@ -197,6 +199,19 @@ internal sealed class SystemMetricsService : IDisposable
             _lastGpu = Safe(ReadGpu, _lastGpu);
         }
 
+        if (!Wanted("windows_update_pending"))
+        {
+            // Forget the last search too, so switching the sensor back on asks again at once.
+            _windowsUpdatePendingState = -1;
+            Interlocked.Exchange(ref _windowsUpdateCheckedAtTicks, 0);
+        }
+        else if (updateHourly || _windowsUpdatePendingState < 0)
+        {
+            // Unknown also means "switched on while running": that must not wait for the
+            // next hourly cycle.
+            RefreshWindowsUpdatePending();
+        }
+
         if (updateHourly)
         {
             _lastRecentErrors = Safe(() => ReadRecentEventLogErrors(TimeSpan.FromHours(1)), _lastRecentErrors);
@@ -274,7 +289,7 @@ internal sealed class SystemMetricsService : IDisposable
             SleepBlocked: _lastExecutionState is { } executionState
                 ? (executionState & (EsSystemRequired | EsDisplayRequired | EsAwayModeRequired)) != 0
                 : null,
-            WindowsUpdatePending: updateHourly ? Safe(ReadWindowsUpdatePending, previous?.WindowsUpdatePending ?? false) : previous!.WindowsUpdatePending,
+            WindowsUpdatePending: _windowsUpdatePendingState switch { 0 => false, 1 => true, _ => null },
             BluetoothEnabled: updateHourly ? Safe(ReadBluetoothEnabled, previous?.BluetoothEnabled ?? false) : previous!.BluetoothEnabled,
             EventLogErrorsRecent: _lastRecentErrors.Count,
             LastShutdownReason: _lastShutdown.Summary,
@@ -1056,17 +1071,45 @@ internal sealed class SystemMetricsService : IDisposable
             RegistryValueExists(RegistryHive.LocalMachine, @"SYSTEM\CurrentControlSet\Control\Session Manager", "PendingFileRenameOperations");
     }
 
-    private bool ReadWindowsUpdatePending()
+    /// <summary>
+    /// The Windows Update search takes 5-30 seconds. Run inside the sensor cycle it held back
+    /// every other sensor for that long - at startup and again every hour - so it runs on its
+    /// own, and the cycles publish whatever the last finished search found.
+    /// </summary>
+    private void RefreshWindowsUpdatePending()
     {
-        if (_lastWindowsUpdatePendingReadAt is not null &&
-            DateTimeOffset.UtcNow - _lastWindowsUpdatePendingReadAt < WindowsUpdatePendingCacheDuration)
+        // The cache only spares a repeat search while a result is known. A search that was
+        // still running when the sensor was switched off leaves a fresh timestamp behind, and
+        // that must not stop the search after it is switched back on.
+        var checkedAt = Interlocked.Read(ref _windowsUpdateCheckedAtTicks);
+        if (_windowsUpdatePendingState >= 0 &&
+            checkedAt != 0 &&
+            DateTime.UtcNow.Ticks - checkedAt < WindowsUpdatePendingCacheDuration.Ticks)
         {
-            return _lastWindowsUpdatePending;
+            return;
         }
 
-        _lastWindowsUpdatePending = ReadWindowsUpdatePendingFromAgent();
-        _lastWindowsUpdatePendingReadAt = DateTimeOffset.UtcNow;
-        return _lastWindowsUpdatePending;
+        if (Interlocked.CompareExchange(ref _windowsUpdateCheckRunning, 1, 0) != 0)
+        {
+            return;
+        }
+
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                _windowsUpdatePendingState = ReadWindowsUpdatePendingFromAgent() ? 1 : 0;
+                Interlocked.Exchange(ref _windowsUpdateCheckedAtTicks, DateTime.UtcNow.Ticks);
+            }
+            catch (Exception ex)
+            {
+                _log.Warning($"Windows Update check failed: {ex.Message}");
+            }
+            finally
+            {
+                Interlocked.Exchange(ref _windowsUpdateCheckRunning, 0);
+            }
+        });
     }
 
     private static bool ReadWindowsUpdatePendingFromAgent()
@@ -2145,7 +2188,7 @@ internal sealed record SystemMetricsMessage(
     [property: JsonPropertyName("rdp_sessions")] int RdpSessions,
     [property: JsonPropertyName("pending_reboot")] bool PendingReboot,
     [property: JsonPropertyName("sleep_blocked")] bool? SleepBlocked,
-    [property: JsonPropertyName("windows_update_pending")] bool WindowsUpdatePending,
+    [property: JsonPropertyName("windows_update_pending")] bool? WindowsUpdatePending,
     [property: JsonPropertyName("bluetooth_enabled")] bool BluetoothEnabled,
     [property: JsonPropertyName("event_log_errors_recent")] int EventLogErrorsRecent,
     [property: JsonPropertyName("last_shutdown_reason")] string LastShutdownReason,
