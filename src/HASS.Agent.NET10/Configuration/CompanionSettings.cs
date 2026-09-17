@@ -375,8 +375,8 @@ internal sealed class CompanionSettings
                     setting = new BuiltInSensorSetting
                     {
                         Key = definition.Key,
-                        Service = definition.SupportsService,
-                        TrayApp = definition.SupportsTrayApp
+                        Service = definition.SupportsService && definition.EnabledByDefault,
+                        TrayApp = definition.SupportsTrayApp && definition.EnabledByDefault
                     };
                 }
 

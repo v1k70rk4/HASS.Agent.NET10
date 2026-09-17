@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Diagnostics;
 using System.Diagnostics.Eventing.Reader;
 using System.Globalization;
@@ -11,10 +12,12 @@ using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Text.Json.Serialization;
+using System.Xml.Linq;
 using Microsoft.Win32;
 using System.Windows.Forms;
 using HASS.Agent.Companion.Logging;
 using HASS.Agent.Companion.Media;
+using HASS.Agent.Companion.Runtime;
 using HASS.Agent.Companion.SystemCommands;
 
 namespace HASS.Agent.Companion.SystemStatus;
@@ -22,6 +25,35 @@ namespace HASS.Agent.Companion.SystemStatus;
 internal sealed class SystemMetricsService : IDisposable
 {
     private static readonly TimeSpan WindowsUpdatePendingCacheDuration = TimeSpan.FromMinutes(30);
+
+    private const uint EsSystemRequired = 0x00000001;
+    private const uint EsDisplayRequired = 0x00000002;
+    private const uint EsAwayModeRequired = 0x00000040;
+    private const int PowerInformationSystemExecutionState = 16;
+    private const int PowerRequestsTimeoutMs = 5000;
+    private const int MaxPowerRequests = 20;
+    private const string CapabilityConsentStorePath = @"Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore";
+    private const string CapabilityNonPackagedKey = "NonPackaged";
+    private const int MaxCapabilityApps = 10;
+
+    // A desktop resuming from sleep or hibernate logs Power-Troubleshooter 1; a Modern Standby
+    // machine never really sleeps, and logs Kernel-Power 507 each time it leaves standby.
+    private const string WakeEventQuery =
+        "*[System[(Provider[@Name='Microsoft-Windows-Power-Troubleshooter'] and EventID=1) or " +
+        "(Provider[@Name='Microsoft-Windows-Kernel-Power'] and EventID=507)]]";
+    private const int ModernStandbyExitEventId = 507;
+
+    // The counters behind Task Manager's GPU page. They come from the Windows graphics
+    // stack (WDDM), so they are the same on Intel, AMD and NVIDIA.
+    private const string GpuEngineCategoryName = "GPU Engine";
+    private const string GpuEngineUtilizationCounter = "Utilization Percentage";
+    private const string GpuAdapterMemoryCategoryName = "GPU Adapter Memory";
+    private const string GpuNeuralEngineType = "neural";
+    private const string DisplayAdapterClassPath = @"SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}";
+    private const int GpuFirstSampleDelayMs = 250;
+    private static readonly Regex GpuEngineInstancePattern = new(
+        @"luid_(0x[0-9a-f]+_0x[0-9a-f]+)_phys_\d+_eng_\d+_engtype_(.+)$",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     private static readonly JsonSerializerOptions AttributeJsonOptions = new()
     {
@@ -43,6 +75,17 @@ internal sealed class SystemMetricsService : IDisposable
     private IReadOnlyList<DisplayInfo> _lastDisplays = [];
     private IReadOnlyList<EventLogErrorInfo> _lastRecentErrors = [];
     private ShutdownInfo _lastShutdown = new(string.Empty, string.Empty, null, 0, string.Empty);
+    private volatile WakeInfo _lastWake = WakeInfo.None;
+    private EventLogWatcher? _wakeWatcher;
+    private bool _wakeInitialized;
+    private PerformanceCounterCategory? _gpuEngineCategory;
+    private InstanceDataCollection? _lastGpuEngineSamples;
+    private IReadOnlyList<GpuAdapterInfo>? _gpuAdapters;
+    private GpuInfo? _lastGpu;
+    private uint? _lastExecutionState;
+    private IReadOnlyList<PowerRequestInfo> _lastPowerRequests = [];
+    private IReadOnlyList<string>? _lastCameraApps;
+    private IReadOnlyList<string>? _lastMicrophoneApps;
 
     public SystemMetricsService(
         FileLog log,
@@ -61,8 +104,23 @@ internal sealed class SystemMetricsService : IDisposable
     public SystemMetricsMessage Read(
         IReadOnlyList<CustomSensorDefinition>? customSensors = null,
         bool serviceRole = false,
-        IReadOnlySet<SensorPollingProfile>? dueProfiles = null)
+        IReadOnlySet<SensorPollingProfile>? dueProfiles = null,
+        IReadOnlyList<BuiltInSensorSetting>? builtInSensors = null)
     {
+        // The reads that cost something (a process start, performance counters, an event log
+        // subscription) are skipped for a sensor nobody uses: not enabled for this role, and
+        // not the source of a custom attribute sensor. Without settings everything is read.
+        bool Wanted(string key) =>
+            builtInSensors is null ||
+            builtInSensors.Any(sensor =>
+                string.Equals(sensor.Key, key, StringComparison.OrdinalIgnoreCase) &&
+                (serviceRole ? sensor.Service : sensor.TrayApp)) ||
+            (customSensors?.Any(sensor =>
+                sensor.Enabled &&
+                sensor.IsBuiltInAttribute &&
+                (serviceRole ? sensor.Service : sensor.TrayApp) &&
+                sensor.Parameter.StartsWith($"{key}.", StringComparison.OrdinalIgnoreCase)) ?? false);
+
         var profiles = dueProfiles ?? SensorPollingProfiles.All;
         var previous = _lastMessage;
         if (previous is null)
@@ -91,6 +149,54 @@ internal sealed class SystemMetricsService : IDisposable
             _lastDisplays = _includeInteractiveMetrics ? Safe(ReadDisplaysSafe, _lastDisplays) : [];
         }
 
+        // Service only. Who holds a power request is visible to administrators alone
+        // (powercfg /requests refuses otherwise), so the list needs the SYSTEM service.
+        // And both roles publish to one state topic, where Home Assistant replaces a
+        // sensor's attributes wholesale: a tray app without the list would blank out
+        // the service's on every cycle. Leaving the sensor out of its payload is what
+        // makes Home Assistant skip it.
+        if (!serviceRole || !Wanted("sleep_blocked"))
+        {
+            _lastExecutionState = null;
+            _lastPowerRequests = [];
+        }
+        else if (updateFast || updateNormal)
+        {
+            var previousExecutionState = _lastExecutionState;
+            _lastExecutionState = Safe(ReadSystemExecutionState, _lastExecutionState);
+
+            // The flags are one cheap call, so they follow the Fast cycle. The holders need a
+            // powercfg process: listed only while something is held, at once when the flags
+            // change, and otherwise refreshed on the Normal cycle (a video handing over from
+            // one browser to another keeps the same flags).
+            if (_lastExecutionState is not > 0)
+            {
+                _lastPowerRequests = [];
+            }
+            else if (updateNormal || _lastExecutionState != previousExecutionState)
+            {
+                _lastPowerRequests = Safe(ReadPowerRequests, _lastPowerRequests);
+            }
+        }
+
+        // Tray app only: Windows keeps the usage record in the signed-in user's hive, and the
+        // service's HKCU is SYSTEM's. Null (never read) keeps both sensors out of the payload.
+        if (updateFast && _includeInteractiveMetrics)
+        {
+            _lastCameraApps = Wanted("camera_in_use") ? Safe(() => ReadCapabilityUsers("webcam"), _lastCameraApps) : null;
+            _lastMicrophoneApps = Wanted("microphone_in_use") ? Safe(() => ReadCapabilityUsers("microphone"), _lastMicrophoneApps) : null;
+        }
+
+        if (!Wanted("gpu_usage"))
+        {
+            _lastGpu = null;
+            _lastGpuEngineSamples = null;
+        }
+        else if (updateNormal)
+        {
+            _lastGpu = Safe(ReadGpu, _lastGpu);
+        }
+
         if (updateHourly)
         {
             _lastRecentErrors = Safe(() => ReadRecentEventLogErrors(TimeSpan.FromHours(1)), _lastRecentErrors);
@@ -101,7 +207,28 @@ internal sealed class SystemMetricsService : IDisposable
             _lastShutdown = Safe(ReadLastShutdownInfo, _lastShutdown);
         }
 
-        var attributes = BuildAttributes(_lastNetworkAddresses, _lastDisplays, _lastRecentErrors, _lastShutdown);
+        // Not tied to the Startup cycle: the sensor can be switched on while the agent runs,
+        // long after that cycle has passed. It is read once when it is first wanted; from then
+        // on the event log itself reports every wake (the agent keeps running across a sleep,
+        // so a single read would go stale).
+        if (!Wanted("last_wake_reason"))
+        {
+            StopWakeWatcher();
+        }
+        else if (!_wakeInitialized)
+        {
+            // Once, even if the subscription could not start: retrying (and logging why) on
+            // every cycle would help nobody.
+            _wakeInitialized = true;
+            _lastWake = Safe(ReadLastWakeInfo, _lastWake);
+            StartWakeWatcher();
+        }
+
+        // Null for a role that does not report the sensor: both roles publish to one state
+        // topic, and an empty value from one would blank out what the other reports.
+        var lastWake = Wanted("last_wake_reason") ? _lastWake : null;
+        var attributes = BuildAttributes(_lastNetworkAddresses, _lastDisplays, _lastRecentErrors, _lastShutdown,
+            lastWake, _lastExecutionState, _lastPowerRequests, _lastCameraApps, _lastMicrophoneApps, _lastGpu);
         var message = new SystemMetricsMessage(
             CpuUsage: updateFast ? Safe(ReadCpuUsage, previous?.CpuUsage ?? 0) : previous!.CpuUsage,
             MemoryUsage: memory.UsagePercent,
@@ -133,15 +260,25 @@ internal sealed class SystemMetricsService : IDisposable
             SessionLocked: sessionLocked,
             UserPresent: updateFast && _includeInteractiveMetrics ? session.State == "active" && sessionLocked is false && !string.IsNullOrWhiteSpace(session.User) : previous?.UserPresent,
             ClipboardTextAvailable: updateFast && _includeInteractiveMetrics ? Safe(ReadClipboardTextAvailable, previous?.ClipboardTextAvailable) : previous?.ClipboardTextAvailable,
+            CameraInUse: _lastCameraApps is { } cameraApps ? cameraApps.Count > 0 : null,
+            MicrophoneInUse: _lastMicrophoneApps is { } microphoneApps ? microphoneApps.Count > 0 : null,
+            GpuUsage: _lastGpu?.Usage,
             SessionState: session.State,
             LoggedInUser: session.User,
             LoggedInUsers: sessions.LoggedInUsers,
             RdpSessions: sessions.RdpSessions,
             PendingReboot: updateNormal ? Safe(ReadPendingReboot, previous?.PendingReboot ?? false) : previous!.PendingReboot,
+            // A display request counts too: a browser playing video raises only that one on
+            // many machines (whether audio adds a system request depends on the audio driver),
+            // and the machine still does not go to sleep while it is held.
+            SleepBlocked: _lastExecutionState is { } executionState
+                ? (executionState & (EsSystemRequired | EsDisplayRequired | EsAwayModeRequired)) != 0
+                : null,
             WindowsUpdatePending: updateHourly ? Safe(ReadWindowsUpdatePending, previous?.WindowsUpdatePending ?? false) : previous!.WindowsUpdatePending,
             BluetoothEnabled: updateHourly ? Safe(ReadBluetoothEnabled, previous?.BluetoothEnabled ?? false) : previous!.BluetoothEnabled,
             EventLogErrorsRecent: _lastRecentErrors.Count,
             LastShutdownReason: _lastShutdown.Summary,
+            LastWakeReason: lastWake?.Summary,
             BootTime: updateStartup ? DateTimeOffset.Now.AddMilliseconds(-Environment.TickCount64) : previous!.BootTime,
             CustomSensors: Safe(() => ReadCustomSensors(customSensors ?? [], serviceRole, attributes, profiles, previous?.CustomSensors ?? []), previous?.CustomSensors ?? []),
             Attributes: attributes,
@@ -153,6 +290,14 @@ internal sealed class SystemMetricsService : IDisposable
 
     public void Dispose()
     {
+        StopWakeWatcher();
+    }
+
+    private void StopWakeWatcher()
+    {
+        _wakeWatcher?.Dispose();
+        _wakeWatcher = null;
+        _wakeInitialized = false;
     }
 
     // Isolates a single metric read: on failure it logs which read threw (and the full
@@ -698,6 +843,212 @@ internal sealed class SystemMetricsService : IDisposable
         }
     }
 
+    /// <summary>
+    /// The system-wide execution state: the union of every power request, including the
+    /// modern PowerSetRequest ones (browsers, media players) and driver requests (an open
+    /// audio stream), not just SetThreadExecutionState.
+    /// </summary>
+    private static uint? ReadSystemExecutionState()
+    {
+        var status = CallNtPowerInformation(PowerInformationSystemExecutionState, IntPtr.Zero, 0, out var state, sizeof(uint));
+        return status == 0 ? state : null;
+    }
+
+    private static IReadOnlyList<PowerRequestInfo> ReadPowerRequests()
+    {
+        // powercfg writes in the OEM code page: the request reasons are localized
+        // ("Egy hangadatfolyam használatban van."), so reading it as UTF-8 mangles them.
+        var encoding = ConsoleOutputEncoding.Oem;
+
+        using var process = Process.Start(new ProcessStartInfo
+        {
+            FileName = "powercfg.exe",
+            Arguments = "/requests",
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            StandardOutputEncoding = encoding,
+            StandardErrorEncoding = encoding
+        });
+
+        if (process is null)
+        {
+            return [];
+        }
+
+        var stdoutTask = process.StandardOutput.ReadToEndAsync();
+        var stderrTask = process.StandardError.ReadToEndAsync();
+        if (!process.WaitForExit(PowerRequestsTimeoutMs))
+        {
+            try
+            {
+                process.Kill(entireProcessTree: true);
+            }
+            catch
+            {
+                // Ignore — the process may already be exiting.
+            }
+
+            return [];
+        }
+
+        var output = stdoutTask.GetAwaiter().GetResult();
+        _ = stderrTask.GetAwaiter().GetResult();
+        return process.ExitCode == 0 ? ParsePowerRequests(output) : [];
+    }
+
+    /// <summary>
+    /// Parses <c>powercfg /requests</c>. The category headers ("DISPLAY:") and the holder
+    /// tags ("[PROCESS]") stay English on localized Windows; only the reason lines are
+    /// translated, and they are passed through as they are.
+    /// </summary>
+    internal static IReadOnlyList<PowerRequestInfo> ParsePowerRequests(string output)
+    {
+        var requests = new List<PowerRequestInfo>();
+        string? category = null;
+        string? type = null;
+        string? name = null;
+        var reason = new StringBuilder();
+
+        void Flush()
+        {
+            if (category is "display" or "system" or "awaymode" or "execution" && type is not null && name is not null)
+            {
+                // An execution request keeps its process running (it matters in Modern Standby),
+                // but it does not stop the machine from going to sleep and sets no flag.
+                requests.Add(new PowerRequestInfo(category, type, name, reason.ToString().Trim(), Blocking: category != "execution"));
+            }
+
+            type = null;
+            name = null;
+            reason.Clear();
+        }
+
+        foreach (var rawLine in output.Split('\n'))
+        {
+            var line = rawLine.Trim();
+            var header = Regex.Match(line, @"^([A-Z]+):$");
+            if (header.Success)
+            {
+                Flush();
+                category = header.Groups[1].Value.ToLowerInvariant();
+                continue;
+            }
+
+            var holder = Regex.Match(line, @"^\[([A-Z]+)\]\s*(.+)$");
+            if (holder.Success)
+            {
+                Flush();
+                type = holder.Groups[1].Value.ToLowerInvariant();
+                name = PowerRequestHolderName(type, holder.Groups[2].Value.Trim());
+                continue;
+            }
+
+            if (line.Length == 0)
+            {
+                Flush();
+            }
+            else if (name is not null)
+            {
+                // "None." under an empty category never follows a holder, so it is skipped.
+                reason.Append(reason.Length == 0 ? string.Empty : " ").Append(line);
+            }
+        }
+
+        Flush();
+        return requests.Take(MaxPowerRequests).ToList();
+    }
+
+    private static string PowerRequestHolderName(string type, string holder)
+    {
+        // [PROCESS] \Device\HarddiskVolume3\...\msedge.exe
+        // [SERVICE] \Device\HarddiskVolume3\...\svchost.exe (AudioSrv)
+        // [DRIVER]  NVIDIA High Definition Audio (HDAUDIO\FUNC_01&...)
+        var detailStart = holder.LastIndexOf(" (", StringComparison.Ordinal);
+        var main = detailStart > 0 && holder.EndsWith(')') ? holder[..detailStart] : holder;
+        var detail = detailStart > 0 && holder.EndsWith(')') ? holder[(detailStart + 2)..^1] : null;
+        return type switch
+        {
+            "driver" => LimitState(main),
+            "service" when detail is not null => LimitState(detail),
+            _ => LimitState(Path.GetFileName(main))
+        };
+    }
+
+    /// <summary>
+    /// The apps using the camera or the microphone right now, from the record behind the
+    /// Windows privacy indicator: every app that ever used the capability has a key with
+    /// LastUsedTimeStart / LastUsedTimeStop, and the stop time is 0 while it is in use.
+    /// </summary>
+    private static IReadOnlyList<string> ReadCapabilityUsers(string capability)
+    {
+        using var store = Registry.CurrentUser.OpenSubKey($@"{CapabilityConsentStorePath}\{capability}");
+        if (store is null)
+        {
+            return [];
+        }
+
+        var apps = new List<string>();
+        foreach (var packageName in store.GetSubKeyNames())
+        {
+            if (string.Equals(packageName, CapabilityNonPackagedKey, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            using var package = store.OpenSubKey(packageName);
+            if (IsCapabilityInUse(package))
+            {
+                // MSTeams_8wekyb3d8bbwe -> MSTeams
+                var publisherStart = packageName.LastIndexOf('_');
+                apps.Add(LimitState(publisherStart > 0 ? packageName[..publisherStart] : packageName));
+            }
+        }
+
+        using var nonPackaged = store.OpenSubKey(CapabilityNonPackagedKey);
+        foreach (var appKeyName in nonPackaged?.GetSubKeyNames() ?? [])
+        {
+            using var app = nonPackaged!.OpenSubKey(appKeyName);
+            if (!IsCapabilityInUse(app))
+            {
+                continue;
+            }
+
+            // C:#Program Files (x86)#Microsoft#Edge#Application#msedge.exe
+            var fileName = Path.GetFileName(appKeyName.Replace('#', '\\'));
+
+            // An app that crashed mid-call never writes its stop time, and would hold the
+            // sensor on until it next uses the device. Only desktop apps can be checked.
+            if (IsProcessRunning(Path.GetFileNameWithoutExtension(fileName)))
+            {
+                apps.Add(LimitState(fileName));
+            }
+        }
+
+        return apps
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(MaxCapabilityApps)
+            .ToList();
+    }
+
+    private static bool IsCapabilityInUse(RegistryKey? app)
+    {
+        return app?.GetValue("LastUsedTimeStart") is long and not 0
+            && app.GetValue("LastUsedTimeStop") is long and 0;
+    }
+
+    private static bool IsProcessRunning(string processName)
+    {
+        var processes = Process.GetProcessesByName(processName);
+        foreach (var process in processes)
+        {
+            process.Dispose();
+        }
+
+        return processes.Length > 0;
+    }
+
     private static bool ReadPendingReboot()
     {
         return RegistryKeyExists(RegistryHive.LocalMachine, @"SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending") ||
@@ -913,13 +1264,316 @@ internal sealed class SystemMetricsService : IDisposable
         }
     }
 
+    /// <summary>
+    /// GPU load the way Task Manager shows it: every process has a counter per engine, the
+    /// engines of one type add up, and the busiest engine type is the GPU's load.
+    /// </summary>
+    private GpuInfo? ReadGpu()
+    {
+        if (_gpuEngineCategory is null)
+        {
+            if (!PerformanceCounterCategory.Exists(GpuEngineCategoryName))
+            {
+                return null;
+            }
+
+            _gpuEngineCategory = new PerformanceCounterCategory(GpuEngineCategoryName);
+        }
+
+        var current = _gpuEngineCategory.ReadCategory()[GpuEngineUtilizationCounter];
+        var previous = _lastGpuEngineSamples;
+        if (previous is null && current is not null)
+        {
+            // The load is the difference between two samples. Later cycles use the one from
+            // the cycle before; only the very first read has to wait for a second sample.
+            Thread.Sleep(GpuFirstSampleDelayMs);
+            previous = current;
+            current = _gpuEngineCategory.ReadCategory()[GpuEngineUtilizationCounter];
+        }
+
+        _lastGpuEngineSamples = current;
+        if (current is null || previous is null)
+        {
+            return null;
+        }
+
+        // adapter LUID -> engine type -> load
+        var adapters = new Dictionary<string, Dictionary<string, double>>(StringComparer.OrdinalIgnoreCase);
+        foreach (DictionaryEntry entry in current)
+        {
+            if (entry.Value is not InstanceData instance ||
+                previous[instance.InstanceName] is not { } before ||
+                GpuEngineInstancePattern.Match(instance.InstanceName) is not { Success: true } match)
+            {
+                continue;
+            }
+
+            var load = CounterSample.Calculate(before.Sample, instance.Sample);
+            if (float.IsNaN(load) || float.IsInfinity(load))
+            {
+                continue;
+            }
+
+            var engineType = match.Groups[2].Value.Trim().ToLowerInvariant().Replace(' ', '_');
+            if (!adapters.TryGetValue(match.Groups[1].Value, out var engines))
+            {
+                adapters[match.Groups[1].Value] = engines = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+            }
+
+            engines[engineType] = engines.GetValueOrDefault(engineType) + load;
+        }
+
+        // An NPU shows up as an adapter of its own with nothing but neural engines. It is
+        // reported next to the GPU, never as the GPU's load.
+        var npu = adapters.Values
+            .Where(engines => engines.Keys.All(type => type.StartsWith(GpuNeuralEngineType, StringComparison.Ordinal)))
+            .Select(engines => (double?)engines.Values.Max())
+            .Max();
+
+        // The busiest adapter; when all are idle, the one with the most engine types (the
+        // Microsoft software renderer has a single one).
+        var gpu = adapters
+            .Where(adapter => !adapter.Value.Keys.All(type => type.StartsWith(GpuNeuralEngineType, StringComparison.Ordinal)))
+            .OrderByDescending(adapter => adapter.Value.Values.Max())
+            .ThenByDescending(adapter => adapter.Value.Count)
+            .FirstOrDefault();
+        if (gpu.Value is null)
+        {
+            return null;
+        }
+
+        var memory = ReadGpuMemory(gpu.Key);
+        _gpuAdapters ??= ReadGpuAdapters();
+        return new GpuInfo(
+            Percent(gpu.Value.Values.Max()),
+            gpu.Value
+                .Where(engine => !engine.Key.StartsWith(GpuNeuralEngineType, StringComparison.Ordinal))
+                .OrderBy(engine => engine.Key, StringComparer.Ordinal)
+                .ToDictionary(engine => engine.Key, engine => Percent(engine.Value)),
+            npu is { } npuLoad ? Percent(npuLoad) : null,
+            memory.DedicatedMb,
+            memory.SharedMb,
+            _gpuAdapters);
+
+        static double Percent(double value) => Math.Round(Math.Clamp(value, 0, 100), 1);
+    }
+
+    private static (long? DedicatedMb, long? SharedMb) ReadGpuMemory(string luid)
+    {
+        if (!PerformanceCounterCategory.Exists(GpuAdapterMemoryCategoryName))
+        {
+            return (null, null);
+        }
+
+        var data = new PerformanceCounterCategory(GpuAdapterMemoryCategoryName).ReadCategory();
+        return (Read("Dedicated Usage"), Read("Shared Usage"));
+
+        long? Read(string counter)
+        {
+            if (data[counter] is not { } instances)
+            {
+                return null;
+            }
+
+            foreach (DictionaryEntry entry in instances)
+            {
+                // luid_0x00000000_0x0000E9FD_phys_0
+                if (entry.Value is InstanceData instance &&
+                    instance.InstanceName.StartsWith($"luid_{luid}_", StringComparison.OrdinalIgnoreCase))
+                {
+                    return instance.RawValue / (1024 * 1024);
+                }
+            }
+
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// The installed display adapters with their real memory size: WMI's AdapterRAM is a
+    /// 32-bit field and stops at 4 GB.
+    /// </summary>
+    private static IReadOnlyList<GpuAdapterInfo> ReadGpuAdapters()
+    {
+        var adapters = new List<GpuAdapterInfo>();
+        using var displayClass = Registry.LocalMachine.OpenSubKey(DisplayAdapterClassPath);
+        foreach (var keyName in displayClass?.GetSubKeyNames() ?? [])
+        {
+            // 0000, 0001, ... are the adapters; the rest ("Properties") is not readable anyway.
+            if (keyName.Length != 4 || !keyName.All(char.IsAsciiDigit))
+            {
+                continue;
+            }
+
+            using var adapter = displayClass!.OpenSubKey(keyName);
+            if (adapter?.GetValue("DriverDesc") is not string { Length: > 0 } name)
+            {
+                continue;
+            }
+
+            var memoryMb = adapter.GetValue("HardwareInformation.qwMemorySize") is long bytes and > 0
+                ? bytes / (1024 * 1024)
+                : (long?)null;
+            adapters.Add(new GpuAdapterInfo(LimitState(name), memoryMb));
+        }
+
+        return adapters;
+    }
+
+    private static WakeInfo ReadLastWakeInfo()
+    {
+        var query = new EventLogQuery("System", PathType.LogName, WakeEventQuery)
+        {
+            ReverseDirection = true
+        };
+
+        using var reader = new EventLogReader(query);
+        using var record = reader.ReadEvent();
+        return record is null ? WakeInfo.None : ParseWakeEvent(record);
+    }
+
+    private void StartWakeWatcher()
+    {
+        if (_wakeWatcher is not null)
+        {
+            return;
+        }
+
+        try
+        {
+            var watcher = new EventLogWatcher(new EventLogQuery("System", PathType.LogName, WakeEventQuery));
+            watcher.EventRecordWritten += (_, e) =>
+            {
+                using var record = e.EventRecord;
+                if (record is not null)
+                {
+                    // Picked up by the next sensor cycle, which publishes the whole state.
+                    _lastWake = Safe(() => ParseWakeEvent(record), _lastWake);
+                }
+            };
+            watcher.Enabled = true;
+            _wakeWatcher = watcher;
+        }
+        catch (Exception ex)
+        {
+            _log.Warning($"Wake event watcher could not start: {ex.Message}");
+        }
+    }
+
+    private static WakeInfo ParseWakeEvent(EventRecord record)
+    {
+        var data = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var element in XDocument.Parse(record.ToXml()).Descendants().Where(element => element.Name.LocalName == "Data"))
+        {
+            if (element.Attribute("Name")?.Value is { Length: > 0 } name)
+            {
+                data.TryAdd(name, element.Value);
+            }
+        }
+
+        var message = string.Empty;
+        try
+        {
+            message = record.FormatDescription() ?? string.Empty;
+        }
+        catch
+        {
+            // Some localized event messages cannot be formatted if the provider resources are unavailable.
+        }
+
+        var modernStandby = record.Id == ModernStandbyExitEventId;
+        var source = WakeSourceFromMessage(message);
+        if (source.Length == 0)
+        {
+            source = modernStandby
+                ? $"Reason {data.GetValueOrDefault("Reason", "unknown")}"
+                : data.GetValueOrDefault("WakeSourceText") is { Length: > 0 } text ? text : "Unknown";
+        }
+
+        // A reason Windows has no name for is rendered as its bare number.
+        if (source.All(char.IsAsciiDigit))
+        {
+            source = $"Unknown ({source})";
+        }
+
+        string kind;
+        long? durationSeconds = null;
+        bool? sleepEntered;
+        var detail = string.Empty;
+        if (modernStandby)
+        {
+            kind = "modern_standby";
+            // False when only the screen was off and the machine never reached its sleep state.
+            sleepEntered = bool.TryParse(data.GetValueOrDefault("SleepEntered"), out var entered) ? entered : null;
+            if (long.TryParse(data.GetValueOrDefault("DurationInUs"), NumberStyles.None, CultureInfo.InvariantCulture, out var microseconds))
+            {
+                durationSeconds = microseconds / 1_000_000;
+            }
+        }
+        else
+        {
+            // SYSTEM_POWER_STATE: 4 = S3, 5 = hibernate, 6 = shutdown. A shutdown that ended up
+            // in hibernate is Fast Startup: the "wake" is the next power-on.
+            kind = data.GetValueOrDefault("TargetState") == "6"
+                ? "fast_startup"
+                : data.GetValueOrDefault("EffectiveState") switch
+                {
+                    "4" => "sleep",
+                    "5" => "hibernate",
+                    _ => "unknown"
+                };
+            sleepEntered = true;
+            if (DateTime.TryParse(data.GetValueOrDefault("SleepTime"), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var sleepTime) &&
+                DateTime.TryParse(data.GetValueOrDefault("WakeTime"), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var wakeTime) &&
+                wakeTime >= sleepTime)
+            {
+                durationSeconds = (long)(wakeTime - sleepTime).TotalSeconds;
+            }
+
+            // The device that woke the machine, or the task behind a wake timer.
+            detail = data.GetValueOrDefault("WakeTimerOwner") is { Length: > 0 } owner
+                ? owner
+                : data.GetValueOrDefault("WakeSourceText", string.Empty);
+        }
+
+        var created = record.TimeCreated?.ToString("yyyy-MM-dd HH:mm:ss") ?? "unknown time";
+        return new WakeInfo(
+            LimitState($"{source} at {created}"),
+            LimitState(source),
+            kind,
+            record.TimeCreated,
+            durationSeconds,
+            sleepEntered,
+            LimitState(detail));
+    }
+
+    /// <summary>
+    /// Both events end in "&lt;label&gt;: &lt;source&gt;". The label is localized, the source is not
+    /// ("Felébresztés forrása: Unknown", "Ok: Input Mouse."), so it reads the same everywhere.
+    /// </summary>
+    internal static string WakeSourceFromMessage(string message)
+    {
+        var line = message
+            .Split('\n')
+            .Select(part => part.Replace("\u200E", string.Empty).Trim())
+            .LastOrDefault(part => part.Length > 0) ?? string.Empty;
+        var labelEnd = line.IndexOf(':');
+        return labelEnd < 0 ? string.Empty : line[(labelEnd + 1)..].Trim().TrimEnd('.').Trim();
+    }
+
     private static IReadOnlyDictionary<string, IReadOnlyDictionary<string, object?>> BuildAttributes(
         IReadOnlyList<NetworkAddressInfo> networkAddresses,
         IReadOnlyList<DisplayInfo> displays,
         IReadOnlyList<EventLogErrorInfo> recentErrors,
-        ShutdownInfo lastShutdown)
+        ShutdownInfo lastShutdown,
+        WakeInfo? lastWake,
+        uint? executionState,
+        IReadOnlyList<PowerRequestInfo> powerRequests,
+        IReadOnlyList<string>? cameraApps,
+        IReadOnlyList<string>? microphoneApps,
+        GpuInfo? gpu)
     {
-        return new Dictionary<string, IReadOnlyDictionary<string, object?>>
+        var attributes = new Dictionary<string, IReadOnlyDictionary<string, object?>>
         {
             ["network_address"] = new Dictionary<string, object?>
             {
@@ -942,6 +1596,64 @@ internal sealed class SystemMetricsService : IDisposable
                 ["message"] = lastShutdown.Message
             }
         };
+
+        if (lastWake is not null)
+        {
+            attributes["last_wake_reason"] = new Dictionary<string, object?>
+            {
+                ["source"] = lastWake.Source,
+                ["kind"] = lastWake.Kind,
+                ["created_at"] = lastWake.CreatedAt,
+                ["duration_seconds"] = lastWake.DurationSeconds,
+                ["sleep_entered"] = lastWake.SleepEntered,
+                ["detail"] = lastWake.Detail
+            };
+        }
+
+        // No execution state means this role does not report the sensor (see Read).
+        if (executionState is { } state)
+        {
+            attributes["sleep_blocked"] = new Dictionary<string, object?>
+            {
+                ["system_required"] = (state & EsSystemRequired) != 0,
+                ["display_required"] = (state & EsDisplayRequired) != 0,
+                ["away_mode_required"] = (state & EsAwayModeRequired) != 0,
+                // The first holder that actually keeps the machine awake, for a notification
+                // that does not want to walk the list.
+                ["primary_blocker"] = powerRequests.FirstOrDefault(request => request.Blocking)?.Name ?? string.Empty,
+                ["blockers"] = powerRequests
+            };
+        }
+
+        if (cameraApps is not null)
+        {
+            attributes["camera_in_use"] = new Dictionary<string, object?>
+            {
+                ["apps"] = cameraApps
+            };
+        }
+
+        if (gpu is not null)
+        {
+            attributes["gpu_usage"] = new Dictionary<string, object?>
+            {
+                ["engines"] = gpu.Engines,
+                ["npu_usage"] = gpu.NpuUsage,
+                ["memory_dedicated_mb"] = gpu.MemoryDedicatedMb,
+                ["memory_shared_mb"] = gpu.MemorySharedMb,
+                ["adapters"] = gpu.Adapters
+            };
+        }
+
+        if (microphoneApps is not null)
+        {
+            attributes["microphone_in_use"] = new Dictionary<string, object?>
+            {
+                ["apps"] = microphoneApps
+            };
+        }
+
+        return attributes;
     }
 
     /// <summary>
@@ -1285,6 +1997,9 @@ internal sealed class SystemMetricsService : IDisposable
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool GetSystemTimes(out FileTime idleTime, out FileTime kernelTime, out FileTime userTime);
 
+    [DllImport("powrprof.dll")]
+    private static extern uint CallNtPowerInformation(int informationLevel, IntPtr inputBuffer, uint inputBufferLength, out uint outputBuffer, uint outputBufferLength);
+
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool GlobalMemoryStatusEx(ref MemoryStatusEx buffer);
 
@@ -1421,15 +2136,20 @@ internal sealed record SystemMetricsMessage(
     [property: JsonPropertyName("session_locked")] bool? SessionLocked,
     [property: JsonPropertyName("user_present")] bool? UserPresent,
     [property: JsonPropertyName("clipboard_text_available")] bool? ClipboardTextAvailable,
+    [property: JsonPropertyName("camera_in_use")] bool? CameraInUse,
+    [property: JsonPropertyName("microphone_in_use")] bool? MicrophoneInUse,
+    [property: JsonPropertyName("gpu_usage")] double? GpuUsage,
     [property: JsonPropertyName("session_state")] string SessionState,
     [property: JsonPropertyName("logged_in_user")] string LoggedInUser,
     [property: JsonPropertyName("logged_in_users")] int LoggedInUsers,
     [property: JsonPropertyName("rdp_sessions")] int RdpSessions,
     [property: JsonPropertyName("pending_reboot")] bool PendingReboot,
+    [property: JsonPropertyName("sleep_blocked")] bool? SleepBlocked,
     [property: JsonPropertyName("windows_update_pending")] bool WindowsUpdatePending,
     [property: JsonPropertyName("bluetooth_enabled")] bool BluetoothEnabled,
     [property: JsonPropertyName("event_log_errors_recent")] int EventLogErrorsRecent,
     [property: JsonPropertyName("last_shutdown_reason")] string LastShutdownReason,
+    [property: JsonPropertyName("last_wake_reason")] string? LastWakeReason,
     [property: JsonPropertyName("boot_time")] DateTimeOffset BootTime,
     [property: JsonPropertyName("custom_sensors")] IReadOnlyList<CustomSensorState> CustomSensors,
     [property: JsonPropertyName("attributes")] IReadOnlyDictionary<string, IReadOnlyDictionary<string, object?>> Attributes,
@@ -1454,6 +2174,37 @@ internal sealed record EventLogErrorInfo(
     [property: JsonPropertyName("event_id")] int EventId,
     [property: JsonPropertyName("level")] string Level,
     [property: JsonPropertyName("created_at")] DateTime CreatedAt);
+
+internal sealed record PowerRequestInfo(
+    [property: JsonPropertyName("category")] string Category,
+    [property: JsonPropertyName("type")] string Type,
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("reason")] string Reason,
+    [property: JsonPropertyName("blocking")] bool Blocking);
+
+internal sealed record GpuInfo(
+    double Usage,
+    IReadOnlyDictionary<string, double> Engines,
+    double? NpuUsage,
+    long? MemoryDedicatedMb,
+    long? MemorySharedMb,
+    IReadOnlyList<GpuAdapterInfo> Adapters);
+
+internal sealed record GpuAdapterInfo(
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("memory_mb")] long? MemoryMb);
+
+internal sealed record WakeInfo(
+    string Summary,
+    string Source,
+    string Kind,
+    DateTime? CreatedAt,
+    long? DurationSeconds,
+    bool? SleepEntered,
+    string Detail)
+{
+    public static WakeInfo None { get; } = new(string.Empty, string.Empty, string.Empty, null, null, null, string.Empty);
+}
 
 internal sealed record ShutdownInfo(
     string Summary,

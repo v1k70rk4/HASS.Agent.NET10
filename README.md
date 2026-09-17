@@ -2,7 +2,7 @@
 
 ![Windows](https://img.shields.io/badge/Windows-10%202004%2B%20%7C%2011-0078D4?logo=windows&logoColor=white)
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet&logoColor=white)
-![Version](https://img.shields.io/badge/version-10.6.9-brightgreen)
+![Version](https://img.shields.io/badge/version-10.7.0-brightgreen)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-MQTT%20%7C%20WebSocket%20API-41BDF5?logo=homeassistant&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 [![Website](https://img.shields.io/badge/website-v1k70rk4.github.io-41bdf5?logo=github)](https://v1k70rk4.github.io/HASS.Agent.NET10/)
@@ -60,6 +60,23 @@ The modern .NET10 line starts at **version 10.0.0**. The pre-.NET10 client remai
 
 ## What Changed
 
+### 10.7.0
+
+Works with the Home Assistant integration **10.6.7** or newer; the **new sensors need integration 10.7.0** to show up in Home Assistant. Signed release, like every release since 10.6.8 (see [Code signing](#code-signing)).
+
+**Nothing changes for an existing installation.** Every sensor you have stays exactly as you set it. The new sensors arrive switched off, and the "off by default" list below only applies to a fresh install.
+
+- **Five new built-in sensors**, all switched off until you enable them on the *Sensors* page:
+  - **GPU usage** — GPU load the way Task Manager shows it, from Windows' own counters, so it works the same on Intel, AMD and NVIDIA without any vendor tool. Attributes: load per engine (`3d`, `videodecode`, `videoencode`, …), NPU load, dedicated / shared memory in use, and the installed adapters with their real memory size (WMI stops at 4 GB). Temperature, clock and fan speed are vendor specific and not part of it — use a [custom sensor](#custom-sensors) for those.
+  - **Sleep blocked** — `on` while something keeps the machine (or its display) awake: a video playing in the browser, a download, a driver. The attributes name who: `primary_blocker`, and the full `blockers` list with category, type, name, reason and whether it really blocks sleep. Service only — Windows shows the holders to administrators alone.
+  - **Last wake reason** — what woke the machine last (`Input Keyboard`, `Power Button`, `Lid`, a device, a wake timer…) with the time, how long it was away and whether it really slept. Works on Modern Standby laptops and on desktops with classic sleep / hibernate. Event driven: the new value is in Home Assistant seconds after the wake, without polling.
+  - **Camera in use** / **Microphone in use** — `on` while an app is using the camera or the microphone, with the apps listed in the `apps` attribute. Handy for an "in a meeting" light. Tray app only (Windows keeps this per user).
+- **Sensors that are off by default.** Not every sensor is for everyone, so a fresh install no longer creates all of them in Home Assistant: besides the five new ones, *VPN connected*, *RDP sessions*, *Recent Event Log errors*, *Last shutdown reason* and *Clipboard text available* now start switched off. Existing installations are not touched — a setting you already have is never changed by an update.
+- **A sensor that is switched off costs nothing.** The more expensive reads (the power request list, the GPU counters, the wake event subscription) only run for a sensor that is enabled, or that a custom attribute sensor is built on.
+- **Attribute sensors get readable names.** A custom sensor created from a built-in sensor's attribute (the **+** on the *Built-in sensors* tab) was named after the raw attribute key — `Last shutdown reason: reason`. The attributes now have proper names in English and Hungarian, and the generated name follows the *Home Assistant language* setting, since it becomes the entity name there. Sensors you already created keep the name they have; rename them on the *Custom sensors* tab if you like.
+- **Fixed: crash on exit.** Closing the tray app (also when an update closes it) could end in an unhandled exception, recorded by Windows as an application error: the media session monitor was stopped from two places at once during shutdown. Nothing was lost, since the app was closing anyway, but it no longer happens.
+- **Fixed: starting a service that is already running is no longer an error**, and neither is stopping one that is not. The message Windows gives in those cases (and any other `sc` error) is also readable now on a localized Windows: it was decoded with the wrong code page, so every accented letter came out as `�`.
+- **Fixed: a refused MQTT login was logged as `MQTT connected.`** A broker that rejects the credentials answers the connection attempt instead of failing it, and the agent took that answer for success — so the log showed a connection that never existed, and the HA API failover kept flapping between the two transports. A refused connection is now a failed one: it is logged with the broker's reason, and the failover stays on the HA API until the broker really accepts the login.
 ### 10.6.9
 
 Requires the Home Assistant integration **10.6.7** or newer (no integration change in this release).
@@ -213,8 +230,9 @@ Stable release of the custom commands & command sensors line.
 - Home Assistant with **MQTT broker** (recommended, e.g. Mosquitto) **or HA API** (WebSocket, e.g. via Nabu Casa)
 - The companion Home Assistant integration:
   [v1k70rk4/HASS.Agent.NET10-Integration](https://github.com/v1k70rk4/HASS.Agent.NET10-Integration) —
-  **version 10.6.7 or newer** (the agent and the integration are released with matching version numbers,
-  so keep them in step)
+  **version 10.6.7 or newer**; the sensors added in 10.7.0 need integration **10.7.0** to appear in
+  Home Assistant (the agent and the integration are released with matching version numbers, so keep
+  them in step)
 
 Windows versions older than Windows 10 2004 are intentionally blocked. The app targets `net10.0-windows10.0.19041.0` and uses modern Windows APIs for notifications, media sessions, services, sensors, and desktop state.
 
@@ -386,46 +404,53 @@ The Danger Zone also hosts the **beta updates** toggle: when enabled, update che
 
 The **Sensors** page has two tabs: **Built-in sensors** and **Custom sensors**.
 
-Built-in sensors are predefined system metrics. Each one can be enabled/disabled independently and assigned to the tray app, the service, or both:
+Built-in sensors are predefined system metrics. Each one can be enabled/disabled independently and assigned to the tray app, the service, or both.
 
-| Sensor | Profile | Service | Tray |
-|--------|---------|:---:|:---:|
-| CPU usage | fast | yes | yes |
-| Memory usage | fast | yes | yes |
-| Available memory (MB) | fast | yes | yes |
-| System drive free % | normal | yes | yes |
-| System drive free (GB) | normal | yes | yes |
-| Uptime | fast | yes | yes |
-| Boot time | startup | yes | yes |
-| Battery level | normal | yes | yes |
-| Battery time remaining | normal | yes | yes |
-| Power status | **push** | yes | yes |
-| LAN IP | normal | yes | yes |
-| Session state | **push** | yes | yes |
-| Logged in user | normal | yes | yes |
-| Logged in users (count) | normal | yes | yes |
-| RDP sessions | normal | yes | yes |
-| Pending reboot | normal | yes | yes |
-| VPN connected | normal | yes | yes |
-| Wi-Fi SSID | normal | yes | yes |
-| Wi-Fi signal | normal | yes | yes |
-| Bluetooth enabled | normal | yes | yes |
-| Windows Update pending | hourly | yes | yes |
-| Recent Event Log errors | hourly | yes | yes |
-| Last shutdown reason | startup | yes | yes |
-| Active window | fast | | yes |
-| Active process | fast | | yes |
-| Foreground app & window | fast | | yes |
-| Volume | **push** | | yes |
-| Muted | **push** | | yes |
-| Monitor power state | **push** | | yes |
-| Active displays | normal | | yes |
-| Idle time | fast | | yes |
-| Session locked | **push** | | yes |
-| User present | **push** | | yes |
-| Clipboard text available | fast | | yes |
-| Audio output device | **push** | | yes |
-| Microphone muted | **push** | | yes |
+The **Default** column shows whether a fresh install starts with the sensor switched on. Sensors that are useful, but not to everyone, start **off** so they do not clutter Home Assistant — enable them on the *Sensors* page. An update never changes a setting you already have: a sensor added by a new version simply arrives switched off.
+
+| Sensor | Profile | Service | Tray | Default |
+|--------|---------|:---:|:---:|:---:|
+| CPU usage | fast | yes | yes | on |
+| GPU usage | normal | yes | yes | off |
+| Memory usage | fast | yes | yes | on |
+| Available memory (MB) | fast | yes | yes | on |
+| System drive free % | normal | yes | yes | on |
+| System drive free (GB) | normal | yes | yes | on |
+| Uptime | fast | yes | yes | on |
+| Boot time | startup | yes | yes | on |
+| Battery level | normal | yes | yes | on |
+| Battery time remaining | normal | yes | yes | on |
+| Power status | **push** | yes | yes | on |
+| LAN IP | normal | yes | yes | on |
+| Session state | **push** | yes | yes | on |
+| Logged in user | normal | yes | yes | on |
+| Logged in users (count) | normal | yes | yes | on |
+| RDP sessions | normal | yes | yes | off |
+| Pending reboot | normal | yes | yes | on |
+| Sleep blocked | fast | yes | | off |
+| VPN connected | normal | yes | yes | off |
+| Wi-Fi SSID | normal | yes | yes | on |
+| Wi-Fi signal | normal | yes | yes | on |
+| Bluetooth enabled | normal | yes | yes | on |
+| Windows Update pending | hourly | yes | yes | on |
+| Recent Event Log errors | hourly | yes | yes | off |
+| Last shutdown reason | startup | yes | yes | off |
+| Last wake reason | **push** | yes | yes | off |
+| Active window | fast | | yes | on |
+| Active process | fast | | yes | on |
+| Foreground app & window | fast | | yes | on |
+| Volume | **push** | | yes | on |
+| Muted | **push** | | yes | on |
+| Monitor power state | **push** | | yes | on |
+| Active displays | normal | | yes | on |
+| Idle time | fast | | yes | on |
+| Session locked | **push** | | yes | on |
+| User present | **push** | | yes | on |
+| Clipboard text available | fast | | yes | off |
+| Camera in use | fast | | yes | off |
+| Microphone in use | fast | | yes | off |
+| Audio output device | **push** | | yes | on |
+| Microphone muted | **push** | | yes | on |
 
 <p align="center"><img src="docs/images/ui-sensors-built-in.png" width="700" alt="Built-in sensors tab"></p>
 
@@ -441,6 +466,10 @@ Sensors with attributes:
 | **Active displays** | `displays[N].name`, `displays[N].primary`, `displays[N].width`, `displays[N].height`, `displays[N].x`, `displays[N].y` |
 | **Recent Event Log errors** | `window_minutes`, `events[N].log`, `events[N].provider`, `events[N].event_id`, `events[N].level`, `events[N].created_at` |
 | **Last shutdown reason** | `reason`, `event_id`, `created_at`, `message` |
+| **Last wake reason** | `source`, `kind` (`modern_standby`, `sleep`, `hibernate`, `fast_startup`), `created_at`, `duration_seconds`, `sleep_entered`, `detail` |
+| **Sleep blocked** | `system_required`, `display_required`, `away_mode_required`, `primary_blocker`, `blockers[N].category`, `blockers[N].type`, `blockers[N].name`, `blockers[N].reason`, `blockers[N].blocking` |
+| **GPU usage** | `engines.<type>` (e.g. `engines.3d`, `engines.videodecode`), `npu_usage`, `memory_dedicated_mb`, `memory_shared_mb`, `adapters[N].name`, `adapters[N].memory_mb` |
+| **Camera in use** / **Microphone in use** | `apps[N]` |
 
 ### Sensor Polling Profiles
 
@@ -448,7 +477,7 @@ Sensors are refreshed by profile instead of one global interval. Each profile in
 
 | Profile | Default | Description |
 |---------|---------|-------------|
-| **push** | on change | Event-driven — reports within ~600 ms of a change (monitor power, session lock, power source, volume/mute/audio device). A poll still runs as a safety net. |
+| **push** | on change | Event-driven — reports within ~600 ms of a change (monitor power, session lock, power source, volume/mute/audio device). A poll still runs as a safety net. *Last wake reason* follows the event log and is published with the next fast cycle. |
 | **fast** | 10 sec | CPU, memory, active window, etc. |
 | **normal** | 60 sec | Disk, battery, network, Bluetooth, etc. |
 | **hourly** | 3600 sec | Windows Update, Event Log, etc. |
@@ -570,6 +599,27 @@ sensor_key.array[0].nested[1].value
 | Last shutdown reason | `last_shutdown_reason.event_id` | Event ID |
 | Last shutdown reason | `last_shutdown_reason.created_at` | Timestamp |
 | Last shutdown reason | `last_shutdown_reason.message` | Full message |
+| Last wake reason | `last_wake_reason.source` | What woke the machine |
+| Last wake reason | `last_wake_reason.kind` | `modern_standby`, `sleep`, `hibernate` or `fast_startup` |
+| Last wake reason | `last_wake_reason.created_at` | Timestamp |
+| Last wake reason | `last_wake_reason.duration_seconds` | How long it was away |
+| Last wake reason | `last_wake_reason.sleep_entered` | `false` when only the screen was off |
+| Last wake reason | `last_wake_reason.detail` | Waking device or wake timer owner |
+| Sleep blocked | `sleep_blocked.primary_blocker` | First holder that really blocks sleep |
+| Sleep blocked | `sleep_blocked.system_required` | System request held |
+| Sleep blocked | `sleep_blocked.display_required` | Display request held |
+| Sleep blocked | `sleep_blocked.away_mode_required` | Away mode request held |
+| Sleep blocked | `sleep_blocked.blockers[0].name` | Holder (process, service or driver) |
+| Sleep blocked | `sleep_blocked.blockers[0].reason` | Reason given by the holder |
+| GPU usage | `gpu_usage.engines.3d` | 3D engine load (%) |
+| GPU usage | `gpu_usage.engines.videodecode` | Video decode load (%) |
+| GPU usage | `gpu_usage.npu_usage` | NPU load (%) |
+| GPU usage | `gpu_usage.memory_dedicated_mb` | Dedicated GPU memory in use |
+| GPU usage | `gpu_usage.memory_shared_mb` | Shared GPU memory in use |
+| GPU usage | `gpu_usage.adapters[0].name` | Adapter name |
+| GPU usage | `gpu_usage.adapters[0].memory_mb` | Adapter memory size |
+| Camera in use | `camera_in_use.apps[0]` | App using the camera |
+| Microphone in use | `microphone_in_use.apps[0]` | App using the microphone |
 
 > **Tip — auto-create from built-in sensors**: Some built-in sensors publish multiple values (LAN IP, Active displays, Event Log errors, Last shutdown reason). In the **Built-in sensors** tab these sensors show a **+** icon next to their name. Clicking **+** automatically creates a `built_in_attribute` custom sensor for **every** available attribute path of that sensor. Each one becomes a separate Home Assistant entity.
 >

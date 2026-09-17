@@ -219,6 +219,9 @@ internal static class CompanionServiceManager
         return line?.Trim() ?? S("SvcMgr.Unknown");
     }
 
+    private const int ErrorServiceAlreadyRunning = 1056;
+    private const int ErrorServiceNotActive = 1062;
+
     private static ControlCommandResult RunSc(string command, string arguments)
     {
         try
@@ -231,8 +234,8 @@ internal static class CompanionServiceManager
                 RedirectStandardError = true,
                 RedirectStandardOutput = true,
                 UseShellExecute = false,
-                StandardOutputEncoding = Encoding.UTF8,
-                StandardErrorEncoding = Encoding.UTF8
+                StandardOutputEncoding = ConsoleOutputEncoding.Oem,
+                StandardErrorEncoding = ConsoleOutputEncoding.Oem
             });
 
             if (process is null)
@@ -247,6 +250,17 @@ internal static class CompanionServiceManager
             var message = string.Join(
                 Environment.NewLine,
                 new[] { output.Trim(), error.Trim() }.Where(item => !string.IsNullOrWhiteSpace(item)));
+
+            // Asking for the state the service is already in is not a failure.
+            if (command == "start" && process.ExitCode == ErrorServiceAlreadyRunning)
+            {
+                return new ControlCommandResult(true, S("SvcMgr.AlreadyRunning"));
+            }
+
+            if (command == "stop" && process.ExitCode == ErrorServiceNotActive)
+            {
+                return new ControlCommandResult(true, S("SvcMgr.NotRunning"));
+            }
 
             return new ControlCommandResult(process.ExitCode == 0, string.IsNullOrWhiteSpace(message) ? "OK" : message);
         }
