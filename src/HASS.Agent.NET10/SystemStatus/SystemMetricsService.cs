@@ -77,6 +77,7 @@ internal sealed class SystemMetricsService : IDisposable
     private ShutdownInfo _lastShutdown = new(string.Empty, string.Empty, null, 0, string.Empty);
     private volatile WakeInfo _lastWake = WakeInfo.None;
     private EventLogWatcher? _wakeWatcher;
+    private bool _wakeInitialized;
     private PerformanceCounterCategory? _gpuEngineCategory;
     private InstanceDataCollection? _lastGpuEngineSamples;
     private IReadOnlyList<GpuAdapterInfo>? _gpuAdapters;
@@ -204,14 +205,23 @@ internal sealed class SystemMetricsService : IDisposable
         if (updateStartup)
         {
             _lastShutdown = Safe(ReadLastShutdownInfo, _lastShutdown);
+        }
 
-            // The agent keeps running across a sleep, so a Startup read alone would go stale:
-            // after the first read, the event log itself reports every later wake.
-            if (Wanted("last_wake_reason"))
-            {
-                _lastWake = Safe(ReadLastWakeInfo, _lastWake);
-                StartWakeWatcher();
-            }
+        // Not tied to the Startup cycle: the sensor can be switched on while the agent runs,
+        // long after that cycle has passed. It is read once when it is first wanted; from then
+        // on the event log itself reports every wake (the agent keeps running across a sleep,
+        // so a single read would go stale).
+        if (!Wanted("last_wake_reason"))
+        {
+            StopWakeWatcher();
+        }
+        else if (!_wakeInitialized)
+        {
+            // Once, even if the subscription could not start: retrying (and logging why) on
+            // every cycle would help nobody.
+            _wakeInitialized = true;
+            _lastWake = Safe(ReadLastWakeInfo, _lastWake);
+            StartWakeWatcher();
         }
 
         // Null for a role that does not report the sensor: both roles publish to one state
@@ -280,8 +290,14 @@ internal sealed class SystemMetricsService : IDisposable
 
     public void Dispose()
     {
+        StopWakeWatcher();
+    }
+
+    private void StopWakeWatcher()
+    {
         _wakeWatcher?.Dispose();
         _wakeWatcher = null;
+        _wakeInitialized = false;
     }
 
     // Isolates a single metric read: on failure it logs which read threw (and the full
