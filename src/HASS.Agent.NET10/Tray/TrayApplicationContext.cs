@@ -29,6 +29,9 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
     /// <summary>Set by Program to the MQTT service's discovery republish. Used by the Danger Zone.</summary>
     public Func<Task<bool>>? DiscoveryRepublishHandler { get; set; }
 
+    /// <summary>Set by Program to the MQTT service: reports a manual update check to Home Assistant.</summary>
+    public Func<AppUpdateState, Task>? UpdateStateHandler { get; set; }
+
     public TrayApplicationContext(CompanionSettings settings, AppPaths paths, FileLog log)
     {
         _settings = settings;
@@ -159,6 +162,7 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
 
         _mainForm = new MainForm(_settings, _paths, _log, page);
         _mainForm.DiscoveryRepublishHandler = () => DiscoveryRepublishHandler?.Invoke() ?? Task.FromResult(false);
+        _mainForm.UpdateStateHandler = state => UpdateStateHandler?.Invoke(state) ?? Task.CompletedTask;
         _mainForm.SettingsSaved += (_, _) => SettingsSaved?.Invoke(this, EventArgs.Empty);
         _mainForm.FormClosed += (_, _) => _mainForm = null;
         _mainForm.Show();
