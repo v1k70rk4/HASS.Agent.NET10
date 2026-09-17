@@ -2,7 +2,7 @@
 
 ![Windows](https://img.shields.io/badge/Windows-10%202004%2B%20%7C%2011-0078D4?logo=windows&logoColor=white)
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet&logoColor=white)
-![Version](https://img.shields.io/badge/version-10.7.0-brightgreen)
+![Version](https://img.shields.io/badge/version-10.7.1-brightgreen)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-MQTT%20%7C%20WebSocket%20API-41BDF5?logo=homeassistant&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 [![Website](https://img.shields.io/badge/website-v1k70rk4.github.io-41bdf5?logo=github)](https://v1k70rk4.github.io/HASS.Agent.NET10/)
@@ -60,9 +60,11 @@ The modern .NET10 line starts at **version 10.0.0**. The pre-.NET10 client remai
 
 ## What Changed
 
-### 10.7.0
+### 10.7.1
 
 Works with the Home Assistant integration **10.6.7** or newer; the **new sensors need integration 10.7.0** to show up in Home Assistant. Signed release, like every release since 10.6.8 (see [Code signing](#code-signing)).
+
+10.7.1 replaces 10.7.0, which was withdrawn a few hours after it went out; everything below is new compared to 10.6.9.
 
 **Nothing changes for an existing installation.** Every sensor you have stays exactly as you set it. The new sensors arrive switched off, and the "off by default" list below only applies to a fresh install.
 
@@ -76,6 +78,7 @@ Works with the Home Assistant integration **10.6.7** or newer; the **new sensors
 - **The log file no longer grows forever.** It was never trimmed and could reach hundreds of megabytes after a few months. The log now starts a new file every day (and within a day once it passes 10 MB); older files are kept next to it as `hass-agent-net10-<date>.log` and **removed after 7 days**, or sooner if together they pass 100 MB. The oversized file an earlier version left behind is cleaned up on the first start.
 - **Sensors arrive faster after startup.** The Windows Update check takes 5–30 seconds and used to hold back *every* sensor for that long — at startup and again once an hour. It now runs on its own in the background: the first sensor values reach Home Assistant in about a second, and *Windows Update pending* follows when its search is done.
 - **Attribute sensors get readable names.** A custom sensor created from a built-in sensor's attribute (the **+** on the *Built-in sensors* tab) was named after the raw attribute key — `Last shutdown reason: reason`. The attributes now have proper names in English and Hungarian, and the generated name follows the *Home Assistant language* setting, since it becomes the entity name there. Sensors you already created keep the name they have; rename them on the *Custom sensors* tab if you like.
+- **Fixed: a manual update check now reaches Home Assistant.** The agent asks GitHub at startup and every six hours, and only those checks were reported to Home Assistant. The *Check for updates* button on the About page asked GitHub on its own and told nobody - so when a release came out between two checks, the app knew about it while Home Assistant kept showing "up to date" until the next scheduled check or a restart of the tray app. The result of a manual check is now reported the same way. Thanks to [@Taomyn](https://github.com/Taomyn) for the report.
 - **Fixed: crash on exit.** Closing the tray app (also when an update closes it) could end in an unhandled exception, recorded by Windows as an application error: the media session monitor was stopped from two places at once during shutdown. Nothing was lost, since the app was closing anyway, but it no longer happens.
 - **Fixed: starting a service that is already running is no longer an error**, and neither is stopping one that is not. The message Windows gives in those cases (and any other `sc` error) is also readable now on a localized Windows: it was decoded with the wrong code page, so every accented letter came out as `�`.
 - **Fixed: a refused MQTT login was logged as `MQTT connected.`** A broker that rejects the credentials answers the connection attempt instead of failing it, and the agent took that answer for success — so the log showed a connection that never existed, and the HA API failover kept flapping between the two transports. A refused connection is now a failed one: it is logged with the broker's reason, and the failover stays on the HA API until the broker really accepts the login.
@@ -232,7 +235,7 @@ Stable release of the custom commands & command sensors line.
 - Home Assistant with **MQTT broker** (recommended, e.g. Mosquitto) **or HA API** (WebSocket, e.g. via Nabu Casa)
 - The companion Home Assistant integration:
   [v1k70rk4/HASS.Agent.NET10-Integration](https://github.com/v1k70rk4/HASS.Agent.NET10-Integration) —
-  **version 10.6.7 or newer**; the sensors added in 10.7.0 need integration **10.7.0** to appear in
+  **version 10.6.7 or newer**; the sensors added in 10.7.1 need integration **10.7.0** to appear in
   Home Assistant (the agent and the integration are released with matching version numbers, so keep
   them in step)
 

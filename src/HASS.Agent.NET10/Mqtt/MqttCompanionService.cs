@@ -221,6 +221,38 @@ internal sealed class MqttCompanionService : IDisposable
         return false;
     }
 
+    /// <summary>
+    /// Reports the result of an update check made outside the six-hour loop (the About page's
+    /// "Check for updates" button). Without this the app knew about a new release while Home
+    /// Assistant kept showing "up to date" until the next scheduled check or a tray restart.
+    /// </summary>
+    public async Task ReportUpdateStateAsync(AppUpdateState state)
+    {
+        if (!string.IsNullOrWhiteSpace(state.Error))
+        {
+            return;
+        }
+
+        _lastUpdateState = state;
+        _lastUpdateBeta = _settings.BetaUpdatesEnabled;
+        _lastUpdateCheck = DateTimeOffset.UtcNow;
+
+        if (!(_isOnWebSocket && _haWs is not null) && _client is not { IsConnected: true })
+        {
+            // Not connected right now: the state is kept, and goes out with the next connect.
+            return;
+        }
+
+        try
+        {
+            await PublishUpdateStateAsync(cancellationToken: _cts?.Token ?? CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            _log.Warning($"Unable to publish the manual update check: {ex.Message}");
+        }
+    }
+
     /// <summary>Queues an "updated to X" persistent notification for the next connect.</summary>
     public void NotifyUpdateCompleted(string previousVersion)
     {

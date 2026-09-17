@@ -108,6 +108,11 @@ internal sealed class MainForm : Form
     [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
     public Func<Task<bool>>? DiscoveryRepublishHandler { get; set; }
 
+    /// <summary>Wired by TrayApplicationContext: tells Home Assistant what a manual update check found.</summary>
+    [System.ComponentModel.Browsable(false)]
+    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+    public Func<AppUpdateState, Task>? UpdateStateHandler { get; set; }
+
     public MainForm(CompanionSettings settings, AppPaths paths, FileLog log, int initialPage = 0)
     {
         _settings = settings;
@@ -2277,6 +2282,12 @@ internal sealed class MainForm : Form
             {
                 MessageBox.Show(S("About.UpdateCheckFailed"), AppIdentity.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
+            }
+
+            // Before the dialogs below: Home Assistant should not have to wait for them.
+            if (UpdateStateHandler is not null)
+            {
+                _ = UpdateStateHandler(update);
             }
 
             if (!update.UpdateAvailable)
