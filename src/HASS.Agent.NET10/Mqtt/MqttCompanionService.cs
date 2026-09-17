@@ -666,7 +666,16 @@ internal sealed class MqttCompanionService : IDisposable
                 var options = BuildOptions();
                 _log.Info($"Connecting MQTT to {_settings.MqttHost}:{_settings.MqttPort}.");
                 _isOnWebSocket = false;
-                await _client.ConnectAsync(options, cancellationToken);
+                var connectResult = await _client.ConnectAsync(options, cancellationToken);
+                if (connectResult is { ResultCode: not MqttClientConnectResultCode.Success })
+                {
+                    // MQTTnet 5 hands a refused CONNACK back as a result instead of throwing.
+                    // Unchecked, a rejected login was logged as "MQTT connected." and retried
+                    // at once, dozens of times a second, with nothing saying why.
+                    var refusal = string.IsNullOrWhiteSpace(connectResult.ReasonString) ? string.Empty : $" ({connectResult.ReasonString})";
+                    throw new MqttConnectRefusedException(
+                        $"MQTT broker refused the connection: {connectResult.ResultCode}{refusal}. Check the MQTT username and password, and that the user still exists on the broker.");
+                }
 
                 _log.Info("MQTT connected.");
                 var connectedAt = DateTime.UtcNow;
@@ -754,7 +763,7 @@ internal sealed class MqttCompanionService : IDisposable
             }
             catch (Exception ex)
             {
-                _log.Warning($"MQTT connection loop failed: {ex.Message}");
+                _log.Warning(ex is MqttConnectRefusedException ? ex.Message : $"MQTT connection loop failed: {ex.Message}");
 
                 // MQTT failed — try WebSocket failover if configured.
                 if (_haWs is not null && !cancellationToken.IsCancellationRequested)
@@ -831,21 +840,19 @@ internal sealed class MqttCompanionService : IDisposable
         }
     }
 
+    /// <summary>The broker answered the CONNECT with a refusal (bad credentials, banned client, ...).</summary>
+    private sealed class MqttConnectRefusedException(string message) : Exception(message);
+
     private Task LogDisconnectAsync(MqttClientDisconnectedEventArgs args)
     {
-        var reason = string.IsNullOrWhiteSpace(args.ReasonString) ? string.Empty : $" ({args.ReasonString})";
+        // A connection that never came up is reported by the connect loop, with the
+        // broker's result code; this is for sessions that were up and then went away.
         if (!args.ClientWasConnected)
         {
-            // A refused CONNECT: the loop's catch logs the exception, this adds the broker's
-            // verdict, which is what actually tells the user what to fix.
-            if (args.ConnectResult is { ResultCode: not MqttClientConnectResultCode.Success } result)
-            {
-                _log.Warning($"MQTT broker refused the connection: {result.ResultCode}{reason}. Check the username and password, and the broker's ACL.");
-            }
-
             return Task.CompletedTask;
         }
 
+        var reason = string.IsNullOrWhiteSpace(args.ReasonString) ? string.Empty : $" ({args.ReasonString})";
         var error = args.Exception is null ? string.Empty : $": {args.Exception.Message}";
         if (args.Reason == MqttClientDisconnectReason.NormalDisconnection && args.Exception is null)
         {
