@@ -751,9 +751,12 @@ internal sealed class MqttCompanionService : IDisposable
                 {
                     await _mediaSessionService.StartAsync(
                         PublishMediaStateAsync,
-                        thumbnail => ThumbnailFits(thumbnail, _brokerMaximumPacketSize)
-                            ? PublishRawAsync($"hass.agent/media_player/{TopicId}/thumbnail", thumbnail, retain: false)
-                            : Task.CompletedTask,
+                        // A cover that does not fit is published as "no artwork" rather than
+                        // not at all, or the previous track's cover would stay on the card.
+                        thumbnail => PublishRawAsync(
+                            $"hass.agent/media_player/{TopicId}/thumbnail",
+                            ThumbnailFits(thumbnail, _brokerMaximumPacketSize) ? thumbnail : null,
+                            retain: false),
                         connectionCts.Token);
                 }
 
@@ -935,9 +938,7 @@ internal sealed class MqttCompanionService : IDisposable
         {
             await _mediaSessionService.StartAsync(
                 state => _haWs.PublishMediaStateAsync(state, wsCts.Token),
-                thumbnail => ThumbnailFits(thumbnail, null)
-                    ? _haWs.PublishMediaThumbnailAsync(thumbnail, wsCts.Token)
-                    : Task.CompletedTask,
+                thumbnail => _haWs.PublishMediaThumbnailAsync(ThumbnailFits(thumbnail, null) ? thumbnail : null, wsCts.Token),
                 wsCts.Token);
         }
 
@@ -1835,9 +1836,10 @@ internal sealed class MqttCompanionService : IDisposable
         }
 
         var limit = (long)MaxThumbnailBytes;
-        if (brokerMaximumPacketSize is > ThumbnailPacketOverhead)
+        if (brokerMaximumPacketSize is { } brokerLimit)
         {
-            limit = Math.Min(limit, brokerMaximumPacketSize.Value - ThumbnailPacketOverhead);
+            // A limit smaller than the header room leaves no room at all.
+            limit = Math.Min(limit, Math.Max(0L, (long)brokerLimit - ThumbnailPacketOverhead));
         }
 
         if (thumbnail.Length <= limit)
