@@ -2,7 +2,7 @@
 
 ![Windows](https://img.shields.io/badge/Windows-10%202004%2B%20%7C%2011-0078D4?logo=windows&logoColor=white)
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet&logoColor=white)
-![Version](https://img.shields.io/badge/version-10.7.1-brightgreen)
+![Version](https://img.shields.io/badge/version-10.7.2-brightgreen)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-MQTT%20%7C%20WebSocket%20API-41BDF5?logo=homeassistant&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 [![Website](https://img.shields.io/badge/website-v1k70rk4.github.io-41bdf5?logo=github)](https://v1k70rk4.github.io/HASS.Agent.NET10/)
@@ -59,6 +59,12 @@ The modern .NET10 line starts at **version 10.0.0**. The pre-.NET10 client remai
 ---
 
 ## What Changed
+
+### 10.7.2
+
+Works with the Home Assistant integration **10.6.7** or newer (no integration change in this release). Signed release.
+
+- **Fixed: a large album cover no longer takes the MQTT connection down.** The media player published the artwork exactly as Windows handed it over, with no resizing and no size cap. Mosquitto 2.1 (Home Assistant add-on 7.0.0 and newer) rejects any packet over 2 MB by default, and a full-size cover from a browser can exceed that: the broker dropped the connection, the agent reconnected and sent the same picture again, and every entity flapped between `unavailable` and its state for as long as the track played. Artwork over 128 KB or 512 px is now scaled down to 512 px and re-encoded as JPEG before publishing (a few dozen KB; smaller artwork goes out unchanged), the agent honours the packet size the broker advertises on connect, and anything still over the limit is skipped with a log line. The same cap applies on the HA API transport. Thanks to [@j0k34](https://github.com/j0k34) for the precise report.
 
 ### 10.7.1
 

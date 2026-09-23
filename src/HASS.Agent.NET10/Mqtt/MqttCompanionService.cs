@@ -28,6 +28,13 @@ internal sealed class MqttCompanionService : IDisposable
     private static readonly TimeSpan UpdateCheckThrottle = TimeSpan.FromHours(1);
     private DateTimeOffset _lastUpdateCheck = DateTimeOffset.MinValue;
     private AppUpdateState? _lastUpdateState;
+
+    // A thumbnail is the one payload that can outgrow a broker's packet limit; nothing else
+    // the agent publishes comes anywhere near. The broker's own limit (MQTT 5 CONNACK) wins
+    // when it is lower, minus room for the topic and the packet header.
+    private const int MaxThumbnailBytes = 512 * 1024;
+    private const int ThumbnailPacketOverhead = 256;
+    private uint? _brokerMaximumPacketSize;
     private bool _lastUpdateBeta;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -710,6 +717,7 @@ internal sealed class MqttCompanionService : IDisposable
                 }
 
                 _log.Info("MQTT connected.");
+                _brokerMaximumPacketSize = connectResult.MaximumPacketSize;
                 var connectedAt = DateTime.UtcNow;
                 _forceReconnect = false;
                 await SubscribeAsync(cancellationToken);
@@ -743,9 +751,11 @@ internal sealed class MqttCompanionService : IDisposable
                 {
                     await _mediaSessionService.StartAsync(
                         PublishMediaStateAsync,
+                        // A cover that does not fit is published as "no artwork" rather than
+                        // not at all, or the previous track's cover would stay on the card.
                         thumbnail => PublishRawAsync(
                             $"hass.agent/media_player/{TopicId}/thumbnail",
-                            thumbnail,
+                            ThumbnailFits(thumbnail, _brokerMaximumPacketSize) ? thumbnail : null,
                             retain: false),
                         connectionCts.Token);
                 }
@@ -928,7 +938,7 @@ internal sealed class MqttCompanionService : IDisposable
         {
             await _mediaSessionService.StartAsync(
                 state => _haWs.PublishMediaStateAsync(state, wsCts.Token),
-                thumbnail => _haWs.PublishMediaThumbnailAsync(thumbnail, wsCts.Token),
+                thumbnail => _haWs.PublishMediaThumbnailAsync(ThumbnailFits(thumbnail, null) ? thumbnail : null, wsCts.Token),
                 wsCts.Token);
         }
 
@@ -1811,6 +1821,34 @@ internal sealed class MqttCompanionService : IDisposable
         {
             _log.Debug($"MQTT → {topic} ({json.Length} B)");
         }
+    }
+
+    /// <summary>
+    /// A thumbnail over the limit is dropped here rather than sent: the broker would close
+    /// the connection for it, the reconnect would send the same picture again, and every
+    /// entity would flap with the Last Will for as long as the track plays.
+    /// </summary>
+    private bool ThumbnailFits(byte[]? thumbnail, uint? brokerMaximumPacketSize)
+    {
+        if (thumbnail is null)
+        {
+            return true;
+        }
+
+        var limit = (long)MaxThumbnailBytes;
+        if (brokerMaximumPacketSize is { } brokerLimit)
+        {
+            // A limit smaller than the header room leaves no room at all.
+            limit = Math.Min(limit, Math.Max(0L, (long)brokerLimit - ThumbnailPacketOverhead));
+        }
+
+        if (thumbnail.Length <= limit)
+        {
+            return true;
+        }
+
+        _log.Warning($"Media thumbnail skipped: {thumbnail.Length / 1024} KB is over the {limit / 1024} KB limit.");
+        return false;
     }
 
     private async Task PublishRawAsync(string topic, byte[]? payload, bool retain)
