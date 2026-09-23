@@ -1,6 +1,8 @@
 using System.Security.Cryptography;
 using System.Text.Json;
 using HASS.Agent.Companion.Logging;
+using Windows.Foundation;
+using Windows.Graphics.Imaging;
 using Windows.Media.Control;
 using Windows.Media.Core;
 using Windows.Media.Playback;
@@ -251,6 +253,13 @@ internal sealed class MediaSessionService : IDisposable
         }
     }
 
+    // The artwork goes out as it is when it is already small. Anything bigger is scaled to
+    // this edge and re-encoded as JPEG: a browser hands over the full-size cover, which
+    // can run to megabytes, and Mosquitto 2.1 drops any packet over 2 MB by default.
+    private const int MaxThumbnailEdge = 512;
+    private const int MaxThumbnailBytesAsIs = 128 * 1024;
+    private const float ThumbnailJpegQuality = 0.85f;
+
     private async Task<byte[]?> ReadThumbnailAsync(GlobalSystemMediaTransportControlsSession session)
     {
         try
@@ -260,23 +269,89 @@ internal sealed class MediaSessionService : IDisposable
                 return null;
 
             using var stream = await thumbnailRef.OpenReadAsync();
-            var size = (uint)stream.Size;
-            if (size == 0)
-                return null;
-
-            var reader = new Windows.Storage.Streams.DataReader(stream);
-            await reader.LoadAsync(size);
-            var bytes = new byte[size];
-            reader.ReadBytes(bytes);
-            reader.DetachStream();
-            reader.Dispose();
-            return bytes;
+            return await ShrinkThumbnailAsync(stream, _log);
         }
         catch (Exception ex)
         {
             _log.Warning($"Unable to read media thumbnail: {ex.Message}");
             return null;
         }
+    }
+
+    internal static async Task<byte[]?> ShrinkThumbnailAsync(Windows.Storage.Streams.IRandomAccessStream stream, FileLog log)
+    {
+        {
+            if (stream.Size == 0)
+                return null;
+
+            BitmapDecoder? decoder = null;
+            try
+            {
+                decoder = await BitmapDecoder.CreateAsync(stream);
+            }
+            catch (Exception ex)
+            {
+                // A format Windows cannot decode (no codec installed). Small enough, it is
+                // still worth sending as it is; otherwise there is nothing to be done with it.
+                if (stream.Size > MaxThumbnailBytesAsIs)
+                {
+                    var why = string.IsNullOrWhiteSpace(ex.Message) ? ex.GetType().Name : ex.Message;
+                    log.Warning($"Media thumbnail skipped: {stream.Size / 1024} KB and not decodable ({why}).");
+                    return null;
+                }
+            }
+
+            if (decoder is null ||
+                (stream.Size <= MaxThumbnailBytesAsIs &&
+                 decoder.PixelWidth <= MaxThumbnailEdge &&
+                 decoder.PixelHeight <= MaxThumbnailEdge))
+            {
+                stream.Seek(0);
+                return await ReadAllBytesAsync(stream);
+            }
+
+            var scale = Math.Min(1.0, (double)MaxThumbnailEdge / Math.Max(decoder.PixelWidth, decoder.PixelHeight));
+            var transform = new BitmapTransform
+            {
+                ScaledWidth = (uint)Math.Max(1, Math.Round(decoder.PixelWidth * scale)),
+                ScaledHeight = (uint)Math.Max(1, Math.Round(decoder.PixelHeight * scale)),
+                InterpolationMode = BitmapInterpolationMode.Fant
+            };
+
+            using var bitmap = await decoder.GetSoftwareBitmapAsync(
+                BitmapPixelFormat.Bgra8,
+                BitmapAlphaMode.Ignore,
+                transform,
+                ExifOrientationMode.RespectExifOrientation,
+                ColorManagementMode.DoNotColorManage);
+
+            using var output = new Windows.Storage.Streams.InMemoryRandomAccessStream();
+            var encoder = await BitmapEncoder.CreateAsync(
+                BitmapEncoder.JpegEncoderId,
+                output,
+                new BitmapPropertySet
+                {
+                    ["ImageQuality"] = new BitmapTypedValue(ThumbnailJpegQuality, PropertyType.Single)
+                });
+            encoder.SetSoftwareBitmap(bitmap);
+            await encoder.FlushAsync();
+
+            output.Seek(0);
+            var bytes = await ReadAllBytesAsync(output);
+            log.Debug($"Media thumbnail {decoder.PixelWidth}x{decoder.PixelHeight}, {stream.Size / 1024} KB -> {transform.ScaledWidth}x{transform.ScaledHeight} JPEG, {bytes.Length / 1024} KB.");
+            return bytes;
+        }
+    }
+
+    private static async Task<byte[]> ReadAllBytesAsync(Windows.Storage.Streams.IRandomAccessStream stream)
+    {
+        var size = (uint)stream.Size;
+        using var reader = new Windows.Storage.Streams.DataReader(stream);
+        await reader.LoadAsync(size);
+        var bytes = new byte[size];
+        reader.ReadBytes(bytes);
+        reader.DetachStream();
+        return bytes;
     }
 
     private async Task<MediaStateMessage> BuildStateMessageAsync()
