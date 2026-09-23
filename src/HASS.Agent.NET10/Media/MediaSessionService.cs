@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices.WindowsRuntime;
 using System.Security.Cryptography;
 using System.Text.Json;
 using HASS.Agent.Companion.Logging;
@@ -237,10 +238,12 @@ internal sealed class MediaSessionService : IDisposable
                         ? Convert.ToHexString(SHA256.HashData(thumbnail))
                         : null;
 
+                    // The hash is taken on the artwork as Windows holds it, so a cover that
+                    // has not changed is not decoded and re-encoded every cycle.
                     if (hash != _lastThumbnailHash)
                     {
                         _lastThumbnailHash = hash;
-                        await _publishThumbnail(thumbnail);
+                        await _publishThumbnail(thumbnail is null ? null : await ShrinkThumbnailAsync(thumbnail, _log));
                     }
                 }
             }
@@ -269,7 +272,10 @@ internal sealed class MediaSessionService : IDisposable
                 return null;
 
             using var stream = await thumbnailRef.OpenReadAsync();
-            return await ShrinkThumbnailAsync(stream, _log);
+            if (stream.Size == 0)
+                return null;
+
+            return await ReadAllBytesAsync(stream);
         }
         catch (Exception ex)
         {
@@ -278,11 +284,13 @@ internal sealed class MediaSessionService : IDisposable
         }
     }
 
-    internal static async Task<byte[]?> ShrinkThumbnailAsync(Windows.Storage.Streams.IRandomAccessStream stream, FileLog log)
+    internal static async Task<byte[]?> ShrinkThumbnailAsync(byte[] artwork, FileLog log)
     {
+        try
         {
-            if (stream.Size == 0)
-                return null;
+            using var stream = new Windows.Storage.Streams.InMemoryRandomAccessStream();
+            await stream.WriteAsync(artwork.AsBuffer());
+            stream.Seek(0);
 
             BitmapDecoder? decoder = null;
             try
@@ -340,6 +348,12 @@ internal sealed class MediaSessionService : IDisposable
             var bytes = await ReadAllBytesAsync(output);
             log.Debug($"Media thumbnail {decoder.PixelWidth}x{decoder.PixelHeight}, {stream.Size / 1024} KB -> {transform.ScaledWidth}x{transform.ScaledHeight} JPEG, {bytes.Length / 1024} KB.");
             return bytes;
+        }
+        catch (Exception ex)
+        {
+            // Sent as it is when small enough; a big one that cannot be converted is dropped.
+            log.Warning($"Unable to shrink media thumbnail: {ex.Message}");
+            return artwork.Length <= MaxThumbnailBytesAsIs ? artwork : null;
         }
     }
 
