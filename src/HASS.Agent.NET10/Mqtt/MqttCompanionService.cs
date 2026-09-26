@@ -292,6 +292,52 @@ internal sealed class MqttCompanionService : IDisposable
             string.Format(Strings.GetHa("HaPn.UpdateCompleted"), _settings.DeviceName, previousVersion, _settings.SoftwareVersion));
     }
 
+    /// <summary>
+    /// The Install button of the HA update entity, on either transport. The tray app takes
+    /// it when it runs: it hands the install to the service and starts the watchdog that
+    /// brings the tray app back afterwards. With nobody logged in there is no tray app,
+    /// and the service takes the request itself; there is nothing to relaunch then.
+    /// </summary>
+    private void OnUpdateInstallRequested()
+    {
+        if (_role == CompanionRuntimeRole.App)
+        {
+            _ = Task.Run(HandleUpdateInstallRequestAsync);
+        }
+        else if (!IsTrayAppRunning())
+        {
+            _log.Info("Update install requested from Home Assistant; no tray app is running, the service takes it.");
+            _ = Task.Run(() => RunSilentUpdateInstallAsync(announce: true));
+        }
+    }
+
+    /// <summary>A tray app is one of our processes in an interactive session (the service is in session 0).</summary>
+    private static bool IsTrayAppRunning()
+    {
+        var processes = Process.GetProcessesByName(AppIdentity.ExecutableName);
+        try
+        {
+            return processes.Any(process =>
+            {
+                try
+                {
+                    return process.SessionId != 0;
+                }
+                catch
+                {
+                    return false;
+                }
+            });
+        }
+        finally
+        {
+            foreach (var process in processes)
+            {
+                process.Dispose();
+            }
+        }
+    }
+
     /// <summary>Handles the Install button of the HA update entity (tray app role).</summary>
     private async Task HandleUpdateInstallRequestAsync()
     {
@@ -401,7 +447,7 @@ internal sealed class MqttCompanionService : IDisposable
     /// Service-role silent install. Downloads the installer from GitHub itself —
     /// never runs a caller-supplied path as SYSTEM.
     /// </summary>
-    private async Task RunSilentUpdateInstallAsync()
+    private async Task RunSilentUpdateInstallAsync(bool announce = false)
     {
         // One installer at a time: a second Install while the first is still downloading
         // must not schedule a second setup. Once scheduled, the installer stops this
@@ -414,6 +460,20 @@ internal sealed class MqttCompanionService : IDisposable
         }
 
         var scheduled = false;
+
+        // Best effort: the notification must not decide whether the install happens.
+        async Task AnnounceAsync(string message)
+        {
+            try
+            {
+                await PublishPersistentNotificationAsync(Strings.GetHa("HaPn.UpdateTitle"), message);
+            }
+            catch (Exception ex)
+            {
+                _log.Warning($"Unable to send the update notification to Home Assistant: {ex.Message}");
+            }
+        }
+
         try
         {
             _log.Info("Silent update install requested (service role).");
@@ -421,12 +481,22 @@ internal sealed class MqttCompanionService : IDisposable
             if (!update.UpdateAvailable)
             {
                 _log.Info("No update available, skipping silent install.");
+                if (announce)
+                {
+                    await AnnounceAsync(string.Format(Strings.GetHa("HaPn.NoUpdate"), _settings.DeviceName));
+                }
+
                 return;
             }
 
             if (!IsInstallerAsset(update.AssetName))
             {
                 _log.Warning($"Release {update.LatestVersion} has no installer asset, skipping silent install.");
+                if (announce)
+                {
+                    await AnnounceAsync(string.Format(Strings.GetHa("HaPn.NoInstaller"), _settings.DeviceName, update.LatestVersion));
+                }
+
                 return;
             }
 
@@ -436,16 +506,31 @@ internal sealed class MqttCompanionService : IDisposable
             // Run via Task Scheduler, NOT as a child process: the installer stops
             // this service to free the locked exe, which would kill a child process
             // (and the install) mid-way. A scheduled task survives the service stop.
+            // The batch removes the installer and itself once setup has finished, and
+            // the task is deleted the next time one is created (it cannot delete itself
+            // while it runs).
             var batch = WriteBatch("run-update.cmd",
                 $"@echo off{Environment.NewLine}" +
-                $"\"{installerPath}\" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SILENTUPDATE{Environment.NewLine}");
+                $"\"{installerPath}\" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SILENTUPDATE{Environment.NewLine}" +
+                $"del /q \"{installerPath}\"{Environment.NewLine}" +
+                $"(goto) 2>nul & del /q \"%~f0\"{Environment.NewLine}");
             RunDetachedTask("HASSAgentNet10Update", batch, asSystem: true);
             scheduled = true;
             _log.Info("Silent installer scheduled via Task Scheduler.");
+            if (announce)
+            {
+                // Only now: the tray app sends this when it hands the install over, and
+                // here the service is the one that just scheduled it.
+                await AnnounceAsync(string.Format(Strings.GetHa("HaPn.UpdateStartedSilent"), _settings.DeviceName, update.LatestVersion));
+            }
         }
         catch (Exception ex)
         {
             _log.Warning($"Silent update install failed: {ex.Message}");
+            if (announce)
+            {
+                await AnnounceAsync(string.Format(Strings.GetHa("HaPn.UpdateFailed"), _settings.DeviceName, ex.Message));
+            }
         }
         finally
         {
@@ -638,21 +723,14 @@ internal sealed class MqttCompanionService : IDisposable
                     _ = _mediaSessionService.HandleCommandAsync(command);
                 }
             };
-            _haWs.UpdateInstallRequested += () =>
-            {
-                // Same handler the MQTT update topic uses; it guards against overlap itself.
-                if (_role == CompanionRuntimeRole.App)
-                {
-                    _ = Task.Run(HandleUpdateInstallRequestAsync);
-                }
-            };
+            _haWs.UpdateInstallRequested += OnUpdateInstallRequested;
             _haWs.SilentInstallRequested += target =>
             {
                 // The WebSocket counterpart of the MQTT service command topic.
                 if (_role == CompanionRuntimeRole.Service
                     && string.Equals(target, _role.Token(), StringComparison.OrdinalIgnoreCase))
                 {
-                    _ = Task.Run(RunSilentUpdateInstallAsync);
+                    _ = Task.Run(() => RunSilentUpdateInstallAsync());
                 }
             };
 
@@ -729,6 +807,10 @@ internal sealed class MqttCompanionService : IDisposable
                     await PublishUpdateStateAsync();
                     await PublishPendingUpdateNotificationAsync();
                 }
+                else if (!IsTrayAppRunning())
+                {
+                    await PublishUpdateStateAsync();
+                }
 
                 // Store connection state so RestartAsync can decide whether a
                 // full reconnect is needed or just a discovery refresh.
@@ -767,12 +849,9 @@ internal sealed class MqttCompanionService : IDisposable
                         connectionCts.Token);
                 }
 
-                if (_role == CompanionRuntimeRole.App)
-                {
-                    updateTask = Task.Run(
-                        () => PublishUpdateLoopAsync(connectionCts.Token),
-                        connectionCts.Token);
-                }
+                updateTask = Task.Run(
+                    () => PublishUpdateLoopAsync(connectionCts.Token),
+                    connectionCts.Token);
 
                 while (_client.IsConnected && !_forceReconnect && !cancellationToken.IsCancellationRequested)
                 {
@@ -929,6 +1008,10 @@ internal sealed class MqttCompanionService : IDisposable
             await PublishUpdateStateAsync(cancellationToken: wsCts.Token);
             await PublishPendingUpdateNotificationAsync();
         }
+        else if (!IsTrayAppRunning())
+        {
+            await PublishUpdateStateAsync(cancellationToken: wsCts.Token);
+        }
 
         // Start the receive loop (handles incoming commands).
         var receiveTask = Task.Run(() => _haWs.ReceiveLoopAsync(wsCts.Token), wsCts.Token);
@@ -944,11 +1027,7 @@ internal sealed class MqttCompanionService : IDisposable
 
         // Keep the update entity fed here as well: with no broker there is no MQTT
         // discovery to build it from, so these events are its only source.
-        Task? wsUpdateTask = null;
-        if (_role == CompanionRuntimeRole.App)
-        {
-            wsUpdateTask = Task.Run(() => PublishUpdateLoopAsync(wsCts.Token), wsCts.Token);
-        }
+        var wsUpdateTask = Task.Run(() => PublishUpdateLoopAsync(wsCts.Token), wsCts.Token);
 
         // Start sensor publishing on WS transport.
         Task? sensorTask = null;
@@ -1250,6 +1329,8 @@ internal sealed class MqttCompanionService : IDisposable
             // Always subscribed: silent update installs arrive here even when
             // the user disabled every service command.
             builder.WithTopicFilter(ServiceCommandTopic, MqttQualityOfServiceLevel.AtMostOnce);
+            // And the Install button itself, for when nobody is logged in (see below).
+            builder.WithTopicFilter(UpdateInstallTopic, MqttQualityOfServiceLevel.AtMostOnce);
             await _client.SubscribeAsync(builder.Build(), cancellationToken);
             return;
         }
@@ -1322,11 +1403,11 @@ internal sealed class MqttCompanionService : IDisposable
                 }
             }
 
-            if (topic == UpdateInstallTopic && _role == CompanionRuntimeRole.App)
+            if (topic == UpdateInstallTopic)
             {
                 if (string.Equals(payload.Trim().Trim('"'), "install", StringComparison.OrdinalIgnoreCase))
                 {
-                    _ = Task.Run(HandleUpdateInstallRequestAsync);
+                    OnUpdateInstallRequested();
                 }
 
                 return;
@@ -1343,7 +1424,7 @@ internal sealed class MqttCompanionService : IDisposable
                     {
                         if (_role == CompanionRuntimeRole.Service)
                         {
-                            _ = Task.Run(RunSilentUpdateInstallAsync);
+                            _ = Task.Run(() => RunSilentUpdateInstallAsync());
                         }
 
                         return;
@@ -1447,6 +1528,14 @@ internal sealed class MqttCompanionService : IDisposable
         while (!cancellationToken.IsCancellationRequested)
         {
             await Task.Delay(UpdateCheckInterval, cancellationToken);
+
+            // The tray app owns the update entity while it runs; the service only stands in
+            // for it, so that a PC nobody is logged in to still learns about a new release.
+            if (_role == CompanionRuntimeRole.Service && IsTrayAppRunning())
+            {
+                continue;
+            }
+
             await PublishUpdateStateAsync(forceCheck: true, cancellationToken);
         }
     }
