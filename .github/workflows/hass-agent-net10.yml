@@ -145,6 +145,10 @@ jobs:
         with:
           body_path: ${{ runner.temp }}/RELEASE_NOTES.md
           prerelease: ${{ contains(github.ref_name, '-') }}
+          # A draft until the signed assets replace these: build-exe.ps1 -Tag -Upload
+          # publishes it. Nothing unsigned is ever public, and Home Assistant does not
+          # offer the release before it is signed.
+          draft: true
           files: |
             artifacts/installer/*.exe
             artifacts/package/*.zip

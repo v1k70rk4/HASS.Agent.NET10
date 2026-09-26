@@ -265,13 +265,24 @@ if ($Tag) {
                 gh release upload $tagName @releaseFiles --clobber -R $repo
                 if ($LASTEXITCODE -ne 0) { throw "gh release upload failed (exit code $LASTEXITCODE)." }
                 Write-Host "Release assets replaced on $tagName" -ForegroundColor Green
+
+                # CI creates the release as a draft, so that nothing unsigned is ever public.
+                # With the signed files in place it goes live; a stable tag becomes "latest".
+                $isDraft = (gh release view $tagName -R $repo --json isDraft --jq '.isDraft' 2>$null) -eq 'true'
+                if ($isDraft) {
+                    $publishArgs = @('release', 'edit', $tagName, '--draft=false', '-R', $repo)
+                    if ($tagName -notmatch '-') { $publishArgs += '--latest' }
+                    gh @publishArgs
+                    if ($LASTEXITCODE -ne 0) { throw "gh release edit failed (exit code $LASTEXITCODE) - the release is still a draft." }
+                    Write-Host "Release $tagName published" -ForegroundColor Green
+                }
             }
             else {
                 Write-Host "Release left untouched." -ForegroundColor DarkGray
             }
         }
         elseif ("$view" -match 'release not found') {
-            $hint = "No GitHub release $tagName yet - push the tag, let CI create the release, then re-run with -Tag to replace its assets."
+            $hint = "No GitHub release $tagName yet - push the tag, let CI create the (draft) release, then re-run with -Tag -Upload to replace its assets and publish it."
             if ($Upload) { throw $hint }
             Write-Host $hint -ForegroundColor Yellow
         }

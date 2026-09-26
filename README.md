@@ -64,6 +64,8 @@ The modern .NET10 line starts at **version 10.0.0**. The pre-.NET10 client remai
 
 Works with the Home Assistant integration **10.6.7** or newer (no integration change in this release). Signed release.
 
+- **A *Check for updates* button in Home Assistant** (integration 10.7.3+). It sits next to the update entity and makes the agent ask GitHub right away, so a fresh release shows up in Home Assistant without waiting for the six-hourly check or opening the About page. Thanks to [@Taomyn](https://github.com/Taomyn) for the idea.
+- **One update entity, on both transports.** Over MQTT the update entity used to come from Home Assistant's own MQTT discovery, and over the HA API from the integration - so a PC that switched transports ended up with two, one of them always unavailable. With integration 10.7.3 or newer the integration builds the entity on MQTT as well, and the agent removes its discovered one (it announces the change on `hass.agent/integration/{id}`, retained; an older integration says nothing there and keeps getting the discovered entity as before). The entity now follows the device rather than the tray app, so it stays available, and installable, while only the service runs.
 - **Fixed: installing an update from Home Assistant now works with nobody logged in.** The Install button's request was only picked up by the tray app, which handed the actual install to the Windows service. On a PC that was switched on but not logged in there was no tray app, so the request went unanswered, with nothing in any log. The service now takes the request itself when no tray app is running, and it keeps checking for new releases meanwhile, so the update entity in Home Assistant stays current on a PC nobody is logged in to. When a tray app runs, it handles the request as before, since it also has to bring itself back after the install. Thanks to [@Taomyn](https://github.com/Taomyn) for the report.
 
 ### 10.7.2
@@ -725,7 +727,7 @@ The agent supports three connection modes. You can use MQTT and HA API together 
 
 ### Updating from Home Assistant
 
-When a new release is available, the agent publishes an **update entity** to Home Assistant with a working **Install** button. Over MQTT this is Home Assistant's own update discovery; on the HA API transport the integration builds the same entity from the agent's events (client and integration 10.6.7+). With the Windows service installed, the update is downloaded and applied **fully silently** (no UAC prompt); otherwise a UAC prompt appears on the PC. Home Assistant receives a **persistent notification** for the progress and result.
+When a new release is available, the agent publishes an **update entity** to Home Assistant with a working **Install** button and a **Check for updates** button next to it. With integration 10.7.3 or newer the integration builds the entity on both transports; with an older integration it comes from Home Assistant's own MQTT discovery (and, on the HA API transport, from the agent's events, 10.6.7+). With the Windows service installed, the update is downloaded and applied **fully silently** (no UAC prompt), also when nobody is logged in; otherwise a UAC prompt appears on the PC. Home Assistant receives a **persistent notification** for the progress and result.
 
 <p align="center"><img src="docs/images/ha-update-alert.png" width="500" alt="Update available in Home Assistant"></p>
 <p align="center"><img src="docs/images/ha-client-updated.png" width="500" alt="Update completed notification"></p>

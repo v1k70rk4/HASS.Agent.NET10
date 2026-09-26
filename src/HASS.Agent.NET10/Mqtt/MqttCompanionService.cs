@@ -33,6 +33,15 @@ internal sealed class MqttCompanionService : IDisposable
     // the agent publishes comes anywhere near. The broker's own limit (MQTT 5 CONNACK) wins
     // when it is lower, minus room for the topic and the packet header.
     private const int MaxThumbnailBytes = 512 * 1024;
+
+    // What the integration tells the agent about itself, as a retained message on
+    // hass.agent/integration/{id}. Integration 10.7.3+ builds the update entity itself
+    // on MQTT too; an older one says nothing, and then the agent's own MQTT discovery
+    // provides the entity, as it always has.
+    private static readonly TimeSpan IntegrationInfoWait = TimeSpan.FromSeconds(3);
+    private volatile bool _integrationOwnsUpdateEntity;
+    private TaskCompletionSource<bool> _integrationInfoReceived = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private volatile bool _discoveryPublished;
     private const int ThumbnailPacketOverhead = 256;
     private uint? _brokerMaximumPacketSize;
     private bool _lastUpdateBeta;
@@ -798,8 +807,11 @@ internal sealed class MqttCompanionService : IDisposable
                 _brokerMaximumPacketSize = connectResult.MaximumPacketSize;
                 var connectedAt = DateTime.UtcNow;
                 _forceReconnect = false;
+                _discoveryPublished = false;
                 await SubscribeAsync(cancellationToken);
+                await WaitForIntegrationInfoAsync(cancellationToken);
                 await PublishDiscoveryAsync();
+                _discoveryPublished = true;
                 await PublishLegacyTopicCleanupAsync();
                 if (_role == CompanionRuntimeRole.App)
                 {
@@ -1337,6 +1349,8 @@ internal sealed class MqttCompanionService : IDisposable
 
         // The HA update entity's Install button publishes here.
         builder.WithTopicFilter(UpdateInstallTopic, MqttQualityOfServiceLevel.AtMostOnce);
+        // What the integration can do (retained, so it arrives right after subscribing).
+        builder.WithTopicFilter(IntegrationInfoTopic, MqttQualityOfServiceLevel.AtMostOnce);
         hasSubscriptions = true;
 
         if (_settings.MqttNotificationsEnabled)
@@ -1413,6 +1427,12 @@ internal sealed class MqttCompanionService : IDisposable
                 return;
             }
 
+            if (topic == IntegrationInfoTopic)
+            {
+                await HandleIntegrationInfoAsync(payload);
+                return;
+            }
+
             if (topic == ServiceCommandTopic)
             {
                 var command = JsonSerializer.Deserialize<SystemCommandMessage>(payload, JsonOptions);
@@ -1482,7 +1502,66 @@ internal sealed class MqttCompanionService : IDisposable
 
         if (!offline)
         {
-            await PublishHomeAssistantUpdateDiscoveryAsync();
+            await PublishUpdateEntityDiscoveryAsync();
+        }
+    }
+
+    /// <summary>
+    /// The update entity on MQTT: Home Assistant's own discovery builds it unless the
+    /// integration says it builds one itself, in which case the discovery config is
+    /// cleared (an empty retained payload removes the discovered entity), so the two
+    /// never exist side by side.
+    /// </summary>
+    private async Task PublishUpdateEntityDiscoveryAsync()
+    {
+        if (_integrationOwnsUpdateEntity)
+        {
+            await PublishRawAsync(UpdateDiscoveryTopic, null, retain: true);
+            return;
+        }
+
+        await PublishHomeAssistantUpdateDiscoveryAsync();
+    }
+
+    private async Task WaitForIntegrationInfoAsync(CancellationToken cancellationToken)
+    {
+        if (_role != CompanionRuntimeRole.App)
+        {
+            return;
+        }
+
+        // A retained message is delivered right after the subscription; an old
+        // integration never sends one, and that costs one short wait per connect.
+        _integrationInfoReceived = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(IntegrationInfoWait);
+        try
+        {
+            await _integrationInfoReceived.Task.WaitAsync(timeout.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            // Nothing arrived: the integration is older than 10.7.3, or not there.
+        }
+    }
+
+    private async Task HandleIntegrationInfoAsync(string payload)
+    {
+        var owns = false;
+        if (!string.IsNullOrWhiteSpace(payload))
+        {
+            using var document = JsonDocument.Parse(payload);
+            owns = document.RootElement.TryGetProperty("update_entity", out var element) && element.ValueKind == JsonValueKind.True;
+        }
+
+        var changed = owns != _integrationOwnsUpdateEntity;
+        _integrationOwnsUpdateEntity = owns;
+        _integrationInfoReceived.TrySetResult(true);
+        if (changed && _discoveryPublished && _client is { IsConnected: true })
+        {
+            // Arrived after this connection's discovery went out: the integration was
+            // updated or removed meanwhile, or its retained message came late.
+            await PublishUpdateEntityDiscoveryAsync();
         }
     }
 
@@ -1577,7 +1656,7 @@ internal sealed class MqttCompanionService : IDisposable
     private async Task PublishHomeAssistantUpdateDiscoveryAsync()
     {
         await PublishJsonAsync(
-            $"homeassistant/update/{SanitizeDiscoveryId(_settings.SerialNumber)}/hass_agent_net10/config",
+            UpdateDiscoveryTopic,
             new MqttUpdateDiscoveryConfig(
                 Name: $"{AppIdentity.DisplayName} Update",
                 UniqueId: $"{SanitizeDiscoveryId(_settings.SerialNumber)}_hass_agent_net10_update",
@@ -1842,6 +1921,15 @@ internal sealed class MqttCompanionService : IDisposable
                 return;
             }
 
+            // Internal, like install_update: the "Check for updates" button next to the
+            // update entity in Home Assistant. Not on the command list, so nothing to enable.
+            if (commandName == "update_check")
+            {
+                _log.Info($"Update check requested from Home Assistant over {transport}.");
+                await PublishUpdateStateAsync(forceCheck: true, _cts?.Token ?? CancellationToken.None);
+                return;
+            }
+
             var customCommand = FindCustomCommand(commandName, serviceRole);
             if (customCommand is not null)
             {
@@ -2041,6 +2129,8 @@ internal sealed class MqttCompanionService : IDisposable
     private string UpdateStateTopic => $"hass.agent/update/{TopicId}/state";
 
     private string UpdateInstallTopic => $"hass.agent/update/{TopicId}/install";
+    private string IntegrationInfoTopic => $"hass.agent/integration/{TopicId}";
+    private string UpdateDiscoveryTopic => $"homeassistant/update/{SanitizeDiscoveryId(_settings.SerialNumber)}/hass_agent_net10/config";
 
     private string PersistentNotificationTopic => $"hass.agent/persistent_notification/{TopicId}";
 
