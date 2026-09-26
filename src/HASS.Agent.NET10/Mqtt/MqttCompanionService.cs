@@ -460,6 +460,20 @@ internal sealed class MqttCompanionService : IDisposable
         }
 
         var scheduled = false;
+
+        // Best effort: the notification must not decide whether the install happens.
+        async Task AnnounceAsync(string message)
+        {
+            try
+            {
+                await PublishPersistentNotificationAsync(Strings.GetHa("HaPn.UpdateTitle"), message);
+            }
+            catch (Exception ex)
+            {
+                _log.Warning($"Unable to send the update notification to Home Assistant: {ex.Message}");
+            }
+        }
+
         try
         {
             _log.Info("Silent update install requested (service role).");
@@ -469,9 +483,7 @@ internal sealed class MqttCompanionService : IDisposable
                 _log.Info("No update available, skipping silent install.");
                 if (announce)
                 {
-                    await PublishPersistentNotificationAsync(
-                        Strings.GetHa("HaPn.UpdateTitle"),
-                        string.Format(Strings.GetHa("HaPn.NoUpdate"), _settings.DeviceName));
+                    await AnnounceAsync(string.Format(Strings.GetHa("HaPn.NoUpdate"), _settings.DeviceName));
                 }
 
                 return;
@@ -482,20 +494,10 @@ internal sealed class MqttCompanionService : IDisposable
                 _log.Warning($"Release {update.LatestVersion} has no installer asset, skipping silent install.");
                 if (announce)
                 {
-                    await PublishPersistentNotificationAsync(
-                        Strings.GetHa("HaPn.UpdateTitle"),
-                        string.Format(Strings.GetHa("HaPn.NoInstaller"), _settings.DeviceName, update.LatestVersion));
+                    await AnnounceAsync(string.Format(Strings.GetHa("HaPn.NoInstaller"), _settings.DeviceName, update.LatestVersion));
                 }
 
                 return;
-            }
-
-            if (announce)
-            {
-                // The tray app sends this when it hands the install over; here there is none.
-                await PublishPersistentNotificationAsync(
-                    Strings.GetHa("HaPn.UpdateTitle"),
-                    string.Format(Strings.GetHa("HaPn.UpdateStartedSilent"), _settings.DeviceName, update.LatestVersion));
             }
 
             var installerPath = await AppUpdateService.DownloadAsync(update, GetUpdateDownloadDirectory());
@@ -504,16 +506,31 @@ internal sealed class MqttCompanionService : IDisposable
             // Run via Task Scheduler, NOT as a child process: the installer stops
             // this service to free the locked exe, which would kill a child process
             // (and the install) mid-way. A scheduled task survives the service stop.
+            // The batch removes the installer and itself once setup has finished, and
+            // the task is deleted the next time one is created (it cannot delete itself
+            // while it runs).
             var batch = WriteBatch("run-update.cmd",
                 $"@echo off{Environment.NewLine}" +
-                $"\"{installerPath}\" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SILENTUPDATE{Environment.NewLine}");
+                $"\"{installerPath}\" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SILENTUPDATE{Environment.NewLine}" +
+                $"del /q \"{installerPath}\"{Environment.NewLine}" +
+                $"(goto) 2>nul & del /q \"%~f0\"{Environment.NewLine}");
             RunDetachedTask("HASSAgentNet10Update", batch, asSystem: true);
             scheduled = true;
             _log.Info("Silent installer scheduled via Task Scheduler.");
+            if (announce)
+            {
+                // Only now: the tray app sends this when it hands the install over, and
+                // here the service is the one that just scheduled it.
+                await AnnounceAsync(string.Format(Strings.GetHa("HaPn.UpdateStartedSilent"), _settings.DeviceName, update.LatestVersion));
+            }
         }
         catch (Exception ex)
         {
             _log.Warning($"Silent update install failed: {ex.Message}");
+            if (announce)
+            {
+                await AnnounceAsync(string.Format(Strings.GetHa("HaPn.UpdateFailed"), _settings.DeviceName, ex.Message));
+            }
         }
         finally
         {
@@ -990,6 +1007,10 @@ internal sealed class MqttCompanionService : IDisposable
             await PublishAvailabilityAsync(online: true);
             await PublishUpdateStateAsync(cancellationToken: wsCts.Token);
             await PublishPendingUpdateNotificationAsync();
+        }
+        else if (!IsTrayAppRunning())
+        {
+            await PublishUpdateStateAsync(cancellationToken: wsCts.Token);
         }
 
         // Start the receive loop (handles incoming commands).
