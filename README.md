@@ -62,7 +62,7 @@ The modern .NET10 line starts at **version 10.0.0**. The pre-.NET10 client remai
 
 ### 10.7.3
 
-Works with the Home Assistant integration **10.6.7** or newer (no integration change in this release). Signed release.
+Works with the Home Assistant integration **10.6.7** or newer; the *Check for updates* button and the single update entity need integration **10.7.3**. Signed release.
 
 - **A *Check for updates* button in Home Assistant** (integration 10.7.3+). It sits next to the update entity and makes the agent ask GitHub right away, so a fresh release shows up in Home Assistant without waiting for the six-hourly check or opening the About page. Thanks to [@Taomyn](https://github.com/Taomyn) for the idea.
 - **One update entity, on both transports.** Over MQTT the update entity used to come from Home Assistant's own MQTT discovery, and over the HA API from the integration - so a PC that switched transports ended up with two, one of them always unavailable. With integration 10.7.3 or newer the integration builds the entity on MQTT as well, and the agent removes its discovered one (it announces the change on `hass.agent/integration/{id}`, retained; an older integration says nothing there and keeps getting the discovered entity as before). The entity now follows the device rather than the tray app, so it stays available, and installable, while only the service runs.
