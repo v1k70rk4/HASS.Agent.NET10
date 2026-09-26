@@ -1548,13 +1548,25 @@ internal sealed class MqttCompanionService : IDisposable
     private async Task HandleIntegrationInfoAsync(string payload)
     {
         var owns = false;
+        var version = "unknown";
         if (!string.IsNullOrWhiteSpace(payload))
         {
             using var document = JsonDocument.Parse(payload);
             owns = document.RootElement.TryGetProperty("update_entity", out var element) && element.ValueKind == JsonValueKind.True;
+            if (document.RootElement.TryGetProperty("version", out var versionElement) && versionElement.ValueKind == JsonValueKind.String)
+            {
+                version = versionElement.GetString() ?? version;
+            }
         }
 
         var changed = owns != _integrationOwnsUpdateEntity;
+        if (changed)
+        {
+            _log.Info(owns
+                ? $"Integration {version} builds the update entity itself; the MQTT discovery for it is cleared."
+                : "Integration announcement withdrawn; the update entity comes from MQTT discovery again.");
+        }
+
         _integrationOwnsUpdateEntity = owns;
         _integrationInfoReceived.TrySetResult(true);
         if (changed && _discoveryPublished && _client is { IsConnected: true })
