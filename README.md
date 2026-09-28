@@ -68,13 +68,20 @@ Works with the Home Assistant integration **10.6.7** or newer; the *Check for up
 - **One update entity, on both transports.** Over MQTT the update entity used to come from Home Assistant's own MQTT discovery, and over the HA API from the integration - so a PC that switched transports ended up with two, one of them always unavailable. With integration 10.7.3 or newer the integration builds the entity on MQTT as well, and the agent removes its discovered one (it announces the change on `hass.agent/integration/{id}`, retained; an older integration says nothing there and keeps getting the discovered entity as before). The entity now follows the device rather than the tray app, so it stays available, and installable, while only the service runs.
 - **Fixed: installing an update from Home Assistant now works with nobody logged in.** The Install button's request was only picked up by the tray app, which handed the actual install to the Windows service. On a PC that was switched on but not logged in there was no tray app, so the request went unanswered, with nothing in any log. The service now takes the request itself when no tray app is running, and it keeps checking for new releases meanwhile, so the update entity in Home Assistant stays current on a PC nobody is logged in to. When a tray app runs, it handles the request as before, since it also has to bring itself back after the install. Thanks to [@Taomyn](https://github.com/Taomyn) for the report.
 
-### 10.7.2
+<details>
+<summary><b>Older versions</b></summary>
+
+<details>
+<summary><b>10.7.2</b></summary>
 
 Works with the Home Assistant integration **10.6.7** or newer (no integration change in this release). Signed release.
 
 - **Fixed: a large album cover no longer takes the MQTT connection down.** The media player published the artwork exactly as Windows handed it over, with no resizing and no size cap. Mosquitto 2.1 (Home Assistant add-on 7.0.0 and newer) rejects any packet over 2 MB by default, and a full-size cover from a browser can exceed that: the broker dropped the connection, the agent reconnected and sent the same picture again, and every entity flapped between `unavailable` and its state for as long as the track played. Artwork over 128 KB or 512 px is now scaled down to 512 px and re-encoded as JPEG before publishing (a few dozen KB; smaller artwork goes out unchanged), the agent honours the packet size the broker advertises on connect, and anything still over the limit is skipped with a log line. The same cap applies on the HA API transport. Thanks to [@j0k34](https://github.com/j0k34) for the precise report.
 
-### 10.7.1
+</details>
+
+<details>
+<summary><b>10.7.1</b></summary>
 
 Works with the Home Assistant integration **10.6.7** or newer; the **new sensors need integration 10.7.0** to show up in Home Assistant. Signed release, like every release since 10.6.8 (see [Code signing](#code-signing)).
 
@@ -96,13 +103,21 @@ Works with the Home Assistant integration **10.6.7** or newer; the **new sensors
 - **Fixed: crash on exit.** Closing the tray app (also when an update closes it) could end in an unhandled exception, recorded by Windows as an application error: the media session monitor was stopped from two places at once during shutdown. Nothing was lost, since the app was closing anyway, but it no longer happens.
 - **Fixed: starting a service that is already running is no longer an error**, and neither is stopping one that is not. The message Windows gives in those cases (and any other `sc` error) is also readable now on a localized Windows: it was decoded with the wrong code page, so every accented letter came out as `�`.
 - **Fixed: a refused MQTT login was logged as `MQTT connected.`** A broker that rejects the credentials answers the connection attempt instead of failing it, and the agent took that answer for success — so the log showed a connection that never existed, and the HA API failover kept flapping between the two transports. A refused connection is now a failed one: it is logged with the broker's reason, and the failover stays on the HA API until the broker really accepts the login.
-### 10.6.9
+
+</details>
+
+<details>
+<summary><b>10.6.9</b></summary>
 
 Requires the Home Assistant integration **10.6.7** or newer (no integration change in this release).
 
 - **Installing an update from Home Assistant now works on the HA API (WebSocket) transport with the service installed.** Pressing *Install* started the relaunch watchdog (the brief console window) and posted the "update started" notification, but the actual install command for the service was sent to the MQTT service topic — which, without a broker, was silently dropped. So nothing was installed and the version never changed. The command now travels over the HA API as well, and the service runs the silent install exactly as it does over MQTT.
 - Without the service, the installer started from Home Assistant is launched detached from the tray app instead of as its child process, so the installer's own close-the-running-app step can no longer take the installer down with it.
-### 10.6.8
+
+</details>
+
+<details>
+<summary><b>10.6.8</b></summary>
 
 Requires the Home Assistant integration **10.6.7** or newer (no integration change in this release).
 
@@ -116,13 +131,19 @@ Requires the Home Assistant integration **10.6.7** or newer (no integration chan
 
 Thanks to [@ThorgarIV](https://github.com/ThorgarIV) for the RDP report and fix, and to [@phuzzyday](https://github.com/phuzzyday) for the migration write-up that surfaced the reset and logging problems.
 
-### 10.6.7
+</details>
+
+<details>
+<summary><b>10.6.7</b></summary>
 
 Requires the Home Assistant integration **10.6.7** or newer.
 
 - **The update entity now works on the HA API (WebSocket) transport.** It was built from Home Assistant's own MQTT discovery, so without a broker there was no update entity and no Install button — on the very transport people choose precisely because Home Assistant is not on their local network. The agent now reports the available release over the WebSocket as well, and installs it when asked, so updating from Home Assistant works with or without MQTT.
 
-### 10.6.6
+</details>
+
+<details>
+<summary><b>10.6.6</b></summary>
 
 Requires the Home Assistant integration **10.6.6** or newer.
 
@@ -131,7 +152,10 @@ Requires the Home Assistant integration **10.6.6** or newer.
 
 Thanks to [@Taomyn](https://github.com/Taomyn) for the report.
 
-### 10.6.5
+</details>
+
+<details>
+<summary><b>10.6.5</b></summary>
 
 Requires the Home Assistant integration **10.6.5** or newer when using the HA API (WebSocket) transport.
 
@@ -141,7 +165,10 @@ Requires the Home Assistant integration **10.6.5** or newer when using the HA AP
 
 Thanks to [@CookSleep](https://github.com/CookSleep) for the report — including the root cause and a suggested fix.
 
-### 10.6.4
+</details>
+
+<details>
+<summary><b>10.6.4</b></summary>
 
 Both fixes address the update problems reported in #22.
 
@@ -150,13 +177,19 @@ Both fixes address the update problems reported in #22.
 
 Thanks to [@AdmiralRaccoon](https://github.com/AdmiralRaccoon) for the report and for methodically confirming both causes — registry value and Task Scheduler conditions included.
 
-### 10.6.3
+</details>
+
+<details>
+<summary><b>10.6.3</b></summary>
 
 - **Settings are far harder to lose when an update closes the app.** They were written by truncating the file first and then writing it, so a badly timed force-close could leave it empty. Settings are now written atomically and the previous version is kept as a backup, which is restored automatically if the main file ever turns up missing or unreadable.
 - **A lost configuration no longer creates a duplicate device in Home Assistant.** The device serial is what identifies the PC, and it used to live only in the settings file — so losing that file minted a new serial and the machine reappeared as a brand new device (with the old entities left behind on the broker). The serial is now mirrored next to the settings and reused. A deliberate *Clean install* still gives a fresh identity, as it should.
 - **One-shot update tasks clean themselves up.** The scheduled tasks used to run an update were left behind in Task Scheduler, where they piled up and invited being run by hand. They now delete themselves after running, and leftovers from earlier versions are removed on start.
 
-### 10.6.2
+</details>
+
+<details>
+<summary><b>10.6.2</b></summary>
 
 - Fixed a **`NullReferenceException` in the sensor loop** that left the device permanently **unavailable** in Home Assistant. The Windows service runs with interactive metrics disabled, and those fields fell back to the previous snapshot — which doesn't exist yet on the first read after the service (re)loads, so the very first read threw before a snapshot could be stored, and every cycle after it repeated the same failure. Affected setups where the **service** publishes system sensors; the tray app was unaffected.
 - **Entities no longer disappear** from Home Assistant when the app shuts down cleanly. A graceful exit also published an empty capability list, which Home Assistant reads as "this device has nothing left" and deletes the entities. Now only the availability state goes offline, so the entities stay and show as **unavailable** until the device is back — the same as after a crash or network loss. (Turning off both MQTT and the HA API in settings still removes them on purpose.)
@@ -164,12 +197,18 @@ Thanks to [@AdmiralRaccoon](https://github.com/AdmiralRaccoon) for the report an
 
 Thanks to [@Taomyn](https://github.com/Taomyn) for the detailed reports and for testing the beta builds — these were tracked down entirely from his logs and feedback.
 
-### 10.6.1
+</details>
+
+<details>
+<summary><b>10.6.1</b></summary>
 
 - Fixed a **`NullReferenceException` in the sensor loop** that could make the device go (and stay) **unavailable** in Home Assistant, typically after startup or resume from sleep. A transient network adapter with a null name/description (common with VPN/virtual adapters mid-initialization) threw inside the network reads, aborting every sensor cycle. The network reads are now null-safe and fault-isolated.
 - Fixed **GitHub update-check `403 (rate limit exceeded)`**: the update state was queried on every reconnect, which — with frequent reconnects and several devices behind one IP — exhausted the unauthenticated GitHub API limit. The result is now cached/throttled (at most once per hour outside the 6-hour poll).
 
-### 10.6.0
+</details>
+
+<details>
+<summary><b>10.6.0</b></summary>
 
 Stable release of the custom commands & command sensors line.
 
@@ -178,12 +217,18 @@ Stable release of the custom commands & command sensors line.
 - **Fixed in-app updates** (from the About page) aborting: the installer closes the running app with `taskkill /… /T`, which also killed the installer when it was launched as a child of the app. It now runs detached, so it survives, installs, and relaunches the app. Updating from Home Assistant was unaffected.
 - **Update the Home Assistant integration too** — it's now in the **HACS default store**, so no custom repository is needed (search "HASS.Agent").
 
-### 10.5.0
+</details>
+
+<details>
+<summary><b>10.5.0</b></summary>
 
 - Fixed a freeze that could stop all reporting when the monitor powered off: multiple audio components held separate WASAPI COM instances and deadlocked during an audio device change (e.g. HDMI audio disappearing). Audio access is now a single, serialized endpoint, and the device-change handler no longer does COM work inside the notification callback.
 - The system sensor loop now survives a transient read error instead of stopping, and logs the full stack trace if one occurs.
 
-### 10.4.0 (Yanked)
+</details>
+
+<details>
+<summary><b>10.4.0 (Yanked)</b></summary>
 
 - Added **event-driven (push) sensor updates**: monitor power state, session lock/unlock, AC/battery power source, and audio (volume, mute, output device, microphone mute) now report to Home Assistant within ~600 ms of changing instead of waiting for the next poll. Rapid changes (e.g. dragging the volume slider) are debounced.
 - Added **enum sensor states**: `monitor_power_state`, `power_status`, and `session_state` are now `enum` sensors, so Home Assistant knows their possible values (selectable in automations; `dimmed` is a first-class monitor state).
@@ -191,7 +236,10 @@ Stable release of the custom commands & command sensors line.
 - The **Sensors** page now shows a **Push** profile for push-driven sensors.
 - Moved the Bluetooth sensor from hourly to normal polling.
 
-### 10.3.0
+</details>
+
+<details>
+<summary><b>10.3.0</b></summary>
 
 - Added one-click updates from Home Assistant: the update entity's **Install** button downloads and installs the new version on the PC — fully silent when the system service is installed, with a UAC prompt otherwise.
 - Added persistent notifications to Home Assistant for update progress: started, completed (with version), no installer, or failure.
@@ -208,14 +256,20 @@ Stable release of the custom commands & command sensors line.
 - The General page warning now also shows when the system service is installed but stopped.
 - Fixed input fields overflowing on small window sizes across the General, MQTT, and HA API pages.
 
-### 10.2.0
+</details>
+
+<details>
+<summary><b>10.2.0</b></summary>
 
 - Fixed default language set to Hungarian on non-Hungarian systems; the app now auto-detects the OS language and defaults to English.
 - Fixed clean install not removing legacy `HASS.Agent.Companion` directories, causing old settings to migrate back.
 - Fixed tray icon missing in standalone single-file publish by embedding the icon as an assembly resource.
 - Removed the "MQTT not configured" warning from the General page when HA API is enabled.
 
-### 10.1.0
+</details>
+
+<details>
+<summary><b>10.1.0</b></summary>
 
 - Added Home Assistant WebSocket API transport for MQTT failover and MQTT-free remote control.
 - Added HA API settings, connection testing, HTTP warning tooltip, and setup status banners.
@@ -228,7 +282,10 @@ Stable release of the custom commands & command sensors line.
 - Improved service/MQTT setup warnings, About page actions, and tray service labeling.
 - Switched MQTT topic routing and HA API command targeting to `serial_number` so device renames do not break commands.
 
-### 10.0.0
+</details>
+
+<details>
+<summary><b>10.0.0</b></summary>
 
 - Rebuilt the companion client as a modern `.NET 10` Windows app.
 - Added a Windows tray app for interactive user-session features.
@@ -240,6 +297,10 @@ Stable release of the custom commands & command sensors line.
 - Added a configurable sensor catalog and custom sensors.
 - Added service-aware shutdown/restart/restart-cancel support.
 - Added a new Windows 11-style icon.
+
+</details>
+
+</details>
 
 ## Requirements
 
