@@ -393,6 +393,18 @@ if ($Tag) {
                     if ($LASTEXITCODE -ne 0) { throw "gh release edit failed (exit code $LASTEXITCODE) - the release is still a draft." }
                     Write-Host "Release $tagName published" -ForegroundColor Green
                 }
+
+                # What is on the release now must be what was just signed here. Checked by size
+                # and hash, after publishing, because that is the state people download.
+                $published = gh release view $tagName -R $repo --json assets --jq '.assets[] | "\(.name) \(.digest)"' 2>$null
+                foreach ($file in $releaseFiles) {
+                    $name = Split-Path $file -Leaf
+                    $expected = "sha256:" + (Get-FileHash $file -Algorithm SHA256).Hash.ToLowerInvariant()
+                    if (-not ($published | Where-Object { $_ -eq "$name $expected" })) {
+                        throw "Release $tagName does not carry the signed $name (expected $expected). Check the release before anyone downloads it."
+                    }
+                }
+                Write-Host "Release assets verified against the signed files" -ForegroundColor Green
             }
             else {
                 Write-Host "Release left untouched." -ForegroundColor DarkGray
