@@ -282,6 +282,11 @@ else {
     Write-Host "Building $appName $appVersion  (standalone, self-contained, win-x64)..." -ForegroundColor Cyan
 }
 
+# The exe of an earlier build must not survive: publish skips the single-file bundle when the one in the
+# output folder looks newer than its inputs, which it does after a build of another source (or version).
+$staleExe = Join-Path $Output "HASS.Agent.NET10.exe"
+if (Test-Path $staleExe) { Remove-Item $staleExe -Force }
+
 dotnet @publishArgs -o $Output
 if ($LASTEXITCODE -ne 0) { throw "Build failed (dotnet publish exit code $LASTEXITCODE)." }
 
