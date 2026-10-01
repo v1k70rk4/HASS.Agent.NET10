@@ -275,6 +275,9 @@ internal sealed class MqttCompanionService : IDisposable
         _pendingUpdateCompletedFrom = previousVersion;
     }
 
+    /// <summary>Whether the queued "updated to X" notification is still waiting to be sent.</summary>
+    public bool UpdateCompletionPending => _pendingUpdateCompletedFrom is not null;
+
     /// <summary>Creates a Home Assistant persistent notification on the active transport.</summary>
     public async Task PublishPersistentNotificationAsync(string title, string message)
     {
@@ -822,6 +825,12 @@ internal sealed class MqttCompanionService : IDisposable
                 else if (!IsTrayAppRunning())
                 {
                     await PublishUpdateStateAsync();
+                    await PublishPendingUpdateNotificationAsync();
+                }
+                else
+                {
+                    // A tray app runs: it reports the finished update itself.
+                    _pendingUpdateCompletedFrom = null;
                 }
 
                 // Store connection state so RestartAsync can decide whether a
@@ -1023,6 +1032,12 @@ internal sealed class MqttCompanionService : IDisposable
         else if (!IsTrayAppRunning())
         {
             await PublishUpdateStateAsync(cancellationToken: wsCts.Token);
+            await PublishPendingUpdateNotificationAsync();
+        }
+        else
+        {
+            // A tray app runs: it reports the finished update itself.
+            _pendingUpdateCompletedFrom = null;
         }
 
         // Start the receive loop (handles incoming commands).

@@ -13,6 +13,13 @@ internal sealed class AudioEndpointService : IDisposable
     private readonly object _gate = new();
     private bool _disposed;
 
+    // ERROR_NOT_FOUND from GetDefaultAudioEndpoint: there is no default device of that kind
+    // right now (an HDMI output whose screen is off, a PC without a microphone). That is a
+    // state, not a fault, and it lasts, so it is logged once when it starts and once when
+    // it ends rather than on every read.
+    private const int NoDefaultDevice = unchecked((int)0x80070490);
+    private bool _noRenderDevice;
+
     public AudioEndpointService(FileLog log)
     {
         _log = log;
@@ -47,11 +54,13 @@ internal sealed class AudioEndpointService : IDisposable
             {
                 if (_disposed) return 0;
                 using var device = GetDefaultDevice(DataFlow.Render);
-                return Convert.ToInt32(Math.Round(device.AudioEndpointVolume.MasterVolumeLevelScalar * 100, 0));
+                var volume = Convert.ToInt32(Math.Round(device.AudioEndpointVolume.MasterVolumeLevelScalar * 100, 0));
+                RenderDeviceFound();
+                return volume;
             }
             catch (Exception ex)
             {
-                _log.Warning($"Unable to read default audio volume: {ex.Message}");
+                ReportRenderFailure("read default audio volume", ex);
                 return 0;
             }
         }
@@ -69,7 +78,7 @@ internal sealed class AudioEndpointService : IDisposable
             }
             catch (Exception ex)
             {
-                _log.Warning($"Unable to read default audio mute state: {ex.Message}");
+                ReportRenderFailure("read default audio mute state", ex);
                 return false;
             }
         }
@@ -87,7 +96,7 @@ internal sealed class AudioEndpointService : IDisposable
             }
             catch (Exception ex)
             {
-                _log.Warning($"Unable to read default audio output device: {ex.Message}");
+                ReportRenderFailure("read default audio output device", ex);
                 return string.Empty;
             }
         }
@@ -105,7 +114,12 @@ internal sealed class AudioEndpointService : IDisposable
             }
             catch (Exception ex)
             {
-                _log.Warning($"Unable to read default microphone mute state: {ex.Message}");
+                // No microphone: null says so, there is nothing to log.
+                if (ex.HResult != NoDefaultDevice)
+                {
+                    _log.Warning($"Unable to read default microphone mute state: {ex.Message}");
+                }
+
                 return null;
             }
         }
@@ -123,7 +137,7 @@ internal sealed class AudioEndpointService : IDisposable
             }
             catch (Exception ex)
             {
-                _log.Warning($"Unable to set default audio volume: {ex.Message}");
+                ReportRenderFailure("set default audio volume", ex);
             }
         }
     }
@@ -140,7 +154,7 @@ internal sealed class AudioEndpointService : IDisposable
             }
             catch (Exception ex)
             {
-                _log.Warning($"Unable to set default audio mute state: {ex.Message}");
+                ReportRenderFailure("set default audio mute state", ex);
             }
         }
     }
@@ -161,12 +175,39 @@ internal sealed class AudioEndpointService : IDisposable
             {
                 _renderDevice = _enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
                 _renderDevice.AudioEndpointVolume.OnVolumeNotification += OnVolumeNotification;
+                RenderDeviceFound();
             }
             catch (Exception ex)
             {
-                _log.Warning($"Unable to subscribe to audio volume notifications: {ex.Message}");
+                ReportRenderFailure("subscribe to audio volume notifications", ex);
                 _renderDevice = null;
             }
+        }
+    }
+
+    // Caller holds _gate.
+    private void ReportRenderFailure(string action, Exception ex)
+    {
+        if (ex.HResult != NoDefaultDevice)
+        {
+            _log.Warning($"Unable to {action}: {ex.Message}");
+            return;
+        }
+
+        if (!_noRenderDevice)
+        {
+            _noRenderDevice = true;
+            _log.Info("No default audio output device; volume and mute are unavailable until one appears.");
+        }
+    }
+
+    // Caller holds _gate.
+    private void RenderDeviceFound()
+    {
+        if (_noRenderDevice)
+        {
+            _noRenderDevice = false;
+            _log.Info("A default audio output device is available again.");
         }
     }
 

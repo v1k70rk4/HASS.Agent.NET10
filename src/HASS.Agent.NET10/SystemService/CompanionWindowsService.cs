@@ -20,6 +20,7 @@ internal sealed class CompanionWindowsService : ServiceBase
     private MqttCompanionService? _mqttService;
     private FileSystemWatcher? _settingsWatcher;
     private System.Threading.Timer? _settingsReloadTimer;
+    private string? _updatedFrom;
     private bool _disposed;
 
     public CompanionWindowsService()
@@ -40,6 +41,7 @@ internal sealed class CompanionWindowsService : ServiceBase
         {
             var settings = SettingsStore.LoadOrCreate(_paths, _log);
             ApplyLanguage(settings);
+            _updatedFrom = DetectCompletedUpdate(settings);
             _systemCommandService = new SystemCommandService(_log);
             _systemMetricsService = new SystemMetricsService(_log, monitorPowerStateService: null, includeInteractiveMetrics: false);
             StartRuntime(settings);
@@ -174,11 +176,66 @@ internal sealed class CompanionWindowsService : ServiceBase
             CompanionRuntimeRole.Service,
             _log);
 
+        if (_updatedFrom is not null)
+        {
+            _mqttService.NotifyUpdateCompleted(_updatedFrom);
+        }
+
         _mqttService.Start();
+    }
+
+    /// <summary>
+    /// The version the service ran as before this start, when it differs from the current
+    /// one: an update was installed in between. The tray app reports a finished update when
+    /// it starts; on a PC nobody is logged in to there is no tray app, and the service is
+    /// the one that can tell Home Assistant the install went through.
+    /// The service's last version lives in a file of its own, so the service never has to
+    /// write settings.json (the tray app owns that, and a write reloads the runtime).
+    /// </summary>
+    private string? DetectCompletedUpdate(CompanionSettings settings)
+    {
+        if (_paths is null)
+        {
+            return null;
+        }
+
+        var versionFile = Path.Combine(_paths.ConfigDirectory, "service-version");
+        try
+        {
+            // Before this file existed, the tray app's record is the best there is.
+            var previous = File.Exists(versionFile)
+                ? File.ReadAllText(versionFile).Trim()
+                : settings.LastRunVersion;
+            if (previous == settings.SoftwareVersion)
+            {
+                return null;
+            }
+
+            File.WriteAllText(versionFile, settings.SoftwareVersion);
+            if (string.IsNullOrEmpty(previous))
+            {
+                return null;
+            }
+
+            _log?.Info($"Service updated from {previous} to {settings.SoftwareVersion}.");
+            return previous;
+        }
+        catch (Exception ex)
+        {
+            _log?.Warning($"Unable to track the service version: {ex.Message}");
+            return null;
+        }
     }
 
     private void StopRuntime()
     {
+        // Sent, or left to the tray app: either way it must not go out again after a
+        // settings reload builds a new runtime.
+        if (_mqttService is { UpdateCompletionPending: false })
+        {
+            _updatedFrom = null;
+        }
+
         _mqttService?.StopAsync().GetAwaiter().GetResult();
         _mqttService?.Dispose();
         _mqttService = null;
