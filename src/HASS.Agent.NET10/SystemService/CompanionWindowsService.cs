@@ -21,6 +21,7 @@ internal sealed class CompanionWindowsService : ServiceBase
     private FileSystemWatcher? _settingsWatcher;
     private System.Threading.Timer? _settingsReloadTimer;
     private string? _updatedFrom;
+    private string _runningVersion = string.Empty;
     private bool _disposed;
 
     public CompanionWindowsService()
@@ -179,6 +180,7 @@ internal sealed class CompanionWindowsService : ServiceBase
         if (_updatedFrom is not null)
         {
             _mqttService.NotifyUpdateCompleted(_updatedFrom);
+            _mqttService.UpdateCompletionHandled = RecordServiceVersion;
         }
 
         _mqttService.Start();
@@ -191,6 +193,8 @@ internal sealed class CompanionWindowsService : ServiceBase
     /// the one that can tell Home Assistant the install went through.
     /// The service's last version lives in a file of its own, so the service never has to
     /// write settings.json (the tray app owns that, and a write reloads the runtime).
+    /// The new version is only recorded once the notification is dealt with, so a restart
+    /// while Home Assistant is unreachable does not lose it.
     /// </summary>
     private string? DetectCompletedUpdate(CompanionSettings settings)
     {
@@ -199,7 +203,8 @@ internal sealed class CompanionWindowsService : ServiceBase
             return null;
         }
 
-        var versionFile = Path.Combine(_paths.ConfigDirectory, "service-version");
+        _runningVersion = settings.SoftwareVersion;
+        var versionFile = ServiceVersionFile(_paths);
         try
         {
             // Before this file existed, the tray app's record is the best there is.
@@ -211,9 +216,10 @@ internal sealed class CompanionWindowsService : ServiceBase
                 return null;
             }
 
-            File.WriteAllText(versionFile, settings.SoftwareVersion);
             if (string.IsNullOrEmpty(previous))
             {
+                // Nothing to compare with: a first install, nothing to report.
+                File.WriteAllText(versionFile, settings.SoftwareVersion);
                 return null;
             }
 
@@ -227,15 +233,29 @@ internal sealed class CompanionWindowsService : ServiceBase
         }
     }
 
-    private void StopRuntime()
+    private static string ServiceVersionFile(AppPaths paths) => Path.Combine(paths.ConfigDirectory, "service-version");
+
+    /// <summary>The finished update was reported (or left to the tray app): this version is now the known one.</summary>
+    private void RecordServiceVersion()
     {
-        // Sent, or left to the tray app: either way it must not go out again after a
-        // settings reload builds a new runtime.
-        if (_mqttService is { UpdateCompletionPending: false })
+        _updatedFrom = null;
+        if (_paths is null)
         {
-            _updatedFrom = null;
+            return;
         }
 
+        try
+        {
+            File.WriteAllText(ServiceVersionFile(_paths), _runningVersion);
+        }
+        catch (Exception ex)
+        {
+            _log?.Warning($"Unable to record the service version: {ex.Message}");
+        }
+    }
+
+    private void StopRuntime()
+    {
         _mqttService?.StopAsync().GetAwaiter().GetResult();
         _mqttService?.Dispose();
         _mqttService = null;
