@@ -33,10 +33,20 @@ internal static class KeySender
             var keys = new List<ushort>();
             foreach (var name in combination.Split('+', StringSplitOptions.RemoveEmptyEntries))
             {
-                if (!TryResolve(name, out var key))
+                if (!TryResolve(name, out var key, out var modifiers))
                 {
                     unknownKey = name;
                     return false;
+                }
+
+                // What the layout needs to produce the character (shift for "?"), unless
+                // the combination already holds that modifier.
+                foreach (var modifier in modifiers)
+                {
+                    if (!keys.Contains(modifier))
+                    {
+                        keys.Add(modifier);
+                    }
                 }
 
                 keys.Add(key.VirtualKey);
@@ -84,7 +94,26 @@ internal static class KeySender
             inputs[inputs.Length - 1 - index] = BuildInput(keys[index], keyUp: true);
         }
 
-        return SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<Input>()) == inputs.Length;
+        var sent = SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<Input>());
+        if (sent == inputs.Length)
+        {
+            return true;
+        }
+
+        if (sent > 0)
+        {
+            // Only part of the batch went in: release every key, so that no modifier
+            // stays held down for whatever the user types next.
+            var releases = new Input[keys.Count];
+            for (var index = 0; index < keys.Count; index++)
+            {
+                releases[index] = BuildInput(keys[keys.Count - 1 - index], keyUp: true);
+            }
+
+            _ = SendInput((uint)releases.Length, releases, Marshal.SizeOf<Input>());
+        }
+
+        return false;
     }
 
     private static Input BuildInput(ushort virtualKey, bool keyUp)
@@ -123,8 +152,9 @@ internal static class KeySender
         return false;
     }
 
-    private static bool TryResolve(string name, out Key key)
+    private static bool TryResolve(string name, out Key key, out IReadOnlyList<ushort> modifiers)
     {
+        modifiers = [];
         var trimmed = name.Trim();
         if (NamedKeys.TryGetValue(trimmed, out key))
         {
@@ -150,6 +180,13 @@ internal static class KeySender
             return false;
         }
 
+        // The high byte says which modifiers the layout needs for it: shift for "?" on a
+        // US keyboard, ctrl+alt (AltGr) for many characters on others.
+        var needed = new List<ushort>();
+        if ((scan & 0x0200) != 0) needed.Add(0x11);
+        if ((scan & 0x0400) != 0) needed.Add(0x12);
+        if ((scan & 0x0100) != 0) needed.Add(0x10);
+        modifiers = needed;
         key = new Key((ushort)(scan & 0xFF));
         return true;
     }
