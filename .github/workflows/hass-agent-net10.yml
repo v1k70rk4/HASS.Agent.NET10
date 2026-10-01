@@ -17,9 +17,9 @@ on:
       - "NuGet.config"
       - ".github/workflows/hass-agent-net10.yml"
       - "README.md"
-  release:
-    types:
-      - published
+  # No "release: published" trigger, on purpose. The signed upload publishes the draft
+  # release, and a run started by that event rebuilt the assets and uploaded them over the
+  # signed ones a few minutes later: 10.7.3 and 10.8.0 were public unsigned that way.
   workflow_dispatch:
 
 permissions:
@@ -117,14 +117,14 @@ jobs:
           Compress-Archive -Path "$env:PUBLISH_DIR\*" -DestinationPath "$env:PACKAGE_DIR\HASS.Agent.NET10-win-x64-$env:APP_VERSION.zip" -Force
 
       - name: Upload published app
-        if: github.event_name == 'workflow_dispatch' || github.event_name == 'release' || startsWith(github.ref, 'refs/tags/')
+        if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: HASS.Agent.NET10-win-x64
           path: artifacts/HASS.Agent.NET10/win-x64
 
       - name: Upload installer
-        if: github.event_name == 'workflow_dispatch' || github.event_name == 'release' || startsWith(github.ref, 'refs/tags/')
+        if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: HASS.Agent.NET10-Setup
@@ -133,14 +133,17 @@ jobs:
       # Use the annotated tag's own message as the release notes (softprops does not
       # do this on its own, and generate_release_notes only produced a PR list).
       - name: Prepare release notes from tag
-        if: startsWith(github.ref, 'refs/tags/')
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
         run: |
           $notes = git for-each-ref "refs/tags/$env:GITHUB_REF_NAME" --format='%(contents)'
           if ([string]::IsNullOrWhiteSpace($notes)) { $notes = "$env:GITHUB_REF_NAME" }
           Set-Content -Path "$env:RUNNER_TEMP\RELEASE_NOTES.md" -Value $notes -Encoding utf8
 
+      # Only the push of the tag creates the release and its (unsigned) assets. Any other
+      # run on a tag, a manual one included, must not touch a release that may already
+      # carry the signed files.
       - name: Upload release assets
-        if: github.event_name == 'release' || startsWith(github.ref, 'refs/tags/')
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           body_path: ${{ runner.temp }}/RELEASE_NOTES.md
