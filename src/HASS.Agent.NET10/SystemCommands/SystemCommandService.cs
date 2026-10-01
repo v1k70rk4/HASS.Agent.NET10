@@ -86,68 +86,81 @@ internal sealed class SystemCommandService : IDisposable
     public async Task RunCustomCommandAsync(CustomCommandDefinition command)
     {
         _log.Info($"Executing custom command '{command.Name}' ({command.Type}).");
+        var result = await ExecuteCustomCommandAsync(command);
+        if (!result.Ok)
+        {
+            _log.Warning($"Custom command '{command.Name}': {Describe(command, result)}");
+        }
+    }
+
+    /// <summary>
+    /// Runs the command and says how it went. Also behind the Test button of the editor
+    /// in settings, which shows the outcome in the user's language.
+    /// </summary>
+    public static async Task<CustomCommandResult> ExecuteCustomCommandAsync(CustomCommandDefinition command)
+    {
         try
         {
             if (command.NeedsUserSession && System.Diagnostics.Process.GetCurrentProcess().SessionId == 0)
             {
-                _log.Warning($"Custom command '{command.Name}' ({command.Type}) needs the desktop of a logged-in user; only the tray app can run it.");
-                return;
+                return new CustomCommandResult(CustomCommandOutcome.NeedsUserSession);
             }
 
             if (command.IsKey)
             {
-                await SendKeysAsync(command);
-                return;
+                if (!KeySender.TryParse(command.Command, out var combinations, out var unknownKey))
+                {
+                    return unknownKey.Length > 0
+                        ? new CustomCommandResult(CustomCommandOutcome.UnknownKey, unknownKey)
+                        : new CustomCommandResult(CustomCommandOutcome.NoKeys);
+                }
+
+                return await KeySender.SendAsync(combinations)
+                    ? new CustomCommandResult(CustomCommandOutcome.Done)
+                    : new CustomCommandResult(CustomCommandOutcome.InputRefused);
             }
 
-            var startInfo = command.IsUrl ? BuildUrlStartInfo(command) : BuildCustomCommandStartInfo(command);
-            if (startInfo is null)
+            if (command.IsUrl && !IsOpenableAddress(command.Command))
             {
-                return;
+                return new CustomCommandResult(CustomCommandOutcome.InvalidAddress, command.Command);
             }
 
+            // An address is opened by the shell, so it lands in the default browser, or in
+            // the app registered for the scheme (ms-settings:, steam://, ...).
+            var startInfo = command.IsUrl
+                ? new System.Diagnostics.ProcessStartInfo { FileName = command.Command, UseShellExecute = true }
+                : BuildCustomCommandStartInfo(command);
             using var process = System.Diagnostics.Process.Start(startInfo);
-            if (process is null)
-            {
-                _log.Warning($"Custom command '{command.Name}' could not be started.");
-            }
+
+            // The shell may hand an address or a document to a running app without
+            // starting a process, so only a program that did not start is a failure.
+            return process is null && !command.IsUrl
+                ? new CustomCommandResult(CustomCommandOutcome.NotStarted)
+                : new CustomCommandResult(CustomCommandOutcome.Done);
         }
         catch (Exception ex)
         {
-            _log.Warning($"Custom command '{command.Name}' failed: {ex.Message}");
+            return new CustomCommandResult(CustomCommandOutcome.Failed, ex.Message);
         }
     }
 
-    private async Task SendKeysAsync(CustomCommandDefinition command)
+    /// <summary>An absolute address with a scheme; file paths belong to the Program type.</summary>
+    public static bool IsOpenableAddress(string address)
     {
-        if (!KeySender.TryParse(command.Command, out var combinations, out var unknownKey))
-        {
-            _log.Warning(unknownKey.Length > 0
-                ? $"Custom command '{command.Name}': unknown key '{unknownKey}'."
-                : $"Custom command '{command.Name}': no keys to press.");
-            return;
-        }
-
-        if (!await KeySender.SendAsync(combinations))
-        {
-            _log.Warning($"Custom command '{command.Name}': Windows did not accept the key presses (the active window runs elevated, or the desktop is locked).");
-        }
+        return Uri.TryCreate(address, UriKind.Absolute, out var uri) && !uri.IsFile;
     }
 
-    // Opened by the shell, so it lands in the default browser, or in the app registered
-    // for the scheme (ms-settings:, steam://, ...). Files belong to the Program type.
-    private System.Diagnostics.ProcessStartInfo? BuildUrlStartInfo(CustomCommandDefinition command)
+    private static string Describe(CustomCommandDefinition command, CustomCommandResult result)
     {
-        if (!Uri.TryCreate(command.Command, UriKind.Absolute, out var uri) || uri.IsFile)
+        return result.Outcome switch
         {
-            _log.Warning($"Custom command '{command.Name}': '{command.Command}' is not an address that can be opened (expected something like https://example.com).");
-            return null;
-        }
-
-        return new System.Diagnostics.ProcessStartInfo
-        {
-            FileName = command.Command,
-            UseShellExecute = true
+            CustomCommandOutcome.NeedsUserSession => $"type '{command.Type}' needs the desktop of a logged-in user; only the tray app can run it.",
+            CustomCommandOutcome.UnknownKey => $"unknown key '{result.Detail}'.",
+            CustomCommandOutcome.NoKeys => "no keys to press.",
+            CustomCommandOutcome.InputRefused => "Windows did not accept the key presses (the active window runs elevated, or the desktop is locked).",
+            CustomCommandOutcome.InvalidAddress => $"'{result.Detail}' is not an address that can be opened (expected something like https://example.com).",
+            CustomCommandOutcome.NotStarted => "could not be started.",
+            _ => $"failed: {result.Detail}"
         };
     }
 

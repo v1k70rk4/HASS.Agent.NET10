@@ -64,6 +64,7 @@ The modern .NET10 line starts at **version 10.0.0**. The pre-.NET10 client remai
 
 Works with the Home Assistant integration **10.6.7** or newer. Signed release.
 
+- **Custom commands and custom sensors get an editor window.** Adding one, or double-clicking a row, opens a window with room for a long command line, a description and an example for the chosen type, a *Browse* button for programs and scripts, and a *Test* button: a command runs right away and says what went wrong if it did, a sensor shows the value it would report. For sensors the parameter field also lists what the PC has: the running processes, the installed services, the drives, or the attributes of the built-in sensors. The tables on the settings pages are now just the overview, with the ticks still one click away.
 - **Two new custom command types: *Key press* and *Open address*.** A custom command can now press keys (`win+r`, `ctrl+shift+esc`, `alt+tab`, media and browser keys, or several combinations in a row) or open a link in the default browser, without a script written for it. Both show up in Home Assistant as buttons like any other custom command, and both run in the tray app, since they act on the desktop of the logged-in user. The key names are listed under [Custom Commands](#custom-commands).
 
 <details>
@@ -432,7 +433,7 @@ data:
 
 ### Custom Commands
 
-Beyond the built-in commands, you can define your own in the **Capabilities** window. Each custom command becomes a button in Home Assistant.
+Beyond the built-in commands, you can define your own in the **Capabilities** window. Each custom command becomes a button in Home Assistant. **Add**, or a double click on a row, opens the editor; its **Test** button runs the command right away, in the tray app.
 
 | Type | `Command / script` field | `Arguments` field |
 |------|--------------------------|-------------------|

@@ -69,6 +69,23 @@ internal static class CustomCommandTypes
     }
 }
 
+internal enum CustomCommandOutcome
+{
+    Done,
+    NeedsUserSession,
+    UnknownKey,
+    NoKeys,
+    InputRefused,
+    InvalidAddress,
+    NotStarted,
+    Failed
+}
+
+internal readonly record struct CustomCommandResult(CustomCommandOutcome Outcome, string Detail = "")
+{
+    public bool Ok => Outcome == CustomCommandOutcome.Done;
+}
+
 // Advertised to Home Assistant so the integration can create a button per command.
 internal sealed record CustomCommandDescriptor(
     [property: JsonPropertyName("id")] string Id,

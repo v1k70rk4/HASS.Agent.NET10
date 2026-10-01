@@ -1,0 +1,684 @@
+using System.Diagnostics;
+using System.Drawing;
+using System.ServiceProcess;
+using System.Windows.Forms;
+using HASS.Agent.Companion.Localization;
+using HASS.Agent.Companion.Logging;
+using HASS.Agent.Companion.SystemCommands;
+using HASS.Agent.Companion.SystemStatus;
+
+namespace HASS.Agent.Companion.Tray;
+
+/// <summary>
+/// Shared look and layout of the two editor dialogs (custom command, custom sensor):
+/// a label column, a field column, a hint that follows the chosen type, a result line
+/// for the Test button, and Test / OK / Cancel at the bottom.
+/// All layout values are logical (96 DPI) pixels, like in MainForm.
+/// </summary>
+internal abstract class CustomEditorForm : Form
+{
+    protected static readonly Color PageBg = Color.FromArgb(241, 245, 249);
+    protected static readonly Color CardBg = Color.White;
+    protected static readonly Color BorderClr = Color.FromArgb(226, 232, 240);
+    protected static readonly Color TextDark = Color.FromArgb(15, 23, 42);
+    protected static readonly Color TextBody = Color.FromArgb(51, 65, 85);
+    protected static readonly Color TextMuted = Color.FromArgb(100, 116, 139);
+    protected static readonly Color BtnBlue = Color.FromArgb(37, 99, 235);
+    protected static readonly Color BtnBlueHover = Color.FromArgb(29, 78, 216);
+    protected static readonly Color ErrorRed = Color.FromArgb(185, 28, 28);
+    protected static readonly Color OkGreen = Color.FromArgb(21, 128, 61);
+
+    protected const int LabelX = 20;
+    protected const int FieldX = 170;
+    protected const int FieldWidth = 430;
+    protected const int FormWidth = 620;
+    protected const int RowHeight = 36;
+
+    protected readonly Label ResultLabel = new();
+    protected readonly Button TestButton;
+    private readonly Button _okButton;
+    private readonly Button _cancelButton;
+
+    protected CustomEditorForm(string title)
+    {
+        Text = title;
+        StartPosition = FormStartPosition.CenterParent;
+        FormBorderStyle = FormBorderStyle.FixedDialog;
+        MaximizeBox = false;
+        MinimizeBox = false;
+        ShowInTaskbar = false;
+        Font = new Font("Segoe UI", 9.5F);
+        AutoScaleMode = AutoScaleMode.None;
+        BackColor = CardBg;
+
+        TestButton = MakeButton(S("Editor.Test"), 110, primary: false);
+        _okButton = MakeButton(S("Editor.Ok"), 90, primary: true);
+        _cancelButton = MakeButton(S("Btn.Cancel"), 90, primary: false);
+        _cancelButton.DialogResult = DialogResult.Cancel;
+        _okButton.Click += (_, _) =>
+        {
+            if (TryAccept())
+            {
+                DialogResult = DialogResult.OK;
+            }
+        };
+        TestButton.Click += async (_, _) =>
+        {
+            TestButton.Enabled = false;
+            try
+            {
+                await RunTestAsync();
+            }
+            finally
+            {
+                if (!IsDisposed)
+                {
+                    TestButton.Enabled = true;
+                }
+            }
+        };
+
+        AcceptButton = _okButton;
+        CancelButton = _cancelButton;
+    }
+
+    protected static string S(string key) => Strings.Get(key);
+
+    protected int D(int v) => (int)(v * DeviceDpi / 96f);
+    protected Point Pt(int x, int y) => new(D(x), D(y));
+    protected Size Sz(int w, int h) => new(D(w), D(h));
+
+    /// <summary>Checks the fields; false keeps the dialog open (and says why in the result line).</summary>
+    protected abstract bool TryAccept();
+
+    protected abstract Task RunTestAsync();
+
+    /// <summary>Places the result line and the buttons below the last field row.</summary>
+    protected void FinishLayout(int y)
+    {
+        ResultLabel.Location = Pt(LabelX, y);
+        ResultLabel.Size = Sz(FormWidth - LabelX * 2, 40);
+        ResultLabel.ForeColor = TextMuted;
+        ResultLabel.Font = new Font("Segoe UI", 9F);
+        Controls.Add(ResultLabel);
+
+        var buttonY = y + 48;
+        TestButton.Location = Pt(LabelX, buttonY);
+        _cancelButton.Location = Pt(FormWidth - LabelX - 90, buttonY);
+        _okButton.Location = Pt(FormWidth - LabelX - 90 - 8 - 90, buttonY);
+        Controls.Add(TestButton);
+        Controls.Add(_okButton);
+        Controls.Add(_cancelButton);
+
+        ClientSize = Sz(FormWidth, buttonY + 32 + 18);
+    }
+
+    protected void ShowResult(string text, Color color)
+    {
+        if (IsDisposed)
+        {
+            return;
+        }
+
+        ResultLabel.ForeColor = color;
+        ResultLabel.Text = text;
+    }
+
+    protected Label AddLabel(string text, int y)
+    {
+        var label = new Label
+        {
+            Text = text, Location = Pt(LabelX, y + 4), Size = Sz(FieldX - LabelX - 8, 22),
+            ForeColor = TextDark
+        };
+        Controls.Add(label);
+        return label;
+    }
+
+    protected TextBox AddTextBox(int y, int width = FieldWidth)
+    {
+        var box = new TextBox { Location = Pt(FieldX, y), Size = Sz(width, 26) };
+        Controls.Add(box);
+        return box;
+    }
+
+    protected ComboBox AddOptionBox(int y, IEnumerable<Option> options, int width = FieldWidth)
+    {
+        var box = new ComboBox
+        {
+            Location = Pt(FieldX, y), Size = Sz(width, 26),
+            DropDownStyle = ComboBoxStyle.DropDownList
+        };
+        foreach (var option in options)
+        {
+            box.Items.Add(option);
+        }
+
+        Controls.Add(box);
+        return box;
+    }
+
+    /// <summary>The hint under the type list: what this type does and what to type, with an example.</summary>
+    protected Label AddHint(int y, int height)
+    {
+        var hint = new Label
+        {
+            Location = Pt(FieldX, y), Size = Sz(FieldWidth, height),
+            ForeColor = TextBody, BackColor = Color.FromArgb(239, 246, 255),
+            Padding = new Padding(D(8), D(6), D(8), D(6)),
+            Font = new Font("Segoe UI", 8.75F)
+        };
+        Controls.Add(hint);
+        return hint;
+    }
+
+    protected (CheckBox Enabled, CheckBox TrayApp, CheckBox Service) AddRoleBoxes(int y)
+    {
+        var enabled = new CheckBox { Text = S("Sensors.Active"), Location = Pt(FieldX, y), Size = Sz(110, 24), ForeColor = TextBody };
+        var trayApp = new CheckBox { Text = S("Editor.RunsInTray"), Location = Pt(FieldX + 120, y), Size = Sz(140, 24), ForeColor = TextBody };
+        var service = new CheckBox { Text = S("Editor.RunsInService"), Location = Pt(FieldX + 270, y), Size = Sz(160, 24), ForeColor = TextBody };
+        Controls.Add(enabled);
+        Controls.Add(trayApp);
+        Controls.Add(service);
+        return (enabled, trayApp, service);
+    }
+
+    protected Button MakeButton(string text, int width, bool primary)
+    {
+        var button = new Button
+        {
+            Text = text, Size = Sz(width, 32), FlatStyle = FlatStyle.Flat, Cursor = Cursors.Hand,
+            BackColor = primary ? BtnBlue : CardBg,
+            ForeColor = primary ? Color.White : TextBody,
+            Font = new Font("Segoe UI", 9F, primary ? FontStyle.Bold : FontStyle.Regular)
+        };
+        button.FlatAppearance.BorderColor = BorderClr;
+        button.FlatAppearance.BorderSize = primary ? 0 : 1;
+        button.FlatAppearance.MouseOverBackColor = primary ? BtnBlueHover : PageBg;
+        return button;
+    }
+
+    protected static string SelectedKey(ComboBox box) => (box.SelectedItem as Option)?.Key ?? string.Empty;
+
+    protected static void SelectKey(ComboBox box, string key)
+    {
+        foreach (var item in box.Items)
+        {
+            if (item is Option option && string.Equals(option.Key, key, StringComparison.OrdinalIgnoreCase))
+            {
+                box.SelectedItem = item;
+                return;
+            }
+        }
+
+        if (box.Items.Count > 0)
+        {
+            box.SelectedIndex = 0;
+        }
+    }
+
+    protected string? BrowseForFile(string filter)
+    {
+        using var dialog = new OpenFileDialog { Filter = filter, CheckFileExists = true };
+        return dialog.ShowDialog(this) == DialogResult.OK ? dialog.FileName : null;
+    }
+
+    internal sealed record Option(string Key, string Text)
+    {
+        public override string ToString() => Text;
+    }
+}
+
+/// <summary>Adds or edits one custom command.</summary>
+internal sealed class CustomCommandEditorForm : CustomEditorForm
+{
+    private static readonly TimeSpan KeyTestDelay = TimeSpan.FromSeconds(3);
+
+    private readonly string _id;
+    private readonly ComboBox _type;
+    private readonly Label _hint;
+    private readonly TextBox _name;
+    private readonly Label _commandLabel;
+    private readonly TextBox _command;
+    private readonly Button _browse;
+    private readonly Label _argumentsLabel;
+    private readonly TextBox _arguments;
+    private readonly CheckBox _enabled;
+    private readonly CheckBox _trayApp;
+    private readonly CheckBox _service;
+    private bool _serviceBeforeLock;
+
+    public CustomCommandEditorForm(CustomCommandDefinition command)
+        : base(S("Editor.CommandTitle"))
+    {
+        _id = command.Id;
+
+        var y = 20;
+        AddLabel(S("Sensors.Type"), y);
+        _type = AddOptionBox(y, new[]
+        {
+            CustomCommandTypes.Process,
+            CustomCommandTypes.PowerShell,
+            CustomCommandTypes.Pwsh,
+            CustomCommandTypes.Key,
+            CustomCommandTypes.Url
+        }.Select(type => new Option(type, S($"CmdType.{type}"))));
+
+        y += RowHeight;
+        _hint = AddHint(y, 76);
+
+        y += 76 + 12;
+        AddLabel(S("Editor.NameInHa"), y);
+        _name = AddTextBox(y);
+
+        y += RowHeight;
+        _commandLabel = AddLabel(string.Empty, y);
+        _command = AddTextBox(y);
+        _browse = MakeButton(S("Editor.Browse"), 90, primary: false);
+        _browse.Size = Sz(90, 27);
+        _browse.Location = Pt(FieldX + FieldWidth - 90, y - 1);
+        _browse.Click += (_, _) =>
+        {
+            var file = BrowseForFile(SelectedKey(_type) == CustomCommandTypes.Process
+                ? S("Editor.FilterPrograms")
+                : S("Editor.FilterScripts"));
+            if (file is not null)
+            {
+                _command.Text = file.Contains(' ') && SelectedKey(_type) == CustomCommandTypes.Process ? $"\"{file}\"" : file;
+            }
+        };
+        Controls.Add(_browse);
+
+        y += RowHeight;
+        _argumentsLabel = AddLabel(S("Cap.ArgumentsColumn"), y);
+        _arguments = AddTextBox(y);
+
+        y += RowHeight + 4;
+        AddLabel(S("Editor.Where"), y);
+        (_enabled, _trayApp, _service) = AddRoleBoxes(y);
+
+        FinishLayout(y + RowHeight);
+
+        _name.Text = command.Name;
+        _command.Text = command.Command;
+        _arguments.Text = command.Arguments;
+        _enabled.Checked = command.Enabled;
+        _trayApp.Checked = command.TrayApp;
+        _service.Checked = command.Service;
+        _serviceBeforeLock = command.Service;
+
+        _type.SelectedIndexChanged += (_, _) => ApplyType();
+        SelectKey(_type, CustomCommandTypes.Normalize(command.Type));
+    }
+
+    public CustomCommandDefinition Result { get; private set; } = new();
+
+    private void ApplyType()
+    {
+        var type = SelectedKey(_type);
+        var needsUserSession = type is CustomCommandTypes.Key or CustomCommandTypes.Url;
+        var canBrowse = !needsUserSession;
+
+        _hint.Text = S($"CmdHint.{type}");
+        _commandLabel.Text = S($"CmdField.{type}");
+        _browse.Visible = canBrowse;
+        _command.Width = D(canBrowse ? FieldWidth - 98 : FieldWidth);
+        _argumentsLabel.Visible = !needsUserSession;
+        _arguments.Visible = !needsUserSession;
+
+        // Keys and addresses act on the user's desktop; the service cannot run them.
+        if (needsUserSession)
+        {
+            if (_service.Enabled)
+            {
+                _serviceBeforeLock = _service.Checked;
+            }
+
+            _service.Checked = false;
+            _service.Enabled = false;
+            _trayApp.Checked = true;
+        }
+        else if (!_service.Enabled)
+        {
+            _service.Enabled = true;
+            _service.Checked = _serviceBeforeLock;
+        }
+
+        ShowResult(string.Empty, TextMuted);
+    }
+
+    private CustomCommandDefinition Build()
+    {
+        var type = SelectedKey(_type);
+        var needsUserSession = type is CustomCommandTypes.Key or CustomCommandTypes.Url;
+        var command = _command.Text.Trim();
+        return new CustomCommandDefinition
+        {
+            Id = _id,
+            Type = type,
+            Name = string.IsNullOrWhiteSpace(_name.Text) ? command : _name.Text.Trim(),
+            Command = command,
+            Arguments = needsUserSession ? string.Empty : _arguments.Text.Trim(),
+            Enabled = _enabled.Checked,
+            TrayApp = _trayApp.Checked,
+            Service = !needsUserSession && _service.Checked
+        };
+    }
+
+    /// <summary>What is wrong with the fields, or null. Checks what can be checked without running anything.</summary>
+    private string? FindProblem(CustomCommandDefinition command)
+    {
+        if (command.Command.Length == 0)
+        {
+            return string.Format(S("Editor.FieldMissing"), _commandLabel.Text);
+        }
+
+        if (command.IsKey && !KeySender.TryParse(command.Command, out _, out var unknownKey))
+        {
+            return unknownKey.Length > 0
+                ? string.Format(S("Editor.UnknownKey"), unknownKey)
+                : S("Editor.NoKeys");
+        }
+
+        if (command.IsUrl && !SystemCommandService.IsOpenableAddress(command.Command))
+        {
+            return S("Editor.InvalidAddress");
+        }
+
+        return null;
+    }
+
+    protected override bool TryAccept()
+    {
+        var command = Build();
+        if (FindProblem(command) is { } problem)
+        {
+            ShowResult(problem, ErrorRed);
+            return false;
+        }
+
+        Result = command;
+        return true;
+    }
+
+    protected override async Task RunTestAsync()
+    {
+        var command = Build();
+        if (FindProblem(command) is { } problem)
+        {
+            ShowResult(problem, ErrorRed);
+            return;
+        }
+
+        if (command.IsKey)
+        {
+            // The keys go to whichever window is in front, and right now that is this dialog.
+            ShowResult(string.Format(S("Editor.KeyTestCountdown"), (int)KeyTestDelay.TotalSeconds), TextBody);
+            await Task.Delay(KeyTestDelay);
+        }
+
+        var result = await SystemCommandService.ExecuteCustomCommandAsync(command);
+        ShowResult(DescribeOutcome(result), result.Ok ? OkGreen : ErrorRed);
+    }
+
+    private static string DescribeOutcome(CustomCommandResult result)
+    {
+        return result.Outcome switch
+        {
+            CustomCommandOutcome.Done => S("Editor.TestDone"),
+            CustomCommandOutcome.UnknownKey => string.Format(S("Editor.UnknownKey"), result.Detail),
+            CustomCommandOutcome.NoKeys => S("Editor.NoKeys"),
+            CustomCommandOutcome.InputRefused => S("Editor.InputRefused"),
+            CustomCommandOutcome.InvalidAddress => S("Editor.InvalidAddress"),
+            CustomCommandOutcome.NeedsUserSession => S("Editor.NeedsUserSession"),
+            CustomCommandOutcome.NotStarted => S("Editor.NotStarted"),
+            _ => string.Format(S("Sensors.ValueError"), result.Detail)
+        };
+    }
+}
+
+/// <summary>Adds or edits one custom sensor.</summary>
+internal sealed class CustomSensorEditorForm : CustomEditorForm
+{
+    private readonly string _id;
+    private readonly FileLog _log;
+    private readonly ComboBox _type;
+    private readonly Label _hint;
+    private readonly TextBox _name;
+    private readonly Label _parameterLabel;
+    private readonly ComboBox _parameter;
+    private readonly Button _browse;
+    private readonly TextBox _unit;
+    private readonly ComboBox _profile;
+    private readonly CheckBox _enabled;
+    private readonly CheckBox _trayApp;
+    private readonly CheckBox _service;
+
+    public CustomSensorEditorForm(CustomSensorDefinition sensor, FileLog log, IEnumerable<Option> pollingProfiles)
+        : base(S("Editor.SensorTitle"))
+    {
+        _id = sensor.Id;
+        _log = log;
+
+        var y = 20;
+        AddLabel(S("Sensors.Type"), y);
+        _type = AddOptionBox(y, new[]
+        {
+            CustomSensorTypes.ProcessRunning,
+            CustomSensorTypes.ServiceStatus,
+            CustomSensorTypes.DiskFree,
+            CustomSensorTypes.BuiltInAttribute,
+            CustomSensorTypes.Command,
+            CustomSensorTypes.CommandPowerShell,
+            CustomSensorTypes.CommandPwsh
+        }.Select(type => new Option(type, S($"SensorType.{type}"))));
+
+        y += RowHeight;
+        _hint = AddHint(y, 76);
+
+        y += 76 + 12;
+        AddLabel(S("Editor.NameInHa"), y);
+        _name = AddTextBox(y);
+
+        y += RowHeight;
+        _parameterLabel = AddLabel(string.Empty, y);
+        // Editable, with what the PC has to offer in the list: running processes,
+        // installed services, drives, or the attributes of the built-in sensors.
+        _parameter = new ComboBox
+        {
+            Location = Pt(FieldX, y), Size = Sz(FieldWidth, 26),
+            DropDownStyle = ComboBoxStyle.DropDown,
+            AutoCompleteMode = AutoCompleteMode.SuggestAppend,
+            AutoCompleteSource = AutoCompleteSource.ListItems
+        };
+        Controls.Add(_parameter);
+        _browse = MakeButton(S("Editor.Browse"), 90, primary: false);
+        _browse.Size = Sz(90, 27);
+        _browse.Location = Pt(FieldX + FieldWidth - 90, y - 1);
+        _browse.Click += (_, _) =>
+        {
+            var file = BrowseForFile(SelectedKey(_type) == CustomSensorTypes.Command
+                ? S("Editor.FilterPrograms")
+                : S("Editor.FilterScripts"));
+            if (file is not null)
+            {
+                _parameter.Text = file.Contains(' ') && SelectedKey(_type) == CustomSensorTypes.Command ? $"\"{file}\"" : file;
+            }
+        };
+        Controls.Add(_browse);
+
+        y += RowHeight;
+        AddLabel(S("Editor.Unit"), y);
+        _unit = AddTextBox(y, 120);
+        Controls.Add(new Label
+        {
+            Text = S("Editor.UnitHint"), Location = Pt(FieldX + 130, y + 4), Size = Sz(FieldWidth - 130, 22),
+            ForeColor = TextMuted, Font = new Font("Segoe UI", 8.75F)
+        });
+
+        y += RowHeight;
+        AddLabel(S("Editor.Refresh"), y);
+        _profile = AddOptionBox(y, pollingProfiles, 160);
+
+        y += RowHeight + 4;
+        AddLabel(S("Editor.Where"), y);
+        (_enabled, _trayApp, _service) = AddRoleBoxes(y);
+
+        FinishLayout(y + RowHeight);
+
+        _name.Text = sensor.Name;
+        _unit.Text = sensor.Unit;
+        _enabled.Checked = sensor.Enabled;
+        _trayApp.Checked = sensor.TrayApp;
+        _service.Checked = sensor.Service;
+        SelectKey(_profile, SensorPollingProfiles.NormalizeKey(sensor.PollingProfile, SensorPollingProfile.Normal));
+
+        _type.SelectedIndexChanged += (_, _) => ApplyType(keepParameter: false);
+        SelectKey(_type, CustomSensorTypes.Normalize(sensor.Type));
+        ApplyType(keepParameter: true);
+        _parameter.Text = sensor.Parameter;
+    }
+
+    public CustomSensorDefinition Result { get; private set; } = new();
+
+    private void ApplyType(bool keepParameter)
+    {
+        var type = SelectedKey(_type);
+        var isCommand = type is CustomSensorTypes.Command or CustomSensorTypes.CommandPowerShell or CustomSensorTypes.CommandPwsh;
+        var text = _parameter.Text;
+
+        _hint.Text = S($"SensorHint.{type}");
+        _parameterLabel.Text = S($"SensorField.{type}");
+        _browse.Visible = isCommand;
+        _parameter.Width = D(isCommand ? FieldWidth - 98 : FieldWidth);
+
+        _parameter.BeginUpdate();
+        _parameter.Items.Clear();
+        foreach (var suggestion in Suggestions(type))
+        {
+            _parameter.Items.Add(suggestion);
+        }
+
+        _parameter.EndUpdate();
+        // What was typed for another type means nothing here.
+        _parameter.Text = keepParameter ? text : string.Empty;
+        ShowResult(string.Empty, TextMuted);
+    }
+
+    private static IEnumerable<string> Suggestions(string type)
+    {
+        try
+        {
+            switch (type)
+            {
+                case CustomSensorTypes.ProcessRunning:
+                    var processes = Process.GetProcesses();
+                    try
+                    {
+                        return processes
+                            .Select(process => process.ProcessName)
+                            .Distinct(StringComparer.OrdinalIgnoreCase)
+                            .Order(StringComparer.OrdinalIgnoreCase)
+                            .ToList();
+                    }
+                    finally
+                    {
+                        foreach (var process in processes)
+                        {
+                            process.Dispose();
+                        }
+                    }
+
+                case CustomSensorTypes.ServiceStatus:
+                    var services = ServiceController.GetServices();
+                    try
+                    {
+                        return services
+                            .Select(service => service.ServiceName)
+                            .Order(StringComparer.OrdinalIgnoreCase)
+                            .ToList();
+                    }
+                    finally
+                    {
+                        foreach (var service in services)
+                        {
+                            service.Dispose();
+                        }
+                    }
+
+                case CustomSensorTypes.DiskFree:
+                    return DriveInfo.GetDrives()
+                        .Where(drive => drive.DriveType == DriveType.Fixed)
+                        .Select(drive => drive.Name.TrimEnd('\\'))
+                        .ToList();
+
+                case CustomSensorTypes.BuiltInAttribute:
+                    return BuiltInSensorCatalog.Sensors
+                        .SelectMany(sensor => sensor.AttributePaths ?? [])
+                        .ToList();
+            }
+        }
+        catch
+        {
+            // The list is only a convenience; the field can always be typed into.
+        }
+
+        return [];
+    }
+
+    private CustomSensorDefinition Build()
+    {
+        var type = SelectedKey(_type);
+        var parameter = _parameter.Text.Trim();
+        return new CustomSensorDefinition
+        {
+            Id = _id,
+            Type = type,
+            Name = string.IsNullOrWhiteSpace(_name.Text) ? type : _name.Text.Trim(),
+            Parameter = parameter,
+            Unit = _unit.Text.Trim(),
+            PollingProfile = SensorPollingProfiles.NormalizeKey(SelectedKey(_profile), SensorPollingProfile.Normal),
+            Enabled = _enabled.Checked,
+            TrayApp = _trayApp.Checked,
+            Service = _service.Checked
+        };
+    }
+
+    protected override bool TryAccept()
+    {
+        var sensor = Build();
+        if (sensor.Parameter.Length == 0)
+        {
+            ShowResult(string.Format(S("Editor.FieldMissing"), _parameterLabel.Text), ErrorRed);
+            return false;
+        }
+
+        Result = sensor;
+        return true;
+    }
+
+    protected override async Task RunTestAsync()
+    {
+        var sensor = Build();
+        if (sensor.Parameter.Length == 0)
+        {
+            ShowResult(string.Format(S("Editor.FieldMissing"), _parameterLabel.Text), ErrorRed);
+            return;
+        }
+
+        ShowResult(S("Sensors.ValueLoading"), TextMuted);
+        sensor.Enabled = true;
+        sensor.TrayApp = true;
+        try
+        {
+            var value = await Task.Run(() => SystemMetricsService.TestCustomSensorValue(sensor, _log));
+            ShowResult(
+                string.Format(S("Editor.TestValue"), MainForm.FormatSensorValue(value), sensor.Unit).TrimEnd(),
+                value is null ? ErrorRed : OkGreen);
+        }
+        catch (Exception ex)
+        {
+            ShowResult(string.Format(S("Sensors.ValueError"), ex.Message), ErrorRed);
+        }
+    }
+}
