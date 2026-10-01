@@ -177,7 +177,8 @@ function Select-Source {
         return $PSScriptRoot
     }
 
-    $sha = git rev-parse "$($chosen.Ref)^{commit}"
+    $sha = git rev-parse --verify --quiet "$($chosen.Ref)^{commit}" 2>$null
+    if ($LASTEXITCODE -ne 0 -or -not $sha) { throw "Cannot resolve $($chosen.Ref) - fetch origin, or pass -Branch . to build this folder." }
     Write-Host "Source: $($chosen.Label)  @ $(git log -1 --format='%h  %s' $sha)" -ForegroundColor Cyan
     if ($sha -eq $head -and -not $dirty) { return $PSScriptRoot }   # already what this folder has
 
