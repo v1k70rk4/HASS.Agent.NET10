@@ -336,6 +336,11 @@ internal sealed class CompanionSettings
                 continue;
             }
 
+            if (command.NeedsUserSession)
+            {
+                command.Service = false;
+            }
+
             normalized.Add(command);
         }
 

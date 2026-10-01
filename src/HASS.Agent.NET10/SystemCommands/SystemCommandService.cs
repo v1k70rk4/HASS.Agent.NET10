@@ -78,16 +78,34 @@ internal sealed class SystemCommandService : IDisposable
     }
 
     /// <summary>
-    /// Runs a user-defined custom command: a program with arguments, or a Windows
-    /// PowerShell / pwsh inline command or .ps1 script. The command is chosen from the
-    /// user's own list in settings — Home Assistant only triggers it by id.
+    /// Runs a user-defined custom command: a program with arguments, a Windows
+    /// PowerShell / pwsh inline command or .ps1 script, key presses, or an address to
+    /// open. The command is chosen from the user's own list in settings — Home Assistant
+    /// only triggers it by id.
     /// </summary>
-    public Task RunCustomCommandAsync(CustomCommandDefinition command)
+    public async Task RunCustomCommandAsync(CustomCommandDefinition command)
     {
         _log.Info($"Executing custom command '{command.Name}' ({command.Type}).");
         try
         {
-            var startInfo = BuildCustomCommandStartInfo(command);
+            if (command.NeedsUserSession && System.Diagnostics.Process.GetCurrentProcess().SessionId == 0)
+            {
+                _log.Warning($"Custom command '{command.Name}' ({command.Type}) needs the desktop of a logged-in user; only the tray app can run it.");
+                return;
+            }
+
+            if (command.IsKey)
+            {
+                await SendKeysAsync(command);
+                return;
+            }
+
+            var startInfo = command.IsUrl ? BuildUrlStartInfo(command) : BuildCustomCommandStartInfo(command);
+            if (startInfo is null)
+            {
+                return;
+            }
+
             using var process = System.Diagnostics.Process.Start(startInfo);
             if (process is null)
             {
@@ -98,8 +116,39 @@ internal sealed class SystemCommandService : IDisposable
         {
             _log.Warning($"Custom command '{command.Name}' failed: {ex.Message}");
         }
+    }
 
-        return Task.CompletedTask;
+    private async Task SendKeysAsync(CustomCommandDefinition command)
+    {
+        if (!KeySender.TryParse(command.Command, out var combinations, out var unknownKey))
+        {
+            _log.Warning(unknownKey.Length > 0
+                ? $"Custom command '{command.Name}': unknown key '{unknownKey}'."
+                : $"Custom command '{command.Name}': no keys to press.");
+            return;
+        }
+
+        if (!await KeySender.SendAsync(combinations))
+        {
+            _log.Warning($"Custom command '{command.Name}': Windows did not accept the key presses (the active window runs elevated, or the desktop is locked).");
+        }
+    }
+
+    // Opened by the shell, so it lands in the default browser, or in the app registered
+    // for the scheme (ms-settings:, steam://, ...). Files belong to the Program type.
+    private System.Diagnostics.ProcessStartInfo? BuildUrlStartInfo(CustomCommandDefinition command)
+    {
+        if (!Uri.TryCreate(command.Command, UriKind.Absolute, out var uri) || uri.IsFile)
+        {
+            _log.Warning($"Custom command '{command.Name}': '{command.Command}' is not an address that can be opened (expected something like https://example.com).");
+            return null;
+        }
+
+        return new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = command.Command,
+            UseShellExecute = true
+        };
     }
 
     private static System.Diagnostics.ProcessStartInfo BuildCustomCommandStartInfo(CustomCommandDefinition command)

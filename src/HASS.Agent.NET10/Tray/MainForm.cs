@@ -880,21 +880,21 @@ internal sealed class MainForm : Form
         }
 
         var customY = cmdY + (50 + SystemCommandCatalog.Commands.Count * 30 + 16) + 20;
-        var card3 = MakeCard(page, 28, customY, 600, 250, S("Cap.CustomCommands"));
+        var card3 = MakeCard(page, 28, customY, 600, 282, S("Cap.CustomCommands"));
 
         card3.Controls.Add(new Label
         {
             Text = S("Cap.CustomCommandsHelp"), Location = Pt(20, 40),
-            Size = Sz(560, 32), ForeColor = TextMuted, Font = new Font("Segoe UI", 8.5F)
+            Size = Sz(560, 64), ForeColor = TextMuted, Font = new Font("Segoe UI", 8.5F)
         });
 
         SetupCustomCommandGrid();
-        _customCommandGrid.Location = Pt(20, 76);
+        _customCommandGrid.Location = Pt(20, 108);
         _customCommandGrid.Size = Sz(560, 130);
         card3.Controls.Add(_customCommandGrid);
 
         var addCmdBtn = MakeSecondaryButton(S("Sensors.Add"), 110, 30);
-        addCmdBtn.Location = Pt(20, 212);
+        addCmdBtn.Location = Pt(20, 244);
         addCmdBtn.Click += (_, _) => AddCustomCommandRow(new CustomCommandDefinition
         {
             Enabled = true,
@@ -908,7 +908,7 @@ internal sealed class MainForm : Form
         card3.Controls.Add(addCmdBtn);
 
         var removeCmdBtn = MakeSecondaryButton(S("Sensors.Remove"), 90, 30);
-        removeCmdBtn.Location = new Point(addCmdBtn.Right + D(8), D(212));
+        removeCmdBtn.Location = new Point(addCmdBtn.Right + D(8), D(244));
         removeCmdBtn.Click += (_, _) =>
         {
             if (_customCommandGrid.CurrentRow is { IsNewRow: false } row)
@@ -1129,7 +1129,9 @@ internal sealed class MainForm : Form
         {
             CustomCommandTypes.Process,
             CustomCommandTypes.PowerShell,
-            CustomCommandTypes.Pwsh
+            CustomCommandTypes.Pwsh,
+            CustomCommandTypes.Key,
+            CustomCommandTypes.Url
         }
             .Select(t => new KeyValuePair<string, string>(t, S($"CmdType.{t}")))
             .ToArray();
@@ -2441,6 +2443,12 @@ internal sealed class MainForm : Form
             if (string.IsNullOrWhiteSpace(commandText)) continue;
             var type = CustomCommandTypes.Normalize(Convert.ToString(row.Cells["Type"].Value) ?? CustomCommandTypes.Process);
             var name = Convert.ToString(row.Cells["Name"].Value) ?? string.Empty;
+            if (type is CustomCommandTypes.Key or CustomCommandTypes.Url)
+            {
+                // These need the user's desktop; the service cannot run them.
+                row.Cells["Service"].Value = false;
+            }
+
             customCommands.Add(new CustomCommandDefinition
             {
                 Id = Convert.ToString(row.Tag) ?? Guid.NewGuid().ToString("N"),

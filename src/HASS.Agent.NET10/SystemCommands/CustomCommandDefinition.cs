@@ -11,7 +11,8 @@ internal sealed class CustomCommandDefinition
     public string Name { get; set; } = "Custom command";
 
     // For "process": the executable path. For "powershell"/"pwsh": the script path
-    // or an inline command (see CommandArguments for how it is passed).
+    // or an inline command (see CommandArguments for how it is passed). For "key": the
+    // key combinations to press ("win+r", "ctrl+c ctrl+v"). For "url": the address to open.
     public string Command { get; set; } = string.Empty;
 
     // For "process": command-line arguments. For "powershell"/"pwsh": ignored when
@@ -32,6 +33,17 @@ internal sealed class CustomCommandDefinition
 
     [JsonIgnore]
     public bool IsPwsh => string.Equals(Type, CustomCommandTypes.Pwsh, StringComparison.OrdinalIgnoreCase);
+
+    [JsonIgnore]
+    public bool IsKey => string.Equals(Type, CustomCommandTypes.Key, StringComparison.OrdinalIgnoreCase);
+
+    [JsonIgnore]
+    public bool IsUrl => string.Equals(Type, CustomCommandTypes.Url, StringComparison.OrdinalIgnoreCase);
+
+    // Key presses and opening an address only mean something on the desktop of the
+    // logged-in user, so the service (session 0) never runs these.
+    [JsonIgnore]
+    public bool NeedsUserSession => IsKey || IsUrl;
 }
 
 internal static class CustomCommandTypes
@@ -39,12 +51,16 @@ internal static class CustomCommandTypes
     public const string Process = "process";
     public const string PowerShell = "powershell";
     public const string Pwsh = "pwsh";
+    public const string Key = "key";
+    public const string Url = "url";
 
     public static IReadOnlySet<string> All { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
         Process,
         PowerShell,
-        Pwsh
+        Pwsh,
+        Key,
+        Url
     };
 
     public static string Normalize(string value)
