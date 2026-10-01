@@ -20,6 +20,8 @@ internal sealed class CompanionWindowsService : ServiceBase
     private MqttCompanionService? _mqttService;
     private FileSystemWatcher? _settingsWatcher;
     private System.Threading.Timer? _settingsReloadTimer;
+    private string? _updatedFrom;
+    private string _runningVersion = string.Empty;
     private bool _disposed;
 
     public CompanionWindowsService()
@@ -40,6 +42,7 @@ internal sealed class CompanionWindowsService : ServiceBase
         {
             var settings = SettingsStore.LoadOrCreate(_paths, _log);
             ApplyLanguage(settings);
+            _updatedFrom = DetectCompletedUpdate(settings);
             _systemCommandService = new SystemCommandService(_log);
             _systemMetricsService = new SystemMetricsService(_log, monitorPowerStateService: null, includeInteractiveMetrics: false);
             StartRuntime(settings);
@@ -174,7 +177,81 @@ internal sealed class CompanionWindowsService : ServiceBase
             CompanionRuntimeRole.Service,
             _log);
 
+        if (_updatedFrom is not null)
+        {
+            _mqttService.NotifyUpdateCompleted(_updatedFrom);
+            _mqttService.UpdateCompletionHandled = RecordServiceVersion;
+        }
+
         _mqttService.Start();
+    }
+
+    /// <summary>
+    /// The version the service ran as before this start, when it differs from the current
+    /// one: an update was installed in between. The tray app reports a finished update when
+    /// it starts; on a PC nobody is logged in to there is no tray app, and the service is
+    /// the one that can tell Home Assistant the install went through.
+    /// The service's last version lives in a file of its own, so the service never has to
+    /// write settings.json (the tray app owns that, and a write reloads the runtime).
+    /// The new version is only recorded once the notification is dealt with, so a restart
+    /// while Home Assistant is unreachable does not lose it.
+    /// </summary>
+    private string? DetectCompletedUpdate(CompanionSettings settings)
+    {
+        if (_paths is null)
+        {
+            return null;
+        }
+
+        _runningVersion = settings.SoftwareVersion;
+        var versionFile = ServiceVersionFile(_paths);
+        try
+        {
+            // Before this file existed, the tray app's record is the best there is.
+            var previous = File.Exists(versionFile)
+                ? File.ReadAllText(versionFile).Trim()
+                : settings.LastRunVersion;
+            if (previous == settings.SoftwareVersion)
+            {
+                return null;
+            }
+
+            if (string.IsNullOrEmpty(previous))
+            {
+                // Nothing to compare with: a first install, nothing to report.
+                File.WriteAllText(versionFile, settings.SoftwareVersion);
+                return null;
+            }
+
+            _log?.Info($"Service updated from {previous} to {settings.SoftwareVersion}.");
+            return previous;
+        }
+        catch (Exception ex)
+        {
+            _log?.Warning($"Unable to track the service version: {ex.Message}");
+            return null;
+        }
+    }
+
+    private static string ServiceVersionFile(AppPaths paths) => Path.Combine(paths.ConfigDirectory, "service-version");
+
+    /// <summary>The finished update was reported (or left to the tray app): this version is now the known one.</summary>
+    private void RecordServiceVersion()
+    {
+        _updatedFrom = null;
+        if (_paths is null)
+        {
+            return;
+        }
+
+        try
+        {
+            File.WriteAllText(ServiceVersionFile(_paths), _runningVersion);
+        }
+        catch (Exception ex)
+        {
+            _log?.Warning($"Unable to record the service version: {ex.Message}");
+        }
     }
 
     private void StopRuntime()

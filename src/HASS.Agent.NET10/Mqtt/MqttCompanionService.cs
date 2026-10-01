@@ -275,6 +275,12 @@ internal sealed class MqttCompanionService : IDisposable
         _pendingUpdateCompletedFrom = previousVersion;
     }
 
+    /// <summary>
+    /// Called once the queued "updated to X" notification is dealt with: sent, or left to
+    /// the tray app. Until then whoever queued it should keep it for the next start.
+    /// </summary>
+    public Action? UpdateCompletionHandled { get; set; }
+
     /// <summary>Creates a Home Assistant persistent notification on the active transport.</summary>
     public async Task PublishPersistentNotificationAsync(string title, string message)
     {
@@ -299,6 +305,17 @@ internal sealed class MqttCompanionService : IDisposable
         await PublishPersistentNotificationAsync(
             Strings.GetHa("HaPn.UpdateTitle"),
             string.Format(Strings.GetHa("HaPn.UpdateCompleted"), _settings.DeviceName, previousVersion, _settings.SoftwareVersion));
+        UpdateCompletionHandled?.Invoke();
+    }
+
+    /// <summary>A tray app runs: it reports the finished update itself.</summary>
+    private void LeaveUpdateNotificationToTrayApp()
+    {
+        if (_pendingUpdateCompletedFrom is not null)
+        {
+            _pendingUpdateCompletedFrom = null;
+            UpdateCompletionHandled?.Invoke();
+        }
     }
 
     /// <summary>
@@ -822,6 +839,11 @@ internal sealed class MqttCompanionService : IDisposable
                 else if (!IsTrayAppRunning())
                 {
                     await PublishUpdateStateAsync();
+                    await PublishPendingUpdateNotificationAsync();
+                }
+                else
+                {
+                    LeaveUpdateNotificationToTrayApp();
                 }
 
                 // Store connection state so RestartAsync can decide whether a
@@ -1023,6 +1045,11 @@ internal sealed class MqttCompanionService : IDisposable
         else if (!IsTrayAppRunning())
         {
             await PublishUpdateStateAsync(cancellationToken: wsCts.Token);
+            await PublishPendingUpdateNotificationAsync();
+        }
+        else
+        {
+            LeaveUpdateNotificationToTrayApp();
         }
 
         // Start the receive loop (handles incoming commands).
