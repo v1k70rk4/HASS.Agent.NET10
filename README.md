@@ -2,7 +2,7 @@
 
 ![Windows](https://img.shields.io/badge/Windows-10%202004%2B%20%7C%2011-0078D4?logo=windows&logoColor=white)
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet&logoColor=white)
-![Version](https://img.shields.io/badge/version-10.7.3-brightgreen)
+![Version](https://img.shields.io/badge/version-10.8.0-brightgreen)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-MQTT%20%7C%20WebSocket%20API-41BDF5?logo=homeassistant&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 [![Website](https://img.shields.io/badge/website-v1k70rk4.github.io-41bdf5?logo=github)](https://v1k70rk4.github.io/HASS.Agent.NET10/)
@@ -60,7 +60,19 @@ The modern .NET10 line starts at **version 10.0.0**. The pre-.NET10 client remai
 
 ## What Changed
 
-### 10.7.3
+### 10.8.0
+
+Works with the Home Assistant integration **10.6.7** or newer. Signed release.
+
+- **Custom commands and custom sensors get an editor window.** Adding one, or double-clicking a row, opens a window with room for a long command line, a description and an example for the chosen type, a *Browse* button for programs and scripts, and a *Test* button: a command runs right away and says what went wrong if it did, a sensor shows the value it would report. For sensors the parameter field also lists what the PC has: the running processes, the installed services, the drives, or the attributes of the built-in sensors. The tables on the settings pages are now just the overview, with the ticks still one click away.
+- **Dashboard popup (WebView).** A Home Assistant dashboard, or any web page, in a small window above the tray: set its address and size on the **Capabilities** page, then open it from the tray menu, or with a click on the tray icon if you tick that. It closes when you click elsewhere, and nothing is loaded while it is closed. There is a matching custom command type, *Popup window (WebView)*, that shows a page in a window of its own, for example a camera when the doorbell rings. Both use the WebView2 runtime that ships with Windows 11; the login is kept per Windows user. Off until an address is set.
+- **Two new custom command types: *Key press* and *Open address*.** A custom command can now press keys (`win+r`, `ctrl+shift+esc`, `alt+tab`, media and browser keys, or several combinations in a row) or open a link in the default browser, without a script written for it. Both show up in Home Assistant as buttons like any other custom command, and both run in the tray app, since they act on the desktop of the logged-in user. The key names are listed under [Custom Commands](#custom-commands).
+
+<details>
+<summary><b>Older versions</b></summary>
+
+<details>
+<summary><b>10.7.3</b></summary>
 
 Works with the Home Assistant integration **10.6.7** or newer; the *Check for updates* button and the single update entity need integration **10.7.3**. Signed release.
 
@@ -68,8 +80,7 @@ Works with the Home Assistant integration **10.6.7** or newer; the *Check for up
 - **One update entity, on both transports.** Over MQTT the update entity used to come from Home Assistant's own MQTT discovery, and over the HA API from the integration - so a PC that switched transports ended up with two, one of them always unavailable. With integration 10.7.3 or newer the integration builds the entity on MQTT as well, and the agent removes its discovered one (it announces the change on `hass.agent/integration/{id}`, retained; an older integration says nothing there and keeps getting the discovered entity as before). The entity now follows the device rather than the tray app, so it stays available, and installable, while only the service runs.
 - **Fixed: installing an update from Home Assistant now works with nobody logged in.** The Install button's request was only picked up by the tray app, which handed the actual install to the Windows service. On a PC that was switched on but not logged in there was no tray app, so the request went unanswered, with nothing in any log. The service now takes the request itself when no tray app is running, and it keeps checking for new releases meanwhile, so the update entity in Home Assistant stays current on a PC nobody is logged in to. When a tray app runs, it handles the request as before, since it also has to bring itself back after the install. Thanks to [@Taomyn](https://github.com/Taomyn) for the report.
 
-<details>
-<summary><b>Older versions</b></summary>
+</details>
 
 <details>
 <summary><b>10.7.2</b></summary>
@@ -423,16 +434,21 @@ data:
 
 ### Custom Commands
 
-Beyond the built-in commands, you can define your own in the **Capabilities** window. Each custom command becomes a button in Home Assistant.
+Beyond the built-in commands, you can define your own in the **Capabilities** window. Each custom command becomes a button in Home Assistant. **Add**, or a double click on a row, opens the editor; its **Test** button runs the command right away, in the tray app.
 
 | Type | `Command / script` field | `Arguments` field |
 |------|--------------------------|-------------------|
 | **Program** | Executable path or name (e.g. `notepad.exe`, `C:\Tools\backup.exe`), or a full command line (e.g. `taskkill /F /IM app.exe /T`) | Command-line arguments (optional; can also be put inline in the command field) |
 | **PowerShell** | Inline command, or a `.ps1` path | Script arguments (used only for `.ps1`) |
 | **PowerShell 7 (pwsh)** | Same as PowerShell, run with `pwsh.exe` | Same as PowerShell |
+| **Key press** | One or more key combinations, separated by spaces or commas (e.g. `win+r`, `ctrl+shift+esc`, `ctrl+c ctrl+v`) | Not used |
+| **Open address** | A link to open in the default browser (e.g. `https://example.com`), or an app link such as `ms-settings:display` | Not used |
+| **Popup window (WebView)** | A web address (`http://` or `https://`) to show in a window of its own | Window size, e.g. `1024x720` (optional) |
 
 - **Program** commands launch via the shell, so GUI apps show in your session; PowerShell runs hidden with `-NoProfile -ExecutionPolicy Bypass`.
 - Tick **Tray**, **Svc**, or both to choose where a command runs. Service-run commands execute in the `SYSTEM` session (no visible UI).
+- **Key press**, **Open address** and **Popup window** act on the desktop of the logged-in user, so they run in the tray app only; the **Svc** tick is cleared for them on save.
+- **Key names:** letters and digits as they are, plus `ctrl`, `shift`, `alt`, `win`, `enter`, `esc`, `tab`, `space`, `backspace`, `delete`, `insert`, `home`, `end`, `pageup`, `pagedown`, `up`, `down`, `left`, `right`, `f1`-`f24`, `num0`-`num9`, `printscreen`, `pause`, `capslock`, `numlock`, `scrolllock`, `menu`, `plus`, `minus`, `comma`, `period`, `play_pause`, `next_track`, `prev_track`, `media_stop`, `volume_up`, `volume_down`, `volume_mute`, `browser_back`, `browser_forward`, `browser_refresh`, `browser_home`. Keys in a combination are joined with `+`. Windows does not let a normal program send keys to a window that runs as administrator, or to the lock screen.
 - **Security:** you own the command list — Home Assistant only sends the command's id to trigger it, never the program or script itself. It cannot run arbitrary code on your PC. Requires the HA integration 10.6.0+ to show the buttons.
 
 ### Windows Service

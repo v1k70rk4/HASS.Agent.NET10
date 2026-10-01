@@ -31,6 +31,16 @@ internal sealed class CompanionSettings
 
     public bool AutoStartOnLogin { get; set; }
 
+    /// <summary>The page of the dashboard popup (a web view above the tray); empty = not set up.</summary>
+    public string WebViewUrl { get; set; } = string.Empty;
+
+    public int WebViewWidth { get; set; } = 420;
+
+    public int WebViewHeight { get; set; } = 640;
+
+    /// <summary>A left click on the tray icon opens the dashboard popup.</summary>
+    public bool WebViewOnTrayClick { get; set; }
+
     public string Language { get; set; } = DetectSystemLanguage();
 
     public string HaLanguage { get; set; } = "en";
@@ -334,6 +344,11 @@ internal sealed class CompanionSettings
             if (string.IsNullOrWhiteSpace(command.Command))
             {
                 continue;
+            }
+
+            if (command.NeedsUserSession)
+            {
+                command.Service = false;
             }
 
             normalized.Add(command);

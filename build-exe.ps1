@@ -20,6 +20,13 @@
     rejected unless its signature is valid. A signing failure is a build failure: nothing unsigned is packaged
     as if it were signed, and nothing is uploaded.
 
+    Which source a development build uses: the script fetches origin and builds what is waiting to be tested,
+    not whatever this folder happens to have checked out. With one open pull request that is its branch; with
+    none it is main; with several it asks (Enter takes the newest). Uncommitted changes or local-only commits
+    in this folder add "this folder as it is" to the choice. -Branch names the source and skips the question.
+    Anything other than this folder's own state is exported to a temp folder and built there, so nothing is
+    checked out or changed here. -Tag always builds this folder as it is.
+
     Nothing machine-specific lives in this script. The signing script - which knows the certificate and how to
     reach it - comes from build.local.psd1 next to this file, which is never committed. Precedence: command-line
     parameter, then build.local.psd1. Example:
@@ -55,6 +62,10 @@
 .PARAMETER NoDeploy
     Never ask about replacing the installed copy.
 
+.PARAMETER Branch
+    Development builds: the branch on origin to build (e.g. main), or . for this folder as it is.
+    Default: chosen as described above.
+
 .PARAMETER Version
     Build with this version instead of the csproj's (e.g. 10.6.8-test.1, which the released 10.6.8 then
     outranks - handy for testing the update path against a real release). Not allowed with -Tag.
@@ -79,24 +90,127 @@ param(
     [switch]$Open,
     [switch]$Deploy,
     [switch]$NoDeploy,
+    [string]$Branch,
     [string]$Version
 )
 
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
 
-$project = "src\HASS.Agent.NET10\HASS.Agent.NET10.csproj"
+$projectPath = "src\HASS.Agent.NET10\HASS.Agent.NET10.csproj"
 $appName = "HASS.Agent .NET10"
+$hasGit = [bool](Get-Command git -ErrorAction SilentlyContinue)
 
-if (-not (Test-Path $project)) {
-    throw "Project not found: $project  (run this script from inside the repo)."
+if (-not (Test-Path $projectPath)) {
+    throw "Project not found: $projectPath  (run this script from inside the repo)."
 }
 if ($Tag -and $Deploy) { throw "-Tag builds are the public release assets; they are not deployed to this machine." }
 if ($Upload -and -not $Tag) { throw "-Upload goes with -Tag." }
 if ($Version -and $Tag) { throw "-Version is for test builds; a -Tag build carries the csproj version." }
+if ($Branch -and $Tag) { throw "-Branch is for development builds; a -Tag build is this folder at the tag." }
+
+# The GitHub repository behind origin. Always named explicitly to gh: this checkout also has an "upstream"
+# remote (the original HASS.Agent), and gh would otherwise pick that one.
+function Get-OriginRepo {
+    $originUrl = git remote get-url origin 2>$null
+    if ($originUrl -match 'github\.com[:/](?<repo>[^/]+/[^/]+?)(\.git)?/?$') { return $Matches['repo'] }
+    return $null
+}
+
+# --- Which source a development build uses (see the description) ------------------------------------------------
+# Returns the folder to build from: this one, or an export of the chosen commit under %TEMP%.
+function Select-Source {
+    git fetch origin --prune --quiet 2>$null
+    if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: could not fetch origin - choosing from what is known locally." -ForegroundColor Yellow }
+
+    $head = git rev-parse HEAD 2>$null
+    $dirty = [bool](git status --porcelain 2>$null)
+    $localOnly = -not (git branch -r --contains HEAD 2>$null)
+
+    # Branches with something to test: open pull requests when gh can tell, otherwise every branch on origin
+    # that is ahead of main (which also lists squash-merged branches nobody deleted).
+    $open = @()
+    $repo = Get-OriginRepo
+    if ($repo -and (Get-Command gh -ErrorAction SilentlyContinue)) {
+        $json = gh pr list -R $repo --state open --json number,title,headRefName 2>$null
+        if ($LASTEXITCODE -eq 0 -and $json) {
+            $open = @($json | ConvertFrom-Json | ForEach-Object {
+                [pscustomobject]@{ Ref = "origin/$($_.headRefName)"; Label = "$($_.headRefName)  (#$($_.number) $($_.title))" }
+            })
+        }
+    }
+    if ($open.Count -eq 0) {
+        $open = @(git for-each-ref --format='%(refname:short)' refs/remotes/origin 2>$null |
+            Where-Object { $_ -notin 'origin', 'origin/HEAD', 'origin/main' } |
+            Where-Object { [int](git rev-list --count "origin/main..$_" 2>$null) -gt 0 } |
+            ForEach-Object { [pscustomobject]@{ Ref = $_; Label = ($_ -replace '^origin/', '') } })
+    }
+    $open = @($open | Where-Object { git rev-parse --verify --quiet "$($_.Ref)^{commit}" 2>$null } |
+        Sort-Object { [long](git log -1 --format=%ct $_.Ref) } -Descending)
+
+    $here = [pscustomobject]@{ Ref = '.'; Label = 'this folder as it is' + $(if ($dirty) { '  (uncommitted changes)' } elseif ($localOnly) { '  (commits that are not on origin)' }) }
+    $choices = @($open) + [pscustomobject]@{ Ref = 'origin/main'; Label = 'main' }
+    if ($dirty -or $localOnly) { $choices += $here }
+
+    if ($Branch -eq '.') { $chosen = $here }
+    elseif ($Branch) {
+        $ref = "origin/$($Branch -replace '^origin/', '')"
+        git rev-parse --verify --quiet "$ref^{commit}" 2>$null | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "No such branch on origin: $Branch" }
+        $chosen = [pscustomobject]@{ Ref = $ref; Label = ($ref -replace '^origin/', '') }
+    }
+    elseif ($open.Count -le 1 -and -not ($dirty -or $localOnly)) {
+        # The usual case: the one branch waiting to be tested, or main when nothing is.
+        $chosen = $choices[0]
+    }
+    else {
+        Write-Host "Which source to build?" -ForegroundColor Cyan
+        for ($i = 0; $i -lt $choices.Count; $i++) { Write-Host ("  {0}. {1}" -f ($i + 1), $choices[$i].Label) }
+        $answer = Read-Host "Number [1]"
+        $index = 0
+        if ($answer -and (-not [int]::TryParse($answer, [ref]$index) -or $index -lt 1 -or $index -gt $choices.Count)) { throw "Not one of the choices: $answer" }
+        $chosen = $choices[[Math]::Max($index, 1) - 1]
+    }
+
+    if ($chosen.Ref -eq '.') {
+        Write-Host "Source: $($chosen.Label)" -ForegroundColor Cyan
+        return $PSScriptRoot
+    }
+
+    $sha = git rev-parse --verify --quiet "$($chosen.Ref)^{commit}" 2>$null
+    if ($LASTEXITCODE -ne 0 -or -not $sha) { throw "Cannot resolve $($chosen.Ref) - fetch origin, or pass -Branch . to build this folder." }
+    Write-Host "Source: $($chosen.Label)  @ $(git log -1 --format='%h  %s' $sha)" -ForegroundColor Cyan
+    if ($sha -eq $head -and -not $dirty) { return $PSScriptRoot }   # already what this folder has
+
+    # Exported, not checked out: this folder (and whatever is open in it) stays as it is. Keyed by commit,
+    # so building the same commit again is incremental; exports of other commits are cleared out.
+    $exportRoot = Join-Path ([IO.Path]::GetTempPath()) "hass-agent-build"
+    $exportDir = Join-Path $exportRoot $sha.Substring(0, 12)
+    if (-not (Test-Path (Join-Path $exportDir $projectPath))) {
+        if (Test-Path $exportRoot) { Remove-Item $exportRoot -Recurse -Force -ErrorAction SilentlyContinue }
+        New-Item -ItemType Directory -Force -Path $exportDir | Out-Null
+        $archive = Join-Path $exportRoot "source.zip"
+        git archive --format=zip -o $archive $sha
+        if ($LASTEXITCODE -ne 0) { throw "git archive of $($chosen.Ref) failed (exit code $LASTEXITCODE)." }
+        Expand-Archive -LiteralPath $archive -DestinationPath $exportDir -Force
+        Remove-Item $archive -Force
+    }
+    return $exportDir
+}
+
+$sourceRoot = if (-not $Tag -and $hasGit) { @(Select-Source)[-1] } else { $PSScriptRoot }
+$project = Join-Path $sourceRoot $projectPath
 
 # --- Machine-specific settings (build.local.psd1, never committed) -------------------------------------------
 $localFile = Join-Path $PSScriptRoot "build.local.psd1"
+if (-not (Test-Path $localFile) -and $hasGit) {
+    # In a git worktree the file lives in the main checkout; it is not committed, so it is not here.
+    $commonDir = git rev-parse --path-format=absolute --git-common-dir 2>$null
+    if ($commonDir) {
+        $mainFile = Join-Path (Split-Path $commonDir -Parent) "build.local.psd1"
+        if (Test-Path $mainFile) { $localFile = $mainFile }
+    }
+}
 $localSettings = if (Test-Path $localFile) { Import-PowerShellDataFile $localFile } else { @{} }
 if (-not $SignScript -and $localSettings.ContainsKey('SignScript')) { $SignScript = [string]$localSettings['SignScript'] }
 
@@ -136,7 +250,7 @@ function Get-SignerName([string]$File) {
 }
 
 # --- A release build has to match its tag: the signed assets replace the CI's assets of exactly that commit. ---
-if ($Tag -and (Get-Command git -ErrorAction SilentlyContinue)) {
+if ($Tag -and $hasGit) {
     if (git status --porcelain 2>$null) {
         Write-Host "WARNING: the working tree has uncommitted changes - these assets will not match any tag." -ForegroundColor Yellow
     }
@@ -168,6 +282,11 @@ else {
     $publishArgs += "-p:IncludeNativeLibrariesForSelfExtract=true"
     Write-Host "Building $appName $appVersion  (standalone, self-contained, win-x64)..." -ForegroundColor Cyan
 }
+
+# The exe of an earlier build must not survive: publish skips the single-file bundle when the one in the
+# output folder looks newer than its inputs, which it does after a build of another source (or version).
+$staleExe = Join-Path $Output "HASS.Agent.NET10.exe"
+if (Test-Path $staleExe) { Remove-Item $staleExe -Force }
 
 dotnet @publishArgs -o $Output
 if ($LASTEXITCODE -ne 0) { throw "Build failed (dotnet publish exit code $LASTEXITCODE)." }
@@ -245,11 +364,9 @@ if ($Tag) {
         Write-Host "No gh on PATH - to replace the release's assets: gh release upload $tagName <files> --clobber -R <owner/repo>" -ForegroundColor DarkGray
     }
     else {
-        # Always name the repository: this checkout also has an "upstream" remote (the original HASS.Agent),
-        # and gh would otherwise pick that one - and look for, or upload to, the release of the wrong project.
-        $originUrl = git remote get-url origin 2>$null
-        if ($originUrl -notmatch 'github\.com[:/](?<repo>[^/]+/[^/]+?)(\.git)?/?$') { throw "Cannot tell the GitHub repository from the origin remote: $originUrl" }
-        $repo = $Matches['repo']
+        # Always name the repository, or gh would look for, or upload to, the release of the wrong project.
+        $repo = Get-OriginRepo
+        if (-not $repo) { throw "Cannot tell the GitHub repository from the origin remote: $(git remote get-url origin 2>$null)" }
 
         # "release not found" is the one failure that means "nothing to replace"; anything else (auth, network)
         # must not pass for a missing release.

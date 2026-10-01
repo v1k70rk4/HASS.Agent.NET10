@@ -78,28 +78,115 @@ internal sealed class SystemCommandService : IDisposable
     }
 
     /// <summary>
-    /// Runs a user-defined custom command: a program with arguments, or a Windows
-    /// PowerShell / pwsh inline command or .ps1 script. The command is chosen from the
-    /// user's own list in settings — Home Assistant only triggers it by id.
+    /// Runs a user-defined custom command: a program with arguments, a Windows
+    /// PowerShell / pwsh inline command or .ps1 script, key presses, or an address to
+    /// open. The command is chosen from the user's own list in settings — Home Assistant
+    /// only triggers it by id.
     /// </summary>
-    public Task RunCustomCommandAsync(CustomCommandDefinition command)
+    public async Task RunCustomCommandAsync(CustomCommandDefinition command)
     {
         _log.Info($"Executing custom command '{command.Name}' ({command.Type}).");
+        var result = await ExecuteCustomCommandAsync(command);
+        if (!result.Ok)
+        {
+            _log.Warning($"Custom command '{command.Name}': {Describe(command, result)}");
+        }
+    }
+
+    /// <summary>
+    /// Shows an address in a window of the tray app (address, logical size); set by the tray
+    /// app, which owns the UI thread. Null in the service, which has no desktop to show it on.
+    /// </summary>
+    public static Func<string, System.Drawing.Size, bool>? WebViewHandler { get; set; }
+
+    /// <summary>
+    /// Runs the command and says how it went. Also behind the Test button of the editor
+    /// in settings, which shows the outcome in the user's language.
+    /// </summary>
+    public static async Task<CustomCommandResult> ExecuteCustomCommandAsync(CustomCommandDefinition command)
+    {
         try
         {
-            var startInfo = BuildCustomCommandStartInfo(command);
-            using var process = System.Diagnostics.Process.Start(startInfo);
-            if (process is null)
+            if (command.NeedsUserSession && System.Diagnostics.Process.GetCurrentProcess().SessionId == 0)
             {
-                _log.Warning($"Custom command '{command.Name}' could not be started.");
+                return new CustomCommandResult(CustomCommandOutcome.NeedsUserSession);
             }
+
+            if (command.IsKey)
+            {
+                if (!KeySender.TryParse(command.Command, out var combinations, out var unknownKey))
+                {
+                    return unknownKey.Length > 0
+                        ? new CustomCommandResult(CustomCommandOutcome.UnknownKey, unknownKey)
+                        : new CustomCommandResult(CustomCommandOutcome.NoKeys);
+                }
+
+                return await KeySender.SendAsync(combinations)
+                    ? new CustomCommandResult(CustomCommandOutcome.Done)
+                    : new CustomCommandResult(CustomCommandOutcome.InputRefused);
+            }
+
+            if (command.IsWebView)
+            {
+                if (!WebViewOptions.IsWebAddress(command.Command))
+                {
+                    return new CustomCommandResult(CustomCommandOutcome.InvalidAddress, command.Command);
+                }
+
+                var size = WebViewOptions.DefaultWindowSize;
+                if (command.Arguments.Length > 0 && !WebViewOptions.TryParseSize(command.Arguments, out size))
+                {
+                    return new CustomCommandResult(CustomCommandOutcome.InvalidSize, command.Arguments);
+                }
+
+                return WebViewHandler?.Invoke(command.Command, size) == true
+                    ? new CustomCommandResult(CustomCommandOutcome.Done)
+                    : new CustomCommandResult(CustomCommandOutcome.NotStarted);
+            }
+
+            if (command.IsUrl && !IsOpenableAddress(command.Command))
+            {
+                return new CustomCommandResult(CustomCommandOutcome.InvalidAddress, command.Command);
+            }
+
+            // An address is opened by the shell, so it lands in the default browser, or in
+            // the app registered for the scheme (ms-settings:, steam://, ...).
+            var startInfo = command.IsUrl
+                ? new System.Diagnostics.ProcessStartInfo { FileName = command.Command, UseShellExecute = true }
+                : BuildCustomCommandStartInfo(command);
+            using var process = System.Diagnostics.Process.Start(startInfo);
+
+            // The shell may hand an address or a document to a running app without
+            // starting a process, so only a program that did not start is a failure.
+            return process is null && !command.IsUrl
+                ? new CustomCommandResult(CustomCommandOutcome.NotStarted)
+                : new CustomCommandResult(CustomCommandOutcome.Done);
         }
         catch (Exception ex)
         {
-            _log.Warning($"Custom command '{command.Name}' failed: {ex.Message}");
+            return new CustomCommandResult(CustomCommandOutcome.Failed, ex.Message);
         }
+    }
 
-        return Task.CompletedTask;
+    /// <summary>An absolute address with a scheme; file paths belong to the Program type.</summary>
+    public static bool IsOpenableAddress(string address)
+    {
+        return Uri.TryCreate(address, UriKind.Absolute, out var uri) && !uri.IsFile;
+    }
+
+    private static string Describe(CustomCommandDefinition command, CustomCommandResult result)
+    {
+        return result.Outcome switch
+        {
+            CustomCommandOutcome.NeedsUserSession => $"type '{command.Type}' needs the desktop of a logged-in user; only the tray app can run it.",
+            CustomCommandOutcome.UnknownKey => $"unknown key '{result.Detail}'.",
+            CustomCommandOutcome.NoKeys => "no keys to press.",
+            CustomCommandOutcome.InputRefused => "Windows did not accept the key presses (the active window runs elevated, or the desktop is locked).",
+            CustomCommandOutcome.InvalidAddress => $"'{result.Detail}' is not an address that can be opened (expected something like https://example.com).",
+            CustomCommandOutcome.InvalidSize => $"'{result.Detail}' is not a window size (expected something like 1024x720).",
+            CustomCommandOutcome.NotStarted => "could not be started.",
+            _ => $"failed: {result.Detail}"
+        };
     }
 
     private static System.Diagnostics.ProcessStartInfo BuildCustomCommandStartInfo(CustomCommandDefinition command)

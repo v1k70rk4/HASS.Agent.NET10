@@ -7,6 +7,7 @@ using HASS.Agent.Companion.Logging;
 using HASS.Agent.Companion.Networking;
 using HASS.Agent.Companion.Localization;
 using HASS.Agent.Companion.Runtime;
+using HASS.Agent.Companion.SystemCommands;
 using HASS.Agent.Companion.SystemService;
 
 namespace HASS.Agent.Companion.Tray;
@@ -22,6 +23,8 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
     private string? _pendingNotificationAction;
     private Action? _pendingBalloonAction;
     private MainForm? _mainForm;
+    private WebViewForm? _dashboardPopup;
+    private DateTime _dashboardClosedAt;
 
     public event EventHandler<NotificationActionRequestedEventArgs>? NotificationActionRequested;
     public event EventHandler? SettingsSaved;
@@ -49,6 +52,25 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
         };
 
         _notifyIcon.DoubleClick += (_, _) => OpenMainForm();
+        _notifyIcon.MouseClick += (_, e) =>
+        {
+            if (e.Button == MouseButtons.Left && _settings.WebViewOnTrayClick)
+            {
+                ToggleDashboard();
+            }
+        };
+
+        // The WebView custom command: asked for on a connection thread, shown on the UI thread.
+        SystemCommandService.WebViewHandler = (url, size) =>
+        {
+            if (_uiInvoker.IsDisposed)
+            {
+                return false;
+            }
+
+            _uiInvoker.BeginInvoke(() => new WebViewForm(url, size, popup: false, _log).Show());
+            return true;
+        };
         _notifyIcon.BalloonTipClicked += (_, _) =>
         {
             if (_pendingBalloonAction is not null)
@@ -110,6 +132,9 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
     {
         if (disposing)
         {
+            SystemCommandService.WebViewHandler = null;
+            _dashboardPopup?.Close();
+
             foreach (var actionNotification in _actionNotifications.ToList())
             {
                 actionNotification.Close();
@@ -128,6 +153,7 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
         var menu = new ContextMenuStrip();
 
         menu.Items.Add(Strings.Get("Tray.Open"), null, (_, _) => OpenMainForm());
+        menu.Items.Add(Strings.Get("Tray.Dashboard"), null, (_, _) => ToggleDashboard());
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(BuildServiceMenu());
         menu.Items.Add(Strings.Get("Tray.CopyUrl"), null, (_, _) => CopyApiUrl());
@@ -163,9 +189,55 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
         _mainForm = new MainForm(_settings, _paths, _log, page);
         _mainForm.DiscoveryRepublishHandler = () => DiscoveryRepublishHandler?.Invoke() ?? Task.FromResult(false);
         _mainForm.UpdateStateHandler = state => UpdateStateHandler?.Invoke(state) ?? Task.CompletedTask;
+        _mainForm.DashboardPreviewHandler = ShowDashboard;
         _mainForm.SettingsSaved += (_, _) => SettingsSaved?.Invoke(this, EventArgs.Empty);
         _mainForm.FormClosed += (_, _) => _mainForm = null;
         _mainForm.Show();
+    }
+
+    /// <summary>The dashboard popup above the tray: opens it, or closes the one that is open.</summary>
+    private void ToggleDashboard()
+    {
+        if (_dashboardPopup is not null)
+        {
+            _dashboardPopup.Close();
+            return;
+        }
+
+        // The click on the tray icon that took the focus away has just closed the popup;
+        // the same click must not open it again.
+        if (DateTime.UtcNow - _dashboardClosedAt < TimeSpan.FromMilliseconds(400))
+        {
+            return;
+        }
+
+        if (!WebViewOptions.IsWebAddress(_settings.WebViewUrl))
+        {
+            // Not set up yet: the page where it is done.
+            OpenMainForm(3);
+            return;
+        }
+
+        ShowDashboard(_settings.WebViewUrl, new Size(_settings.WebViewWidth, _settings.WebViewHeight));
+    }
+
+    private void ShowDashboard(string url, Size size)
+    {
+        _dashboardPopup?.Close();
+        var popup = new WebViewForm(url, size, popup: true, _log);
+        popup.FormClosed += (_, _) =>
+        {
+            if (ReferenceEquals(_dashboardPopup, popup))
+            {
+                _dashboardPopup = null;
+                _dashboardClosedAt = DateTime.UtcNow;
+            }
+
+            popup.Dispose();
+        };
+        _dashboardPopup = popup;
+        popup.Show();
+        popup.Activate();
     }
 
     private void CopyApiUrl()

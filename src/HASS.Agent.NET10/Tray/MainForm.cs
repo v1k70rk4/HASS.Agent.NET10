@@ -77,6 +77,10 @@ internal sealed class MainForm : Form
     private readonly Label _haApiDisabledWarning = new();
 
     private readonly CheckBox _capNotify = new();
+    private readonly TextBox _webViewUrl = new();
+    private readonly NumericUpDown _webViewWidth = new() { Minimum = WebViewOptions.MinimumEdge, Maximum = WebViewOptions.MaximumEdge, Increment = 20 };
+    private readonly NumericUpDown _webViewHeight = new() { Minimum = WebViewOptions.MinimumEdge, Maximum = WebViewOptions.MaximumEdge, Increment = 20 };
+    private readonly CheckBox _webViewOnClick = new();
     private readonly CheckBox _capMedia = new();
     private readonly CheckBox _capSensorsService = new();
     private readonly CheckBox _capSensorsApp = new();
@@ -107,6 +111,11 @@ internal sealed class MainForm : Form
     [System.ComponentModel.Browsable(false)]
     [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
     public Func<Task<bool>>? DiscoveryRepublishHandler { get; set; }
+
+    /// <summary>Set by the tray context: shows the dashboard popup with the values on the page (address, size).</summary>
+    [System.ComponentModel.Browsable(false)]
+    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+    public Action<string, Size>? DashboardPreviewHandler { get; set; }
 
     /// <summary>Wired by TrayApplicationContext: tells Home Assistant what a manual update check found.</summary>
     [System.ComponentModel.Browsable(false)]
@@ -895,26 +904,77 @@ internal sealed class MainForm : Form
 
         var addCmdBtn = MakeSecondaryButton(S("Sensors.Add"), 110, 30);
         addCmdBtn.Location = Pt(20, 212);
-        addCmdBtn.Click += (_, _) => AddCustomCommandRow(new CustomCommandDefinition
+        addCmdBtn.Click += (_, _) =>
         {
-            Enabled = true,
-            TrayApp = true,
-            Service = false,
-            Type = CustomCommandTypes.Process,
-            Name = S("Cap.CustomCommandNew"),
-            Command = "notepad.exe",
-            Arguments = string.Empty
-        });
+            using var editor = new CustomCommandEditorForm(new CustomCommandDefinition
+            {
+                Enabled = true,
+                TrayApp = true,
+                Service = false,
+                Type = CustomCommandTypes.Process,
+                Name = string.Empty,
+                Command = string.Empty,
+                Arguments = string.Empty
+            });
+            if (editor.ShowDialog(this) == DialogResult.OK)
+            {
+                var rowIndex = AddCustomCommandRow(editor.Result);
+                _customCommandGrid.CurrentCell = _customCommandGrid.Rows[rowIndex].Cells["Name"];
+            }
+        };
         card3.Controls.Add(addCmdBtn);
 
+        var editCmdBtn = MakeSecondaryButton(S("Sensors.Edit"), 110, 30);
+        editCmdBtn.Location = new Point(addCmdBtn.Right + D(8), D(212));
+        editCmdBtn.Click += (_, _) => EditCustomCommandRow(_customCommandGrid.CurrentRow);
+        card3.Controls.Add(editCmdBtn);
+        _customCommandGrid.CellDoubleClick += (_, e) =>
+        {
+            if (e.RowIndex >= 0)
+            {
+                EditCustomCommandRow(_customCommandGrid.Rows[e.RowIndex]);
+            }
+        };
+
         var removeCmdBtn = MakeSecondaryButton(S("Sensors.Remove"), 90, 30);
-        removeCmdBtn.Location = new Point(addCmdBtn.Right + D(8), D(212));
+        removeCmdBtn.Location = new Point(editCmdBtn.Right + D(8), D(212));
         removeCmdBtn.Click += (_, _) =>
         {
             if (_customCommandGrid.CurrentRow is { IsNewRow: false } row)
                 _customCommandGrid.Rows.Remove(row);
         };
         card3.Controls.Add(removeCmdBtn);
+
+        var card4 = MakeCard(page, 28, customY + 250 + 20, 600, 232, S("Cap.WebView"));
+        card4.Controls.Add(new Label
+        {
+            Text = S("Cap.WebViewHelp"), Location = Pt(20, 40),
+            Size = Sz(560, 32), ForeColor = TextMuted, Font = new Font("Segoe UI", 8.5F)
+        });
+        y = 78;
+        _webViewUrl.PlaceholderText = "http://homeassistant.local:8123/lovelace/0?kiosk";
+        y = AddField(card4, S("Cap.WebViewUrl"), _webViewUrl, y, inputWidth: 392);
+        var sizeY = y;
+        y = AddField(card4, S("Cap.WebViewSize"), _webViewWidth, y, inputWidth: 80);
+        card4.Controls.Add(new Label { Text = "×", Location = Pt(276, sizeY + 4), AutoSize = true, ForeColor = TextMuted });
+        _webViewHeight.Location = Pt(296, sizeY);
+        _webViewHeight.Size = Sz(80, 28);
+        card4.Controls.Add(_webViewHeight);
+        y = AddCheck(card4, _webViewOnClick, S("Cap.WebViewOnClick"), y + 2);
+        var previewBtn = MakeSecondaryButton(S("Cap.WebViewOpen"), 130, 30);
+        previewBtn.Location = Pt(20, y + 4);
+        previewBtn.Click += (_, _) =>
+        {
+            var url = _webViewUrl.Text.Trim();
+            if (!WebViewOptions.IsWebAddress(url))
+            {
+                MessageBox.Show(S("Editor.InvalidWebAddress"), AppIdentity.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            DashboardPreviewHandler?.Invoke(url, new Size((int)_webViewWidth.Value, (int)_webViewHeight.Value));
+        };
+        card4.Controls.Add(previewBtn);
 
         return page;
     }
@@ -956,21 +1016,37 @@ internal sealed class MainForm : Form
         addBtn.Location = Pt(4, 6);
         addBtn.Click += (_, _) =>
         {
-            var rowIndex = AddCustomSensorRow(new CustomSensorDefinition
+            using var editor = NewCustomSensorEditor(new CustomSensorDefinition
                 {
                     Enabled = true,
                     TrayApp = true,
                     Service = true,
                     Type = CustomSensorTypes.ProcessRunning,
-                    Name = S("Sensors.NewSensor"),
-                    Parameter = "notepad",
+                    Name = string.Empty,
+                    Parameter = string.Empty,
                     PollingProfile = SensorPollingProfiles.ToKey(SensorPollingProfile.Normal)
                 });
-            MarkCustomSensorValueNotTested(_customGrid.Rows[rowIndex]);
+            if (editor.ShowDialog(this) == DialogResult.OK)
+            {
+                var rowIndex = AddCustomSensorRow(editor.Result);
+                MarkCustomSensorValueNotTested(_customGrid.Rows[rowIndex]);
+                _customGrid.CurrentCell = _customGrid.Rows[rowIndex].Cells["Name"];
+            }
+        };
+
+        var editBtn = MakeSecondaryButton(S("Sensors.Edit"), 110, 30);
+        editBtn.Location = new Point(addBtn.Right + D(8), D(6));
+        editBtn.Click += (_, _) => EditCustomSensorRow(_customGrid.CurrentRow);
+        _customGrid.CellDoubleClick += (_, e) =>
+        {
+            if (e.RowIndex >= 0)
+            {
+                EditCustomSensorRow(_customGrid.Rows[e.RowIndex]);
+            }
         };
 
         var removeBtn = MakeSecondaryButton(S("Sensors.Remove"), 90, 30);
-        removeBtn.Location = new Point(addBtn.Right + D(8), D(6));
+        removeBtn.Location = new Point(editBtn.Right + D(8), D(6));
         removeBtn.Click += (_, _) =>
         {
             if (_customGrid.CurrentRow is { IsNewRow: false } row)
@@ -980,6 +1056,7 @@ internal sealed class MainForm : Form
         testBtn.Location = new Point(removeBtn.Right + D(8), D(6));
         testBtn.Click += async (_, _) => await UpdateSelectedCustomSensorValueAsync();
         btnPanel.Controls.Add(addBtn);
+        btnPanel.Controls.Add(editBtn);
         btnPanel.Controls.Add(removeBtn);
         btnPanel.Controls.Add(testBtn);
 
@@ -1092,25 +1169,29 @@ internal sealed class MainForm : Form
         }
             .Select(t => new KeyValuePair<string, string>(t, S($"SensorType.{t}")))
             .ToArray();
+        // Everything but the three ticks is edited in the editor dialog (Add, Edit, or a
+        // double click), where there is room for it; here the row is only shown.
         _customGrid.Columns.Add(new DataGridViewComboBoxColumn
         {
             Name = "Type", HeaderText = S("Sensors.Type"), Width = D(150),
-            DataSource = sensorTypes, ValueMember = "Key", DisplayMember = "Value"
+            DataSource = sensorTypes, ValueMember = "Key", DisplayMember = "Value",
+            ReadOnly = true, DisplayStyle = DataGridViewComboBoxDisplayStyle.Nothing
         });
-        _customGrid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Name", HeaderText = S("Sensors.Name"), Width = D(130) });
+        _customGrid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Name", HeaderText = S("Sensors.Name"), Width = D(130), ReadOnly = true });
         _customGrid.Columns.Add(new DataGridViewComboBoxColumn
         {
             Name = "Profile", HeaderText = S("Sensors.Profile"), Width = D(100),
-            DataSource = BuildPollingProfileOptions(), ValueMember = "Key", DisplayMember = "Value"
+            DataSource = BuildPollingProfileOptions(), ValueMember = "Key", DisplayMember = "Value",
+            ReadOnly = true, DisplayStyle = DataGridViewComboBoxDisplayStyle.Nothing
         });
         _customGrid.Columns.Add(new DataGridViewTextBoxColumn
         {
             Name = "Parameter", HeaderText = S("Sensors.Parameter"),
-            Width = D(170), MinimumWidth = D(80)
+            Width = D(170), MinimumWidth = D(80), ReadOnly = true
         });
         _customGrid.Columns.Add(new DataGridViewTextBoxColumn
         {
-            Name = "Unit", HeaderText = S("Sensors.Unit"), Width = D(60), MinimumWidth = D(45)
+            Name = "Unit", HeaderText = S("Sensors.Unit"), Width = D(60), MinimumWidth = D(45), ReadOnly = true
         });
         _customGrid.Columns.Add(new DataGridViewTextBoxColumn
         {
@@ -1129,21 +1210,25 @@ internal sealed class MainForm : Form
         {
             CustomCommandTypes.Process,
             CustomCommandTypes.PowerShell,
-            CustomCommandTypes.Pwsh
+            CustomCommandTypes.Pwsh,
+            CustomCommandTypes.Key,
+            CustomCommandTypes.Url,
+            CustomCommandTypes.WebView
         }
             .Select(t => new KeyValuePair<string, string>(t, S($"CmdType.{t}")))
             .ToArray();
         _customCommandGrid.Columns.Add(new DataGridViewComboBoxColumn
         {
             Name = "Type", HeaderText = S("Sensors.Type"), Width = D(110),
-            DataSource = commandTypes, ValueMember = "Key", DisplayMember = "Value"
+            DataSource = commandTypes, ValueMember = "Key", DisplayMember = "Value",
+            ReadOnly = true, DisplayStyle = DataGridViewComboBoxDisplayStyle.Nothing
         });
-        _customCommandGrid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Name", HeaderText = S("Sensors.Name"), Width = D(120) });
-        _customCommandGrid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Command", HeaderText = S("Cap.CommandColumn"), Width = D(150) });
+        _customCommandGrid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Name", HeaderText = S("Sensors.Name"), Width = D(120), ReadOnly = true });
+        _customCommandGrid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Command", HeaderText = S("Cap.CommandColumn"), Width = D(150), ReadOnly = true });
         _customCommandGrid.Columns.Add(new DataGridViewTextBoxColumn
         {
             Name = "Arguments", HeaderText = S("Cap.ArgumentsColumn"),
-            AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill, MinimumWidth = D(90)
+            AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill, MinimumWidth = D(90), ReadOnly = true
         });
         _customCommandGrid.CurrentCellDirtyStateChanged += (_, _) =>
         {
@@ -1168,9 +1253,72 @@ internal sealed class MainForm : Form
         return rowIndex;
     }
 
+    private void EditCustomCommandRow(DataGridViewRow? row)
+    {
+        if (row is null || row.IsNewRow)
+        {
+            return;
+        }
+
+        _customCommandGrid.EndEdit();
+        using var editor = new CustomCommandEditorForm(new CustomCommandDefinition
+        {
+            Id = Convert.ToString(row.Tag) ?? Guid.NewGuid().ToString("N"),
+            Enabled = Convert.ToBoolean(row.Cells["Enabled"].Value ?? true),
+            TrayApp = Convert.ToBoolean(row.Cells["TrayApp"].Value ?? false),
+            Service = Convert.ToBoolean(row.Cells["Service"].Value ?? false),
+            Type = CustomCommandTypes.Normalize(Convert.ToString(row.Cells["Type"].Value) ?? CustomCommandTypes.Process),
+            Name = Convert.ToString(row.Cells["Name"].Value) ?? string.Empty,
+            Command = Convert.ToString(row.Cells["Command"].Value) ?? string.Empty,
+            Arguments = Convert.ToString(row.Cells["Arguments"].Value) ?? string.Empty
+        });
+        if (editor.ShowDialog(this) != DialogResult.OK)
+        {
+            return;
+        }
+
+        var command = editor.Result;
+        row.SetValues(command.Enabled, command.TrayApp, command.Service, command.Type, command.Name, command.Command, command.Arguments);
+    }
+
+    private CustomSensorEditorForm NewCustomSensorEditor(CustomSensorDefinition sensor)
+    {
+        return new CustomSensorEditorForm(
+            sensor,
+            _log,
+            BuildPollingProfileOptions().Select(option => new CustomEditorForm.Option(option.Key, option.Value)));
+    }
+
+    private void EditCustomSensorRow(DataGridViewRow? row)
+    {
+        if (row is null || row.IsNewRow)
+        {
+            return;
+        }
+
+        _customGrid.EndEdit();
+        using var editor = NewCustomSensorEditor(BuildCustomSensorFromRow(row, forceEnabled: false));
+        if (editor.ShowDialog(this) != DialogResult.OK)
+        {
+            return;
+        }
+
+        var sensor = editor.Result;
+        row.SetValues(
+            sensor.Enabled,
+            sensor.TrayApp,
+            sensor.Service,
+            sensor.Type,
+            sensor.Name,
+            SensorPollingProfiles.NormalizeKey(sensor.PollingProfile, SensorPollingProfile.Normal),
+            sensor.Parameter,
+            sensor.Unit);
+        MarkCustomSensorValueNotTested(row);
+    }
+
     private Panel BuildCustomSensorInfoPanel()
     {
-        var panel = new Panel { Dock = DockStyle.Top, Height = D(78), BackColor = Color.FromArgb(239, 246, 255) };
+        var panel = new Panel { Dock = DockStyle.Top, Height = D(44), BackColor = Color.FromArgb(239, 246, 255) };
         panel.Paint += (_, e) =>
         {
             using var pen = new Pen(Color.FromArgb(191, 219, 254));
@@ -1190,8 +1338,8 @@ internal sealed class MainForm : Form
         panel.Controls.Add(new Label
         {
             Text = S("Sensors.CustomHelp"),
-            Location = Pt(40, 8),
-            Size = Sz(520, 64),
+            Location = Pt(40, 6),
+            Size = Sz(520, 34),
             ForeColor = TextBody,
             Font = new Font("Segoe UI", 8.5F)
         });
@@ -2102,6 +2250,11 @@ internal sealed class MainForm : Form
         _haApiUrl.Text = _settings.HaApiUrl;
         _haApiToken.Text = _settings.GetHaApiToken();
 
+        _webViewUrl.Text = _settings.WebViewUrl;
+        _webViewWidth.Value = Math.Clamp(_settings.WebViewWidth, WebViewOptions.MinimumEdge, WebViewOptions.MaximumEdge);
+        _webViewHeight.Value = Math.Clamp(_settings.WebViewHeight, WebViewOptions.MinimumEdge, WebViewOptions.MaximumEdge);
+        _webViewOnClick.Checked = _settings.WebViewOnTrayClick;
+
         _capNotify.Checked = _settings.MqttNotificationsEnabled;
         _capMedia.Checked = _settings.MqttMediaPlayerEnabled;
         _capSensorsService.Checked = _settings.MqttServiceSystemSensorsEnabled;
@@ -2258,7 +2411,7 @@ internal sealed class MainForm : Form
         };
     }
 
-    private static string FormatSensorValue(object? value)
+    internal static string FormatSensorValue(object? value)
     {
         return value switch
         {
@@ -2380,6 +2533,11 @@ internal sealed class MainForm : Form
         _settings.HaApiUrl = _haApiUrl.Text.Trim();
         _settings.SetHaApiToken(_haApiToken.Text);
 
+        _settings.WebViewUrl = _webViewUrl.Text.Trim();
+        _settings.WebViewWidth = (int)_webViewWidth.Value;
+        _settings.WebViewHeight = (int)_webViewHeight.Value;
+        _settings.WebViewOnTrayClick = _webViewOnClick.Checked;
+
         _settings.MqttNotificationsEnabled = _capNotify.Checked;
         _settings.MqttMediaPlayerEnabled = _capMedia.Checked;
         _settings.MqttServiceSystemSensorsEnabled = _capSensorsService.Checked;
@@ -2441,6 +2599,12 @@ internal sealed class MainForm : Form
             if (string.IsNullOrWhiteSpace(commandText)) continue;
             var type = CustomCommandTypes.Normalize(Convert.ToString(row.Cells["Type"].Value) ?? CustomCommandTypes.Process);
             var name = Convert.ToString(row.Cells["Name"].Value) ?? string.Empty;
+            if (type is CustomCommandTypes.Key or CustomCommandTypes.Url or CustomCommandTypes.WebView)
+            {
+                // These need the user's desktop; the service cannot run them.
+                row.Cells["Service"].Value = false;
+            }
+
             customCommands.Add(new CustomCommandDefinition
             {
                 Id = Convert.ToString(row.Tag) ?? Guid.NewGuid().ToString("N"),
