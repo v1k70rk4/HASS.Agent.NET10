@@ -94,6 +94,12 @@ internal sealed class SystemCommandService : IDisposable
     }
 
     /// <summary>
+    /// Shows an address in a window of the tray app (address, logical size); set by the tray
+    /// app, which owns the UI thread. Null in the service, which has no desktop to show it on.
+    /// </summary>
+    public static Func<string, System.Drawing.Size, bool>? WebViewHandler { get; set; }
+
+    /// <summary>
     /// Runs the command and says how it went. Also behind the Test button of the editor
     /// in settings, which shows the outcome in the user's language.
     /// </summary>
@@ -118,6 +124,24 @@ internal sealed class SystemCommandService : IDisposable
                 return await KeySender.SendAsync(combinations)
                     ? new CustomCommandResult(CustomCommandOutcome.Done)
                     : new CustomCommandResult(CustomCommandOutcome.InputRefused);
+            }
+
+            if (command.IsWebView)
+            {
+                if (!WebViewOptions.IsWebAddress(command.Command))
+                {
+                    return new CustomCommandResult(CustomCommandOutcome.InvalidAddress, command.Command);
+                }
+
+                var size = WebViewOptions.DefaultWindowSize;
+                if (command.Arguments.Length > 0 && !WebViewOptions.TryParseSize(command.Arguments, out size))
+                {
+                    return new CustomCommandResult(CustomCommandOutcome.InvalidSize, command.Arguments);
+                }
+
+                return WebViewHandler?.Invoke(command.Command, size) == true
+                    ? new CustomCommandResult(CustomCommandOutcome.Done)
+                    : new CustomCommandResult(CustomCommandOutcome.NotStarted);
             }
 
             if (command.IsUrl && !IsOpenableAddress(command.Command))
@@ -159,6 +183,7 @@ internal sealed class SystemCommandService : IDisposable
             CustomCommandOutcome.NoKeys => "no keys to press.",
             CustomCommandOutcome.InputRefused => "Windows did not accept the key presses (the active window runs elevated, or the desktop is locked).",
             CustomCommandOutcome.InvalidAddress => $"'{result.Detail}' is not an address that can be opened (expected something like https://example.com).",
+            CustomCommandOutcome.InvalidSize => $"'{result.Detail}' is not a window size (expected something like 1024x720).",
             CustomCommandOutcome.NotStarted => "could not be started.",
             _ => $"failed: {result.Detail}"
         };

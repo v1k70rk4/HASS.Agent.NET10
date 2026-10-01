@@ -261,7 +261,8 @@ internal sealed class CustomCommandEditorForm : CustomEditorForm
             CustomCommandTypes.PowerShell,
             CustomCommandTypes.Pwsh,
             CustomCommandTypes.Key,
-            CustomCommandTypes.Url
+            CustomCommandTypes.Url,
+            CustomCommandTypes.WebView
         }.Select(type => new Option(type, S($"CmdType.{type}"))));
 
         y += RowHeight;
@@ -316,17 +317,19 @@ internal sealed class CustomCommandEditorForm : CustomEditorForm
     private void ApplyType()
     {
         var type = SelectedKey(_type);
-        var needsUserSession = type is CustomCommandTypes.Key or CustomCommandTypes.Url;
+        var needsUserSession = NeedsUserSession(type);
         var canBrowse = !needsUserSession;
 
         _hint.Text = S($"CmdHint.{type}");
         _commandLabel.Text = S($"CmdField.{type}");
         _browse.Visible = canBrowse;
         _command.Width = D(canBrowse ? FieldWidth - 98 : FieldWidth);
-        _argumentsLabel.Visible = !needsUserSession;
-        _arguments.Visible = !needsUserSession;
+        _argumentsLabel.Text = type == CustomCommandTypes.WebView ? S("Editor.WindowSize") : S("Cap.ArgumentsColumn");
+        _argumentsLabel.Visible = HasArguments(type);
+        _arguments.Visible = HasArguments(type);
+        _arguments.PlaceholderText = type == CustomCommandTypes.WebView ? "1024x720" : string.Empty;
 
-        // Keys and addresses act on the user's desktop; the service cannot run them.
+        // Keys, addresses and windows act on the user's desktop; the service cannot run them.
         if (needsUserSession)
         {
             if (_service.Enabled)
@@ -347,10 +350,16 @@ internal sealed class CustomCommandEditorForm : CustomEditorForm
         ShowResult(string.Empty, TextMuted);
     }
 
+    private static bool NeedsUserSession(string type) =>
+        type is CustomCommandTypes.Key or CustomCommandTypes.Url or CustomCommandTypes.WebView;
+
+    private static bool HasArguments(string type) =>
+        type is not (CustomCommandTypes.Key or CustomCommandTypes.Url);
+
     private CustomCommandDefinition Build()
     {
         var type = SelectedKey(_type);
-        var needsUserSession = type is CustomCommandTypes.Key or CustomCommandTypes.Url;
+        var needsUserSession = NeedsUserSession(type);
         var command = _command.Text.Trim();
         return new CustomCommandDefinition
         {
@@ -358,7 +367,7 @@ internal sealed class CustomCommandEditorForm : CustomEditorForm
             Type = type,
             Name = string.IsNullOrWhiteSpace(_name.Text) ? command : _name.Text.Trim(),
             Command = command,
-            Arguments = needsUserSession ? string.Empty : _arguments.Text.Trim(),
+            Arguments = HasArguments(type) ? _arguments.Text.Trim() : string.Empty,
             Enabled = _enabled.Checked,
             TrayApp = _trayApp.Checked,
             Service = !needsUserSession && _service.Checked
@@ -383,6 +392,16 @@ internal sealed class CustomCommandEditorForm : CustomEditorForm
         if (command.IsUrl && !SystemCommandService.IsOpenableAddress(command.Command))
         {
             return S("Editor.InvalidAddress");
+        }
+
+        if (command.IsWebView && !WebViewOptions.IsWebAddress(command.Command))
+        {
+            return S("Editor.InvalidWebAddress");
+        }
+
+        if (command.IsWebView && command.Arguments.Length > 0 && !WebViewOptions.TryParseSize(command.Arguments, out _))
+        {
+            return S("Editor.InvalidSize");
         }
 
         return null;
@@ -430,6 +449,7 @@ internal sealed class CustomCommandEditorForm : CustomEditorForm
             CustomCommandOutcome.NoKeys => S("Editor.NoKeys"),
             CustomCommandOutcome.InputRefused => S("Editor.InputRefused"),
             CustomCommandOutcome.InvalidAddress => S("Editor.InvalidAddress"),
+            CustomCommandOutcome.InvalidSize => S("Editor.InvalidSize"),
             CustomCommandOutcome.NeedsUserSession => S("Editor.NeedsUserSession"),
             CustomCommandOutcome.NotStarted => S("Editor.NotStarted"),
             _ => string.Format(S("Sensors.ValueError"), result.Detail)

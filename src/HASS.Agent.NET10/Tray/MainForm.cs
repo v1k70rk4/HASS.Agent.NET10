@@ -77,6 +77,10 @@ internal sealed class MainForm : Form
     private readonly Label _haApiDisabledWarning = new();
 
     private readonly CheckBox _capNotify = new();
+    private readonly TextBox _webViewUrl = new();
+    private readonly NumericUpDown _webViewWidth = new() { Minimum = WebViewOptions.MinimumEdge, Maximum = WebViewOptions.MaximumEdge, Increment = 20 };
+    private readonly NumericUpDown _webViewHeight = new() { Minimum = WebViewOptions.MinimumEdge, Maximum = WebViewOptions.MaximumEdge, Increment = 20 };
+    private readonly CheckBox _webViewOnClick = new();
     private readonly CheckBox _capMedia = new();
     private readonly CheckBox _capSensorsService = new();
     private readonly CheckBox _capSensorsApp = new();
@@ -107,6 +111,11 @@ internal sealed class MainForm : Form
     [System.ComponentModel.Browsable(false)]
     [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
     public Func<Task<bool>>? DiscoveryRepublishHandler { get; set; }
+
+    /// <summary>Set by the tray context: shows the dashboard popup with the values on the page (address, size).</summary>
+    [System.ComponentModel.Browsable(false)]
+    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+    public Action<string, Size>? DashboardPreviewHandler { get; set; }
 
     /// <summary>Wired by TrayApplicationContext: tells Home Assistant what a manual update check found.</summary>
     [System.ComponentModel.Browsable(false)]
@@ -936,6 +945,37 @@ internal sealed class MainForm : Form
         };
         card3.Controls.Add(removeCmdBtn);
 
+        var card4 = MakeCard(page, 28, customY + 250 + 20, 600, 232, S("Cap.WebView"));
+        card4.Controls.Add(new Label
+        {
+            Text = S("Cap.WebViewHelp"), Location = Pt(20, 40),
+            Size = Sz(560, 32), ForeColor = TextMuted, Font = new Font("Segoe UI", 8.5F)
+        });
+        y = 78;
+        _webViewUrl.PlaceholderText = "http://homeassistant.local:8123/lovelace/0?kiosk";
+        y = AddField(card4, S("Cap.WebViewUrl"), _webViewUrl, y, inputWidth: 392);
+        var sizeY = y;
+        y = AddField(card4, S("Cap.WebViewSize"), _webViewWidth, y, inputWidth: 80);
+        card4.Controls.Add(new Label { Text = "×", Location = Pt(276, sizeY + 4), AutoSize = true, ForeColor = TextMuted });
+        _webViewHeight.Location = Pt(296, sizeY);
+        _webViewHeight.Size = Sz(80, 28);
+        card4.Controls.Add(_webViewHeight);
+        y = AddCheck(card4, _webViewOnClick, S("Cap.WebViewOnClick"), y + 2);
+        var previewBtn = MakeSecondaryButton(S("Cap.WebViewOpen"), 130, 30);
+        previewBtn.Location = Pt(20, y + 4);
+        previewBtn.Click += (_, _) =>
+        {
+            var url = _webViewUrl.Text.Trim();
+            if (!WebViewOptions.IsWebAddress(url))
+            {
+                MessageBox.Show(S("Editor.InvalidWebAddress"), AppIdentity.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            DashboardPreviewHandler?.Invoke(url, new Size((int)_webViewWidth.Value, (int)_webViewHeight.Value));
+        };
+        card4.Controls.Add(previewBtn);
+
         return page;
     }
 
@@ -1172,7 +1212,8 @@ internal sealed class MainForm : Form
             CustomCommandTypes.PowerShell,
             CustomCommandTypes.Pwsh,
             CustomCommandTypes.Key,
-            CustomCommandTypes.Url
+            CustomCommandTypes.Url,
+            CustomCommandTypes.WebView
         }
             .Select(t => new KeyValuePair<string, string>(t, S($"CmdType.{t}")))
             .ToArray();
@@ -2209,6 +2250,11 @@ internal sealed class MainForm : Form
         _haApiUrl.Text = _settings.HaApiUrl;
         _haApiToken.Text = _settings.GetHaApiToken();
 
+        _webViewUrl.Text = _settings.WebViewUrl;
+        _webViewWidth.Value = Math.Clamp(_settings.WebViewWidth, WebViewOptions.MinimumEdge, WebViewOptions.MaximumEdge);
+        _webViewHeight.Value = Math.Clamp(_settings.WebViewHeight, WebViewOptions.MinimumEdge, WebViewOptions.MaximumEdge);
+        _webViewOnClick.Checked = _settings.WebViewOnTrayClick;
+
         _capNotify.Checked = _settings.MqttNotificationsEnabled;
         _capMedia.Checked = _settings.MqttMediaPlayerEnabled;
         _capSensorsService.Checked = _settings.MqttServiceSystemSensorsEnabled;
@@ -2487,6 +2533,11 @@ internal sealed class MainForm : Form
         _settings.HaApiUrl = _haApiUrl.Text.Trim();
         _settings.SetHaApiToken(_haApiToken.Text);
 
+        _settings.WebViewUrl = _webViewUrl.Text.Trim();
+        _settings.WebViewWidth = (int)_webViewWidth.Value;
+        _settings.WebViewHeight = (int)_webViewHeight.Value;
+        _settings.WebViewOnTrayClick = _webViewOnClick.Checked;
+
         _settings.MqttNotificationsEnabled = _capNotify.Checked;
         _settings.MqttMediaPlayerEnabled = _capMedia.Checked;
         _settings.MqttServiceSystemSensorsEnabled = _capSensorsService.Checked;
@@ -2548,7 +2599,7 @@ internal sealed class MainForm : Form
             if (string.IsNullOrWhiteSpace(commandText)) continue;
             var type = CustomCommandTypes.Normalize(Convert.ToString(row.Cells["Type"].Value) ?? CustomCommandTypes.Process);
             var name = Convert.ToString(row.Cells["Name"].Value) ?? string.Empty;
-            if (type is CustomCommandTypes.Key or CustomCommandTypes.Url)
+            if (type is CustomCommandTypes.Key or CustomCommandTypes.Url or CustomCommandTypes.WebView)
             {
                 // These need the user's desktop; the service cannot run them.
                 row.Cells["Service"].Value = false;

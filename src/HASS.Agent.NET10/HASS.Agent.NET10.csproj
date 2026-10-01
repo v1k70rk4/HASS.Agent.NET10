@@ -29,9 +29,18 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4258.31" />
     <PackageReference Include="MQTTnet" Version="5.1.0.1559" />
     <PackageReference Include="NAudio" Version="2.3.0" />
     <PackageReference Include="System.ServiceProcess.ServiceController" Version="10.0.0" />
   </ItemGroup>
+
+  <!-- The WebView2 package references its WPF control as well; this is a WinForms app, and the
+       WPF one drags in a WindowsBase version conflict (a warning, and warnings are errors here). -->
+  <Target Name="RemoveWebView2WpfReference" BeforeTargets="ResolveAssemblyReferences">
+    <ItemGroup>
+      <Reference Remove="@(Reference)" Condition="'%(Reference.Filename)' == 'Microsoft.Web.WebView2.Wpf'" />
+    </ItemGroup>
+  </Target>
 
 </Project>
