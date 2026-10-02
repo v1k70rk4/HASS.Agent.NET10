@@ -2031,7 +2031,7 @@ internal sealed class MqttCompanionService : IDisposable
         {
             if (!DisplayBrightness.Set(percent))
             {
-                _log.Warning("Brightness was asked for, but no display here can be adjusted (neither a built-in panel nor a DDC/CI monitor).");
+                _log.Info("Brightness was asked for, but no display here can be adjusted (neither a built-in panel nor a DDC/CI monitor).");
             }
         }
 
