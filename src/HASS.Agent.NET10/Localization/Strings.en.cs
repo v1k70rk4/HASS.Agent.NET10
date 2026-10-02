@@ -431,6 +431,7 @@ internal static partial class Strings
             ["Sensor.clipboard_text_available"] = "Clipboard text available",
             ["Sensor.camera_in_use"] = "Camera in use",
             ["Sensor.microphone_in_use"] = "Microphone in use",
+            ["Sensor.display_brightness"] = "Display brightness",
             ["Sensor.audio_output_device"] = "Audio output device",
             ["Sensor.microphone_muted"] = "Microphone muted",
 

@@ -88,6 +88,7 @@ internal sealed class SystemMetricsService : IDisposable
     private IReadOnlyList<PowerRequestInfo> _lastPowerRequests = [];
     private IReadOnlyList<string>? _lastCameraApps;
     private IReadOnlyList<string>? _lastMicrophoneApps;
+    private int? _lastDisplayBrightness;
 
     public SystemMetricsService(
         FileLog log,
@@ -189,6 +190,13 @@ internal sealed class SystemMetricsService : IDisposable
             _lastMicrophoneApps = Wanted("microphone_in_use") ? Safe(() => ReadCapabilityUsers("microphone"), _lastMicrophoneApps) : null;
         }
 
+        // Tray app only: the service has no desktop and sees no monitors. Null when no
+        // display can be adjusted, which keeps the value out of the payload.
+        if (updateNormal && _includeInteractiveMetrics)
+        {
+            _lastDisplayBrightness = Wanted("display_brightness") ? Safe(DisplayBrightness.Get, _lastDisplayBrightness) : null;
+        }
+
         if (!Wanted("gpu_usage"))
         {
             _lastGpu = null;
@@ -277,6 +285,7 @@ internal sealed class SystemMetricsService : IDisposable
             ClipboardTextAvailable: updateFast && _includeInteractiveMetrics ? Safe(ReadClipboardTextAvailable, previous?.ClipboardTextAvailable) : previous?.ClipboardTextAvailable,
             CameraInUse: _lastCameraApps is { } cameraApps ? cameraApps.Count > 0 : null,
             MicrophoneInUse: _lastMicrophoneApps is { } microphoneApps ? microphoneApps.Count > 0 : null,
+            DisplayBrightness: _lastDisplayBrightness,
             GpuUsage: _lastGpu?.Usage,
             SessionState: session.State,
             LoggedInUser: session.User,
@@ -2194,6 +2203,7 @@ internal sealed record SystemMetricsMessage(
     [property: JsonPropertyName("clipboard_text_available")] bool? ClipboardTextAvailable,
     [property: JsonPropertyName("camera_in_use")] bool? CameraInUse,
     [property: JsonPropertyName("microphone_in_use")] bool? MicrophoneInUse,
+    [property: JsonPropertyName("display_brightness")] int? DisplayBrightness,
     [property: JsonPropertyName("gpu_usage")] double? GpuUsage,
     [property: JsonPropertyName("session_state")] string SessionState,
     [property: JsonPropertyName("logged_in_user")] string LoggedInUser,

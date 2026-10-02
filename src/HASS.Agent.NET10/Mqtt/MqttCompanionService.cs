@@ -1971,6 +1971,14 @@ internal sealed class MqttCompanionService : IDisposable
                 return;
             }
 
+            // The "Display" light of the integration. Not on the command list: it belongs to
+            // the display brightness sensor, and is only honoured while that sensor is on.
+            if (commandName is "set_brightness" or "display_on" or "display_off")
+            {
+                await HandleDisplayCommandAsync(commandName, command.Value, serviceRole, transport);
+                return;
+            }
+
             var customCommand = FindCustomCommand(commandName, serviceRole);
             if (customCommand is not null)
             {
@@ -1994,6 +2002,41 @@ internal sealed class MqttCompanionService : IDisposable
             // The WebSocket transport invokes this without an outer handler.
             _log.Warning($"Failed to run {scope} command from {transport}: {ex.Message}");
         }
+    }
+
+    private async Task HandleDisplayCommandAsync(string commandName, int? value, bool serviceRole, string transport)
+    {
+        var enabled = !serviceRole && _settings.BuiltInSensors.Any(sensor =>
+            string.Equals(sensor.Key, "display_brightness", StringComparison.OrdinalIgnoreCase) && sensor.TrayApp);
+        if (!enabled)
+        {
+            _log.Warning($"Display command '{commandName}' received over {transport}, but the display brightness sensor is not enabled in the tray app.");
+            return;
+        }
+
+        if (commandName == "display_off")
+        {
+            // The light's own "off": it does not depend on the Monitor off button being enabled.
+            await _systemCommandService.HandleCommandAsync(new SystemCommandMessage("monitor_off", Force: false, Time: 0, Comment: null, RestartCancel: false));
+            TriggerPushUpdate();
+            return;
+        }
+
+        if (commandName == "display_on")
+        {
+            SystemCommandService.WakeMonitor();
+        }
+
+        if (value is { } percent)
+        {
+            if (!DisplayBrightness.Set(percent))
+            {
+                _log.Warning("Brightness was asked for, but no display here can be adjusted (neither a built-in panel nor a DDC/CI monitor).");
+            }
+        }
+
+        // The new value should be in Home Assistant right away, not at the next poll.
+        TriggerPushUpdate();
     }
 
     private static string? GetSystemCommandName(SystemCommandMessage message)
