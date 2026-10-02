@@ -107,12 +107,16 @@ internal static class LibreHardwareMonitorClient
         }
     }
 
-    /// <summary>The sensor id out of a stored parameter; the settings editor's list appends " | name = value" to it.</summary>
+    /// <summary>
+    /// The sensor id out of a parameter. The settings editor's list shows
+    /// "hardware / name = value | id" (the readable part first, ids can be very long);
+    /// what is stored is the id alone.
+    /// </summary>
     public static string ParseSensorId(string parameter)
     {
         var text = parameter ?? string.Empty;
-        var separator = text.IndexOf(" | ", StringComparison.Ordinal);
-        return (separator >= 0 ? text[..separator] : text).Trim();
+        var separator = text.LastIndexOf(" | ", StringComparison.Ordinal);
+        return (separator >= 0 ? text[(separator + 3)..] : text).Trim();
     }
 
     internal static string BuildDataUrl(string baseUrl)

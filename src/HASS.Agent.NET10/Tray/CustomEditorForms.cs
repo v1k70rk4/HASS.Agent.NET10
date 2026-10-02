@@ -603,6 +603,8 @@ internal sealed class CustomSensorEditorForm : CustomEditorForm
         }
 
         _parameter.EndUpdate();
+        // The hardware sensor lines are long; the list may be wider than the field.
+        _parameter.DropDownWidth = D(isHardwareMonitor ? 760 : isCommand ? FieldWidth - 98 : FieldWidth);
         // What was typed for another type means nothing here.
         _parameter.Text = keepParameter ? text : string.Empty;
         ShowResult(string.Empty, TextMuted);
@@ -669,9 +671,10 @@ internal sealed class CustomSensorEditorForm : CustomEditorForm
                         .ToList();
 
                 case CustomSensorTypes.LibreHardwareMonitor:
-                    // "id | hardware / name = value": only the id is stored (see Build).
+                    // "hardware / name = value | id": only the id is stored (see Build).
                     return LibreHardwareMonitorClient.ReadAll()
-                        .Select(reading => $"{reading.Id} | {HardwareSensorTitle(reading)} = {reading.Text}")
+                        .Select(reading => $"{HardwareSensorTitle(reading)} = {reading.Text} | {reading.Id}")
+                        .Order(StringComparer.CurrentCultureIgnoreCase)
                         .ToList();
 
                 case CustomSensorTypes.BuiltInAttribute:
