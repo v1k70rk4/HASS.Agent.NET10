@@ -173,7 +173,13 @@ internal sealed class AudioEndpointService : IDisposable
                 {
                     using (device)
                     {
-                        names.Add(device.FriendlyName);
+                        // An endpoint without a readable name (it happens with stale
+                        // entries) must not cut the list short.
+                        var name = TryGetFriendlyName(device);
+                        if (name is not null)
+                        {
+                            names.Add(name);
+                        }
                     }
                 }
             }
@@ -183,6 +189,19 @@ internal sealed class AudioEndpointService : IDisposable
             }
 
             return names;
+        }
+    }
+
+    private static string? TryGetFriendlyName(MMDevice device)
+    {
+        try
+        {
+            var name = device.FriendlyName;
+            return string.IsNullOrWhiteSpace(name) ? null : name;
+        }
+        catch
+        {
+            return null;
         }
     }
 
@@ -199,7 +218,7 @@ internal sealed class AudioEndpointService : IDisposable
                 {
                     using (device)
                     {
-                        if (deviceId is null && string.Equals(device.FriendlyName, name, StringComparison.OrdinalIgnoreCase))
+                        if (deviceId is null && string.Equals(TryGetFriendlyName(device), name, StringComparison.OrdinalIgnoreCase))
                         {
                             deviceId = device.ID;
                         }
