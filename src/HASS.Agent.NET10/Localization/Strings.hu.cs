@@ -192,6 +192,7 @@ internal static partial class Strings
             ["Editor.ConnectionUser"] = "Felhasználónév",
             ["Editor.ConnectionPassword"] = "Jelszó",
             ["Editor.ConnectionHint"] = "Felhasználónév és jelszó csak akkor kell, ha a webszervere kéri.",
+            ["Editor.ConnectionWarning"] = "Ez egy másik gép: a LibreHardwareMonitor csak sima HTTP-t tud, a jelszó titkosítatlanul megy át a hálózaton.",
             ["Editor.NameInHa"] = "Név (HA-ban)",
             ["Editor.Unit"] = "Mértékegység",
             ["Editor.Where"] = "Hol fut",

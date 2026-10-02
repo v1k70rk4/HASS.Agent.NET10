@@ -192,6 +192,7 @@ internal static partial class Strings
             ["Editor.ConnectionUser"] = "User name",
             ["Editor.ConnectionPassword"] = "Password",
             ["Editor.ConnectionHint"] = "User name and password only if its web server asks for them.",
+            ["Editor.ConnectionWarning"] = "This is another machine: LibreHardwareMonitor only speaks plain HTTP, so the password travels unencrypted.",
             ["Editor.NameInHa"] = "Name (in HA)",
             ["Editor.Unit"] = "Unit",
             ["Editor.Where"] = "Runs in",

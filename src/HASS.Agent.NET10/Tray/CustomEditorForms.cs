@@ -471,6 +471,8 @@ internal sealed class CustomSensorEditorForm : CustomEditorForm
     private readonly Button _browse;
     private readonly Button _connection;
     private readonly CompanionSettings _settings;
+    private IReadOnlyList<LibreHardwareMonitorClient.Reading> _hardwareReadings = [];
+    private int _hardwareLoad;
     private readonly TextBox _unit;
     private readonly ComboBox _profile;
     private readonly CheckBox _enabled;
@@ -609,18 +611,51 @@ internal sealed class CustomSensorEditorForm : CustomEditorForm
         _parameter.Text = keepParameter ? text : string.Empty;
         ShowResult(string.Empty, TextMuted);
 
-        if (isHardwareMonitor && _parameter.Items.Count == 0)
+        _hardwareLoad++;
+        if (isHardwareMonitor)
+        {
+            _ = LoadHardwareSensorsAsync(_hardwareLoad);
+        }
+    }
+
+    // The list of hardware sensors comes over HTTP, and a LibreHardwareMonitor that is not
+    // running only says so after a timeout: read off the UI thread, fill the list after.
+    private async Task LoadHardwareSensorsAsync(int load)
+    {
+        ShowResult(S("Sensors.ValueLoading"), TextMuted);
+        IReadOnlyList<LibreHardwareMonitorClient.Reading> readings = [];
+        string? error = null;
+        try
+        {
+            readings = await Task.Run(LibreHardwareMonitorClient.ReadAll);
+        }
+        catch (Exception ex)
         {
             // An empty list needs a reason: not running, web server off, or the login.
-            try
-            {
-                LibreHardwareMonitorClient.ReadAll();
-            }
-            catch (Exception ex)
-            {
-                ShowResult(ex.Message, ErrorRed);
-            }
+            error = ex.Message;
         }
+
+        // Closed, or switched to another type (or reloaded) in the meantime.
+        if (IsDisposed || load != _hardwareLoad)
+        {
+            return;
+        }
+
+        _hardwareReadings = readings;
+        var text = _parameter.Text;
+        _parameter.BeginUpdate();
+        _parameter.Items.Clear();
+        // "hardware / name = value | id": only the id is stored (see Build).
+        foreach (var line in readings
+            .Select(reading => $"{HardwareSensorTitle(reading)} = {reading.Text} | {reading.Id}")
+            .Order(StringComparer.CurrentCultureIgnoreCase))
+        {
+            _parameter.Items.Add(line);
+        }
+
+        _parameter.EndUpdate();
+        _parameter.Text = text;
+        ShowResult(error ?? string.Empty, error is null ? TextMuted : ErrorRed);
     }
 
     private static IEnumerable<string> Suggestions(string type)
@@ -670,13 +705,6 @@ internal sealed class CustomSensorEditorForm : CustomEditorForm
                         .Select(drive => drive.Name.TrimEnd('\\'))
                         .ToList();
 
-                case CustomSensorTypes.LibreHardwareMonitor:
-                    // "hardware / name = value | id": only the id is stored (see Build).
-                    return LibreHardwareMonitorClient.ReadAll()
-                        .Select(reading => $"{HardwareSensorTitle(reading)} = {reading.Text} | {reading.Id}")
-                        .Order(StringComparer.CurrentCultureIgnoreCase)
-                        .ToList();
-
                 case CustomSensorTypes.BuiltInAttribute:
                     return BuiltInSensorCatalog.Sensors
                         .SelectMany(sensor => sensor.AttributePaths ?? [])
@@ -702,7 +730,8 @@ internal sealed class CustomSensorEditorForm : CustomEditorForm
             return;
         }
 
-        var reading = LibreHardwareMonitorClient.Find(LibreHardwareMonitorClient.ParseSensorId(listItem));
+        var id = LibreHardwareMonitorClient.ParseSensorId(listItem);
+        var reading = _hardwareReadings.FirstOrDefault(candidate => string.Equals(candidate.Id, id, StringComparison.OrdinalIgnoreCase));
         if (reading is null)
         {
             return;
@@ -798,19 +827,31 @@ internal sealed class HardwareMonitorConnectionForm : Form
         Font = new Font("Segoe UI", 9.5F);
         AutoScaleMode = AutoScaleMode.None;
         BackColor = Color.White;
-        ClientSize = Sz(460, 204);
+        ClientSize = Sz(460, 216);
 
         AddRow(Strings.Get("Editor.ConnectionUrl"), _url, 20);
         AddRow(Strings.Get("Editor.ConnectionUser"), _user, 56);
         AddRow(Strings.Get("Editor.ConnectionPassword"), _password, 92);
-        Controls.Add(new Label
+        var hint = new Label
         {
-            Text = Strings.Get("Editor.ConnectionHint"), Location = Pt(20, 126), Size = Sz(420, 20),
-            ForeColor = Color.FromArgb(100, 116, 139), Font = new Font("Segoe UI", 8.75F)
-        });
+            Location = Pt(20, 122), Size = Sz(420, 32), Font = new Font("Segoe UI", 8.75F)
+        };
+        Controls.Add(hint);
 
-        var ok = new Button { Text = Strings.Get("Editor.Ok"), Location = Pt(256, 156), Size = Sz(88, 30) };
-        var cancel = new Button { Text = Strings.Get("Btn.Cancel"), Location = Pt(352, 156), Size = Sz(88, 30), DialogResult = DialogResult.Cancel };
+        // LibreHardwareMonitor's web server speaks plain HTTP only, so a login sent to
+        // another machine travels unencrypted. On this PC it never leaves the machine.
+        void UpdateHint()
+        {
+            var exposed = _user.Text.Trim().Length > 0 && !IsLoopback(_url.Text);
+            hint.Text = Strings.Get(exposed ? "Editor.ConnectionWarning" : "Editor.ConnectionHint");
+            hint.ForeColor = exposed ? Color.FromArgb(185, 28, 28) : Color.FromArgb(100, 116, 139);
+        }
+
+        _url.TextChanged += (_, _) => UpdateHint();
+        _user.TextChanged += (_, _) => UpdateHint();
+
+        var ok = new Button { Text = Strings.Get("Editor.Ok"), Location = Pt(256, 168), Size = Sz(88, 30) };
+        var cancel = new Button { Text = Strings.Get("Btn.Cancel"), Location = Pt(352, 168), Size = Sz(88, 30), DialogResult = DialogResult.Cancel };
         ok.Click += (_, _) =>
         {
             // In memory right away, so the sensor list can be read with it; written to
@@ -831,6 +872,13 @@ internal sealed class HardwareMonitorConnectionForm : Form
         _url.Text = settings.LibreHardwareMonitorUrl;
         _user.Text = settings.LibreHardwareMonitorUser;
         _password.Text = settings.GetLibreHardwareMonitorPassword();
+        UpdateHint();
+    }
+
+    private static bool IsLoopback(string url)
+    {
+        var text = string.IsNullOrWhiteSpace(url) ? LibreHardwareMonitorClient.DefaultUrl : url.Trim();
+        return Uri.TryCreate(text, UriKind.Absolute, out var uri) && uri.IsLoopback;
     }
 
     private int D(int v) => (int)(v * DeviceDpi / 96f);
