@@ -443,6 +443,6 @@ internal static partial class Strings
             ["SensorType.command_pwsh"] = "Parancs (PowerShell 7)",
             ["SensorType.lhm"] = "LibreHardwareMonitor",
             ["SensorField.lhm"] = "Szenzor",
-            ["SensorHint.lhm"] = "Érték a LibreHardwareMonitorból: CPU- vagy GPU-hőmérséklet, ventilátor, feszültség. Futtasd a LibreHardwareMonitort (Options > Remote Web Server > Run), majd válaszd ki a szenzort a listából.\nPélda: /intelcpu/0/temperature/0",
+            ["SensorHint.lhm"] = "Érték a LibreHardwareMonitorból: CPU- vagy GPU-hőmérséklet, ventilátor, feszültség. Futtasd a LibreHardwareMonitort (Options > Remote Web Server > Run), majd válaszd ki a szenzort a listából. A lista szűkül, ha elkezded beírni a hardver nevét.",
     };
 }

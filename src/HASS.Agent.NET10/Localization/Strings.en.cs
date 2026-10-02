@@ -443,6 +443,6 @@ internal static partial class Strings
             ["SensorType.command_pwsh"] = "Command (PowerShell 7)",
             ["SensorType.lhm"] = "LibreHardwareMonitor",
             ["SensorField.lhm"] = "Sensor",
-            ["SensorHint.lhm"] = "A value from LibreHardwareMonitor: CPU or GPU temperature, fan speed, voltage. Run LibreHardwareMonitor with Options > Remote Web Server > Run, then pick the sensor from the list.\nExample: /intelcpu/0/temperature/0",
+            ["SensorHint.lhm"] = "A value from LibreHardwareMonitor: CPU or GPU temperature, fan speed, voltage. Run LibreHardwareMonitor with Options > Remote Web Server > Run, then pick the sensor from the list. Typing the start of the hardware name narrows the list.",
     };
 }
