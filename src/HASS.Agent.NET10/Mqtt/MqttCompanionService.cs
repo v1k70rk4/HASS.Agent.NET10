@@ -1167,7 +1167,8 @@ internal sealed class MqttCompanionService : IDisposable
             buttonsEnabled ? BuildCommandDescriptors(_settings.TrayAppCommands) : [],
             systemSensorsEnabled ? BuildCustomSensorDescriptors(serviceRole: false) : [],
             systemSensorsEnabled ? BuildStandardSensorDescriptors(serviceRole: false) : [],
-            buttonsEnabled ? BuildCustomCommandDescriptors(serviceRole: false) : []);
+            buttonsEnabled ? BuildCustomCommandDescriptors(serviceRole: false) : [],
+            BuildHotkeyDescriptors());
 
         await _haWs!.PublishDeviceDiscoveryAsync(new
         {
@@ -1514,7 +1515,8 @@ internal sealed class MqttCompanionService : IDisposable
                 buttonsEnabled ? BuildCommandDescriptors(_settings.TrayAppCommands) : [],
                 systemSensorsEnabled ? BuildCustomSensorDescriptors(serviceRole: false) : [],
                 systemSensorsEnabled ? BuildStandardSensorDescriptors(serviceRole: false) : [],
-                buttonsEnabled ? BuildCustomCommandDescriptors(serviceRole: false) : []);
+                buttonsEnabled ? BuildCustomCommandDescriptors(serviceRole: false) : [],
+                BuildHotkeyDescriptors());
 
         await PublishJsonAsync(
             $"hass.agent/devices/{TopicId}",
@@ -2163,6 +2165,37 @@ internal sealed class MqttCompanionService : IDisposable
             : message.Command?.Trim().ToLowerInvariant();
     }
 
+    private IReadOnlyList<HotkeyDescriptor> BuildHotkeyDescriptors()
+    {
+        return _settings.Hotkeys
+            .Where(hotkey => hotkey.Enabled)
+            .Select(hotkey => new HotkeyDescriptor(hotkey.Id, hotkey.Name, hotkey.Keys))
+            .ToList();
+    }
+
+    /// <summary>A registered hotkey was pressed: an event for Home Assistant, on the active transport.</summary>
+    public async Task PublishHotkeyAsync(HotkeyDefinition hotkey)
+    {
+        _log.Info($"Hotkey pressed: {hotkey.Name} ({hotkey.Keys})");
+        try
+        {
+            if (_isOnWebSocket && _haWs is not null)
+            {
+                await _haWs.PublishHotkeyAsync(hotkey, _cts?.Token ?? CancellationToken.None);
+                return;
+            }
+
+            await PublishJsonAsync(
+                $"hass.agent/hotkeys/{TopicId}/pressed",
+                new HotkeyMessage(_settings.DeviceName, hotkey.Id, hotkey.Name, hotkey.Keys, DateTimeOffset.UtcNow),
+                retain: false);
+        }
+        catch (Exception ex)
+        {
+            _log.Warning($"Unable to send the hotkey '{hotkey.Name}' to Home Assistant: {ex.Message}");
+        }
+    }
+
     private IReadOnlyList<CustomCommandDescriptor> BuildCustomCommandDescriptors(bool serviceRole)
     {
         return _settings.CustomCommands
@@ -2342,6 +2375,13 @@ internal sealed record MqttDiscoveryMessage(
     [property: JsonPropertyName("serial_number")] string SerialNumber,
     [property: JsonPropertyName("device")] DeviceInfoResponse Device,
     [property: JsonPropertyName("apis")] ApiCapabilitiesResponse Apis);
+
+internal sealed record HotkeyMessage(
+    [property: JsonPropertyName("device_name")] string DeviceName,
+    [property: JsonPropertyName("id")] string Id,
+    [property: JsonPropertyName("hotkey")] string Hotkey,
+    [property: JsonPropertyName("keys")] string Keys,
+    [property: JsonPropertyName("created_at")] DateTimeOffset CreatedAt);
 
 internal sealed record NotificationActionMessage(
     [property: JsonPropertyName("device_name")] string DeviceName,

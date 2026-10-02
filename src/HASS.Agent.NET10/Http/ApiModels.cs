@@ -74,4 +74,6 @@ internal sealed record ApiCapabilitiesResponse(
     [property: JsonPropertyName("commands")] IReadOnlyList<SystemCommandDescriptor> Commands,
     [property: JsonPropertyName("custom_sensors")] IReadOnlyList<HASS.Agent.Companion.SystemStatus.CustomSensorDescriptor>? CustomSensors = null,
     [property: JsonPropertyName("standard_sensors")] IReadOnlyList<HASS.Agent.Companion.SystemStatus.BuiltInSensorDescriptor>? StandardSensors = null,
-    [property: JsonPropertyName("custom_commands")] IReadOnlyList<HASS.Agent.Companion.SystemCommands.CustomCommandDescriptor>? CustomCommands = null);
+    [property: JsonPropertyName("custom_commands")] IReadOnlyList<HASS.Agent.Companion.SystemCommands.CustomCommandDescriptor>? CustomCommands = null,
+    // The hotkeys the tray app reports as events (integration 10.9.0+ builds an event entity from them).
+    [property: JsonPropertyName("hotkeys")] IReadOnlyList<HASS.Agent.Companion.Configuration.HotkeyDescriptor>? Hotkeys = null);

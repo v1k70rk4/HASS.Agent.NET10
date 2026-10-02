@@ -157,6 +157,7 @@ internal static class Program
             log.Info($"Notification action selected: {args.Action}");
             _ = Task.Run(() => mqttService.PublishNotificationActionAsync(args.Action));
         };
+        trayContext.HotkeyPressed += (_, hotkey) => _ = Task.Run(() => mqttService.PublishHotkeyAsync(hotkey));
         trayContext.SettingsSaved += (_, _) =>
         {
             log.Info("Settings saved from UI.");

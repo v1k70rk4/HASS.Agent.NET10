@@ -162,6 +162,9 @@ internal sealed class CompanionSettings
 
     public List<CustomCommandDefinition> CustomCommands { get; set; } = [];
 
+    /// <summary>Global key combinations reported to Home Assistant as events (tray app).</summary>
+    public List<HotkeyDefinition> Hotkeys { get; set; } = [];
+
     public List<BuiltInSensorSetting> BuiltInSensors { get; set; } = [];
 
     [JsonIgnore]
@@ -285,6 +288,7 @@ internal sealed class CompanionSettings
             .ToList();
         CustomSensors = NormalizeCustomSensors(CustomSensors);
         CustomCommands = NormalizeCustomCommands(CustomCommands);
+        Hotkeys = NormalizeHotkeys(Hotkeys);
         BuiltInSensors = NormalizeBuiltInSensors(BuiltInSensors);
         MqttButtonsEnabled = TrayAppCommands.Count > 0 || CustomCommands.Any(command => command.Enabled);
     }
@@ -350,6 +354,29 @@ internal sealed class CompanionSettings
             }
 
             normalized.Add(sensor);
+        }
+
+        return normalized;
+    }
+
+    private static List<HotkeyDefinition> NormalizeHotkeys(List<HotkeyDefinition>? hotkeys)
+    {
+        if (hotkeys is null)
+        {
+            return [];
+        }
+
+        var usedIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var normalized = new List<HotkeyDefinition>();
+        foreach (var hotkey in hotkeys)
+        {
+            hotkey.Id = NormalizeCustomSensorId(hotkey.Id, usedIds);
+            hotkey.Keys = (hotkey.Keys ?? string.Empty).Trim();
+            hotkey.Name = NormalizeText(hotkey.Name, hotkey.Keys);
+            if (hotkey.Keys.Length > 0)
+            {
+                normalized.Add(hotkey);
+            }
         }
 
         return normalized;

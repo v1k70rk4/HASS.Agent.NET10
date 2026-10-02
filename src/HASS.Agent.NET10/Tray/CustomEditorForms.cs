@@ -893,3 +893,71 @@ internal sealed class HardwareMonitorConnectionForm : Form
         Controls.Add(box);
     }
 }
+
+/// <summary>Adds or edits one hotkey: a name for Home Assistant and the key combination.</summary>
+internal sealed class HotkeyEditorForm : CustomEditorForm
+{
+    private readonly string _id;
+    private readonly TextBox _name;
+    private readonly TextBox _keys;
+    private readonly CheckBox _enabled;
+
+    public HotkeyEditorForm(HotkeyDefinition hotkey)
+        : base(S("Editor.HotkeyTitle"))
+    {
+        _id = hotkey.Id;
+
+        var y = 20;
+        var hint = AddHint(y, 76);
+        hint.Text = S("Editor.HotkeyHint");
+
+        y += 76 + 12;
+        AddLabel(S("Editor.NameInHa"), y);
+        _name = AddTextBox(y);
+
+        y += RowHeight;
+        AddLabel(S("Cap.HotkeyKeys"), y);
+        _keys = AddTextBox(y);
+        _keys.PlaceholderText = "ctrl+alt+h";
+
+        y += RowHeight;
+        _enabled = new CheckBox { Text = S("Sensors.Active"), Location = Pt(FieldX, y), Size = Sz(200, 24), ForeColor = TextBody };
+        Controls.Add(_enabled);
+
+        FinishLayout(y + RowHeight);
+        TestButton.Visible = false;
+
+        _name.Text = hotkey.Name;
+        _keys.Text = hotkey.Keys;
+        _enabled.Checked = hotkey.Enabled;
+    }
+
+    public HotkeyDefinition Result { get; private set; } = new();
+
+    protected override bool TryAccept()
+    {
+        var keys = _keys.Text.Trim();
+        if (keys.Length == 0)
+        {
+            ShowResult(string.Format(S("Editor.FieldMissing"), S("Cap.HotkeyKeys")), ErrorRed);
+            return false;
+        }
+
+        if (!KeySender.TryParseHotkey(keys, out _, out _))
+        {
+            ShowResult(S("Editor.HotkeyInvalid"), ErrorRed);
+            return false;
+        }
+
+        Result = new HotkeyDefinition
+        {
+            Id = _id,
+            Name = string.IsNullOrWhiteSpace(_name.Text) ? keys : _name.Text.Trim(),
+            Keys = keys,
+            Enabled = _enabled.Checked
+        };
+        return true;
+    }
+
+    protected override Task RunTestAsync() => Task.CompletedTask;
+}
