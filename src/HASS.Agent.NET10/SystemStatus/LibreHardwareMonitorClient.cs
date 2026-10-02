@@ -88,7 +88,7 @@ internal static class LibreHardwareMonitorClient
             catch (Exception ex)
             {
                 _cache = [];
-                _cacheError = $"LibreHardwareMonitor did not answer on {url}: {ex.Message}";
+                _cacheError = $"LibreHardwareMonitor ({url}): {ex.Message}";
                 throw new InvalidOperationException(_cacheError);
             }
         }
