@@ -2029,14 +2029,64 @@ internal sealed class MqttCompanionService : IDisposable
 
         if (value is { } percent)
         {
-            if (!DisplayBrightness.Set(percent))
-            {
-                _log.Info("Brightness was asked for, but no display here can be adjusted (neither a built-in panel nor a DDC/CI monitor).");
-            }
+            QueueBrightness(percent);
+            return;
         }
 
-        // The new value should be in Home Assistant right away, not at the next poll.
         TriggerPushUpdate();
+    }
+
+    // Setting the brightness can take a while (DDC/CI talks to the monitor over a slow bus),
+    // and a slider sends a burst of values. The message loop only leaves the newest value
+    // here; one worker applies it, so nothing queues up behind the display.
+    private int _brightnessRequest = -1;
+    private int _brightnessWorkerRunning;
+
+    private void QueueBrightness(int percent)
+    {
+        Interlocked.Exchange(ref _brightnessRequest, Math.Clamp(percent, 0, 100));
+        if (Interlocked.CompareExchange(ref _brightnessWorkerRunning, 1, 0) == 0)
+        {
+            _ = Task.Run(ApplyBrightnessRequests);
+        }
+    }
+
+    private void ApplyBrightnessRequests()
+    {
+        try
+        {
+            while (true)
+            {
+                var percent = Interlocked.Exchange(ref _brightnessRequest, -1);
+                if (percent < 0)
+                {
+                    break;
+                }
+
+                if (!DisplayBrightness.Set(percent))
+                {
+                    _log.Info("Brightness was asked for, but no display here can be adjusted (neither a built-in panel nor a DDC/CI monitor).");
+                }
+            }
+
+            // The new value should be in Home Assistant right away, not at the next poll.
+            TriggerPushUpdate();
+        }
+        catch (Exception ex)
+        {
+            _log.Warning($"Unable to set the display brightness: {ex.Message}");
+        }
+        finally
+        {
+            Volatile.Write(ref _brightnessWorkerRunning, 0);
+
+            // A value that arrived after the loop saw none, and before the flag was cleared.
+            if (Volatile.Read(ref _brightnessRequest) >= 0
+                && Interlocked.CompareExchange(ref _brightnessWorkerRunning, 1, 0) == 0)
+            {
+                _ = Task.Run(ApplyBrightnessRequests);
+            }
+        }
     }
 
     private static string? GetSystemCommandName(SystemCommandMessage message)
