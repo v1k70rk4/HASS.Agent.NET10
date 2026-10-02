@@ -90,6 +90,7 @@ internal sealed class SystemMetricsService : IDisposable
     private IReadOnlyList<string>? _lastMicrophoneApps;
     private int? _lastDisplayBrightness;
     private IReadOnlyList<string>? _audioOutputDevices;
+    private IReadOnlyList<AudioEndpointService.AudioSessionInfo>? _audioSessions;
     private string? _audioInputDevice;
     private IReadOnlyList<string>? _audioInputDevices;
     private bool? _displayBrightnessSupported;
@@ -197,6 +198,7 @@ internal sealed class SystemMetricsService : IDisposable
         // The device lists behind the integration's audio selects; only for a sensor that is on.
         if (updateNormal && _includeInteractiveMetrics)
         {
+            _audioSessions = Wanted("audio_sessions") ? Safe(() => _audioEndpointService?.GetSessions(), _audioSessions) : null;
             _audioOutputDevices = Wanted("audio_output_device") ? Safe(() => _audioEndpointService?.GetOutputDeviceNames(), _audioOutputDevices) : null;
             var inputWanted = Wanted("audio_input_device");
             _audioInputDevice = inputWanted ? Safe<string?>(() => LimitState(_audioEndpointService?.GetInputDeviceName() ?? string.Empty), _audioInputDevice) : null;
@@ -267,7 +269,7 @@ internal sealed class SystemMetricsService : IDisposable
         // topic, and an empty value from one would blank out what the other reports.
         var lastWake = Wanted("last_wake_reason") ? _lastWake : null;
         var attributes = BuildAttributes(_lastNetworkAddresses, _lastDisplays, _lastRecentErrors, _lastShutdown,
-            lastWake, _lastExecutionState, _lastPowerRequests, _lastCameraApps, _lastMicrophoneApps, _lastGpu);
+            lastWake, _lastExecutionState, _lastPowerRequests, _lastCameraApps, _lastMicrophoneApps, _lastGpu, _audioSessions);
         var message = new SystemMetricsMessage(
             CpuUsage: updateFast ? Safe(ReadCpuUsage, previous?.CpuUsage ?? 0) : previous!.CpuUsage,
             MemoryUsage: memory.UsagePercent,
@@ -301,6 +303,7 @@ internal sealed class SystemMetricsService : IDisposable
             ClipboardTextAvailable: updateFast && _includeInteractiveMetrics ? Safe(ReadClipboardTextAvailable, previous?.ClipboardTextAvailable) : previous?.ClipboardTextAvailable,
             CameraInUse: _lastCameraApps is { } cameraApps ? cameraApps.Count > 0 : null,
             MicrophoneInUse: _lastMicrophoneApps is { } microphoneApps ? microphoneApps.Count > 0 : null,
+            AudioSessions: _audioSessions is { } audioSessions ? audioSessions.Count(session => session.Active) : null,
             AudioOutputDevices: _audioOutputDevices,
             AudioInputDevice: _audioInputDevice,
             AudioInputDevices: _audioInputDevices,
@@ -1643,7 +1646,8 @@ internal sealed class SystemMetricsService : IDisposable
         IReadOnlyList<PowerRequestInfo> powerRequests,
         IReadOnlyList<string>? cameraApps,
         IReadOnlyList<string>? microphoneApps,
-        GpuInfo? gpu)
+        GpuInfo? gpu,
+        IReadOnlyList<AudioEndpointService.AudioSessionInfo>? audioSessions)
     {
         var attributes = new Dictionary<string, IReadOnlyDictionary<string, object?>>
         {
@@ -1702,6 +1706,20 @@ internal sealed class SystemMetricsService : IDisposable
             attributes["camera_in_use"] = new Dictionary<string, object?>
             {
                 ["apps"] = cameraApps
+            };
+        }
+
+        if (audioSessions is not null)
+        {
+            attributes["audio_sessions"] = new Dictionary<string, object?>
+            {
+                ["apps"] = audioSessions.Select(session => new Dictionary<string, object?>
+                {
+                    ["app"] = session.App,
+                    ["volume"] = session.Volume,
+                    ["muted"] = session.Muted,
+                    ["active"] = session.Active
+                }).ToList()
             };
         }
 
@@ -2223,6 +2241,7 @@ internal sealed record SystemMetricsMessage(
     [property: JsonPropertyName("clipboard_text_available")] bool? ClipboardTextAvailable,
     [property: JsonPropertyName("camera_in_use")] bool? CameraInUse,
     [property: JsonPropertyName("microphone_in_use")] bool? MicrophoneInUse,
+    [property: JsonPropertyName("audio_sessions")] int? AudioSessions,
     [property: JsonPropertyName("audio_output_devices")] IReadOnlyList<string>? AudioOutputDevices,
     [property: JsonPropertyName("audio_input_device")] string? AudioInputDevice,
     [property: JsonPropertyName("audio_input_devices")] IReadOnlyList<string>? AudioInputDevices,

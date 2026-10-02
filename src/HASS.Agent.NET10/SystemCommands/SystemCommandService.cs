@@ -330,6 +330,9 @@ internal sealed class SystemCommandService : IDisposable
     /// <summary>Makes the named recording device the default. False when there is no such device.</summary>
     public bool SetAudioInput(string name) => _audioEndpointService.SetInputDevice(name);
 
+    /// <summary>Sets an app's volume and/or mute in the volume mixer. False when the app plays nothing.</summary>
+    public bool SetAppVolume(string app, int? volume, bool? muted) => _audioEndpointService.SetSessionVolume(app, volume, muted);
+
     private void TurnMonitorOff()
     {
         _ = SendMessageTimeout(

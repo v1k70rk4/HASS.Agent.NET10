@@ -436,6 +436,7 @@ internal static partial class Strings
             ["Sensor.display_brightness"] = "Display brightness",
             ["Sensor.audio_output_device"] = "Audio output device",
             ["Sensor.audio_input_device"] = "Audio input device",
+            ["Sensor.audio_sessions"] = "Audio sessions (apps in the volume mixer)",
             ["Sensor.microphone_muted"] = "Microphone muted",
 
             // Custom sensor types

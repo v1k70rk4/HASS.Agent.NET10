@@ -161,6 +161,115 @@ internal sealed class AudioEndpointService : IDisposable
     /// <summary>Makes the recording device with this name the default. False when there is no such device.</summary>
     public bool SetInputDevice(string name) => SetDefaultDevice(DataFlow.Capture, name);
 
+    /// <summary>One app's audio session on the default playback device.</summary>
+    public sealed record AudioSessionInfo(string App, int Volume, bool Muted, bool Active);
+
+    /// <summary>
+    /// The apps that have a session on the default playback device: what the Windows
+    /// volume mixer shows. The system sounds session is left out.
+    /// </summary>
+    public IReadOnlyList<AudioSessionInfo> GetSessions()
+    {
+        lock (_gate)
+        {
+            var sessions = new List<AudioSessionInfo>();
+            try
+            {
+                if (_disposed) return sessions;
+                using var device = GetDefaultDevice(DataFlow.Render);
+                var collection = device.AudioSessionManager.Sessions;
+                var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                for (var index = 0; index < collection.Count; index++)
+                {
+                    using var session = collection[index];
+                    var app = SessionAppName(session);
+                    if (app is null || !seen.Add(app))
+                    {
+                        continue;
+                    }
+
+                    sessions.Add(new AudioSessionInfo(
+                        app,
+                        (int)Math.Round(session.SimpleAudioVolume.Volume * 100),
+                        session.SimpleAudioVolume.Mute,
+                        session.State == NAudio.CoreAudioApi.Interfaces.AudioSessionState.AudioSessionStateActive));
+                }
+            }
+            catch (Exception ex)
+            {
+                ReportRenderFailure("list audio sessions", ex);
+            }
+
+            return sessions;
+        }
+    }
+
+    /// <summary>Sets the volume (and/or mute) of every session of this app. False when the app has none.</summary>
+    public bool SetSessionVolume(string app, int? volume, bool? muted)
+    {
+        lock (_gate)
+        {
+            var found = false;
+            try
+            {
+                if (_disposed) return false;
+                using var device = GetDefaultDevice(DataFlow.Render);
+                var collection = device.AudioSessionManager.Sessions;
+                for (var index = 0; index < collection.Count; index++)
+                {
+                    using var session = collection[index];
+                    if (!string.Equals(SessionAppName(session), app, StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    found = true;
+                    if (volume is { } percent)
+                    {
+                        session.SimpleAudioVolume.Volume = Math.Clamp(percent, 0, 100) / 100f;
+                    }
+
+                    if (muted is { } mute)
+                    {
+                        session.SimpleAudioVolume.Mute = mute;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                ReportRenderFailure($"set the volume of '{app}'", ex);
+            }
+
+            return found;
+        }
+    }
+
+    // The process name, as it appears in Task Manager (without .exe); null for the
+    // system sounds session and for a process that is already gone.
+    private static string? SessionAppName(AudioSessionControl session)
+    {
+        try
+        {
+            if (session.IsSystemSoundsSession)
+            {
+                return null;
+            }
+
+            var processId = (int)session.GetProcessID;
+            if (processId <= 0)
+            {
+                return null;
+            }
+
+            using var process = System.Diagnostics.Process.GetProcessById(processId);
+            return process.ProcessName;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     private IReadOnlyList<string> GetDeviceNames(DataFlow dataFlow)
     {
         lock (_gate)

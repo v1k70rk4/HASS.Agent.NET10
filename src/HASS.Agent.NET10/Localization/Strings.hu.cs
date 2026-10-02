@@ -436,6 +436,7 @@ internal static partial class Strings
             ["Sensor.display_brightness"] = "Kijelző fényerő",
             ["Sensor.audio_output_device"] = "Audio kimenet",
             ["Sensor.audio_input_device"] = "Audio bemenet",
+            ["Sensor.audio_sessions"] = "Hangmunkamenetek (appok a hangerőkeverőben)",
             ["Sensor.microphone_muted"] = "Mikrofon némítva",
 
             // Custom sensor types

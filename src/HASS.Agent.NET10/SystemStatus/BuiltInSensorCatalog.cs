@@ -148,6 +148,15 @@ internal static class BuiltInSensorCatalog
             "microphone_in_use.apps[0]"
         ], EnabledByDefault: false),
         new("audio_output_device", SupportsService: false, SupportsTrayApp: true, SensorPollingProfile.Normal, PushDriven: true),
+        // The apps in the volume mixer, with their volume: what the hass_agent.set_app_volume
+        // service (integration 10.9.0+) works on. The state is how many of them play right now.
+        new("audio_sessions", SupportsService: false, SupportsTrayApp: true, SensorPollingProfile.Normal,
+        [
+            "audio_sessions.apps[0].app",
+            "audio_sessions.apps[0].volume",
+            "audio_sessions.apps[0].muted",
+            "audio_sessions.apps[0].active"
+        ], EnabledByDefault: false),
         // With these two on, the integration (10.9.0+) also offers a select that changes the default device.
         new("audio_input_device", SupportsService: false, SupportsTrayApp: true, SensorPollingProfile.Normal, PushDriven: true, EnabledByDefault: false),
         // Also what the integration (10.9.0+) builds its "Display" light from: with this on,

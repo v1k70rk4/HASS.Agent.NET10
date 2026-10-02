@@ -11,4 +11,6 @@ internal sealed record SystemCommandMessage(
     // For commands that carry a number, like set_brightness (percent).
     [property: JsonPropertyName("value")] int? Value = null,
     // For commands that carry a name, like set_audio_output (the device).
-    [property: JsonPropertyName("text")] string? Text = null);
+    [property: JsonPropertyName("text")] string? Text = null,
+    // For set_app_volume: mute or unmute the app (next to, or instead of, a volume).
+    [property: JsonPropertyName("muted")] bool? Muted = null);

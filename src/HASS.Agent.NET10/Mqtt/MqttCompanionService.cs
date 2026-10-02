@@ -1987,6 +1987,12 @@ internal sealed class MqttCompanionService : IDisposable
                 return;
             }
 
+            if (commandName == "set_app_volume")
+            {
+                HandleAppVolumeCommand(command, serviceRole, transport);
+                return;
+            }
+
             var customCommand = FindCustomCommand(commandName, serviceRole);
             if (customCommand is not null)
             {
@@ -2010,6 +2016,31 @@ internal sealed class MqttCompanionService : IDisposable
             // The WebSocket transport invokes this without an outer handler.
             _log.Warning($"Failed to run {scope} command from {transport}: {ex.Message}");
         }
+    }
+
+    // The hass_agent.set_app_volume service: belongs to the audio sessions sensor.
+    private void HandleAppVolumeCommand(SystemCommandMessage command, bool serviceRole, string transport)
+    {
+        var enabled = !serviceRole && _settings.BuiltInSensors.Any(sensor =>
+            string.Equals(sensor.Key, "audio_sessions", StringComparison.OrdinalIgnoreCase) && sensor.TrayApp);
+        if (!enabled)
+        {
+            _log.Warning($"set_app_volume received over {transport}, but the audio sessions sensor is not enabled in the tray app.");
+            return;
+        }
+
+        var app = command.Text?.Trim();
+        if (string.IsNullOrEmpty(app) || (command.Value is null && command.Muted is null))
+        {
+            return;
+        }
+
+        if (!_systemCommandService.SetAppVolume(app, command.Value, command.Muted))
+        {
+            _log.Warning($"set_app_volume: '{app}' has no audio session on the default playback device.");
+        }
+
+        TriggerPushUpdate();
     }
 
     private void HandleAudioDeviceCommand(string commandName, string? deviceName, bool serviceRole, string transport)
