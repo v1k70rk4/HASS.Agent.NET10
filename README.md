@@ -2,7 +2,7 @@
 
 ![Windows](https://img.shields.io/badge/Windows-10%202004%2B%20%7C%2011-0078D4?logo=windows&logoColor=white)
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet&logoColor=white)
-![Version](https://img.shields.io/badge/version-10.8.0-brightgreen)
+![Version](https://img.shields.io/badge/version-10.9.0-brightgreen)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-MQTT%20%7C%20WebSocket%20API-41BDF5?logo=homeassistant&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 [![Website](https://img.shields.io/badge/website-v1k70rk4.github.io-41bdf5?logo=github)](https://v1k70rk4.github.io/HASS.Agent.NET10/)
@@ -60,7 +60,20 @@ The modern .NET10 line starts at **version 10.0.0**. The pre-.NET10 client remai
 
 ## What Changed
 
-### 10.8.0
+### 10.9.0
+
+Works with the Home Assistant integration **10.6.7** or newer; the display light needs integration **10.9.0**. Signed release.
+
+- **The display as a light in Home Assistant** (integration 10.9.0+). Turn on the new **Display brightness** sensor (tray app, off by default) and the PC gets a *Display* light: its brightness slider sets the screen brightness, off switches the monitor off, on wakes it. It works with what Windows itself offers: the built-in panel of a laptop, and external monitors that speak DDC/CI. With an older integration the sensor does nothing; with no adjustable display (many TVs, some docks) the light stays unavailable.
+- **Hardware sensors through LibreHardwareMonitor.** A new custom sensor type reads CPU and GPU temperature, fan speed, voltage and load from a running [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor) (its Remote Web Server). The editor lists every value it reports and fills in the unit; a *Connection...* button sets the address and the login if it asks for one. The agent itself stays free of vendor-specific hardware code. See [Custom Sensors](#custom-sensors).
+- **The service reports a finished update.** After an update installed with nobody logged in, the "updated from X to Y" notification used to wait for somebody to log in, because only the tray app sent it. The service now sends it when no tray app is running.
+- **Quieter log without an audio output.** A PC with no default audio output (an HDMI output whose screen is off) logged three warnings on every poll. It is now logged once when it starts and once when a device is back.
+
+<details>
+<summary><b>Older versions</b></summary>
+
+<details>
+<summary><b>10.8.0</b></summary>
 
 Works with the Home Assistant integration **10.6.7** or newer. Signed release.
 
@@ -68,8 +81,7 @@ Works with the Home Assistant integration **10.6.7** or newer. Signed release.
 - **Dashboard popup (WebView).** A Home Assistant dashboard, or any web page, in a small window above the tray: set its address and size on the **Capabilities** page, then open it from the tray menu, or with a click on the tray icon if you tick that. It closes when you click elsewhere, and nothing is loaded while it is closed. There is a matching custom command type, *Popup window (WebView)*, that shows a page in a window of its own, for example a camera when the doorbell rings. Both use the WebView2 runtime that ships with Windows 11; the login is kept per Windows user. Off until an address is set.
 - **Two new custom command types: *Key press* and *Open address*.** A custom command can now press keys (`win+r`, `ctrl+shift+esc`, `alt+tab`, media and browser keys, or several combinations in a row) or open a link in the default browser, without a script written for it. Both show up in Home Assistant as buttons like any other custom command, and both run in the tray app, since they act on the desktop of the logged-in user. The key names are listed under [Custom Commands](#custom-commands).
 
-<details>
-<summary><b>Older versions</b></summary>
+</details>
 
 <details>
 <summary><b>10.7.3</b></summary>
@@ -104,6 +116,7 @@ Works with the Home Assistant integration **10.6.7** or newer; the **new sensors
   - **GPU usage** — GPU load the way Task Manager shows it, from Windows' own counters, so it works the same on Intel, AMD and NVIDIA without any vendor tool. Attributes: load per engine (`3d`, `videodecode`, `videoencode`, …), NPU load, dedicated / shared memory in use, and the installed adapters with their real memory size (WMI stops at 4 GB). Temperature, clock and fan speed are vendor specific and not part of it — use a [custom sensor](#custom-sensors) for those.
   - **Sleep blocked** — `on` while something keeps the machine (or its display) awake: a video playing in the browser, a download, a driver. The attributes name who: `primary_blocker`, and the full `blockers` list with category, type, name, reason and whether it really blocks sleep. Service only — Windows shows the holders to administrators alone.
   - **Last wake reason** — what woke the machine last (`Input Keyboard`, `Power Button`, `Lid`, a device, a wake timer…) with the time, how long it was away and whether it really slept. Works on Modern Standby laptops and on desktops with classic sleep / hibernate. Event driven: the new value is in Home Assistant seconds after the wake, without polling.
+  - **Display brightness** — the screen brightness in percent; with the integration 10.9.0+ it becomes a *Display* light in Home Assistant that also sets it (laptop panel, DDC/CI monitors) and switches the monitor off and on. Tray app only.
   - **Camera in use** / **Microphone in use** — `on` while an app is using the camera or the microphone, with the apps listed in the `apps` attribute. Handy for an "in a meeting" light. Tray app only (Windows keeps this per user).
 - **Sensors that are off by default.** Not every sensor is for everyone, so a fresh install no longer creates all of them in Home Assistant: besides the five new ones, *VPN connected*, *RDP sessions*, *Recent Event Log errors*, *Last shutdown reason* and *Clipboard text available* now start switched off. Existing installations are not touched — a setting you already have is never changed by an update.
 - **A sensor that is switched off costs nothing.** The more expensive reads (the power request list, the GPU counters, the wake event subscription) only run for a sensor that is enabled, or that a custom attribute sensor is built on.
@@ -545,6 +558,7 @@ The **Default** column shows whether a fresh install starts with the sensor swit
 | Clipboard text available | fast | | yes | off |
 | Camera in use | fast | | yes | off |
 | Microphone in use | fast | | yes | off |
+| Display brightness | **push** | | yes | off |
 | Audio output device | **push** | | yes | on |
 | Microphone muted | **push** | | yes | on |
 
