@@ -49,6 +49,9 @@ internal sealed class CustomSensorDefinition
     public bool IsAnyCommand => IsCommand || IsCommandPowerShell || IsCommandPwsh;
 
     [JsonIgnore]
+    public bool IsLibreHardwareMonitor => string.Equals(Type, CustomSensorTypes.LibreHardwareMonitor, StringComparison.OrdinalIgnoreCase);
+
+    [JsonIgnore]
     public SensorPollingProfile EffectivePollingProfile => SensorPollingProfiles.FromKey(PollingProfile, SensorPollingProfile.Normal);
 }
 
@@ -61,6 +64,7 @@ internal static class CustomSensorTypes
     public const string Command = "command";
     public const string CommandPowerShell = "command_powershell";
     public const string CommandPwsh = "command_pwsh";
+    public const string LibreHardwareMonitor = "lhm";
 
     public static IReadOnlySet<string> All { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
@@ -70,7 +74,8 @@ internal static class CustomSensorTypes
         BuiltInAttribute,
         Command,
         CommandPowerShell,
-        CommandPwsh
+        CommandPwsh,
+        LibreHardwareMonitor
     };
 
     public static string Normalize(string value)

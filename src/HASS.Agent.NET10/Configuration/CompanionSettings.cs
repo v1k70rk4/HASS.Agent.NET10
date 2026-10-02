@@ -31,6 +31,12 @@ internal sealed class CompanionSettings
 
     public bool AutoStartOnLogin { get; set; }
 
+    /// <summary>
+    /// Where LibreHardwareMonitor's "Remote Web Server" listens, for custom sensors of the
+    /// LibreHardwareMonitor type. Only in settings.json: the default fits unless its port was changed.
+    /// </summary>
+    public string LibreHardwareMonitorUrl { get; set; } = SystemStatus.LibreHardwareMonitorClient.DefaultUrl;
+
     /// <summary>The page of the dashboard popup (a web view above the tray); empty = not set up.</summary>
     public string WebViewUrl { get; set; } = string.Empty;
 

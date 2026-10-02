@@ -1707,7 +1707,7 @@ internal sealed class SystemMetricsService : IDisposable
     /// </summary>
     public static object? TestCustomSensorValue(CustomSensorDefinition sensor, FileLog log)
     {
-        if (sensor.IsProcessRunning || sensor.IsServiceStatus || sensor.IsDiskFree || sensor.IsAnyCommand)
+        if (sensor.IsProcessRunning || sensor.IsServiceStatus || sensor.IsDiskFree || sensor.IsAnyCommand || sensor.IsLibreHardwareMonitor)
         {
             var empty = new Dictionary<string, IReadOnlyDictionary<string, object?>>();
             return ReadCustomSensor(sensor, empty).Value;
@@ -1796,6 +1796,15 @@ internal sealed class SystemMetricsService : IDisposable
             if (sensor.IsAnyCommand)
             {
                 return new CustomSensorState(sensor.Id, ReadCommandSensorValue(sensor));
+            }
+
+            if (sensor.IsLibreHardwareMonitor)
+            {
+                // Null while LibreHardwareMonitor is not running, or has no such sensor.
+                var reading = LibreHardwareMonitorClient.Find(LibreHardwareMonitorClient.ParseSensorId(sensor.Parameter));
+                return new CustomSensorState(
+                    sensor.Id,
+                    reading is null ? null : reading.Value is { } number ? number : reading.Text);
             }
         }
         catch

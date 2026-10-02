@@ -1165,7 +1165,8 @@ internal sealed class MainForm : Form
             CustomSensorTypes.BuiltInAttribute,
             CustomSensorTypes.Command,
             CustomSensorTypes.CommandPowerShell,
-            CustomSensorTypes.CommandPwsh
+            CustomSensorTypes.CommandPwsh,
+            CustomSensorTypes.LibreHardwareMonitor
         }
             .Select(t => new KeyValuePair<string, string>(t, S($"SensorType.{t}")))
             .ToArray();

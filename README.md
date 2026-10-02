@@ -737,6 +737,27 @@ Name: "Last shutdown"
 Parameter: last_shutdown_reason.reason
 ```
 
+#### `lhm` (LibreHardwareMonitor)
+
+Reads a hardware value from a running [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor): CPU and GPU temperature, fan speed, voltage, load. The agent has no vendor-specific hardware code of its own; LibreHardwareMonitor does the reading and the agent asks it.
+
+1. Run LibreHardwareMonitor and turn on **Options > Remote Web Server > Run** (port 8085 by default). Let it start with Windows if the sensor should always work.
+2. Add a custom sensor of the type **LibreHardwareMonitor**. The **Sensor** field lists everything LibreHardwareMonitor reports, with the current value; picking one fills in the unit, and the name when it is empty.
+
+- The parameter is LibreHardwareMonitor's own sensor id (e.g. `/amdcpu/0/temperature/2`).
+- The value is null while LibreHardwareMonitor is not running.
+- A different address or port goes into `LibreHardwareMonitorUrl` in `settings.json` (default `http://localhost:8085`).
+- No Home Assistant integration update is required.
+
+```text
+Name: "CPU temperature"
+Type: LibreHardwareMonitor
+Parameter: /amdcpu/0/temperature/2
+Unit: °C
+Profile: normal
+State: 45.5 °C
+```
+
 #### `command` / `command_powershell` / `command_pwsh`
 
 Runs a program or PowerShell script and uses its **output** as the sensor value — for anything Windows has no built-in sensor for, such as GPU temperature.

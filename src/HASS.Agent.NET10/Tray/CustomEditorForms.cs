@@ -490,7 +490,8 @@ internal sealed class CustomSensorEditorForm : CustomEditorForm
             CustomSensorTypes.BuiltInAttribute,
             CustomSensorTypes.Command,
             CustomSensorTypes.CommandPowerShell,
-            CustomSensorTypes.CommandPwsh
+            CustomSensorTypes.CommandPwsh,
+            CustomSensorTypes.LibreHardwareMonitor
         }.Select(type => new Option(type, S($"SensorType.{type}"))));
 
         y += RowHeight;
@@ -512,6 +513,7 @@ internal sealed class CustomSensorEditorForm : CustomEditorForm
             AutoCompleteSource = AutoCompleteSource.ListItems
         };
         Controls.Add(_parameter);
+        _parameter.SelectionChangeCommitted += (_, _) => FillFromHardwareSensor(_parameter.SelectedItem as string);
         _browse = MakeButton(S("Editor.Browse"), 90, primary: false);
         _browse.Size = Sz(90, 27);
         _browse.Location = Pt(FieldX + FieldWidth - 90, y - 1);
@@ -632,6 +634,12 @@ internal sealed class CustomSensorEditorForm : CustomEditorForm
                         .Select(drive => drive.Name.TrimEnd('\\'))
                         .ToList();
 
+                case CustomSensorTypes.LibreHardwareMonitor:
+                    // "id | hardware / name = value": only the id is stored (see Build).
+                    return LibreHardwareMonitorClient.ReadAll()
+                        .Select(reading => $"{reading.Id} | {HardwareSensorTitle(reading)} = {reading.Text}")
+                        .ToList();
+
                 case CustomSensorTypes.BuiltInAttribute:
                     return BuiltInSensorCatalog.Sensors
                         .SelectMany(sensor => sensor.AttributePaths ?? [])
@@ -646,10 +654,39 @@ internal sealed class CustomSensorEditorForm : CustomEditorForm
         return [];
     }
 
+    private static string HardwareSensorTitle(LibreHardwareMonitorClient.Reading reading) =>
+        reading.Hardware.Length > 0 ? $"{reading.Hardware} / {reading.Name}" : reading.Name;
+
+    // Picking a hardware sensor from the list brings its unit, and a name when there is none yet.
+    private void FillFromHardwareSensor(string? listItem)
+    {
+        if (listItem is null || SelectedKey(_type) != CustomSensorTypes.LibreHardwareMonitor)
+        {
+            return;
+        }
+
+        var reading = LibreHardwareMonitorClient.Find(LibreHardwareMonitorClient.ParseSensorId(listItem));
+        if (reading is null)
+        {
+            return;
+        }
+
+        _unit.Text = reading.Unit;
+        if (string.IsNullOrWhiteSpace(_name.Text))
+        {
+            _name.Text = HardwareSensorTitle(reading);
+        }
+    }
+
     private CustomSensorDefinition Build()
     {
         var type = SelectedKey(_type);
         var parameter = _parameter.Text.Trim();
+        if (type == CustomSensorTypes.LibreHardwareMonitor)
+        {
+            parameter = LibreHardwareMonitorClient.ParseSensorId(parameter);
+        }
+
         return new CustomSensorDefinition
         {
             Id = _id,
