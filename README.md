@@ -746,7 +746,7 @@ Reads a hardware value from a running [LibreHardwareMonitor](https://github.com/
 
 - The parameter is LibreHardwareMonitor's own sensor id (e.g. `/amdcpu/0/temperature/2`).
 - The value is null while LibreHardwareMonitor is not running.
-- A different address or port goes into `LibreHardwareMonitorUrl` in `settings.json` (default `http://localhost:8085`).
+- The **Connection...** button next to the field sets a different address or port (default `http://localhost:8085`), and the user name and password when LibreHardwareMonitor's web server is set to ask for them.
 - No Home Assistant integration update is required.
 
 ```text

@@ -121,7 +121,7 @@ internal sealed class MqttCompanionService : IDisposable
         _systemCommandService = systemCommandService;
         _role = role;
         _log = log;
-        LibreHardwareMonitorClient.BaseUrl = settings.LibreHardwareMonitorUrl;
+        settings.ApplyLibreHardwareMonitor();
     }
 
     public void Start()

@@ -33,9 +33,35 @@ internal sealed class CompanionSettings
 
     /// <summary>
     /// Where LibreHardwareMonitor's "Remote Web Server" listens, for custom sensors of the
-    /// LibreHardwareMonitor type. Only in settings.json: the default fits unless its port was changed.
+    /// LibreHardwareMonitor type. Set from the sensor editor's Connection button.
     /// </summary>
     public string LibreHardwareMonitorUrl { get; set; } = SystemStatus.LibreHardwareMonitorClient.DefaultUrl;
+
+    /// <summary>Only when LibreHardwareMonitor's web server is set to ask for a login.</summary>
+    public string LibreHardwareMonitorUser { get; set; } = string.Empty;
+
+    public string LibreHardwareMonitorPasswordProtected { get; set; } = string.Empty;
+
+    public string GetLibreHardwareMonitorPassword()
+    {
+        return ProtectedSecretStore.Unprotect(LibreHardwareMonitorPasswordProtected, SerialNumber);
+    }
+
+    public void SetLibreHardwareMonitorPassword(string password)
+    {
+        LibreHardwareMonitorPasswordProtected = string.IsNullOrEmpty(password)
+            ? string.Empty
+            : ProtectedSecretStore.Protect(password, SerialNumber);
+    }
+
+    /// <summary>Hands the connection settings to the reader the custom sensors use.</summary>
+    public void ApplyLibreHardwareMonitor()
+    {
+        SystemStatus.LibreHardwareMonitorClient.Configure(
+            LibreHardwareMonitorUrl,
+            LibreHardwareMonitorUser,
+            GetLibreHardwareMonitorPassword());
+    }
 
     /// <summary>The page of the dashboard popup (a web view above the tray); empty = not set up.</summary>
     public string WebViewUrl { get; set; } = string.Empty;

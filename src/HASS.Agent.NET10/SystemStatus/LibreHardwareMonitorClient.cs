@@ -1,4 +1,6 @@
 using System.Globalization;
+using System.Net.Http.Headers;
+using System.Text;
 using System.Text.Json;
 
 namespace HASS.Agent.Companion.SystemStatus;
@@ -24,7 +26,22 @@ internal static class LibreHardwareMonitorClient
     private static string _cachedUrl = string.Empty;
 
     /// <summary>Where LibreHardwareMonitor's web server listens; from settings.</summary>
-    public static string BaseUrl { get; set; } = DefaultUrl;
+    public static string BaseUrl { get; private set; } = DefaultUrl;
+
+    // LibreHardwareMonitor can ask for a user name and password (HTTP Basic).
+    private static string _user = string.Empty;
+    private static string _password = string.Empty;
+
+    public static void Configure(string baseUrl, string user, string password)
+    {
+        lock (Gate)
+        {
+            BaseUrl = string.IsNullOrWhiteSpace(baseUrl) ? DefaultUrl : baseUrl.Trim();
+            _user = user ?? string.Empty;
+            _password = password ?? string.Empty;
+            _cachedAt = DateTime.MinValue;
+        }
+    }
 
     /// <param name="Id">LibreHardwareMonitor's own sensor id ("/intelcpu/0/temperature/0"), or the path of names when an old version does not send one.</param>
     /// <param name="Value">The number, when the value is one.</param>
@@ -46,8 +63,25 @@ internal static class LibreHardwareMonitorClient
             _cachedAt = DateTime.UtcNow;
             try
             {
-                var json = Http.GetStringAsync(url).GetAwaiter().GetResult();
-                _cache = Parse(json);
+                using var request = new HttpRequestMessage(HttpMethod.Get, url);
+                if (_user.Length > 0)
+                {
+                    request.Headers.Authorization = new AuthenticationHeaderValue(
+                        "Basic",
+                        Convert.ToBase64String(Encoding.UTF8.GetBytes($"{_user}:{_password}")));
+                }
+
+                using var response = Http.Send(request);
+                if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+                {
+                    throw new InvalidOperationException(_user.Length > 0
+                        ? "the user name or password was refused"
+                        : "it asks for a user name and password");
+                }
+
+                response.EnsureSuccessStatusCode();
+                using var reader = new StreamReader(response.Content.ReadAsStream(), Encoding.UTF8);
+                _cache = Parse(reader.ReadToEnd());
                 _cacheError = null;
                 return _cache;
             }

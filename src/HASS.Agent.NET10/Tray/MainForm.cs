@@ -1286,6 +1286,7 @@ internal sealed class MainForm : Form
     {
         return new CustomSensorEditorForm(
             sensor,
+            _settings,
             _log,
             BuildPollingProfileOptions().Select(option => new CustomEditorForm.Option(option.Key, option.Value)));
     }
