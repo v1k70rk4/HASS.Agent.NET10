@@ -121,6 +121,7 @@ internal sealed class MqttCompanionService : IDisposable
         _systemCommandService = systemCommandService;
         _role = role;
         _log = log;
+        settings.ApplyLibreHardwareMonitor();
     }
 
     public void Start()
@@ -1929,6 +1930,7 @@ internal sealed class MqttCompanionService : IDisposable
                     CustomSensorTypes.Command => "mdi:console",
                     CustomSensorTypes.CommandPowerShell => "mdi:powershell",
                     CustomSensorTypes.CommandPwsh => "mdi:powershell",
+                    CustomSensorTypes.LibreHardwareMonitor => "mdi:chip",
                     _ => "mdi:gauge"
                 });
             })

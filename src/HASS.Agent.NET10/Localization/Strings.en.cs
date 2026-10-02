@@ -187,6 +187,12 @@ internal static partial class Strings
             ["Editor.Test"] = "Test",
             ["Editor.Ok"] = "OK",
             ["Editor.Browse"] = "Browse...",
+            ["Editor.Connection"] = "Connection...",
+            ["Editor.ConnectionUrl"] = "Address",
+            ["Editor.ConnectionUser"] = "User name",
+            ["Editor.ConnectionPassword"] = "Password",
+            ["Editor.ConnectionHint"] = "User name and password only if its web server asks for them.",
+            ["Editor.ConnectionWarning"] = "This is another machine: LibreHardwareMonitor only speaks plain HTTP, so the password travels unencrypted.",
             ["Editor.NameInHa"] = "Name (in HA)",
             ["Editor.Unit"] = "Unit",
             ["Editor.Where"] = "Runs in",
@@ -436,5 +442,8 @@ internal static partial class Strings
             ["SensorType.command"] = "Command (program)",
             ["SensorType.command_powershell"] = "Command (PowerShell)",
             ["SensorType.command_pwsh"] = "Command (PowerShell 7)",
+            ["SensorType.lhm"] = "LibreHardwareMonitor",
+            ["SensorField.lhm"] = "Sensor",
+            ["SensorHint.lhm"] = "A value from LibreHardwareMonitor: CPU or GPU temperature, fan speed, voltage. Run LibreHardwareMonitor with Options > Remote Web Server > Run, then pick the sensor from the list. Typing the start of the hardware name narrows the list.",
     };
 }

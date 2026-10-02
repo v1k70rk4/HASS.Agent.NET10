@@ -187,6 +187,12 @@ internal static partial class Strings
             ["Editor.Test"] = "Kipróbálás",
             ["Editor.Ok"] = "OK",
             ["Editor.Browse"] = "Tallózás...",
+            ["Editor.Connection"] = "Kapcsolat...",
+            ["Editor.ConnectionUrl"] = "Cím",
+            ["Editor.ConnectionUser"] = "Felhasználónév",
+            ["Editor.ConnectionPassword"] = "Jelszó",
+            ["Editor.ConnectionHint"] = "Felhasználónév és jelszó csak akkor kell, ha a webszervere kéri.",
+            ["Editor.ConnectionWarning"] = "Ez egy másik gép: a LibreHardwareMonitor csak sima HTTP-t tud, a jelszó titkosítatlanul megy át a hálózaton.",
             ["Editor.NameInHa"] = "Név (HA-ban)",
             ["Editor.Unit"] = "Mértékegység",
             ["Editor.Where"] = "Hol fut",
@@ -436,5 +442,8 @@ internal static partial class Strings
             ["SensorType.command"] = "Parancs (program)",
             ["SensorType.command_powershell"] = "Parancs (PowerShell)",
             ["SensorType.command_pwsh"] = "Parancs (PowerShell 7)",
+            ["SensorType.lhm"] = "LibreHardwareMonitor",
+            ["SensorField.lhm"] = "Szenzor",
+            ["SensorHint.lhm"] = "Érték a LibreHardwareMonitorból: CPU- vagy GPU-hőmérséklet, ventilátor, feszültség. Futtasd a LibreHardwareMonitort (Options > Remote Web Server > Run), majd válaszd ki a szenzort a listából. A lista szűkül, ha elkezded beírni a hardver nevét.",
     };
 }

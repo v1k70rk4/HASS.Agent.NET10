@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Drawing;
 using System.ServiceProcess;
 using System.Windows.Forms;
+using HASS.Agent.Companion.Configuration;
 using HASS.Agent.Companion.Localization;
 using HASS.Agent.Companion.Logging;
 using HASS.Agent.Companion.SystemCommands;
@@ -468,16 +469,21 @@ internal sealed class CustomSensorEditorForm : CustomEditorForm
     private readonly Label _parameterLabel;
     private readonly ComboBox _parameter;
     private readonly Button _browse;
+    private readonly Button _connection;
+    private readonly CompanionSettings _settings;
+    private IReadOnlyList<LibreHardwareMonitorClient.Reading> _hardwareReadings = [];
+    private int _hardwareLoad;
     private readonly TextBox _unit;
     private readonly ComboBox _profile;
     private readonly CheckBox _enabled;
     private readonly CheckBox _trayApp;
     private readonly CheckBox _service;
 
-    public CustomSensorEditorForm(CustomSensorDefinition sensor, FileLog log, IEnumerable<Option> pollingProfiles)
+    public CustomSensorEditorForm(CustomSensorDefinition sensor, CompanionSettings settings, FileLog log, IEnumerable<Option> pollingProfiles)
         : base(S("Editor.SensorTitle"))
     {
         _id = sensor.Id;
+        _settings = settings;
         _log = log;
 
         var y = 20;
@@ -490,7 +496,8 @@ internal sealed class CustomSensorEditorForm : CustomEditorForm
             CustomSensorTypes.BuiltInAttribute,
             CustomSensorTypes.Command,
             CustomSensorTypes.CommandPowerShell,
-            CustomSensorTypes.CommandPwsh
+            CustomSensorTypes.CommandPwsh,
+            CustomSensorTypes.LibreHardwareMonitor
         }.Select(type => new Option(type, S($"SensorType.{type}"))));
 
         y += RowHeight;
@@ -512,6 +519,7 @@ internal sealed class CustomSensorEditorForm : CustomEditorForm
             AutoCompleteSource = AutoCompleteSource.ListItems
         };
         Controls.Add(_parameter);
+        _parameter.SelectionChangeCommitted += (_, _) => FillFromHardwareSensor(_parameter.SelectedItem as string);
         _browse = MakeButton(S("Editor.Browse"), 90, primary: false);
         _browse.Size = Sz(90, 27);
         _browse.Location = Pt(FieldX + FieldWidth - 90, y - 1);
@@ -526,6 +534,20 @@ internal sealed class CustomSensorEditorForm : CustomEditorForm
             }
         };
         Controls.Add(_browse);
+
+        // LibreHardwareMonitor: where it listens, and the login when it asks for one.
+        _connection = MakeButton(S("Editor.Connection"), 90, primary: false);
+        _connection.Size = Sz(90, 27);
+        _connection.Location = _browse.Location;
+        _connection.Click += (_, _) =>
+        {
+            using var dialog = new HardwareMonitorConnectionForm(_settings);
+            if (dialog.ShowDialog(this) == DialogResult.OK)
+            {
+                ApplyType(keepParameter: true);
+            }
+        };
+        Controls.Add(_connection);
 
         y += RowHeight;
         AddLabel(S("Editor.Unit"), y);
@@ -567,10 +589,13 @@ internal sealed class CustomSensorEditorForm : CustomEditorForm
         var isCommand = type is CustomSensorTypes.Command or CustomSensorTypes.CommandPowerShell or CustomSensorTypes.CommandPwsh;
         var text = _parameter.Text;
 
+        var isHardwareMonitor = type == CustomSensorTypes.LibreHardwareMonitor;
+
         _hint.Text = S($"SensorHint.{type}");
         _parameterLabel.Text = S($"SensorField.{type}");
         _browse.Visible = isCommand;
-        _parameter.Width = D(isCommand ? FieldWidth - 98 : FieldWidth);
+        _connection.Visible = isHardwareMonitor;
+        _parameter.Width = D(isCommand || isHardwareMonitor ? FieldWidth - 98 : FieldWidth);
 
         _parameter.BeginUpdate();
         _parameter.Items.Clear();
@@ -580,9 +605,57 @@ internal sealed class CustomSensorEditorForm : CustomEditorForm
         }
 
         _parameter.EndUpdate();
+        // The hardware sensor lines are long; the list may be wider than the field.
+        _parameter.DropDownWidth = D(isHardwareMonitor ? 760 : isCommand ? FieldWidth - 98 : FieldWidth);
         // What was typed for another type means nothing here.
         _parameter.Text = keepParameter ? text : string.Empty;
         ShowResult(string.Empty, TextMuted);
+
+        _hardwareLoad++;
+        if (isHardwareMonitor)
+        {
+            _ = LoadHardwareSensorsAsync(_hardwareLoad);
+        }
+    }
+
+    // The list of hardware sensors comes over HTTP, and a LibreHardwareMonitor that is not
+    // running only says so after a timeout: read off the UI thread, fill the list after.
+    private async Task LoadHardwareSensorsAsync(int load)
+    {
+        ShowResult(S("Sensors.ValueLoading"), TextMuted);
+        IReadOnlyList<LibreHardwareMonitorClient.Reading> readings = [];
+        string? error = null;
+        try
+        {
+            readings = await Task.Run(LibreHardwareMonitorClient.ReadAll);
+        }
+        catch (Exception ex)
+        {
+            // An empty list needs a reason: not running, web server off, or the login.
+            error = ex.Message;
+        }
+
+        // Closed, or switched to another type (or reloaded) in the meantime.
+        if (IsDisposed || load != _hardwareLoad)
+        {
+            return;
+        }
+
+        _hardwareReadings = readings;
+        var text = _parameter.Text;
+        _parameter.BeginUpdate();
+        _parameter.Items.Clear();
+        // "hardware / name = value | id": only the id is stored (see Build).
+        foreach (var line in readings
+            .Select(reading => $"{HardwareSensorTitle(reading)} = {reading.Text} | {reading.Id}")
+            .Order(StringComparer.CurrentCultureIgnoreCase))
+        {
+            _parameter.Items.Add(line);
+        }
+
+        _parameter.EndUpdate();
+        _parameter.Text = text;
+        ShowResult(error ?? string.Empty, error is null ? TextMuted : ErrorRed);
     }
 
     private static IEnumerable<string> Suggestions(string type)
@@ -646,10 +719,40 @@ internal sealed class CustomSensorEditorForm : CustomEditorForm
         return [];
     }
 
+    private static string HardwareSensorTitle(LibreHardwareMonitorClient.Reading reading) =>
+        reading.Hardware.Length > 0 ? $"{reading.Hardware} / {reading.Name}" : reading.Name;
+
+    // Picking a hardware sensor from the list brings its unit, and a name when there is none yet.
+    private void FillFromHardwareSensor(string? listItem)
+    {
+        if (listItem is null || SelectedKey(_type) != CustomSensorTypes.LibreHardwareMonitor)
+        {
+            return;
+        }
+
+        var id = LibreHardwareMonitorClient.ParseSensorId(listItem);
+        var reading = _hardwareReadings.FirstOrDefault(candidate => string.Equals(candidate.Id, id, StringComparison.OrdinalIgnoreCase));
+        if (reading is null)
+        {
+            return;
+        }
+
+        _unit.Text = reading.Unit;
+        if (string.IsNullOrWhiteSpace(_name.Text))
+        {
+            _name.Text = HardwareSensorTitle(reading);
+        }
+    }
+
     private CustomSensorDefinition Build()
     {
         var type = SelectedKey(_type);
         var parameter = _parameter.Text.Trim();
+        if (type == CustomSensorTypes.LibreHardwareMonitor)
+        {
+            parameter = LibreHardwareMonitorClient.ParseSensorId(parameter);
+        }
+
         return new CustomSensorDefinition
         {
             Id = _id,
@@ -700,5 +803,93 @@ internal sealed class CustomSensorEditorForm : CustomEditorForm
         {
             ShowResult(string.Format(S("Sensors.ValueError"), ex.Message), ErrorRed);
         }
+    }
+}
+
+/// <summary>Where LibreHardwareMonitor's web server is, and its login when it has one.</summary>
+internal sealed class HardwareMonitorConnectionForm : Form
+{
+    private readonly CompanionSettings _settings;
+    private readonly TextBox _url = new();
+    private readonly TextBox _user = new();
+    private readonly TextBox _password = new() { UseSystemPasswordChar = true };
+
+    public HardwareMonitorConnectionForm(CompanionSettings settings)
+    {
+        _settings = settings;
+
+        Text = "LibreHardwareMonitor";
+        StartPosition = FormStartPosition.CenterParent;
+        FormBorderStyle = FormBorderStyle.FixedDialog;
+        MaximizeBox = false;
+        MinimizeBox = false;
+        ShowInTaskbar = false;
+        Font = new Font("Segoe UI", 9.5F);
+        AutoScaleMode = AutoScaleMode.None;
+        BackColor = Color.White;
+        ClientSize = Sz(460, 216);
+
+        AddRow(Strings.Get("Editor.ConnectionUrl"), _url, 20);
+        AddRow(Strings.Get("Editor.ConnectionUser"), _user, 56);
+        AddRow(Strings.Get("Editor.ConnectionPassword"), _password, 92);
+        var hint = new Label
+        {
+            Location = Pt(20, 122), Size = Sz(420, 32), Font = new Font("Segoe UI", 8.75F)
+        };
+        Controls.Add(hint);
+
+        // LibreHardwareMonitor's web server speaks plain HTTP only, so a login sent to
+        // another machine travels unencrypted. On this PC it never leaves the machine.
+        void UpdateHint()
+        {
+            var exposed = _user.Text.Trim().Length > 0 && !IsLoopback(_url.Text);
+            hint.Text = Strings.Get(exposed ? "Editor.ConnectionWarning" : "Editor.ConnectionHint");
+            hint.ForeColor = exposed ? Color.FromArgb(185, 28, 28) : Color.FromArgb(100, 116, 139);
+        }
+
+        _url.TextChanged += (_, _) => UpdateHint();
+        _user.TextChanged += (_, _) => UpdateHint();
+
+        var ok = new Button { Text = Strings.Get("Editor.Ok"), Location = Pt(256, 168), Size = Sz(88, 30) };
+        var cancel = new Button { Text = Strings.Get("Btn.Cancel"), Location = Pt(352, 168), Size = Sz(88, 30), DialogResult = DialogResult.Cancel };
+        ok.Click += (_, _) =>
+        {
+            // In memory right away, so the sensor list can be read with it; written to
+            // disk with the rest of the settings when the settings window is saved.
+            _settings.LibreHardwareMonitorUrl = string.IsNullOrWhiteSpace(_url.Text)
+                ? LibreHardwareMonitorClient.DefaultUrl
+                : _url.Text.Trim();
+            _settings.LibreHardwareMonitorUser = _user.Text.Trim();
+            _settings.SetLibreHardwareMonitorPassword(_password.Text);
+            _settings.ApplyLibreHardwareMonitor();
+            DialogResult = DialogResult.OK;
+        };
+        Controls.Add(ok);
+        Controls.Add(cancel);
+        AcceptButton = ok;
+        CancelButton = cancel;
+
+        _url.Text = settings.LibreHardwareMonitorUrl;
+        _user.Text = settings.LibreHardwareMonitorUser;
+        _password.Text = settings.GetLibreHardwareMonitorPassword();
+        UpdateHint();
+    }
+
+    private static bool IsLoopback(string url)
+    {
+        var text = string.IsNullOrWhiteSpace(url) ? LibreHardwareMonitorClient.DefaultUrl : url.Trim();
+        return Uri.TryCreate(text, UriKind.Absolute, out var uri) && uri.IsLoopback;
+    }
+
+    private int D(int v) => (int)(v * DeviceDpi / 96f);
+    private Point Pt(int x, int y) => new(D(x), D(y));
+    private Size Sz(int w, int h) => new(D(w), D(h));
+
+    private void AddRow(string label, TextBox box, int y)
+    {
+        Controls.Add(new Label { Text = label, Location = Pt(20, y + 4), Size = Sz(130, 22) });
+        box.Location = Pt(156, y);
+        box.Size = Sz(284, 26);
+        Controls.Add(box);
     }
 }

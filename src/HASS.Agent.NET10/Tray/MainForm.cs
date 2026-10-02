@@ -1165,7 +1165,8 @@ internal sealed class MainForm : Form
             CustomSensorTypes.BuiltInAttribute,
             CustomSensorTypes.Command,
             CustomSensorTypes.CommandPowerShell,
-            CustomSensorTypes.CommandPwsh
+            CustomSensorTypes.CommandPwsh,
+            CustomSensorTypes.LibreHardwareMonitor
         }
             .Select(t => new KeyValuePair<string, string>(t, S($"SensorType.{t}")))
             .ToArray();
@@ -1285,6 +1286,7 @@ internal sealed class MainForm : Form
     {
         return new CustomSensorEditorForm(
             sensor,
+            _settings,
             _log,
             BuildPollingProfileOptions().Select(option => new CustomEditorForm.Option(option.Key, option.Value)));
     }
