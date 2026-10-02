@@ -178,6 +178,12 @@ internal static partial class Strings
             ["Cap.WebViewSize"] = "Méret",
             ["Cap.WebViewOnClick"] = "A tálcaikonra kattintva nyíljon meg",
             ["Cap.WebViewOpen"] = "Megnyitás most",
+            ["Cap.Hotkeys"] = "Gyorsbillentyűk",
+            ["Cap.HotkeysHelp"] = "Billentyűkombinációk, amelyek eseményként érnek el a Home Assistantbe, hogy a billentyűzetről indíthass automatizmust. Csak az itt felvett kombinációkat figyeli; a Windows mindegyiket ennek a programnak adja át.",
+            ["Cap.HotkeyKeys"] = "Billentyűk",
+            ["Editor.HotkeyTitle"] = "Gyorsbillentyű",
+            ["Editor.HotkeyHint"] = "Egy kombináció legalább egy módosítóval (ctrl, alt, shift, win) és egy billentyűvel. Amíg regisztrálva van, más program nem kapja meg, ezért olyat válassz, amit semmi más nem használ. A név az, amire a Home Assistant automatizmusa indul.\nPélda: ctrl+alt+h",
+            ["Editor.HotkeyInvalid"] = "A gyorsbillentyű egy vagy több módosító (ctrl, alt, shift, win) és pontosan egy billentyű, például ctrl+alt+h.",
             ["Tray.Dashboard"] = "Dashboard",
             ["WebView.RuntimeMissing"] = "Erről a gépről hiányzik a Microsoft Edge WebView2 Runtime. A Windows 11 része; a Microsoft oldaláról újra telepíthető.",
             ["WebView.Failed"] = "Az oldalt nem sikerült megjeleníteni: {0}",
@@ -381,6 +387,8 @@ internal static partial class Strings
             // System commands
             ["Cmd.lock"] = "Gép zárolása",
             ["Cmd.sleep"] = "Alvás",
+            ["Cmd.hibernate"] = "Hibernálás",
+            ["Cmd.logoff"] = "Kijelentkezés",
             ["Cmd.monitor_off"] = "Monitor kikapcsolása",
             ["Cmd.volume_up"] = "Hangerő fel",
             ["Cmd.volume_down"] = "Hangerő le",
@@ -433,6 +441,8 @@ internal static partial class Strings
             ["Sensor.microphone_in_use"] = "Mikrofon használatban",
             ["Sensor.display_brightness"] = "Kijelző fényerő",
             ["Sensor.audio_output_device"] = "Audio kimenet",
+            ["Sensor.audio_input_device"] = "Audio bemenet",
+            ["Sensor.audio_sessions"] = "Hangmunkamenetek (appok a hangerőkeverőben)",
             ["Sensor.microphone_muted"] = "Mikrofon némítva",
 
             // Custom sensor types

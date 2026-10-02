@@ -24,10 +24,14 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
     private Action? _pendingBalloonAction;
     private MainForm? _mainForm;
     private WebViewForm? _dashboardPopup;
+    private readonly HotkeyService _hotkeys;
     private DateTime _dashboardClosedAt;
 
     public event EventHandler<NotificationActionRequestedEventArgs>? NotificationActionRequested;
     public event EventHandler? SettingsSaved;
+
+    /// <summary>A hotkey from the settings was pressed.</summary>
+    public event EventHandler<HotkeyDefinition>? HotkeyPressed;
 
     /// <summary>Set by Program to the MQTT service's discovery republish. Used by the Danger Zone.</summary>
     public Func<Task<bool>>? DiscoveryRepublishHandler { get; set; }
@@ -42,6 +46,10 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
         _log = log;
         _uiInvoker.CreateControl();
         _ = _uiInvoker.Handle;
+
+        _hotkeys = new HotkeyService(log);
+        _hotkeys.Pressed += (_, hotkey) => HotkeyPressed?.Invoke(this, hotkey);
+        _hotkeys.Apply(settings.Hotkeys);
 
         _notifyIcon = new NotifyIcon
         {
@@ -134,6 +142,7 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
         {
             SystemCommandService.WebViewHandler = null;
             _dashboardPopup?.Close();
+            _hotkeys.Dispose();
 
             foreach (var actionNotification in _actionNotifications.ToList())
             {
@@ -190,7 +199,11 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
         _mainForm.DiscoveryRepublishHandler = () => DiscoveryRepublishHandler?.Invoke() ?? Task.FromResult(false);
         _mainForm.UpdateStateHandler = state => UpdateStateHandler?.Invoke(state) ?? Task.CompletedTask;
         _mainForm.DashboardPreviewHandler = ShowDashboard;
-        _mainForm.SettingsSaved += (_, _) => SettingsSaved?.Invoke(this, EventArgs.Empty);
+        _mainForm.SettingsSaved += (_, _) =>
+        {
+            _hotkeys.Apply(_settings.Hotkeys);
+            SettingsSaved?.Invoke(this, EventArgs.Empty);
+        };
         _mainForm.FormClosed += (_, _) => _mainForm = null;
         _mainForm.Show();
     }

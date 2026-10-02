@@ -51,6 +51,12 @@ internal sealed class SystemCommandService : IDisposable
             case "sleep":
                 Sleep();
                 break;
+            case "hibernate":
+                Hibernate();
+                break;
+            case "logoff":
+                LogOff();
+                break;
             case "monitor_off":
                 TurnMonitorOff();
                 break;
@@ -300,6 +306,33 @@ internal sealed class SystemCommandService : IDisposable
         mouse_event(mouseEventMove, 0, -1, 0, UIntPtr.Zero);
     }
 
+    private void Hibernate()
+    {
+        if (!Application.SetSuspendState(PowerState.Hibernate, force: false, disableWakeEvent: false))
+        {
+            _log.Warning("Unable to hibernate Windows (hibernation may be turned off on this PC).");
+        }
+    }
+
+    // Ends the session of the user the tray app runs as; apps get the usual chance to
+    // ask about unsaved work.
+    private void LogOff()
+    {
+        if (!ExitWindowsEx(0, 0))
+        {
+            _log.Warning("Unable to log off the Windows session.");
+        }
+    }
+
+    /// <summary>Makes the named playback device the default. False when there is no such device.</summary>
+    public bool SetAudioOutput(string name) => _audioEndpointService.SetOutputDevice(name);
+
+    /// <summary>Makes the named recording device the default. False when there is no such device.</summary>
+    public bool SetAudioInput(string name) => _audioEndpointService.SetInputDevice(name);
+
+    /// <summary>Sets an app's volume and/or mute in the volume mixer. False when the app plays nothing.</summary>
+    public bool SetAppVolume(string app, int? volume, bool? muted) => _audioEndpointService.SetSessionVolume(app, volume, muted);
+
     private void TurnMonitorOff()
     {
         _ = SendMessageTimeout(
@@ -393,6 +426,9 @@ internal sealed class SystemCommandService : IDisposable
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool LockWorkStation();
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool ExitWindowsEx(uint flags, uint reason);
 
     [DllImport("user32.dll")]
     private static extern void mouse_event(uint flags, int dx, int dy, uint data, UIntPtr extraInfo);

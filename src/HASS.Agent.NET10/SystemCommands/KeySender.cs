@@ -62,6 +62,41 @@ internal static class KeySender
     }
 
     /// <summary>
+    /// One combination for a global hotkey: at least one modifier (ctrl, alt, shift, win)
+    /// and exactly one other key, in RegisterHotKey's terms.
+    /// </summary>
+    public static bool TryParseHotkey(string text, out uint modifiers, out uint virtualKey)
+    {
+        modifiers = 0;
+        virtualKey = 0;
+        if (!TryParse(text, out var combinations, out _) || combinations.Count != 1)
+        {
+            return false;
+        }
+
+        foreach (var key in combinations[0])
+        {
+            switch (key)
+            {
+                case 0x12: modifiers |= 0x0001; break; // MOD_ALT
+                case 0x11: modifiers |= 0x0002; break; // MOD_CONTROL
+                case 0x10: modifiers |= 0x0004; break; // MOD_SHIFT
+                case 0x5B: modifiers |= 0x0008; break; // MOD_WIN
+                default:
+                    if (virtualKey != 0)
+                    {
+                        return false;
+                    }
+
+                    virtualKey = key;
+                    break;
+            }
+        }
+
+        return modifiers != 0 && virtualKey != 0;
+    }
+
+    /// <summary>
     /// Presses the combinations one after the other. Returns false when Windows refused the
     /// input: the foreground window is elevated and the agent is not, or the desktop is locked.
     /// </summary>

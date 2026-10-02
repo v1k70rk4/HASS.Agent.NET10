@@ -8,6 +8,9 @@ internal static class SystemCommandCatalog
     [
         new("lock", SupportsTrayApp: true, SupportsService: false, DefaultTrayApp: true, DefaultService: false),
         new("sleep", SupportsTrayApp: true, SupportsService: false, DefaultTrayApp: true, DefaultService: false),
+        // Off by default: a button nobody asked for should not be able to end a session.
+        new("hibernate", SupportsTrayApp: true, SupportsService: false, DefaultTrayApp: false, DefaultService: false),
+        new("logoff", SupportsTrayApp: true, SupportsService: false, DefaultTrayApp: false, DefaultService: false),
         new("monitor_off", SupportsTrayApp: true, SupportsService: false, DefaultTrayApp: true, DefaultService: false),
         new("volume_up", SupportsTrayApp: true, SupportsService: false, DefaultTrayApp: true, DefaultService: false),
         new("volume_down", SupportsTrayApp: true, SupportsService: false, DefaultTrayApp: true, DefaultService: false),

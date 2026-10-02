@@ -1167,7 +1167,8 @@ internal sealed class MqttCompanionService : IDisposable
             buttonsEnabled ? BuildCommandDescriptors(_settings.TrayAppCommands) : [],
             systemSensorsEnabled ? BuildCustomSensorDescriptors(serviceRole: false) : [],
             systemSensorsEnabled ? BuildStandardSensorDescriptors(serviceRole: false) : [],
-            buttonsEnabled ? BuildCustomCommandDescriptors(serviceRole: false) : []);
+            buttonsEnabled ? BuildCustomCommandDescriptors(serviceRole: false) : [],
+            BuildHotkeyDescriptors());
 
         await _haWs!.PublishDeviceDiscoveryAsync(new
         {
@@ -1514,7 +1515,8 @@ internal sealed class MqttCompanionService : IDisposable
                 buttonsEnabled ? BuildCommandDescriptors(_settings.TrayAppCommands) : [],
                 systemSensorsEnabled ? BuildCustomSensorDescriptors(serviceRole: false) : [],
                 systemSensorsEnabled ? BuildStandardSensorDescriptors(serviceRole: false) : [],
-                buttonsEnabled ? BuildCustomCommandDescriptors(serviceRole: false) : []);
+                buttonsEnabled ? BuildCustomCommandDescriptors(serviceRole: false) : [],
+                BuildHotkeyDescriptors());
 
         await PublishJsonAsync(
             $"hass.agent/devices/{TopicId}",
@@ -1979,6 +1981,20 @@ internal sealed class MqttCompanionService : IDisposable
                 return;
             }
 
+            // The audio selects of the integration. Like the display commands: they belong to
+            // a sensor, and are only honoured while that sensor is on.
+            if (commandName is "set_audio_output" or "set_audio_input")
+            {
+                HandleAudioDeviceCommand(commandName, command.Text, serviceRole, transport);
+                return;
+            }
+
+            if (commandName == "set_app_volume")
+            {
+                HandleAppVolumeCommand(command, serviceRole, transport);
+                return;
+            }
+
             var customCommand = FindCustomCommand(commandName, serviceRole);
             if (customCommand is not null)
             {
@@ -2002,6 +2018,59 @@ internal sealed class MqttCompanionService : IDisposable
             // The WebSocket transport invokes this without an outer handler.
             _log.Warning($"Failed to run {scope} command from {transport}: {ex.Message}");
         }
+    }
+
+    // The hass_agent.set_app_volume service: belongs to the audio sessions sensor.
+    private void HandleAppVolumeCommand(SystemCommandMessage command, bool serviceRole, string transport)
+    {
+        var enabled = !serviceRole && _settings.BuiltInSensors.Any(sensor =>
+            string.Equals(sensor.Key, "audio_sessions", StringComparison.OrdinalIgnoreCase) && sensor.TrayApp);
+        if (!enabled)
+        {
+            _log.Warning($"set_app_volume received over {transport}, but the audio sessions sensor is not enabled in the tray app.");
+            return;
+        }
+
+        var app = command.Text?.Trim();
+        if (string.IsNullOrEmpty(app) || (command.Value is null && command.Muted is null))
+        {
+            return;
+        }
+
+        if (!_systemCommandService.SetAppVolume(app, command.Value, command.Muted))
+        {
+            _log.Warning($"set_app_volume: '{app}' has no audio session on the default playback device.");
+        }
+
+        TriggerPushUpdate();
+    }
+
+    private void HandleAudioDeviceCommand(string commandName, string? deviceName, bool serviceRole, string transport)
+    {
+        var output = commandName == "set_audio_output";
+        var sensorKey = output ? "audio_output_device" : "audio_input_device";
+        var enabled = !serviceRole && _settings.BuiltInSensors.Any(sensor =>
+            string.Equals(sensor.Key, sensorKey, StringComparison.OrdinalIgnoreCase) && sensor.TrayApp);
+        if (!enabled)
+        {
+            _log.Warning($"Audio command '{commandName}' received over {transport}, but the {sensorKey} sensor is not enabled in the tray app.");
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(deviceName))
+        {
+            return;
+        }
+
+        var changed = output
+            ? _systemCommandService.SetAudioOutput(deviceName.Trim())
+            : _systemCommandService.SetAudioInput(deviceName.Trim());
+        if (!changed)
+        {
+            _log.Warning($"Audio command '{commandName}': there is no active device named '{deviceName}'.");
+        }
+
+        TriggerPushUpdate();
     }
 
     private async Task HandleDisplayCommandAsync(string commandName, int? value, bool serviceRole, string transport)
@@ -2094,6 +2163,37 @@ internal sealed class MqttCompanionService : IDisposable
         return message.RestartCancel
             ? "restart_cancel"
             : message.Command?.Trim().ToLowerInvariant();
+    }
+
+    private IReadOnlyList<HotkeyDescriptor> BuildHotkeyDescriptors()
+    {
+        return _settings.Hotkeys
+            .Where(hotkey => hotkey.Enabled)
+            .Select(hotkey => new HotkeyDescriptor(hotkey.Id, hotkey.Name, hotkey.Keys))
+            .ToList();
+    }
+
+    /// <summary>A registered hotkey was pressed: an event for Home Assistant, on the active transport.</summary>
+    public async Task PublishHotkeyAsync(HotkeyDefinition hotkey)
+    {
+        _log.Info($"Hotkey pressed: {hotkey.Name} ({hotkey.Keys})");
+        try
+        {
+            if (_isOnWebSocket && _haWs is not null)
+            {
+                await _haWs.PublishHotkeyAsync(hotkey, _cts?.Token ?? CancellationToken.None);
+                return;
+            }
+
+            await PublishJsonAsync(
+                $"hass.agent/hotkeys/{TopicId}/pressed",
+                new HotkeyMessage(_settings.DeviceName, hotkey.Id, hotkey.Name, hotkey.Keys, DateTimeOffset.UtcNow),
+                retain: false);
+        }
+        catch (Exception ex)
+        {
+            _log.Warning($"Unable to send the hotkey '{hotkey.Name}' to Home Assistant: {ex.Message}");
+        }
     }
 
     private IReadOnlyList<CustomCommandDescriptor> BuildCustomCommandDescriptors(bool serviceRole)
@@ -2275,6 +2375,13 @@ internal sealed record MqttDiscoveryMessage(
     [property: JsonPropertyName("serial_number")] string SerialNumber,
     [property: JsonPropertyName("device")] DeviceInfoResponse Device,
     [property: JsonPropertyName("apis")] ApiCapabilitiesResponse Apis);
+
+internal sealed record HotkeyMessage(
+    [property: JsonPropertyName("device_name")] string DeviceName,
+    [property: JsonPropertyName("id")] string Id,
+    [property: JsonPropertyName("hotkey")] string Hotkey,
+    [property: JsonPropertyName("keys")] string Keys,
+    [property: JsonPropertyName("created_at")] DateTimeOffset CreatedAt);
 
 internal sealed record NotificationActionMessage(
     [property: JsonPropertyName("device_name")] string DeviceName,

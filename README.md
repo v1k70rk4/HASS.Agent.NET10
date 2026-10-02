@@ -67,6 +67,10 @@ The modern .NET10 line starts at **version 10.0.0**. The pre-.NET10 client remai
 Works with the Home Assistant integration **10.6.7** or newer; the display light needs integration **10.9.0**. Signed release.
 
 - **The display as a light in Home Assistant** (integration 10.9.0+). Turn on the new **Display brightness** sensor (tray app, off by default) and the PC gets a *Display* light: its brightness slider sets the screen brightness, off switches the monitor off, on wakes it. It works with what Windows itself offers: the built-in panel of a laptop, and external monitors that speak DDC/CI. With an older integration the sensor does nothing. With no adjustable display (many TVs, some docks) the light is a plain on/off one, without the slider.
+- **Choose the audio device from Home Assistant** (integration 10.9.0+). The *Audio output device* sensor now comes with a select that makes another playback device the default, for "switch to the headset" or "sound to the TV" automations. The new **Audio input device** sensor (off by default) does the same for the recording device.
+- **Hotkeys that reach Home Assistant** (integration 10.9.0+). On the Capabilities page you can list key combinations with a name (`ctrl+alt+h` as "Meeting"); pressing one sends an event to Home Assistant, where the device's new *Hotkeys* event entity triggers automations on it. Only the listed combinations are registered with Windows, nothing else that is typed is seen.
+- **Per-app volume from Home Assistant** (integration 10.9.0+). Turn on the new **Audio sessions** sensor and the apps in the Windows volume mixer show up as its attributes (name, volume, muted, playing); the integration's `hass_agent.set_app_volume` service sets the volume or mutes one of them, for "turn the game down when the doorbell rings". The state is how many apps play right now.
+- **Hibernate and Log off commands.** Two more buttons for Home Assistant, off by default on the Capabilities page.
 - **Hardware sensors through LibreHardwareMonitor.** A new custom sensor type reads CPU and GPU temperature, fan speed, voltage and load from a running [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor) (its Remote Web Server). The editor lists every value it reports and fills in the unit; a *Connection...* button sets the address and the login if it asks for one. The agent itself stays free of vendor-specific hardware code. See [Custom Sensors](#custom-sensors).
 - **The service reports a finished update.** After an update installed with nobody logged in, the "updated from X to Y" notification used to wait for somebody to log in, because only the tray app sent it. The service now sends it when no tray app is running.
 - **Quieter log without an audio output.** A PC with no default audio output (an HDMI output whose screen is off) logged three warnings on every poll. It is now logged once when it starts and once when a device is back.
@@ -557,6 +561,8 @@ The **Default** column shows whether a fresh install starts with the sensor swit
 | Clipboard text available | fast | | yes | off |
 | Camera in use | fast | | yes | off |
 | Microphone in use | fast | | yes | off |
+| Audio input device | **push** | | yes | off |
+| Audio sessions | normal | | yes | off |
 | Display brightness | **push** | | yes | off |
 | Audio output device | **push** | | yes | on |
 | Microphone muted | **push** | | yes | on |

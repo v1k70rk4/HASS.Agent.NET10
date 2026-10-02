@@ -178,6 +178,12 @@ internal static partial class Strings
             ["Cap.WebViewSize"] = "Size",
             ["Cap.WebViewOnClick"] = "A click on the tray icon opens it",
             ["Cap.WebViewOpen"] = "Open now",
+            ["Cap.Hotkeys"] = "Hotkeys",
+            ["Cap.HotkeysHelp"] = "Key combinations that reach Home Assistant as events, to start automations from the keyboard. Only the combinations listed here are watched; Windows hands each of them to this app alone.",
+            ["Cap.HotkeyKeys"] = "Keys",
+            ["Editor.HotkeyTitle"] = "Hotkey",
+            ["Editor.HotkeyHint"] = "One combination with at least one modifier (ctrl, alt, shift, win) and one key. While it is registered, other programs do not get it, so pick one nothing else uses. The name is what the automation in Home Assistant triggers on.\nExample: ctrl+alt+h",
+            ["Editor.HotkeyInvalid"] = "A hotkey is one modifier or more (ctrl, alt, shift, win) plus exactly one key, e.g. ctrl+alt+h.",
             ["Tray.Dashboard"] = "Dashboard",
             ["WebView.RuntimeMissing"] = "The Microsoft Edge WebView2 Runtime is missing from this PC. It is part of Windows 11; it can be installed again from Microsoft's site.",
             ["WebView.Failed"] = "The page could not be shown: {0}",
@@ -381,6 +387,8 @@ internal static partial class Strings
 
             ["Cmd.lock"] = "Lock computer",
             ["Cmd.sleep"] = "Sleep",
+            ["Cmd.hibernate"] = "Hibernate",
+            ["Cmd.logoff"] = "Log off",
             ["Cmd.monitor_off"] = "Turn off monitor",
             ["Cmd.volume_up"] = "Volume up",
             ["Cmd.volume_down"] = "Volume down",
@@ -433,6 +441,8 @@ internal static partial class Strings
             ["Sensor.microphone_in_use"] = "Microphone in use",
             ["Sensor.display_brightness"] = "Display brightness",
             ["Sensor.audio_output_device"] = "Audio output device",
+            ["Sensor.audio_input_device"] = "Audio input device",
+            ["Sensor.audio_sessions"] = "Audio sessions (apps in the volume mixer)",
             ["Sensor.microphone_muted"] = "Microphone muted",
 
             // Custom sensor types

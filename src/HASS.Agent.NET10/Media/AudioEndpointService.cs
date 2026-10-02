@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using HASS.Agent.Companion.Logging;
 using NAudio.CoreAudioApi;
 using NAudio.CoreAudioApi.Interfaces;
@@ -121,6 +122,261 @@ internal sealed class AudioEndpointService : IDisposable
                 }
 
                 return null;
+            }
+        }
+    }
+
+    /// <summary>The default recording device, or empty when there is none.</summary>
+    public string GetInputDeviceName()
+    {
+        lock (_gate)
+        {
+            try
+            {
+                if (_disposed) return string.Empty;
+                using var device = GetDefaultDevice(DataFlow.Capture);
+                return device.FriendlyName;
+            }
+            catch (Exception ex)
+            {
+                if (ex.HResult != NoDefaultDevice)
+                {
+                    _log.Warning($"Unable to read default audio input device: {ex.Message}");
+                }
+
+                return string.Empty;
+            }
+        }
+    }
+
+    /// <summary>The playback devices that can be made the default right now.</summary>
+    public IReadOnlyList<string> GetOutputDeviceNames() => GetDeviceNames(DataFlow.Render);
+
+    /// <summary>The recording devices that can be made the default right now.</summary>
+    public IReadOnlyList<string> GetInputDeviceNames() => GetDeviceNames(DataFlow.Capture);
+
+    /// <summary>Makes the playback device with this name the default. False when there is no such device.</summary>
+    public bool SetOutputDevice(string name) => SetDefaultDevice(DataFlow.Render, name);
+
+    /// <summary>Makes the recording device with this name the default. False when there is no such device.</summary>
+    public bool SetInputDevice(string name) => SetDefaultDevice(DataFlow.Capture, name);
+
+    /// <summary>One app's audio session on the default playback device.</summary>
+    public sealed record AudioSessionInfo(string App, int Volume, bool Muted, bool Active);
+
+    /// <summary>
+    /// The apps that have a session on the default playback device: what the Windows
+    /// volume mixer shows. The system sounds session is left out.
+    /// </summary>
+    public IReadOnlyList<AudioSessionInfo> GetSessions()
+    {
+        lock (_gate)
+        {
+            var sessions = new List<AudioSessionInfo>();
+            try
+            {
+                if (_disposed) return sessions;
+                using var device = GetDefaultDevice(DataFlow.Render);
+                var collection = device.AudioSessionManager.Sessions;
+                // One app may hold several sessions (browsers, some games): they are merged
+                // into one entry, which plays when any of them does, is muted when all of
+                // them are, and shows the volume of a playing one when there is one.
+                var byApp = new Dictionary<string, AudioSessionInfo>(StringComparer.OrdinalIgnoreCase);
+                var order = new List<string>();
+                for (var index = 0; index < collection.Count; index++)
+                {
+                    using var session = collection[index];
+                    var app = SessionAppName(session);
+                    if (app is null)
+                    {
+                        continue;
+                    }
+
+                    var volume = (int)Math.Round(session.SimpleAudioVolume.Volume * 100);
+                    var muted = session.SimpleAudioVolume.Mute;
+                    var active = session.State == NAudio.CoreAudioApi.Interfaces.AudioSessionState.AudioSessionStateActive;
+                    if (byApp.TryGetValue(app, out var existing))
+                    {
+                        byApp[app] = new AudioSessionInfo(
+                            app,
+                            active && !existing.Active ? volume : existing.Volume,
+                            existing.Muted && muted,
+                            existing.Active || active);
+                    }
+                    else
+                    {
+                        byApp[app] = new AudioSessionInfo(app, volume, muted, active);
+                        order.Add(app);
+                    }
+                }
+
+                sessions.AddRange(order.Select(app => byApp[app]));
+            }
+            catch (Exception ex)
+            {
+                ReportRenderFailure("list audio sessions", ex);
+            }
+
+            return sessions;
+        }
+    }
+
+    /// <summary>Sets the volume (and/or mute) of every session of this app. False when the app has none.</summary>
+    public bool SetSessionVolume(string app, int? volume, bool? muted)
+    {
+        lock (_gate)
+        {
+            var found = false;
+            try
+            {
+                if (_disposed) return false;
+                using var device = GetDefaultDevice(DataFlow.Render);
+                var collection = device.AudioSessionManager.Sessions;
+                for (var index = 0; index < collection.Count; index++)
+                {
+                    using var session = collection[index];
+                    if (!string.Equals(SessionAppName(session), app, StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    found = true;
+                    if (volume is { } percent)
+                    {
+                        session.SimpleAudioVolume.Volume = Math.Clamp(percent, 0, 100) / 100f;
+                    }
+
+                    if (muted is { } mute)
+                    {
+                        session.SimpleAudioVolume.Mute = mute;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                ReportRenderFailure($"set the volume of '{app}'", ex);
+            }
+
+            return found;
+        }
+    }
+
+    // The process name, as it appears in Task Manager (without .exe); null for the
+    // system sounds session and for a process that is already gone.
+    private static string? SessionAppName(AudioSessionControl session)
+    {
+        try
+        {
+            if (session.IsSystemSoundsSession)
+            {
+                return null;
+            }
+
+            var processId = (int)session.GetProcessID;
+            if (processId <= 0)
+            {
+                return null;
+            }
+
+            using var process = System.Diagnostics.Process.GetProcessById(processId);
+            return process.ProcessName;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private IReadOnlyList<string> GetDeviceNames(DataFlow dataFlow)
+    {
+        lock (_gate)
+        {
+            var names = new List<string>();
+            try
+            {
+                if (_disposed) return names;
+                foreach (var device in _enumerator.EnumerateAudioEndPoints(dataFlow, DeviceState.Active))
+                {
+                    using (device)
+                    {
+                        // An endpoint without a readable name (it happens with stale
+                        // entries) must not cut the list short.
+                        var name = TryGetFriendlyName(device);
+                        if (name is not null)
+                        {
+                            names.Add(name);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _log.Warning($"Unable to list audio devices: {ex.Message}");
+            }
+
+            return names;
+        }
+    }
+
+    private static string? TryGetFriendlyName(MMDevice device)
+    {
+        try
+        {
+            var name = device.FriendlyName;
+            return string.IsNullOrWhiteSpace(name) ? null : name;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private bool SetDefaultDevice(DataFlow dataFlow, string name)
+    {
+        lock (_gate)
+        {
+            try
+            {
+                if (_disposed) return false;
+
+                string? deviceId = null;
+                foreach (var device in _enumerator.EnumerateAudioEndPoints(dataFlow, DeviceState.Active))
+                {
+                    using (device)
+                    {
+                        if (deviceId is null && string.Equals(TryGetFriendlyName(device), name, StringComparison.OrdinalIgnoreCase))
+                        {
+                            deviceId = device.ID;
+                        }
+                    }
+                }
+
+                if (deviceId is null)
+                {
+                    return false;
+                }
+
+                // What the Sound settings page does when a device is picked: the default
+                // for every role (console, multimedia, communications).
+                var policy = (IPolicyConfig)new PolicyConfigClient();
+                try
+                {
+                    foreach (var role in new[] { Role.Console, Role.Multimedia, Role.Communications })
+                    {
+                        Marshal.ThrowExceptionForHR(policy.SetDefaultEndpoint(deviceId, role));
+                    }
+                }
+                finally
+                {
+                    Marshal.ReleaseComObject(policy);
+                }
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _log.Warning($"Unable to set the default audio device to '{name}': {ex.Message}");
+                return false;
             }
         }
     }
@@ -298,4 +554,32 @@ internal sealed class AudioEndpointService : IDisposable
 
         public void OnPropertyValueChanged(string pwstrDeviceId, PropertyKey key) { }
     }
+}
+
+// Windows has no documented call for choosing the default audio device; this is the
+// interface its own Sound settings use, the same one every audio switcher relies on.
+// Only SetDefaultEndpoint is called; the other slots keep the vtable order.
+[ComImport]
+[Guid("870af99c-171d-4f9e-af0d-e63df40c2bc9")]
+internal class PolicyConfigClient
+{
+}
+
+[ComImport]
+[Guid("f8679f50-850a-41cf-9c72-430f290290c8")]
+[InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+internal interface IPolicyConfig
+{
+    [PreserveSig] int GetMixFormat();
+    [PreserveSig] int GetDeviceFormat();
+    [PreserveSig] int ResetDeviceFormat();
+    [PreserveSig] int SetDeviceFormat();
+    [PreserveSig] int GetProcessingPeriod();
+    [PreserveSig] int SetProcessingPeriod();
+    [PreserveSig] int GetShareMode();
+    [PreserveSig] int SetShareMode();
+    [PreserveSig] int GetPropertyValue();
+    [PreserveSig] int SetPropertyValue();
+    [PreserveSig] int SetDefaultEndpoint([MarshalAs(UnmanagedType.LPWStr)] string deviceId, Role role);
+    [PreserveSig] int SetEndpointVisibility();
 }

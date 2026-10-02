@@ -251,6 +251,19 @@ internal sealed class HaWebSocketService : IDisposable
         }, cancellationToken);
     }
 
+    /// <summary>A registered hotkey was pressed.</summary>
+    public async Task PublishHotkeyAsync(HotkeyDefinition hotkey, CancellationToken cancellationToken)
+    {
+        await FireEventAsync("hass_agent_hotkey", new
+        {
+            serial_number = _settings.SerialNumber,
+            id = hotkey.Id,
+            hotkey = hotkey.Name,
+            keys = hotkey.Keys,
+            created_at = DateTimeOffset.UtcNow
+        }, cancellationToken);
+    }
+
     /// <summary>Asks the integration to create a Home Assistant persistent notification.</summary>
     public async Task PublishPersistentNotificationAsync(string title, string message, CancellationToken cancellationToken)
     {

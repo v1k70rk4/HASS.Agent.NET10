@@ -92,6 +92,7 @@ internal sealed class MainForm : Form
     private readonly DataGridView _builtInGrid = new();
     private readonly DataGridView _customGrid = new();
     private readonly DataGridView _customCommandGrid = new();
+    private readonly DataGridView _hotkeyGrid = new();
 
     private readonly CheckBox _dangerZoneCheck = new();
     private readonly ListView _dangerList = new();
@@ -976,7 +977,99 @@ internal sealed class MainForm : Form
         };
         card4.Controls.Add(previewBtn);
 
+        var hotkeyY = customY + 250 + 20 + 232 + 20;
+        var card5 = MakeCard(page, 28, hotkeyY, 600, 250, S("Cap.Hotkeys"));
+        card5.Controls.Add(new Label
+        {
+            Text = S("Cap.HotkeysHelp"), Location = Pt(20, 40),
+            Size = Sz(560, 32), ForeColor = TextMuted, Font = new Font("Segoe UI", 8.5F)
+        });
+        SetupHotkeyGrid();
+        _hotkeyGrid.Location = Pt(20, 76);
+        _hotkeyGrid.Size = Sz(560, 130);
+        card5.Controls.Add(_hotkeyGrid);
+
+        var addHotkeyBtn = MakeSecondaryButton(S("Sensors.Add"), 110, 30);
+        addHotkeyBtn.Location = Pt(20, 212);
+        addHotkeyBtn.Click += (_, _) =>
+        {
+            using var editor = new HotkeyEditorForm(new HotkeyDefinition());
+            if (editor.ShowDialog(this) == DialogResult.OK)
+            {
+                AddHotkeyRow(editor.Result);
+            }
+        };
+        card5.Controls.Add(addHotkeyBtn);
+
+        var editHotkeyBtn = MakeSecondaryButton(S("Sensors.Edit"), 110, 30);
+        editHotkeyBtn.Location = new Point(addHotkeyBtn.Right + D(8), D(212));
+        editHotkeyBtn.Click += (_, _) => EditHotkeyRow(_hotkeyGrid.CurrentRow);
+        card5.Controls.Add(editHotkeyBtn);
+        _hotkeyGrid.CellDoubleClick += (_, e) =>
+        {
+            if (e.RowIndex >= 0)
+            {
+                EditHotkeyRow(_hotkeyGrid.Rows[e.RowIndex]);
+            }
+        };
+
+        var removeHotkeyBtn = MakeSecondaryButton(S("Sensors.Remove"), 90, 30);
+        removeHotkeyBtn.Location = new Point(editHotkeyBtn.Right + D(8), D(212));
+        removeHotkeyBtn.Click += (_, _) =>
+        {
+            if (_hotkeyGrid.CurrentRow is { IsNewRow: false } row)
+                _hotkeyGrid.Rows.Remove(row);
+        };
+        card5.Controls.Add(removeHotkeyBtn);
+
         return page;
+    }
+
+    private void SetupHotkeyGrid()
+    {
+        StyleGrid(_hotkeyGrid);
+        _hotkeyGrid.Columns.Add(new DataGridViewCheckBoxColumn { Name = "Enabled", HeaderText = S("Sensors.Active"), Width = D(50) });
+        _hotkeyGrid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Name", HeaderText = S("Sensors.Name"), Width = D(220), ReadOnly = true });
+        _hotkeyGrid.Columns.Add(new DataGridViewTextBoxColumn
+        {
+            Name = "Keys", HeaderText = S("Cap.HotkeyKeys"),
+            AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill, MinimumWidth = D(120), ReadOnly = true
+        });
+        _hotkeyGrid.CurrentCellDirtyStateChanged += (_, _) =>
+        {
+            if (_hotkeyGrid.IsCurrentCellDirty)
+            {
+                _hotkeyGrid.CommitEdit(DataGridViewDataErrorContexts.Commit);
+            }
+        };
+    }
+
+    private int AddHotkeyRow(HotkeyDefinition hotkey)
+    {
+        var rowIndex = _hotkeyGrid.Rows.Add(hotkey.Enabled, hotkey.Name, hotkey.Keys);
+        _hotkeyGrid.Rows[rowIndex].Tag = hotkey.Id;
+        return rowIndex;
+    }
+
+    private void EditHotkeyRow(DataGridViewRow? row)
+    {
+        if (row is null || row.IsNewRow)
+        {
+            return;
+        }
+
+        _hotkeyGrid.EndEdit();
+        using var editor = new HotkeyEditorForm(new HotkeyDefinition
+        {
+            Id = Convert.ToString(row.Tag) ?? Guid.NewGuid().ToString("N"),
+            Enabled = Convert.ToBoolean(row.Cells["Enabled"].Value ?? true),
+            Name = Convert.ToString(row.Cells["Name"].Value) ?? string.Empty,
+            Keys = Convert.ToString(row.Cells["Keys"].Value) ?? string.Empty
+        });
+        if (editor.ShowDialog(this) == DialogResult.OK)
+        {
+            row.SetValues(editor.Result.Enabled, editor.Result.Name, editor.Result.Keys);
+        }
     }
 
     private Panel BuildSensorsPage()
@@ -2302,6 +2395,12 @@ internal sealed class MainForm : Form
         {
             AddCustomCommandRow(command);
         }
+
+        _hotkeyGrid.Rows.Clear();
+        foreach (var hotkey in _settings.Hotkeys)
+        {
+            AddHotkeyRow(hotkey);
+        }
     }
 
     private int AddCustomSensorRow(CustomSensorDefinition sensor)
@@ -2620,6 +2719,19 @@ internal sealed class MainForm : Form
             });
         }
         _settings.CustomCommands = customCommands;
+
+        _hotkeyGrid.EndEdit();
+        _settings.Hotkeys = _hotkeyGrid.Rows.Cast<DataGridViewRow>()
+            .Where(row => !row.IsNewRow)
+            .Select(row => new HotkeyDefinition
+            {
+                Id = Convert.ToString(row.Tag) ?? Guid.NewGuid().ToString("N"),
+                Enabled = Convert.ToBoolean(row.Cells["Enabled"].Value ?? true),
+                Name = (Convert.ToString(row.Cells["Name"].Value) ?? string.Empty).Trim(),
+                Keys = (Convert.ToString(row.Cells["Keys"].Value) ?? string.Empty).Trim()
+            })
+            .Where(hotkey => hotkey.Keys.Length > 0)
+            .ToList();
         _settings.MqttButtonsEnabled = _settings.TrayAppCommands.Count > 0
             || customCommands.Any(command => command.Enabled);
 
