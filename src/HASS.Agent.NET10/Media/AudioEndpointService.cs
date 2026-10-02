@@ -178,22 +178,39 @@ internal sealed class AudioEndpointService : IDisposable
                 if (_disposed) return sessions;
                 using var device = GetDefaultDevice(DataFlow.Render);
                 var collection = device.AudioSessionManager.Sessions;
-                var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                // One app may hold several sessions (browsers, some games): they are merged
+                // into one entry, which plays when any of them does, is muted when all of
+                // them are, and shows the volume of a playing one when there is one.
+                var byApp = new Dictionary<string, AudioSessionInfo>(StringComparer.OrdinalIgnoreCase);
+                var order = new List<string>();
                 for (var index = 0; index < collection.Count; index++)
                 {
                     using var session = collection[index];
                     var app = SessionAppName(session);
-                    if (app is null || !seen.Add(app))
+                    if (app is null)
                     {
                         continue;
                     }
 
-                    sessions.Add(new AudioSessionInfo(
-                        app,
-                        (int)Math.Round(session.SimpleAudioVolume.Volume * 100),
-                        session.SimpleAudioVolume.Mute,
-                        session.State == NAudio.CoreAudioApi.Interfaces.AudioSessionState.AudioSessionStateActive));
+                    var volume = (int)Math.Round(session.SimpleAudioVolume.Volume * 100);
+                    var muted = session.SimpleAudioVolume.Mute;
+                    var active = session.State == NAudio.CoreAudioApi.Interfaces.AudioSessionState.AudioSessionStateActive;
+                    if (byApp.TryGetValue(app, out var existing))
+                    {
+                        byApp[app] = new AudioSessionInfo(
+                            app,
+                            active && !existing.Active ? volume : existing.Volume,
+                            existing.Muted && muted,
+                            existing.Active || active);
+                    }
+                    else
+                    {
+                        byApp[app] = new AudioSessionInfo(app, volume, muted, active);
+                        order.Add(app);
+                    }
                 }
+
+                sessions.AddRange(order.Select(app => byApp[app]));
             }
             catch (Exception ex)
             {
