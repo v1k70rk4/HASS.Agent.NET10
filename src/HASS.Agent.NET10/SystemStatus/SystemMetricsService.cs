@@ -88,6 +88,8 @@ internal sealed class SystemMetricsService : IDisposable
     private IReadOnlyList<PowerRequestInfo> _lastPowerRequests = [];
     private IReadOnlyList<string>? _lastCameraApps;
     private IReadOnlyList<string>? _lastMicrophoneApps;
+    private int? _lastDisplayBrightness;
+    private bool? _displayBrightnessSupported;
 
     public SystemMetricsService(
         FileLog log,
@@ -189,6 +191,16 @@ internal sealed class SystemMetricsService : IDisposable
             _lastMicrophoneApps = Wanted("microphone_in_use") ? Safe(() => ReadCapabilityUsers("microphone"), _lastMicrophoneApps) : null;
         }
 
+        // Tray app only: the service has no desktop and sees no monitors. With no display
+        // that can be adjusted there is no value, and "supported" says so: the integration
+        // then offers the display as a plain on/off light.
+        if (updateNormal && _includeInteractiveMetrics)
+        {
+            var wanted = Wanted("display_brightness");
+            _lastDisplayBrightness = wanted ? Safe(DisplayBrightness.Get, _lastDisplayBrightness) : null;
+            _displayBrightnessSupported = wanted ? _lastDisplayBrightness is not null : null;
+        }
+
         if (!Wanted("gpu_usage"))
         {
             _lastGpu = null;
@@ -277,6 +289,8 @@ internal sealed class SystemMetricsService : IDisposable
             ClipboardTextAvailable: updateFast && _includeInteractiveMetrics ? Safe(ReadClipboardTextAvailable, previous?.ClipboardTextAvailable) : previous?.ClipboardTextAvailable,
             CameraInUse: _lastCameraApps is { } cameraApps ? cameraApps.Count > 0 : null,
             MicrophoneInUse: _lastMicrophoneApps is { } microphoneApps ? microphoneApps.Count > 0 : null,
+            DisplayBrightness: _lastDisplayBrightness,
+            DisplayBrightnessSupported: _displayBrightnessSupported,
             GpuUsage: _lastGpu?.Usage,
             SessionState: session.State,
             LoggedInUser: session.User,
@@ -2194,6 +2208,8 @@ internal sealed record SystemMetricsMessage(
     [property: JsonPropertyName("clipboard_text_available")] bool? ClipboardTextAvailable,
     [property: JsonPropertyName("camera_in_use")] bool? CameraInUse,
     [property: JsonPropertyName("microphone_in_use")] bool? MicrophoneInUse,
+    [property: JsonPropertyName("display_brightness")] int? DisplayBrightness,
+    [property: JsonPropertyName("display_brightness_supported")] bool? DisplayBrightnessSupported,
     [property: JsonPropertyName("gpu_usage")] double? GpuUsage,
     [property: JsonPropertyName("session_state")] string SessionState,
     [property: JsonPropertyName("logged_in_user")] string LoggedInUser,

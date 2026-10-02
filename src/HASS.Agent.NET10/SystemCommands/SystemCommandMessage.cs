@@ -7,4 +7,6 @@ internal sealed record SystemCommandMessage(
     [property: JsonPropertyName("force")] bool Force,
     [property: JsonPropertyName("time")] int Time,
     [property: JsonPropertyName("comment")] string? Comment,
-    [property: JsonPropertyName("restart_cancel")] bool RestartCancel);
+    [property: JsonPropertyName("restart_cancel")] bool RestartCancel,
+    // For commands that carry a number, like set_brightness (percent).
+    [property: JsonPropertyName("value")] int? Value = null);

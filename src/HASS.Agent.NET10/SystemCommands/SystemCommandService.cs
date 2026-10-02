@@ -288,6 +288,18 @@ internal sealed class SystemCommandService : IDisposable
         }
     }
 
+    /// <summary>
+    /// Wakes the displays the way a user would: the smallest mouse movement, there and
+    /// back. (The monitor-power message that switches them off is not honoured for "on"
+    /// by current Windows versions.)
+    /// </summary>
+    public static void WakeMonitor()
+    {
+        const uint mouseEventMove = 0x0001;
+        mouse_event(mouseEventMove, 0, 1, 0, UIntPtr.Zero);
+        mouse_event(mouseEventMove, 0, -1, 0, UIntPtr.Zero);
+    }
+
     private void TurnMonitorOff()
     {
         _ = SendMessageTimeout(
@@ -381,6 +393,9 @@ internal sealed class SystemCommandService : IDisposable
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool LockWorkStation();
+
+    [DllImport("user32.dll")]
+    private static extern void mouse_event(uint flags, int dx, int dy, uint data, UIntPtr extraInfo);
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern IntPtr SendMessageTimeout(

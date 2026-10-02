@@ -148,6 +148,9 @@ internal static class BuiltInSensorCatalog
             "microphone_in_use.apps[0]"
         ], EnabledByDefault: false),
         new("audio_output_device", SupportsService: false, SupportsTrayApp: true, SensorPollingProfile.Normal, PushDriven: true),
+        // Also what the integration (10.9.0+) builds its "Display" light from: with this on,
+        // Home Assistant can set the brightness too.
+        new("display_brightness", SupportsService: false, SupportsTrayApp: true, SensorPollingProfile.Normal, PushDriven: true, EnabledByDefault: false),
         new("microphone_muted", SupportsService: false, SupportsTrayApp: true, SensorPollingProfile.Normal, PushDriven: true)
     ];
 

@@ -431,6 +431,7 @@ internal static partial class Strings
             ["Sensor.clipboard_text_available"] = "Vágólapon szöveg",
             ["Sensor.camera_in_use"] = "Kamera használatban",
             ["Sensor.microphone_in_use"] = "Mikrofon használatban",
+            ["Sensor.display_brightness"] = "Kijelző fényerő",
             ["Sensor.audio_output_device"] = "Audio kimenet",
             ["Sensor.microphone_muted"] = "Mikrofon némítva",
 
