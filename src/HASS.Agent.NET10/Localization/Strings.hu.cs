@@ -381,6 +381,8 @@ internal static partial class Strings
             // System commands
             ["Cmd.lock"] = "Gép zárolása",
             ["Cmd.sleep"] = "Alvás",
+            ["Cmd.hibernate"] = "Hibernálás",
+            ["Cmd.logoff"] = "Kijelentkezés",
             ["Cmd.monitor_off"] = "Monitor kikapcsolása",
             ["Cmd.volume_up"] = "Hangerő fel",
             ["Cmd.volume_down"] = "Hangerő le",
@@ -433,6 +435,7 @@ internal static partial class Strings
             ["Sensor.microphone_in_use"] = "Mikrofon használatban",
             ["Sensor.display_brightness"] = "Kijelző fényerő",
             ["Sensor.audio_output_device"] = "Audio kimenet",
+            ["Sensor.audio_input_device"] = "Audio bemenet",
             ["Sensor.microphone_muted"] = "Mikrofon némítva",
 
             // Custom sensor types

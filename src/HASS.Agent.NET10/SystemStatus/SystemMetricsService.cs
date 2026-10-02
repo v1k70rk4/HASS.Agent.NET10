@@ -89,6 +89,9 @@ internal sealed class SystemMetricsService : IDisposable
     private IReadOnlyList<string>? _lastCameraApps;
     private IReadOnlyList<string>? _lastMicrophoneApps;
     private int? _lastDisplayBrightness;
+    private IReadOnlyList<string>? _audioOutputDevices;
+    private string? _audioInputDevice;
+    private IReadOnlyList<string>? _audioInputDevices;
     private bool? _displayBrightnessSupported;
 
     public SystemMetricsService(
@@ -191,6 +194,15 @@ internal sealed class SystemMetricsService : IDisposable
             _lastMicrophoneApps = Wanted("microphone_in_use") ? Safe(() => ReadCapabilityUsers("microphone"), _lastMicrophoneApps) : null;
         }
 
+        // The device lists behind the integration's audio selects; only for a sensor that is on.
+        if (updateNormal && _includeInteractiveMetrics)
+        {
+            _audioOutputDevices = Wanted("audio_output_device") ? Safe(() => _audioEndpointService?.GetOutputDeviceNames(), _audioOutputDevices) : null;
+            var inputWanted = Wanted("audio_input_device");
+            _audioInputDevice = inputWanted ? Safe<string?>(() => LimitState(_audioEndpointService?.GetInputDeviceName() ?? string.Empty), _audioInputDevice) : null;
+            _audioInputDevices = inputWanted ? Safe(() => _audioEndpointService?.GetInputDeviceNames(), _audioInputDevices) : null;
+        }
+
         // Tray app only: the service has no desktop and sees no monitors. With no display
         // that can be adjusted there is no value, and "supported" says so: the integration
         // then offers the display as a plain on/off light.
@@ -289,6 +301,9 @@ internal sealed class SystemMetricsService : IDisposable
             ClipboardTextAvailable: updateFast && _includeInteractiveMetrics ? Safe(ReadClipboardTextAvailable, previous?.ClipboardTextAvailable) : previous?.ClipboardTextAvailable,
             CameraInUse: _lastCameraApps is { } cameraApps ? cameraApps.Count > 0 : null,
             MicrophoneInUse: _lastMicrophoneApps is { } microphoneApps ? microphoneApps.Count > 0 : null,
+            AudioOutputDevices: _audioOutputDevices,
+            AudioInputDevice: _audioInputDevice,
+            AudioInputDevices: _audioInputDevices,
             DisplayBrightness: _lastDisplayBrightness,
             DisplayBrightnessSupported: _displayBrightnessSupported,
             GpuUsage: _lastGpu?.Usage,
@@ -2208,6 +2223,9 @@ internal sealed record SystemMetricsMessage(
     [property: JsonPropertyName("clipboard_text_available")] bool? ClipboardTextAvailable,
     [property: JsonPropertyName("camera_in_use")] bool? CameraInUse,
     [property: JsonPropertyName("microphone_in_use")] bool? MicrophoneInUse,
+    [property: JsonPropertyName("audio_output_devices")] IReadOnlyList<string>? AudioOutputDevices,
+    [property: JsonPropertyName("audio_input_device")] string? AudioInputDevice,
+    [property: JsonPropertyName("audio_input_devices")] IReadOnlyList<string>? AudioInputDevices,
     [property: JsonPropertyName("display_brightness")] int? DisplayBrightness,
     [property: JsonPropertyName("display_brightness_supported")] bool? DisplayBrightnessSupported,
     [property: JsonPropertyName("gpu_usage")] double? GpuUsage,

@@ -1979,6 +1979,14 @@ internal sealed class MqttCompanionService : IDisposable
                 return;
             }
 
+            // The audio selects of the integration. Like the display commands: they belong to
+            // a sensor, and are only honoured while that sensor is on.
+            if (commandName is "set_audio_output" or "set_audio_input")
+            {
+                HandleAudioDeviceCommand(commandName, command.Text, serviceRole, transport);
+                return;
+            }
+
             var customCommand = FindCustomCommand(commandName, serviceRole);
             if (customCommand is not null)
             {
@@ -2002,6 +2010,34 @@ internal sealed class MqttCompanionService : IDisposable
             // The WebSocket transport invokes this without an outer handler.
             _log.Warning($"Failed to run {scope} command from {transport}: {ex.Message}");
         }
+    }
+
+    private void HandleAudioDeviceCommand(string commandName, string? deviceName, bool serviceRole, string transport)
+    {
+        var output = commandName == "set_audio_output";
+        var sensorKey = output ? "audio_output_device" : "audio_input_device";
+        var enabled = !serviceRole && _settings.BuiltInSensors.Any(sensor =>
+            string.Equals(sensor.Key, sensorKey, StringComparison.OrdinalIgnoreCase) && sensor.TrayApp);
+        if (!enabled)
+        {
+            _log.Warning($"Audio command '{commandName}' received over {transport}, but the {sensorKey} sensor is not enabled in the tray app.");
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(deviceName))
+        {
+            return;
+        }
+
+        var changed = output
+            ? _systemCommandService.SetAudioOutput(deviceName.Trim())
+            : _systemCommandService.SetAudioInput(deviceName.Trim());
+        if (!changed)
+        {
+            _log.Warning($"Audio command '{commandName}': there is no active device named '{deviceName}'.");
+        }
+
+        TriggerPushUpdate();
     }
 
     private async Task HandleDisplayCommandAsync(string commandName, int? value, bool serviceRole, string transport)

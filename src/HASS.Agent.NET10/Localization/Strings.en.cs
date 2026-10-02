@@ -381,6 +381,8 @@ internal static partial class Strings
 
             ["Cmd.lock"] = "Lock computer",
             ["Cmd.sleep"] = "Sleep",
+            ["Cmd.hibernate"] = "Hibernate",
+            ["Cmd.logoff"] = "Log off",
             ["Cmd.monitor_off"] = "Turn off monitor",
             ["Cmd.volume_up"] = "Volume up",
             ["Cmd.volume_down"] = "Volume down",
@@ -433,6 +435,7 @@ internal static partial class Strings
             ["Sensor.microphone_in_use"] = "Microphone in use",
             ["Sensor.display_brightness"] = "Display brightness",
             ["Sensor.audio_output_device"] = "Audio output device",
+            ["Sensor.audio_input_device"] = "Audio input device",
             ["Sensor.microphone_muted"] = "Microphone muted",
 
             // Custom sensor types

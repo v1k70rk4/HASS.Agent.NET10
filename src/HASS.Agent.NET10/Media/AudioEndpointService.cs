@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using HASS.Agent.Companion.Logging;
 using NAudio.CoreAudioApi;
 using NAudio.CoreAudioApi.Interfaces;
@@ -121,6 +122,116 @@ internal sealed class AudioEndpointService : IDisposable
                 }
 
                 return null;
+            }
+        }
+    }
+
+    /// <summary>The default recording device, or empty when there is none.</summary>
+    public string GetInputDeviceName()
+    {
+        lock (_gate)
+        {
+            try
+            {
+                if (_disposed) return string.Empty;
+                using var device = GetDefaultDevice(DataFlow.Capture);
+                return device.FriendlyName;
+            }
+            catch (Exception ex)
+            {
+                if (ex.HResult != NoDefaultDevice)
+                {
+                    _log.Warning($"Unable to read default audio input device: {ex.Message}");
+                }
+
+                return string.Empty;
+            }
+        }
+    }
+
+    /// <summary>The playback devices that can be made the default right now.</summary>
+    public IReadOnlyList<string> GetOutputDeviceNames() => GetDeviceNames(DataFlow.Render);
+
+    /// <summary>The recording devices that can be made the default right now.</summary>
+    public IReadOnlyList<string> GetInputDeviceNames() => GetDeviceNames(DataFlow.Capture);
+
+    /// <summary>Makes the playback device with this name the default. False when there is no such device.</summary>
+    public bool SetOutputDevice(string name) => SetDefaultDevice(DataFlow.Render, name);
+
+    /// <summary>Makes the recording device with this name the default. False when there is no such device.</summary>
+    public bool SetInputDevice(string name) => SetDefaultDevice(DataFlow.Capture, name);
+
+    private IReadOnlyList<string> GetDeviceNames(DataFlow dataFlow)
+    {
+        lock (_gate)
+        {
+            var names = new List<string>();
+            try
+            {
+                if (_disposed) return names;
+                foreach (var device in _enumerator.EnumerateAudioEndPoints(dataFlow, DeviceState.Active))
+                {
+                    using (device)
+                    {
+                        names.Add(device.FriendlyName);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _log.Warning($"Unable to list audio devices: {ex.Message}");
+            }
+
+            return names;
+        }
+    }
+
+    private bool SetDefaultDevice(DataFlow dataFlow, string name)
+    {
+        lock (_gate)
+        {
+            try
+            {
+                if (_disposed) return false;
+
+                string? deviceId = null;
+                foreach (var device in _enumerator.EnumerateAudioEndPoints(dataFlow, DeviceState.Active))
+                {
+                    using (device)
+                    {
+                        if (deviceId is null && string.Equals(device.FriendlyName, name, StringComparison.OrdinalIgnoreCase))
+                        {
+                            deviceId = device.ID;
+                        }
+                    }
+                }
+
+                if (deviceId is null)
+                {
+                    return false;
+                }
+
+                // What the Sound settings page does when a device is picked: the default
+                // for every role (console, multimedia, communications).
+                var policy = (IPolicyConfig)new PolicyConfigClient();
+                try
+                {
+                    foreach (var role in new[] { Role.Console, Role.Multimedia, Role.Communications })
+                    {
+                        Marshal.ThrowExceptionForHR(policy.SetDefaultEndpoint(deviceId, role));
+                    }
+                }
+                finally
+                {
+                    Marshal.ReleaseComObject(policy);
+                }
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _log.Warning($"Unable to set the default audio device to '{name}': {ex.Message}");
+                return false;
             }
         }
     }
@@ -298,4 +409,32 @@ internal sealed class AudioEndpointService : IDisposable
 
         public void OnPropertyValueChanged(string pwstrDeviceId, PropertyKey key) { }
     }
+}
+
+// Windows has no documented call for choosing the default audio device; this is the
+// interface its own Sound settings use, the same one every audio switcher relies on.
+// Only SetDefaultEndpoint is called; the other slots keep the vtable order.
+[ComImport]
+[Guid("870af99c-171d-4f9e-af0d-e63df40c2bc9")]
+internal class PolicyConfigClient
+{
+}
+
+[ComImport]
+[Guid("f8679f50-850a-41cf-9c72-430f290290c8")]
+[InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+internal interface IPolicyConfig
+{
+    [PreserveSig] int GetMixFormat();
+    [PreserveSig] int GetDeviceFormat();
+    [PreserveSig] int ResetDeviceFormat();
+    [PreserveSig] int SetDeviceFormat();
+    [PreserveSig] int GetProcessingPeriod();
+    [PreserveSig] int SetProcessingPeriod();
+    [PreserveSig] int GetShareMode();
+    [PreserveSig] int SetShareMode();
+    [PreserveSig] int GetPropertyValue();
+    [PreserveSig] int SetPropertyValue();
+    [PreserveSig] int SetDefaultEndpoint([MarshalAs(UnmanagedType.LPWStr)] string deviceId, Role role);
+    [PreserveSig] int SetEndpointVisibility();
 }

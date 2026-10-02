@@ -9,4 +9,6 @@ internal sealed record SystemCommandMessage(
     [property: JsonPropertyName("comment")] string? Comment,
     [property: JsonPropertyName("restart_cancel")] bool RestartCancel,
     // For commands that carry a number, like set_brightness (percent).
-    [property: JsonPropertyName("value")] int? Value = null);
+    [property: JsonPropertyName("value")] int? Value = null,
+    // For commands that carry a name, like set_audio_output (the device).
+    [property: JsonPropertyName("text")] string? Text = null);
