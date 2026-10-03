@@ -1,5 +1,13 @@
 ﻿#ifndef MyAppVersion
-#define MyAppVersion "10.9.0"
+#define MyAppVersion "10.9.0-beta.1"
+#endif
+
+; The file version resource takes numbers only: a pre-release ("10.9.0-beta.1") keeps its
+; suffix everywhere else, and loses it here.
+#if Pos("-", MyAppVersion) > 0
+  #define MyAppNumericVersion Copy(MyAppVersion, 1, Pos("-", MyAppVersion) - 1)
+#else
+  #define MyAppNumericVersion MyAppVersion
 #endif
 
 #define MyAppName "HASS.Agent .NET10"
@@ -11,7 +19,8 @@ AppId={{8E71E6C1-B215-4C54-B8A5-A7172D7CF3D2}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
-VersionInfoVersion={#MyAppVersion}
+VersionInfoVersion={#MyAppNumericVersion}
+VersionInfoTextVersion={#MyAppVersion}
 DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes

@@ -892,16 +892,13 @@ internal sealed class MainForm : Form
         var customY = cmdY + (50 + SystemCommandCatalog.Commands.Count * 30 + 16) + 20;
         var card3 = MakeCard(page, 28, customY, 600, 250, S("Cap.CustomCommands"));
 
-        card3.Controls.Add(new Label
-        {
-            Text = S("Cap.CustomCommandsHelp"), Location = Pt(20, 40),
-            Size = Sz(560, 32), ForeColor = TextMuted, Font = new Font("Segoe UI", 8.5F)
-        });
+        AddCardHelp(card3, S("Cap.CustomCommandsHelp"));
 
         SetupCustomCommandGrid();
         _customCommandGrid.Location = Pt(20, 76);
         _customCommandGrid.Size = Sz(560, 130);
         card3.Controls.Add(_customCommandGrid);
+        FollowCardWidth(card3, _customCommandGrid);
 
         var addCmdBtn = MakeSecondaryButton(S("Sensors.Add"), 110, 30);
         addCmdBtn.Location = Pt(20, 212);
@@ -947,11 +944,7 @@ internal sealed class MainForm : Form
         card3.Controls.Add(removeCmdBtn);
 
         var card4 = MakeCard(page, 28, customY + 250 + 20, 600, 232, S("Cap.WebView"));
-        card4.Controls.Add(new Label
-        {
-            Text = S("Cap.WebViewHelp"), Location = Pt(20, 40),
-            Size = Sz(560, 32), ForeColor = TextMuted, Font = new Font("Segoe UI", 8.5F)
-        });
+        AddCardHelp(card4, S("Cap.WebViewHelp"));
         y = 78;
         _webViewUrl.PlaceholderText = "http://homeassistant.local:8123/lovelace/0?kiosk";
         y = AddField(card4, S("Cap.WebViewUrl"), _webViewUrl, y, inputWidth: 392);
@@ -979,15 +972,12 @@ internal sealed class MainForm : Form
 
         var hotkeyY = customY + 250 + 20 + 232 + 20;
         var card5 = MakeCard(page, 28, hotkeyY, 600, 250, S("Cap.Hotkeys"));
-        card5.Controls.Add(new Label
-        {
-            Text = S("Cap.HotkeysHelp"), Location = Pt(20, 40),
-            Size = Sz(560, 32), ForeColor = TextMuted, Font = new Font("Segoe UI", 8.5F)
-        });
+        AddCardHelp(card5, S("Cap.HotkeysHelp"));
         SetupHotkeyGrid();
         _hotkeyGrid.Location = Pt(20, 76);
         _hotkeyGrid.Size = Sz(560, 130);
         card5.Controls.Add(_hotkeyGrid);
+        FollowCardWidth(card5, _hotkeyGrid);
 
         var addHotkeyBtn = MakeSecondaryButton(S("Sensors.Add"), 110, 30);
         addHotkeyBtn.Location = Pt(20, 212);
@@ -1023,6 +1013,27 @@ internal sealed class MainForm : Form
         card5.Controls.Add(removeHotkeyBtn);
 
         return page;
+    }
+
+    // The help line under a card title. It follows the card's width: the cards shrink with
+    // the window, and a label of a fixed width was simply cut off at the card's edge.
+    private void AddCardHelp(Panel card, string text)
+    {
+        var help = new Label
+        {
+            Text = text, Location = Pt(20, 40), Size = Sz(560, 32),
+            ForeColor = TextMuted, Font = new Font("Segoe UI", 8.5F), AutoEllipsis = true
+        };
+        card.Controls.Add(help);
+        FollowCardWidth(card, help);
+    }
+
+    // Keeps a control as wide as its card, with the card's 20 px margins. The cards follow
+    // the window; whatever had a fixed width was cut off in a narrow window and left room
+    // unused in a wide one.
+    private void FollowCardWidth(Panel card, Control control)
+    {
+        card.Layout += (_, _) => control.Width = Math.Max(D(120), card.ClientSize.Width - control.Left - D(20));
     }
 
     private void SetupHotkeyGrid()
@@ -1430,14 +1441,19 @@ internal sealed class MainForm : Form
             ForeColor = Color.White,
             Font = new Font("Segoe UI", 9F, FontStyle.Bold)
         });
-        panel.Controls.Add(new Label
+        var help = new Label
         {
             Text = S("Sensors.CustomHelp"),
             Location = Pt(40, 6),
             Size = Sz(520, 34),
             ForeColor = TextBody,
-            Font = new Font("Segoe UI", 8.5F)
-        });
+            Font = new Font("Segoe UI", 8.5F),
+            AutoEllipsis = true
+        };
+        panel.Controls.Add(help);
+        // As wide as the panel allows: a fixed width was cut off in a narrow window, and
+        // wasted room in a wide one.
+        panel.Layout += (_, _) => help.Width = Math.Max(D(120), panel.ClientSize.Width - D(50));
         return panel;
     }
 
@@ -1699,10 +1715,13 @@ internal sealed class MainForm : Form
             var btn = MakeSecondaryButton(S(textKey), 230, 32);
             btn.Location = Pt(20, y);
             toolsCard.Controls.Add(btn);
+            // Two lines tall, centred on the button: the hints are sentences, and one line
+            // of them does not fit next to the button in a window of the default size.
             var hint = new Label
             {
-                Text = S(hintKey), Location = Pt(262, y + 7),
-                Size = Sz(430, 20), ForeColor = TextMuted, Font = new Font("Segoe UI", 8.5F)
+                Text = S(hintKey), Location = Pt(262, y - 1),
+                Size = Sz(430, 34), ForeColor = TextMuted, Font = new Font("Segoe UI", 8.5F),
+                TextAlign = ContentAlignment.MiddleLeft, AutoEllipsis = true
             };
             toolsCard.Controls.Add(hint);
             hintLabels.Add(hint);
@@ -1761,10 +1780,22 @@ internal sealed class MainForm : Form
 
         page.Layout += (_, _) =>
         {
-            warning.Size = new Size(toolsCard.Width, D(48));
+            // The warning is as tall as its text needs at this width, and the cards start
+            // below it; with a fixed height the end of the sentence was simply not shown.
+            var textWidth = Math.Max(D(100), toolsCard.Width - warning.Padding.Horizontal);
+            var textHeight = TextRenderer.MeasureText(
+                warning.Text, warning.Font, new Size(textWidth, int.MaxValue),
+                TextFormatFlags.WordBreak | TextFormatFlags.TextBoxControl).Height;
+            warning.Size = new Size(toolsCard.Width, Math.Max(D(48), textHeight + D(16)));
             warning.BringToFront();
+
+            var cardTop = warning.Bottom + D(12);
+            toolsCard.Top = cardTop;
             foreach (var sub in subCards)
+            {
+                sub.Top = cardTop;
                 sub.Height = Math.Max(D(320), page.ClientSize.Height - sub.Top - D(12));
+            }
         };
 
         return page;

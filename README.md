@@ -2,7 +2,7 @@
 
 ![Windows](https://img.shields.io/badge/Windows-10%202004%2B%20%7C%2011-0078D4?logo=windows&logoColor=white)
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet&logoColor=white)
-![Version](https://img.shields.io/badge/version-10.8.0-brightgreen)
+![Version](https://img.shields.io/badge/version-10.9.0--beta.1-orange)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-MQTT%20%7C%20WebSocket%20API-41BDF5?logo=homeassistant&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 [![Website](https://img.shields.io/badge/website-v1k70rk4.github.io-41bdf5?logo=github)](https://v1k70rk4.github.io/HASS.Agent.NET10/)
@@ -60,9 +60,9 @@ The modern .NET10 line starts at **version 10.0.0**. The pre-.NET10 client remai
 
 ## What Changed
 
-### 10.9.0 (coming soon)
+### 10.9.0-beta.1
 
-> **Not released yet.** This is what the next release brings; the current release is **10.8.0**, below.
+> **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered it, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.8.0**, below. The Home Assistant side of the new entities (display light, audio selects, hotkeys, `set_app_volume`) is in the integration's 10.9.0, which is not released yet.
 
 Works with the Home Assistant integration **10.6.7** or newer; the display light needs integration **10.9.0**. Signed release.
 
@@ -452,6 +452,8 @@ data:
 
 Beyond the built-in commands, you can define your own in the **Capabilities** window. Each custom command becomes a button in Home Assistant. **Add**, or a double click on a row, opens the editor; its **Test** button runs the command right away, in the tray app.
 
+<p align="center"><img src="docs/images/ui-command-editor.png" width="600" alt="Custom command editor"></p>
+
 | Type | `Command / script` field | `Arguments` field |
 |------|--------------------------|-------------------|
 | **Program** | Executable path or name (e.g. `notepad.exe`, `C:\Tools\backup.exe`), or a full command line (e.g. `taskkill /F /IM app.exe /T`) | Command-line arguments (optional; can also be put inline in the command field) |
@@ -487,7 +489,9 @@ Use the **Capabilities** page to choose which role handles each feature.
 
 <p align="center"><img src="docs/images/ui-services.png" width="700" alt="Service page"></p>
 
-<p align="center"><img src="docs/images/ui-capabilities.png" width="700" alt="Capabilities page"></p>
+<p align="center"><img src="docs/images/ui-capabilities.png" width="700" alt="Capabilities page: functions and system commands"></p>
+
+<p align="center"><img src="docs/images/ui-capabilities-custom.png" width="700" alt="Capabilities page: custom commands, dashboard popup, hotkeys"></p>
 
 ### Danger Zone
 
@@ -614,7 +618,11 @@ Custom sensors are parameterized sensors you can add multiple times with differe
 - **Unit** - optional unit of measurement shown in Home Assistant (marks the sensor as a numeric `measurement`)
 - **Profile** - polling interval (fast / normal / hourly / startup)
 
-<p align="center"><img src="docs/images/ui-sensors-custom.png" width="900" alt="Custom sensors tab"></p>
+<p align="center"><img src="docs/images/ui-sensors-custom.png" width="700" alt="Custom sensors tab"></p>
+
+**Add**, or a double click on a row, opens the editor: it explains the chosen type, offers what the PC has (running processes, services, drives, built-in attributes, LibreHardwareMonitor values), and **Test** shows the value the sensor would report.
+
+<p align="center"><img src="docs/images/ui-sensor-editor.png" width="600" alt="Custom sensor editor"></p>
 
 #### `process_running`
 
