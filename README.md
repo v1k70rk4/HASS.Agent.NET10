@@ -452,6 +452,8 @@ data:
 
 Beyond the built-in commands, you can define your own in the **Capabilities** window. Each custom command becomes a button in Home Assistant. **Add**, or a double click on a row, opens the editor; its **Test** button runs the command right away, in the tray app.
 
+<p align="center"><img src="docs/images/ui-command-editor.png" width="600" alt="Custom command editor"></p>
+
 | Type | `Command / script` field | `Arguments` field |
 |------|--------------------------|-------------------|
 | **Program** | Executable path or name (e.g. `notepad.exe`, `C:\Tools\backup.exe`), or a full command line (e.g. `taskkill /F /IM app.exe /T`) | Command-line arguments (optional; can also be put inline in the command field) |
@@ -487,7 +489,9 @@ Use the **Capabilities** page to choose which role handles each feature.
 
 <p align="center"><img src="docs/images/ui-services.png" width="700" alt="Service page"></p>
 
-<p align="center"><img src="docs/images/ui-capabilities.png" width="700" alt="Capabilities page"></p>
+<p align="center"><img src="docs/images/ui-capabilities.png" width="700" alt="Capabilities page: functions and system commands"></p>
+
+<p align="center"><img src="docs/images/ui-capabilities-custom.png" width="700" alt="Capabilities page: custom commands, dashboard popup, hotkeys"></p>
 
 ### Danger Zone
 
@@ -614,7 +618,11 @@ Custom sensors are parameterized sensors you can add multiple times with differe
 - **Unit** - optional unit of measurement shown in Home Assistant (marks the sensor as a numeric `measurement`)
 - **Profile** - polling interval (fast / normal / hourly / startup)
 
-<p align="center"><img src="docs/images/ui-sensors-custom.png" width="900" alt="Custom sensors tab"></p>
+<p align="center"><img src="docs/images/ui-sensors-custom.png" width="700" alt="Custom sensors tab"></p>
+
+**Add**, or a double click on a row, opens the editor: it explains the chosen type, offers what the PC has (running processes, services, drives, built-in attributes, LibreHardwareMonitor values), and **Test** shows the value the sensor would report.
+
+<p align="center"><img src="docs/images/ui-sensor-editor.png" width="600" alt="Custom sensor editor"></p>
 
 #### `process_running`
 
