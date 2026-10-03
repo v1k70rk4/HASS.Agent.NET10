@@ -195,6 +195,9 @@ internal sealed class CompanionWindowsService : ServiceBase
     /// write settings.json (the tray app owns that, and a write reloads the runtime).
     /// The new version is only recorded once the notification is dealt with, so a restart
     /// while Home Assistant is unreachable does not lose it.
+    /// The installer's own note (the "updated-from" file) comes first: it names the version
+    /// it replaced whatever that version was, also one that predates this bookkeeping, or
+    /// one installed again after a newer one had already been recorded here.
     /// </summary>
     private string? DetectCompletedUpdate(CompanionSettings settings)
     {
@@ -207,6 +210,19 @@ internal sealed class CompanionWindowsService : ServiceBase
         var versionFile = ServiceVersionFile(_paths);
         try
         {
+            var installerNote = UpdatedFromFile(_paths);
+            if (File.Exists(installerNote))
+            {
+                var replaced = File.ReadAllText(installerNote).Trim();
+                if (replaced.Length > 0 && replaced != settings.SoftwareVersion)
+                {
+                    _log?.Info($"Service updated from {replaced} to {settings.SoftwareVersion} (installer).");
+                    return replaced;
+                }
+
+                File.Delete(installerNote);
+            }
+
             // Before this file existed, the tray app's record is the best there is.
             var previous = File.Exists(versionFile)
                 ? File.ReadAllText(versionFile).Trim()
@@ -235,6 +251,8 @@ internal sealed class CompanionWindowsService : ServiceBase
 
     private static string ServiceVersionFile(AppPaths paths) => Path.Combine(paths.ConfigDirectory, "service-version");
 
+    private static string UpdatedFromFile(AppPaths paths) => Path.Combine(paths.ConfigDirectory, "updated-from");
+
     /// <summary>The finished update was reported (or left to the tray app): this version is now the known one.</summary>
     private void RecordServiceVersion()
     {
@@ -247,6 +265,7 @@ internal sealed class CompanionWindowsService : ServiceBase
         try
         {
             File.WriteAllText(ServiceVersionFile(_paths), _runningVersion);
+            File.Delete(UpdatedFromFile(_paths));
         }
         catch (Exception ex)
         {

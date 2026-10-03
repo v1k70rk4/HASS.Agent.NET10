@@ -102,6 +102,21 @@ Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=
 var
   ExistingServiceInstalled: Boolean;
   TrayWasRunning: Boolean;
+  PreviousVersion: string;
+
+{ The version this setup replaces, from its own uninstall entry. The agent reports a
+  finished update to Home Assistant ("updated from X to Y"); when nobody is logged in the
+  service does that, and it cannot know X on its own if the version it replaces predates
+  its bookkeeping. The installer always knows, whatever was installed before. }
+function ReadPreviousVersion(): string;
+begin
+  Result := '';
+  RegQueryStringValue(
+    HKLM64,
+    'Software\Microsoft\Windows\CurrentVersion\Uninstall\{8E71E6C1-B215-4C54-B8A5-A7172D7CF3D2}_is1',
+    'DisplayVersion',
+    Result);
+end;
 
 function RunHidden(FileName: string; Parameters: string): Boolean;
 var
@@ -180,6 +195,7 @@ var
 begin
   if CurStep = ssInstall then
   begin
+    PreviousVersion := ReadPreviousVersion();
     ExistingServiceInstalled := IsServiceInstalled();
     TrayWasRunning := IsTrayRunning();
     StopRunningTrayApp();
@@ -203,6 +219,11 @@ begin
   if CurStep = ssPostInstall then
   begin
     EnsureConfigDirectoryPermissions();
+
+    { Before the service starts: it reads this file on start and removes it once the
+      update is reported. }
+    if (PreviousVersion <> '') and (PreviousVersion <> '{#MyAppVersion}') then
+      SaveStringToFile(ExpandConstant('{commonappdata}\HASS.Agent.NET10\updated-from'), PreviousVersion, False);
 
     if ExistingServiceInstalled or WizardIsTaskSelected('installservice') then
     begin
