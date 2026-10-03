@@ -2,7 +2,7 @@
 
 ![Windows](https://img.shields.io/badge/Windows-10%202004%2B%20%7C%2011-0078D4?logo=windows&logoColor=white)
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet&logoColor=white)
-![Version](https://img.shields.io/badge/version-10.8.0-brightgreen)
+![Version](https://img.shields.io/badge/version-10.9.0--beta.1-orange)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-MQTT%20%7C%20WebSocket%20API-41BDF5?logo=homeassistant&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 [![Website](https://img.shields.io/badge/website-v1k70rk4.github.io-41bdf5?logo=github)](https://v1k70rk4.github.io/HASS.Agent.NET10/)
@@ -60,9 +60,9 @@ The modern .NET10 line starts at **version 10.0.0**. The pre-.NET10 client remai
 
 ## What Changed
 
-### 10.9.0 (coming soon)
+### 10.9.0-beta.1
 
-> **Not released yet.** This is what the next release brings; the current release is **10.8.0**, below.
+> **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered it, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.8.0**, below. The Home Assistant side of the new entities (display light, audio selects, hotkeys, `set_app_volume`) is in the integration's 10.9.0, which is not released yet.
 
 Works with the Home Assistant integration **10.6.7** or newer; the display light needs integration **10.9.0**. Signed release.
 
