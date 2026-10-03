@@ -306,6 +306,7 @@ internal sealed class MqttCompanionService : IDisposable
         await PublishPersistentNotificationAsync(
             Strings.GetHa("HaPn.UpdateTitle"),
             string.Format(Strings.GetHa("HaPn.UpdateCompleted"), _settings.DeviceName, previousVersion, _settings.SoftwareVersion));
+        _log.Info($"Reported the finished update ({previousVersion} to {_settings.SoftwareVersion}) to Home Assistant.");
         UpdateCompletionHandled?.Invoke();
     }
 

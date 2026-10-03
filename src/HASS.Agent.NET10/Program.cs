@@ -190,6 +190,22 @@ internal static class Program
             SettingsStore.Save(paths, settings);
         }
 
+        // The installer's note for the service about the version it replaced. With no
+        // service installed nobody else reads it, and it must not sit there until a
+        // service is installed some day and reports an update from long ago.
+        try
+        {
+            var installerNote = Path.Combine(paths.ConfigDirectory, "updated-from");
+            if (File.Exists(installerNote) && !CompanionServiceManager.IsInstalled())
+            {
+                File.Delete(installerNote);
+            }
+        }
+        catch (Exception ex)
+        {
+            log.Warning($"Unable to remove the installer's update note: {ex.Message}");
+        }
+
         mqttService.Start();
 
         if (!settings.MqttEnabled && !settings.HaApiEnabled)
