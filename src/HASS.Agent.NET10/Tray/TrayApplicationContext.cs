@@ -22,6 +22,7 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
     private readonly List<ActionNotificationForm> _actionNotifications = [];
     private readonly NotificationImageCache _notificationImages;
     private readonly ToastPresenter _toasts;
+    private string? _toastRefusal;
     private Action? _pendingBalloonAction;
     private MainForm? _mainForm;
     private WebViewForm? _dashboardPopup;
@@ -336,10 +337,17 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
                 out var reason);
             if (shown)
             {
+                _toastRefusal = null;
                 return;
             }
 
-            _log.Warning($"Windows notification not shown: {reason}. Using the app's own window.");
+            // Somebody who turned the app's notifications off in Windows gets the window
+            // every time; the log says why once, not with every notification.
+            if (!string.Equals(_toastRefusal, reason, StringComparison.Ordinal))
+            {
+                _toastRefusal = reason;
+                _log.Warning($"Windows notification not shown: {reason}. Using the app's own window.");
+            }
         }
 
         ShowWindowNotification(notification, imageFile);
