@@ -45,15 +45,24 @@ internal sealed class NotificationPayload
                 }
 
                 var id = input.Id?.Trim();
-                if (string.IsNullOrEmpty(id) || inputs.Any(known => string.Equals(known.Id, id, StringComparison.Ordinal)))
+                if (string.IsNullOrEmpty(id) || IsTaken(id))
                 {
-                    id = $"input{inputs.Count + 1}";
+                    // The generated id must not be one that an earlier field already has.
+                    var number = inputs.Count + 1;
+                    do
+                    {
+                        id = $"input{number++}";
+                    }
+                    while (IsTaken(id));
                 }
 
                 inputs.Add(new NotificationInputPayload { Id = id, Title = input.Title?.Trim() });
             }
 
             return inputs;
+
+            bool IsTaken(string candidate) =>
+                inputs.Any(known => string.Equals(known.Id, candidate, StringComparison.Ordinal));
         }
     }
 
