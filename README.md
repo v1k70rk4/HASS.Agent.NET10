@@ -18,11 +18,11 @@ A modern Windows companion app for Home Assistant.
 >
 > ☕ If HASS.Agent saved you an evening of tinkering, you can [buy me a coffee on Ko-fi](https://ko-fi.com/v1k70rk4). Everything stays free — it just helps cover things like the code signing certificate.
 
-This fork refreshes the classic HASS.Agent idea into **HASS.Agent .NET10**, a lightweight .NET 10 client built for current Windows desktops. The original client was a .NET 6-era application; this version focuses on a smaller, cleaner runtime, Home Assistant integration via MQTT or WebSocket API, Windows 11-friendly UX, and a split tray app/system service model.
+**HASS.Agent .NET10** began as a fork of the classic [HASS.Agent](https://github.com/LAB02-Research/HASS.Agent) and has grown into a project of its own: a lightweight .NET 10 client built for current Windows desktops. The original client was a .NET 6-era application; this one focuses on a smaller, cleaner runtime, Home Assistant integration via MQTT or WebSocket API, Windows 11-friendly UX, and a split tray app/system service model.
 
 It is designed for Windows PCs you want to observe and control from Home Assistant: media playback, notifications, sensors, shutdown/restart, command buttons, and rich machine state.
 
-The modern .NET10 line starts at **version 10.0.0**. The pre-.NET10 client remains available on the `legacy` branch for users who do not want to migrate yet.
+The .NET10 line starts at **version 10.0.0**. The classic client is a separate program: if you want to stay with it, it is still available from its own project, and the integration keeps a [`legacy` branch](https://github.com/v1k70rk4/HASS.Agent.NET10-Integration/tree/legacy) for it.
 
 ---
 
@@ -1067,9 +1067,9 @@ The technical developer notes:
 
 ## Status
 
-This is a modernization branch, not the original LAB02 release line.
+This is a project of its own, not the original LAB02 release line, and it is not affiliated with it. It began as a fork of HASS.Agent and has been developed independently since.
 
-The goal is a focused Windows/Home Assistant companion that keeps the useful HASS.Agent ideas, drops legacy weight, and moves the client toward a cleaner .NET 10 + MQTT + service/tray architecture. The old client line is kept separately on the `legacy` branch.
+The goal is a focused Windows/Home Assistant companion that keeps the useful HASS.Agent ideas, drops legacy weight, and is built around .NET 10, MQTT or the HA API, and a tray app/service split. The classic client stays with its own project; the integration keeps a [`legacy` branch](https://github.com/v1k70rk4/HASS.Agent.NET10-Integration/tree/legacy) for it.
 
 ## License
 
