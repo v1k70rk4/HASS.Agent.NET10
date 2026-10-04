@@ -63,7 +63,9 @@
     Never ask about replacing the installed copy.
 
 .PARAMETER Branch
-    Development builds: the branch on origin to build (e.g. main), or . for this folder as it is.
+    Development builds: the branch to build (e.g. main), or . for this folder as it is. The branch is
+    taken from origin; a local branch of the same name is used instead when origin does not have it, or
+    when it is ahead of origin (commits waiting for a test before they are pushed).
     Default: chosen as described above.
 
 .PARAMETER Version
@@ -154,10 +156,25 @@ function Select-Source {
 
     if ($Branch -eq '.') { $chosen = $here }
     elseif ($Branch) {
-        $ref = "origin/$($Branch -replace '^origin/', '')"
+        $name = $Branch -replace '^origin/', ''
+        $ref = "origin/$name"
+        $local = "refs/heads/$name"
         git rev-parse --verify --quiet "$ref^{commit}" 2>$null | Out-Null
-        if ($LASTEXITCODE -ne 0) { throw "No such branch on origin: $Branch" }
-        $chosen = [pscustomobject]@{ Ref = $ref; Label = ($ref -replace '^origin/', '') }
+        $onOrigin = $LASTEXITCODE -eq 0
+        git rev-parse --verify --quiet "$local^{commit}" 2>$null | Out-Null
+        $isLocal = $LASTEXITCODE -eq 0
+        if (-not $onOrigin -and -not $isLocal) { throw "No such branch on origin or locally: $Branch" }
+
+        # Commits made here (or in a worktree of this repository) and waiting for a test before they are
+        # pushed: the local branch is the one to build when origin does not have it, or is behind it.
+        $ahead = 0
+        if ($onOrigin -and $isLocal) {
+            git merge-base --is-ancestor $ref $local 2>$null
+            if ($LASTEXITCODE -eq 0) { $ahead = [int](git rev-list --count "$ref..$local" 2>$null) }
+        }
+        if (-not $onOrigin) { $chosen = [pscustomobject]@{ Ref = $local; Label = "$name  (local branch, not on origin)" } }
+        elseif ($ahead -gt 0) { $chosen = [pscustomobject]@{ Ref = $local; Label = "$name  (local branch, $ahead commit(s) ahead of origin)" } }
+        else { $chosen = [pscustomobject]@{ Ref = $ref; Label = $name } }
     }
     elseif ($open.Count -le 1 -and -not ($dirty -or $localOnly)) {
         # The usual case: the one branch waiting to be tested, or main when nothing is.
