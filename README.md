@@ -24,312 +24,13 @@ It is designed for Windows PCs you want to observe and control from Home Assista
 
 The .NET10 line starts at **version 10.0.0**. The classic client is a separate program: if you want to stay with it, it is still available from its own project, and the integration keeps a [`legacy` branch](https://github.com/v1k70rk4/HASS.Agent.NET10-Integration/tree/legacy) for it.
 
----
-
-## Table of Contents
-
-- [What Changed](#what-changed)
-- [Requirements](#requirements)
-- [Code Signing](#code-signing)
-- [Quick Start](#quick-start)
-- [Features](#features)
-  - [Notifications](#notifications)
-  - [Media Player](#media-player)
-  - [System Commands](#system-commands)
-  - [Windows Service](#windows-service)
-  - [Danger Zone](#danger-zone)
-- [Sensors](#sensors)
-  - [Built-in Sensors](#built-in-sensors)
-  - [Sensor Attributes](#sensor-attributes)
-  - [Sensor Polling Profiles](#sensor-polling-profiles)
-  - [Availability](#availability)
-  - [Custom Sensors](#custom-sensors)
-- [Home Assistant Integration](#home-assistant-integration)
-  - [Connection Modes](#connection-modes)
-  - [Updating from Home Assistant](#updating-from-home-assistant)
-  - [MQTT Topics](#mqtt-topics)
-  - [HA API WebSocket Events](#ha-api-websocket-events)
-- [Local HTTP API](#local-http-api)
-- [Installer](#installer)
-- [Build from Source](#build-from-source)
-- [Privacy Policy](#privacy-policy)
-- [Windows Firewall](#windows-firewall)
-- [Minimal Development Setup](#minimal-development-setup)
+> **Stable:** [10.8.0](https://github.com/v1k70rk4/HASS.Agent.NET10/releases/latest) &nbsp;·&nbsp; **Beta:** [10.9.0-beta.1](https://github.com/v1k70rk4/HASS.Agent.NET10/releases/tag/v10.9.0-beta.1) &nbsp;·&nbsp; [What changed](#what-changed) &nbsp;·&nbsp; [Full changelog](CHANGELOG.md)
 
 ---
 
-## What Changed
+## Install
 
-### 10.9.0-beta.1
-
-> **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered it, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.8.0**, below. The Home Assistant side of the new entities (display light, audio selects, hotkeys, `set_app_volume`) is in the integration's **10.9.0-beta.1**: in HACS, open the integration, choose **Redownload**, turn on **Show beta versions** and pick it. The stable 10.9.0 of both is not out yet.
-
-Works with the Home Assistant integration **10.6.7** or newer; the display light needs integration **10.9.0**. Signed release.
-
-- **The display as a light in Home Assistant** (integration 10.9.0+). Turn on the new **Display brightness** sensor (tray app, off by default) and the PC gets a *Display* light: its brightness slider sets the screen brightness, off switches the monitor off, on wakes it. It works with what Windows itself offers: the built-in panel of a laptop, and external monitors that speak DDC/CI. With an older integration the sensor does nothing. With no adjustable display (many TVs, some docks) the light is a plain on/off one, without the slider.
-- **Choose the audio device from Home Assistant** (integration 10.9.0+). The *Audio output device* sensor now comes with a select that makes another playback device the default, for "switch to the headset" or "sound to the TV" automations. The new **Audio input device** sensor (off by default) does the same for the recording device.
-- **Hotkeys that reach Home Assistant** (integration 10.9.0+). On the Capabilities page you can list key combinations with a name (`ctrl+alt+h` as "Meeting"); pressing one sends an event to Home Assistant, where the device's new *Hotkeys* event entity triggers automations on it. Only the listed combinations are registered with Windows, nothing else that is typed is seen.
-- **Per-app volume from Home Assistant** (integration 10.9.0+). Turn on the new **Audio sessions** sensor and the apps in the Windows volume mixer show up as its attributes (name, volume, muted, playing); the integration's `hass_agent.set_app_volume` service sets the volume or mutes one of them, for "turn the game down when the doorbell rings". The state is how many apps play right now.
-- **Hibernate and Log off commands.** Two more buttons for Home Assistant, off by default on the Capabilities page.
-- **Hardware sensors through LibreHardwareMonitor.** A new custom sensor type reads CPU and GPU temperature, fan speed, voltage and load from a running [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor) (its Remote Web Server). The editor lists every value it reports and fills in the unit; a *Connection...* button sets the address and the login if it asks for one. The agent itself stays free of vendor-specific hardware code. See [Custom Sensors](#custom-sensors).
-- **The service reports a finished update.** After an update installed with nobody logged in, the "updated from X to Y" notification used to wait for somebody to log in, because only the tray app sent it. The service now sends it when no tray app is running.
-- **Quieter log without an audio output.** A PC with no default audio output (an HDMI output whose screen is off) logged three warnings on every poll. It is now logged once when it starts and once when a device is back.
-
-### 10.8.0
-
-Works with the Home Assistant integration **10.6.7** or newer. Signed release.
-
-- **Custom commands and custom sensors get an editor window.** Adding one, or double-clicking a row, opens a window with room for a long command line, a description and an example for the chosen type, a *Browse* button for programs and scripts, and a *Test* button: a command runs right away and says what went wrong if it did, a sensor shows the value it would report. For sensors the parameter field also lists what the PC has: the running processes, the installed services, the drives, or the attributes of the built-in sensors. The tables on the settings pages are now just the overview, with the ticks still one click away.
-- **Dashboard popup (WebView).** A Home Assistant dashboard, or any web page, in a small window above the tray: set its address and size on the **Capabilities** page, then open it from the tray menu, or with a click on the tray icon if you tick that. It closes when you click elsewhere, and nothing is loaded while it is closed. There is a matching custom command type, *Popup window (WebView)*, that shows a page in a window of its own, for example a camera when the doorbell rings. Both use the WebView2 runtime that ships with Windows 11; the login is kept per Windows user. Off until an address is set.
-- **Two new custom command types: *Key press* and *Open address*.** A custom command can now press keys (`win+r`, `ctrl+shift+esc`, `alt+tab`, media and browser keys, or several combinations in a row) or open a link in the default browser, without a script written for it. Both show up in Home Assistant as buttons like any other custom command, and both run in the tray app, since they act on the desktop of the logged-in user. The key names are listed under [Custom Commands](#custom-commands).
-
-<details>
-<summary><b>Older versions</b></summary>
-
-<details>
-<summary><b>10.7.3</b></summary>
-
-Works with the Home Assistant integration **10.6.7** or newer; the *Check for updates* button and the single update entity need integration **10.7.3**. Signed release.
-
-- **A *Check for updates* button in Home Assistant** (integration 10.7.3+). It sits next to the update entity and makes the agent ask GitHub right away, so a fresh release shows up in Home Assistant without waiting for the six-hourly check or opening the About page. Thanks to [@Taomyn](https://github.com/Taomyn) for the idea.
-- **One update entity, on both transports.** Over MQTT the update entity used to come from Home Assistant's own MQTT discovery, and over the HA API from the integration - so a PC that switched transports ended up with two, one of them always unavailable. With integration 10.7.3 or newer the integration builds the entity on MQTT as well, and the agent removes its discovered one (it announces the change on `hass.agent/integration/{id}`, retained; an older integration says nothing there and keeps getting the discovered entity as before). The entity now follows the device rather than the tray app, so it stays available, and installable, while only the service runs.
-- **Fixed: installing an update from Home Assistant now works with nobody logged in.** The Install button's request was only picked up by the tray app, which handed the actual install to the Windows service. On a PC that was switched on but not logged in there was no tray app, so the request went unanswered, with nothing in any log. The service now takes the request itself when no tray app is running, and it keeps checking for new releases meanwhile, so the update entity in Home Assistant stays current on a PC nobody is logged in to. When a tray app runs, it handles the request as before, since it also has to bring itself back after the install. Thanks to [@Taomyn](https://github.com/Taomyn) for the report.
-
-</details>
-
-<details>
-<summary><b>10.7.2</b></summary>
-
-Works with the Home Assistant integration **10.6.7** or newer (no integration change in this release). Signed release.
-
-- **Fixed: a large album cover no longer takes the MQTT connection down.** The media player published the artwork exactly as Windows handed it over, with no resizing and no size cap. Mosquitto 2.1 (Home Assistant add-on 7.0.0 and newer) rejects any packet over 2 MB by default, and a full-size cover from a browser can exceed that: the broker dropped the connection, the agent reconnected and sent the same picture again, and every entity flapped between `unavailable` and its state for as long as the track played. Artwork over 128 KB or 512 px is now scaled down to 512 px and re-encoded as JPEG before publishing (a few dozen KB; smaller artwork goes out unchanged), the agent honours the packet size the broker advertises on connect, and anything still over the limit is skipped with a log line. The same cap applies on the HA API transport. Thanks to [@j0k34](https://github.com/j0k34) for the precise report.
-
-</details>
-
-<details>
-<summary><b>10.7.1</b></summary>
-
-Works with the Home Assistant integration **10.6.7** or newer; the **new sensors need integration 10.7.0** to show up in Home Assistant. Signed release, like every release since 10.6.8 (see [Code signing](#code-signing)).
-
-10.7.1 replaces 10.7.0, which was withdrawn a few hours after it went out; everything below is new compared to 10.6.9.
-
-**Nothing changes for an existing installation.** Every sensor you have stays exactly as you set it. The new sensors arrive switched off, and the "off by default" list below only applies to a fresh install.
-
-- **Five new built-in sensors**, all switched off until you enable them on the *Sensors* page:
-  - **GPU usage** — GPU load the way Task Manager shows it, from Windows' own counters, so it works the same on Intel, AMD and NVIDIA without any vendor tool. Attributes: load per engine (`3d`, `videodecode`, `videoencode`, …), NPU load, dedicated / shared memory in use, and the installed adapters with their real memory size (WMI stops at 4 GB). Temperature, clock and fan speed are vendor specific and not part of it — use a [custom sensor](#custom-sensors) for those.
-  - **Sleep blocked** — `on` while something keeps the machine (or its display) awake: a video playing in the browser, a download, a driver. The attributes name who: `primary_blocker`, and the full `blockers` list with category, type, name, reason and whether it really blocks sleep. Service only — Windows shows the holders to administrators alone.
-  - **Last wake reason** — what woke the machine last (`Input Keyboard`, `Power Button`, `Lid`, a device, a wake timer…) with the time, how long it was away and whether it really slept. Works on Modern Standby laptops and on desktops with classic sleep / hibernate. Event driven: the new value is in Home Assistant seconds after the wake, without polling.
-  - **Display brightness** — the screen brightness in percent; with the integration 10.9.0+ it becomes a *Display* light in Home Assistant that also sets it (laptop panel, DDC/CI monitors) and switches the monitor off and on. Tray app only.
-  - **Camera in use** / **Microphone in use** — `on` while an app is using the camera or the microphone, with the apps listed in the `apps` attribute. Handy for an "in a meeting" light. Tray app only (Windows keeps this per user).
-- **Sensors that are off by default.** Not every sensor is for everyone, so a fresh install no longer creates all of them in Home Assistant: besides the five new ones, *VPN connected*, *RDP sessions*, *Recent Event Log errors*, *Last shutdown reason* and *Clipboard text available* now start switched off. Existing installations are not touched — a setting you already have is never changed by an update.
-- **A sensor that is switched off costs nothing.** The more expensive reads (the power request list, the GPU counters, the wake event subscription) only run for a sensor that is enabled, or that a custom attribute sensor is built on.
-- **The log file no longer grows forever.** It was never trimmed and could reach hundreds of megabytes after a few months. The log now starts a new file every day (and within a day once it passes 10 MB); older files are kept next to it as `hass-agent-net10-<date>.log` and **removed after 7 days**, or sooner if together they pass 100 MB. The oversized file an earlier version left behind is cleaned up on the first start.
-- **Sensors arrive faster after startup.** The Windows Update check takes 5–30 seconds and used to hold back *every* sensor for that long — at startup and again once an hour. It now runs on its own in the background: the first sensor values reach Home Assistant in about a second, and *Windows Update pending* follows when its search is done.
-- **Attribute sensors get readable names.** A custom sensor created from a built-in sensor's attribute (the **+** on the *Built-in sensors* tab) was named after the raw attribute key — `Last shutdown reason: reason`. The attributes now have proper names in English and Hungarian, and the generated name follows the *Home Assistant language* setting, since it becomes the entity name there. Sensors you already created keep the name they have; rename them on the *Custom sensors* tab if you like.
-- **Fixed: a manual update check now reaches Home Assistant.** The agent asks GitHub at startup and every six hours, and only those checks were reported to Home Assistant. The *Check for updates* button on the About page asked GitHub on its own and told nobody - so when a release came out between two checks, the app knew about it while Home Assistant kept showing "up to date" until the next scheduled check or a restart of the tray app. The result of a manual check is now reported the same way. Thanks to [@Taomyn](https://github.com/Taomyn) for the report.
-- **Fixed: crash on exit.** Closing the tray app (also when an update closes it) could end in an unhandled exception, recorded by Windows as an application error: the media session monitor was stopped from two places at once during shutdown. Nothing was lost, since the app was closing anyway, but it no longer happens.
-- **Fixed: starting a service that is already running is no longer an error**, and neither is stopping one that is not. The message Windows gives in those cases (and any other `sc` error) is also readable now on a localized Windows: it was decoded with the wrong code page, so every accented letter came out as `�`.
-- **Fixed: a refused MQTT login was logged as `MQTT connected.`** A broker that rejects the credentials answers the connection attempt instead of failing it, and the agent took that answer for success — so the log showed a connection that never existed, and the HA API failover kept flapping between the two transports. A refused connection is now a failed one: it is logged with the broker's reason, and the failover stays on the HA API until the broker really accepts the login.
-
-</details>
-
-<details>
-<summary><b>10.6.9</b></summary>
-
-Requires the Home Assistant integration **10.6.7** or newer (no integration change in this release).
-
-- **Installing an update from Home Assistant now works on the HA API (WebSocket) transport with the service installed.** Pressing *Install* started the relaunch watchdog (the brief console window) and posted the "update started" notification, but the actual install command for the service was sent to the MQTT service topic — which, without a broker, was silently dropped. So nothing was installed and the version never changed. The command now travels over the HA API as well, and the service runs the silent install exactly as it does over MQTT.
-- Without the service, the installer started from Home Assistant is launched detached from the tray app instead of as its child process, so the installer's own close-the-running-app step can no longer take the installer down with it.
-
-</details>
-
-<details>
-<summary><b>10.6.8</b></summary>
-
-Requires the Home Assistant integration **10.6.7** or newer (no integration change in this release).
-
-- **Signed releases.** The installer, its uninstaller and the executable are signed with a Certum code signing certificate issued to *Open Source Developer Viktor Révész*, so Windows no longer shows them as coming from an unknown publisher. See [Code signing](#code-signing) for how to verify a download.
-- **The `rdp_sessions` sensor now counts Remote Desktop sessions.** It always reported `0`: the session's client protocol type was read as a 4-byte integer, but Windows returns a 2-byte value, so the protocol type of every session came back unreadable and no session was ever counted as RDP. Thanks to [@ThorgarIV](https://github.com/ThorgarIV) for the report and the fix.
-- **Factory reset now actually resets.** Since 10.6.4 the settings file has had a backup and a device-id sidecar so a damaged file cannot lose your configuration — but the *Factory reset* button only deleted the settings file, and the next start quietly restored everything (connection, credentials, serial number) from those. It now removes the backup, the sidecar and any legacy settings the migration would have picked up, so the device really starts over.
-- **MQTT drops are logged, with the reason, and the reconnect backs off.** When the broker closed a session right after connecting (a rejected login, a user or ACL removed from Mosquitto, a duplicate client ID) the log showed nothing but `Connecting…` / `MQTT connected.` repeating at full speed. The agent now logs the broker's verdict for a refused connection and the disconnect reason for a dropped one, and waits 5 → 60 s between attempts when sessions keep dying, with a hint about the usual causes.
-- **Release notes in the app.** The About page has a *Release notes* button for the installed version, and the update prompt now shows what changed in the new release before asking to download it.
-- **Support the project.** A *Buy me a coffee* button on the About page links to [Ko-fi](https://ko-fi.com/v1k70rk4).
-- The GitHub links in the app point at the renamed repository (`HASS.Agent.NET10`) instead of relying on the redirect from the old name.
-
-Thanks to [@ThorgarIV](https://github.com/ThorgarIV) for the RDP report and fix, and to [@phuzzyday](https://github.com/phuzzyday) for the migration write-up that surfaced the reset and logging problems.
-
-</details>
-
-<details>
-<summary><b>10.6.7</b></summary>
-
-Requires the Home Assistant integration **10.6.7** or newer.
-
-- **The update entity now works on the HA API (WebSocket) transport.** It was built from Home Assistant's own MQTT discovery, so without a broker there was no update entity and no Install button — on the very transport people choose precisely because Home Assistant is not on their local network. The agent now reports the available release over the WebSocket as well, and installs it when asked, so updating from Home Assistant works with or without MQTT.
-
-</details>
-
-<details>
-<summary><b>10.6.6</b></summary>
-
-Requires the Home Assistant integration **10.6.6** or newer.
-
-- **Closing the tray app no longer takes the whole device offline.** With the Windows service installed, everything in Home Assistant turned unavailable the moment the tray app was closed or you logged out — even though the service was still running and reporting CPU, memory and disk. Only the tray app ever published the device's availability, so leaving declared the *device* dead rather than just itself. The tray app and the service are now treated as two independent providers: the device stays reachable while either is running, and each entity follows whichever side actually feeds it. Entities that only the tray app can provide (media player, active window, notifications) go **unavailable** rather than disappearing, and come straight back when it starts again.
-- **A stopped provider no longer deletes its entities.** The service used to report an empty capability list while offline, so Home Assistant removed its sensors instead of greying them out. It now always reports what it handles, and reports separately whether it is running — so its entities stay put and simply show as unavailable. Turning a capability off in the settings still removes those entities, as it should.
-
-Thanks to [@Taomyn](https://github.com/Taomyn) for the report.
-
-</details>
-
-<details>
-<summary><b>10.6.5</b></summary>
-
-Requires the Home Assistant integration **10.6.5** or newer when using the HA API (WebSocket) transport.
-
-- **Custom commands now work over the Home Assistant API (WebSocket) transport.** Pressing a custom command button did nothing when running without MQTT — the log only showed `Unsupported app WebSocket command received: <id>`. Built-in commands were unaffected. Each transport carried its own copy of the "what does this button mean" logic, and only the MQTT one knew about custom commands; all transports now share a single implementation, so they cannot drift apart again.
-- **Interactive sensors no longer flicker between a value and blank.** With system sensors enabled for both the tray app and the Windows service, both published a full snapshot to the same topic — but the service cannot see the desktop, so it sent *active window*, *active process*, *foreground app*, *active displays*, *audio output* and *user present* as empty, blanking out what the tray app had just reported, a couple of times a minute. The service now omits what it cannot measure instead of reporting it as empty, so those sensors keep the tray app's values.
-- **The system service is now a first-class citizen on the HA API transport.** It had no channel of its own there — unlike MQTT, where the app and the service each advertise what they can handle and Home Assistant merges the two. Over the WebSocket the service announced itself *as the app*, advertising the tray app's commands and then refusing them, so with the tray app closed only commands enabled for both sides happened to work, and every button press left a stray warning in the log. The service now has its own channel, and Home Assistant names the side a command is meant for — so each press runs exactly once, on the right side, whether the tray app is running or not.
-
-Thanks to [@CookSleep](https://github.com/CookSleep) for the report — including the root cause and a suggested fix.
-
-</details>
-
-<details>
-<summary><b>10.6.4</b></summary>
-
-Both fixes address the update problems reported in #22.
-
-- **Updates now start on battery.** The one-shot tasks that run an update carried Task Scheduler's default battery conditions ("start only on AC power", "stop when switching to battery"), so on a notebook running on battery the update never started — the tasks just sat *Queued*. The tasks are now created from an explicit definition that allows battery power, and they still remove themselves afterwards.
-- **"Clean install" is never remembered and never runs silently.** The installer remembers task selections from previous runs, so ticking *Clean install* once made **every later update** on that machine silently repeat it — wiping the settings and the device id, which is why the PC kept reappearing in Home Assistant as a new device. The tick now always starts unchecked on an upgrade, and an unattended (silent) update can never wipe settings at all.
-
-Thanks to [@AdmiralRaccoon](https://github.com/AdmiralRaccoon) for the report and for methodically confirming both causes — registry value and Task Scheduler conditions included.
-
-</details>
-
-<details>
-<summary><b>10.6.3</b></summary>
-
-- **Settings are far harder to lose when an update closes the app.** They were written by truncating the file first and then writing it, so a badly timed force-close could leave it empty. Settings are now written atomically and the previous version is kept as a backup, which is restored automatically if the main file ever turns up missing or unreadable.
-- **A lost configuration no longer creates a duplicate device in Home Assistant.** The device serial is what identifies the PC, and it used to live only in the settings file — so losing that file minted a new serial and the machine reappeared as a brand new device (with the old entities left behind on the broker). The serial is now mirrored next to the settings and reused. A deliberate *Clean install* still gives a fresh identity, as it should.
-- **One-shot update tasks clean themselves up.** The scheduled tasks used to run an update were left behind in Task Scheduler, where they piled up and invited being run by hand. They now delete themselves after running, and leftovers from earlier versions are removed on start.
-
-</details>
-
-<details>
-<summary><b>10.6.2</b></summary>
-
-- Fixed a **`NullReferenceException` in the sensor loop** that left the device permanently **unavailable** in Home Assistant. The Windows service runs with interactive metrics disabled, and those fields fell back to the previous snapshot — which doesn't exist yet on the first read after the service (re)loads, so the very first read threw before a snapshot could be stored, and every cycle after it repeated the same failure. Affected setups where the **service** publishes system sensors; the tray app was unaffected.
-- **Entities no longer disappear** from Home Assistant when the app shuts down cleanly. A graceful exit also published an empty capability list, which Home Assistant reads as "this device has nothing left" and deletes the entities. Now only the availability state goes offline, so the entities stay and show as **unavailable** until the device is back — the same as after a crash or network loss. (Turning off both MQTT and the HA API in settings still removes them on purpose.)
-- **Sensor reads are now fault-isolated**: a failing metric read falls back to its previous value instead of aborting the whole cycle, and the log names the exact read that failed — so one misbehaving read can no longer take the device offline, and diagnosing one is much quicker.
-
-Thanks to [@Taomyn](https://github.com/Taomyn) for the detailed reports and for testing the beta builds — these were tracked down entirely from his logs and feedback.
-
-</details>
-
-<details>
-<summary><b>10.6.1</b></summary>
-
-- Fixed a **`NullReferenceException` in the sensor loop** that could make the device go (and stay) **unavailable** in Home Assistant, typically after startup or resume from sleep. A transient network adapter with a null name/description (common with VPN/virtual adapters mid-initialization) threw inside the network reads, aborting every sensor cycle. The network reads are now null-safe and fault-isolated.
-- Fixed **GitHub update-check `403 (rate limit exceeded)`**: the update state was queried on every reconnect, which — with frequent reconnects and several devices behind one IP — exhausted the unauthenticated GitHub API limit. The result is now cached/throttled (at most once per hour outside the 6-hour poll).
-
-</details>
-
-<details>
-<summary><b>10.6.0</b></summary>
-
-Stable release of the custom commands & command sensors line.
-
-- **Custom command buttons** — run your own programs or PowerShell/pwsh scripts from Home Assistant. You define what runs; Home Assistant only triggers a command by its id (it can't send arbitrary code). Also handles a full command line typed into the command field (e.g. `taskkill /F /IM app.exe /T`).
-- **Command sensors** — a custom sensor whose value is the output of a program or PowerShell script (e.g. GPU temperature via `nvidia-smi`), with an optional **unit** that makes it a numeric `measurement` (graphs & statistics in Home Assistant).
-- **Fixed in-app updates** (from the About page) aborting: the installer closes the running app with `taskkill /… /T`, which also killed the installer when it was launched as a child of the app. It now runs detached, so it survives, installs, and relaunches the app. Updating from Home Assistant was unaffected.
-- **Update the Home Assistant integration too** — it's now in the **HACS default store**, so no custom repository is needed (search "HASS.Agent").
-
-</details>
-
-<details>
-<summary><b>10.5.0</b></summary>
-
-- Fixed a freeze that could stop all reporting when the monitor powered off: multiple audio components held separate WASAPI COM instances and deadlocked during an audio device change (e.g. HDMI audio disappearing). Audio access is now a single, serialized endpoint, and the device-change handler no longer does COM work inside the notification callback.
-- The system sensor loop now survives a transient read error instead of stopping, and logs the full stack trace if one occurs.
-
-</details>
-
-<details>
-<summary><b>10.4.0 (Yanked)</b></summary>
-
-- Added **event-driven (push) sensor updates**: monitor power state, session lock/unlock, AC/battery power source, and audio (volume, mute, output device, microphone mute) now report to Home Assistant within ~600 ms of changing instead of waiting for the next poll. Rapid changes (e.g. dragging the volume slider) are debounced.
-- Added **enum sensor states**: `monitor_power_state`, `power_status`, and `session_state` are now `enum` sensors, so Home Assistant knows their possible values (selectable in automations; `dimmed` is a first-class monitor state).
-- Added **device availability**: the device publishes an MQTT availability topic with a Last Will, and a heartbeat over the HA API transport. On a clean shutdown — or a crash / network loss — the entities turn **unavailable** in Home Assistant instead of keeping stale values.
-- The **Sensors** page now shows a **Push** profile for push-driven sensors.
-- Moved the Bluetooth sensor from hourly to normal polling.
-
-</details>
-
-<details>
-<summary><b>10.3.0</b></summary>
-
-- Added one-click updates from Home Assistant: the update entity's **Install** button downloads and installs the new version on the PC — fully silent when the system service is installed, with a UAC prompt otherwise.
-- Added persistent notifications to Home Assistant for update progress: started, completed (with version), no installer, or failure.
-- Added the opt-in **Danger Zone** tab: maintenance and diagnostics tools behind a checkbox on the General page.
-- Added MQTT maintenance: list and delete retained HASS.Agent messages on the broker (per device or all devices).
-- Added one-click discovery republish on the active connection (MQTT or HA API).
-- Added a live debug log viewer with filtering and a runtime verbose (DEBUG) logging toggle.
-- Added a live MQTT monitor for the `hass.agent/#` topics with payload preview.
-- Added settings backup/restore to a portable JSON file (machine-bound secrets excluded).
-- Added factory reset with double confirmation and automatic app restart.
-- Added an MQTT connection test button on the MQTT page (matches the HA API page).
-- Added a beta update channel: opt in to receive GitHub pre-releases from the update checker.
-- Pre-release versions (`10.3.0-beta.1`) are now handled correctly by the version comparison and shown in the UI.
-- The General page warning now also shows when the system service is installed but stopped.
-- Fixed input fields overflowing on small window sizes across the General, MQTT, and HA API pages.
-
-</details>
-
-<details>
-<summary><b>10.2.0</b></summary>
-
-- Fixed default language set to Hungarian on non-Hungarian systems; the app now auto-detects the OS language and defaults to English.
-- Fixed clean install not removing legacy `HASS.Agent.Companion` directories, causing old settings to migrate back.
-- Fixed tray icon missing in standalone single-file publish by embedding the icon as an assembly resource.
-- Removed the "MQTT not configured" warning from the General page when HA API is enabled.
-
-</details>
-
-<details>
-<summary><b>10.1.0</b></summary>
-
-- Added Home Assistant WebSocket API transport for MQTT failover and MQTT-free remote control.
-- Added HA API settings, connection testing, HTTP warning tooltip, and setup status banners.
-- Added HA API cross-check for the installed HASS.Agent Home Assistant integration version.
-- Added Home Assistant update entity publishing and About-page update checks.
-- Added multi-value built-in sensor attributes and one-click custom sensor generation.
-- Added per-sensor polling profiles: fast, normal, hourly, and startup.
-- Added custom sensor value testing without blocking the settings UI.
-- Improved Windows Update pending detection and release lookup.
-- Improved service/MQTT setup warnings, About page actions, and tray service labeling.
-- Switched MQTT topic routing and HA API command targeting to `serial_number` so device renames do not break commands.
-
-</details>
-
-<details>
-<summary><b>10.0.0</b></summary>
-
-- Rebuilt the companion client as a modern `.NET 10` Windows app.
-- Added a Windows tray app for interactive user-session features.
-- Added a Windows service for system-level features that should work without a logged-in user.
-- Renamed the modern client to **HASS.Agent .NET10** so it is clearly separate from the legacy app.
-- Moved shared settings/logs to `C:\ProgramData\HASS.Agent.NET10`.
-- Added MQTT discovery and dynamic Home Assistant entities.
-- Added a role matrix so features can be handled by `Service`, `Tray app`, or both.
-- Added a configurable sensor catalog and custom sensors.
-- Added service-aware shutdown/restart/restart-cancel support.
-- Added a new Windows 11-style icon.
-
-</details>
-
-</details>
-
-## Requirements
+### Requirements
 
 - Windows 10 version 2004 / build 19041 or newer
 - Windows 11 recommended
@@ -344,6 +45,72 @@ Stable release of the custom commands & command sensors line.
 Windows versions older than Windows 10 2004 are intentionally blocked. The app targets `net10.0-windows10.0.19041.0` and uses modern Windows APIs for notifications, media sessions, services, sensors, and desktop state.
 
 If you download a published self-contained build, you do **not** need to install the .NET runtime separately. If you want to build from source, install the **.NET 10 SDK**.
+
+### Quick Start
+
+1. Install the Home Assistant integration, [v1k70rk4/HASS.Agent.NET10-Integration](https://github.com/v1k70rk4/HASS.Agent.NET10-Integration). It is in the **HACS default store**, so no custom repository is needed: open HACS, search for **HASS.Agent** (or use the button), download it and restart Home Assistant.
+
+   [![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=v1k70rk4&repository=HASS.Agent.NET10-Integration&category=integration)
+2. Download the signed installer from [Releases](https://github.com/v1k70rk4/HASS.Agent.NET10/releases) (see [Code Signing](#code-signing)), or [build from source](docs/development.md#build-from-source).
+3. Run the installer or start `HASS.Agent.NET10.exe` directly.
+4. Open the tray icon and go to settings.
+5. On the **MQTT** page, enable MQTT and enter your broker address and credentials.
+   Alternatively, on the **HA API** page, enable the WebSocket connection to Home Assistant (useful for remote access via Nabu Casa or when no MQTT broker is available).
+6. On the **Capabilities** page, choose which features are handled by the tray app vs. the service.
+7. On the **Sensors** page, enable built-in sensors and add custom sensors.
+8. Optionally install the Windows service from the **Service** page.
+9. The PC turns up on its own under **Discovered** in **Settings → Devices & services** of Home Assistant; click **Add** there. To add it by hand instead:
+
+   [![Open your Home Assistant instance and start setting up a new integration.](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=hass_agent)
+
+The integration creates the Home Assistant entities from what the agent advertises, so what you switch on or off in the settings appears and disappears there on its own.
+
+### Installer
+
+The setup package is built with [Inno Setup](https://jrsoftware.org/isinfo.php). Options during install:
+
+- **Desktop icon** (optional)
+- **Start automatically on login** (default: enabled, sets a registry Run key)
+- **Install system service** (optional)
+- **Clean install** (removes existing settings, API key, and log files — useful for a fresh start)
+
+The installer automatically configures a **Windows Firewall** rule (Private profile, TCP port 5115) for the Local HTTP API, so manual firewall setup is not needed.
+
+During upgrades the installer stops the running tray app, stops the system service if installed, replaces the files, reinstalls/starts the service, and restarts the tray app. On uninstall the firewall rule is removed automatically.
+
+---
+
+## Features
+
+| | What it does | Details |
+|---|---|---|
+| <a id="notifications"></a>**Notifications** | Home Assistant notifications as tray balloons or actionable popups; a button press comes back to Home Assistant as an event. | [Notifications](docs/features.md#notifications) |
+| <a id="media-player"></a>**Media player** | The active Windows media session as a `media_player`: title, play / pause, skip, seek, volume, TTS. | [Media Player](docs/features.md#media-player) |
+| <a id="sensors"></a><a id="built-in-sensors"></a>**Sensors** | Built-in system sensors (CPU, memory, drives, network, battery, session, GPU, camera and microphone in use, and more), each with its own polling profile. | [Sensors](docs/sensors.md) |
+| <a id="custom-sensors"></a>**Custom sensors** | Your own: a process, a service, a drive, an attribute of a built-in sensor, the output of a command or script, a LibreHardwareMonitor value (beta). | [Custom Sensors](docs/sensors.md#custom-sensors) |
+| <a id="system-commands"></a>**System commands** | Lock, sleep, monitor off, volume, shutdown, restart as buttons and a service call; Hibernate and Log off in the beta. | [System Commands](docs/commands.md#system-commands) |
+| <a id="custom-commands"></a>**Custom commands** | Your own buttons: programs, PowerShell scripts, key presses, links, popup windows. | [Custom Commands](docs/commands.md#custom-commands) |
+| **Dashboard popup** | A Home Assistant dashboard, or any web page, in a small window above the tray. | [Dashboard Popup](docs/features.md#dashboard-popup) |
+| **Display and audio** (beta) | The screen as a light in Home Assistant, the default audio device as a select, the volume of a single app. | [Display and Audio](docs/features.md#display-and-audio) |
+| **Hotkeys** (beta) | A named key combination becomes an event in Home Assistant, to start automations from the keyboard. | [Hotkeys](docs/features.md#hotkeys) |
+| <a id="windows-service"></a>**Windows service** | The same program as a system service, for what should work with nobody logged in. | [Windows Service](docs/features.md#windows-service) |
+| <a id="updating-from-home-assistant"></a>**Updates from Home Assistant** | An update entity with a working Install button; silent when the service is installed. | [Updating](docs/features.md#updating-from-home-assistant) |
+| <a id="danger-zone"></a>**Danger Zone** | Opt-in toolbox: MQTT cleanup, live monitor, debug log, backup / restore, factory reset, beta updates. | [Danger Zone](docs/features.md#danger-zone) |
+| <a id="connection-modes"></a><a id="home-assistant-integration"></a>**Connection** | MQTT, the Home Assistant WebSocket API, or both with automatic failover; a notification-only local HTTP API as a fallback. | [Connection Modes](docs/connection.md#connection-modes) |
+
+<p align="center"><img src="docs/images/ui-general.png" width="700" alt="General settings page"></p>
+
+## Documentation
+
+- [Features in detail](docs/features.md): notifications, media player, dashboard popup, display and audio, hotkeys, Windows service, updates, Danger Zone
+- [Commands](docs/commands.md): system commands and custom commands, with the key names
+- [Sensors](docs/sensors.md): the built-in sensors, their attributes and polling profiles, custom sensors
+- <a id="mqtt-topics"></a><a id="ha-api-websocket-events"></a><a id="local-http-api"></a><a id="windows-firewall"></a>[Connecting to Home Assistant](docs/connection.md): connection modes, MQTT topics, HA API events, the local HTTP API, the firewall rule
+- <a id="build-from-source"></a><a id="minimal-development-setup"></a>[Building and development](docs/development.md): build from source, GitHub Actions, development setup
+- [Changelog](CHANGELOG.md): every release
+- [Home Assistant integration](https://github.com/v1k70rk4/HASS.Agent.NET10-Integration): entities, services, events
+
+---
 
 ## Code Signing
 
@@ -364,642 +131,6 @@ signtool verify /pa /v HASS.Agent.NET10-Setup-10.6.8.exe
 
 Signing happens on the maintainer's machine through SimplySign, unlocked with a one-time code from the SimplySign app; the private key lives in Certum's cloud HSM and is never exported. The GitHub Actions build itself is unsigned — the signed files replace its assets on the release. A certificate this new has no SmartScreen reputation yet, so Windows may still show a *"Windows protected your PC"* prompt for a while; the publisher name on that prompt is what confirms the file is genuine.
 
-## Quick Start
-
-1. Install the Home Assistant integration from HACS (it is in the default store, search for **HASS.Agent**):
-   [v1k70rk4/HASS.Agent.NET10-Integration](https://github.com/v1k70rk4/HASS.Agent.NET10-Integration)
-2. Download a release build or the installer from [Releases](https://github.com/v1k70rk4/HASS.Agent.NET10/releases), or build from source.
-3. Run the installer or start `HASS.Agent.NET10.exe` directly.
-4. Open the tray icon and go to settings.
-5. On the **MQTT** page, enable MQTT and enter your broker address and credentials.
-   Alternatively, on the **HA API** page, enable the WebSocket connection to Home Assistant (useful for remote access via Nabu Casa or when no MQTT broker is available).
-6. On the **Capabilities** page, choose which features are handled by the tray app vs. the service.
-7. On the **Sensors** page, enable built-in sensors and add custom sensors.
-8. Optionally install the Windows service from the **Service** page.
-9. The device appears automatically in Home Assistant.
-
-<p align="center"><img src="docs/images/ui-general.png" width="700" alt="General settings page"></p>
-
----
-
-## Features
-
-### Notifications
-
-Receive Home Assistant notifications on Windows as tray balloon tips or actionable popup windows.
-
-Supports actionable notifications: buttons in the popup can publish an action event back to Home Assistant, so automations can react to user choices.
-
-```yaml
-action: hass_agent.send_notification
-target:
-  entity_id: notify.my_pc_notifications
-data:
-  title: Home Assistant
-  message: "Would you like to turn on the lights?"
-  data:
-    actions:
-      - action: lights_on
-        title: "Turn on"
-      - action: lights_off
-        title: "Turn off"
-```
-
-Button presses are published to MQTT and appear as an event entity in Home Assistant.
-
-### Media Player
-
-Expose the active Windows media session to Home Assistant as a `media_player` entity:
-
-- current title, artist, album
-- play / pause / stop
-- next / previous track
-- seek
-- volume and mute control
-- TTS playback (Home Assistant TTS engine generates audio URL, agent plays it)
-
-The media player uses Windows global media transport sessions for playback control and the default Windows audio endpoint for volume/mute.
-
-### System Commands
-
-Control the PC from Home Assistant via button entities or service calls:
-
-| Command | Description | Service capable |
-|---------|------------|:-:|
-| `lock` | Lock workstation | |
-| `sleep` | Suspend | |
-| `monitor_off` | Turn off monitors | |
-| `volume_up` | Volume +5% | |
-| `volume_down` | Volume -5% | |
-| `toggle_mute` | Toggle mute | |
-| `shutdown` | Shutdown (with delay) | yes |
-| `restart` | Restart (with delay) | yes |
-| `restart_cancel` | Cancel pending shutdown/restart | yes |
-
-Shutdown and restart support configurable delay, force mode, and translated comments:
-
-```yaml
-action: hass_agent.execute_command
-data:
-  device_name: MY-PC
-  command: restart
-  force: true
-  time: 30
-  comment: "Restarted from Home Assistant"
-```
-
-### Custom Commands
-
-Beyond the built-in commands, you can define your own in the **Capabilities** window. Each custom command becomes a button in Home Assistant. **Add**, or a double click on a row, opens the editor; its **Test** button runs the command right away, in the tray app.
-
-<p align="center"><img src="docs/images/ui-command-editor.png" width="600" alt="Custom command editor"></p>
-
-| Type | `Command / script` field | `Arguments` field |
-|------|--------------------------|-------------------|
-| **Program** | Executable path or name (e.g. `notepad.exe`, `C:\Tools\backup.exe`), or a full command line (e.g. `taskkill /F /IM app.exe /T`) | Command-line arguments (optional; can also be put inline in the command field) |
-| **PowerShell** | Inline command, or a `.ps1` path | Script arguments (used only for `.ps1`) |
-| **PowerShell 7 (pwsh)** | Same as PowerShell, run with `pwsh.exe` | Same as PowerShell |
-| **Key press** | One or more key combinations, separated by spaces or commas (e.g. `win+r`, `ctrl+shift+esc`, `ctrl+c ctrl+v`) | Not used |
-| **Open address** | A link to open in the default browser (e.g. `https://example.com`), or an app link such as `ms-settings:display` | Not used |
-| **Popup window (WebView)** | A web address (`http://` or `https://`) to show in a window of its own | Window size, e.g. `1024x720` (optional) |
-
-- **Program** commands launch via the shell, so GUI apps show in your session; PowerShell runs hidden with `-NoProfile -ExecutionPolicy Bypass`.
-- Tick **Tray**, **Svc**, or both to choose where a command runs. Service-run commands execute in the `SYSTEM` session (no visible UI).
-- **Key press**, **Open address** and **Popup window** act on the desktop of the logged-in user, so they run in the tray app only; the **Svc** tick is cleared for them on save.
-- **Key names:** letters and digits as they are, plus `ctrl`, `shift`, `alt`, `win`, `enter`, `esc`, `tab`, `space`, `backspace`, `delete`, `insert`, `home`, `end`, `pageup`, `pagedown`, `up`, `down`, `left`, `right`, `f1`-`f24`, `num0`-`num9`, `printscreen`, `pause`, `capslock`, `numlock`, `scrolllock`, `menu`, `plus`, `minus`, `comma`, `period`, `play_pause`, `next_track`, `prev_track`, `media_stop`, `volume_up`, `volume_down`, `volume_mute`, `browser_back`, `browser_forward`, `browser_refresh`, `browser_home`. Keys in a combination are joined with `+`. Windows does not let a normal program send keys to a window that runs as administrator, or to the lock screen.
-- **Security:** you own the command list — Home Assistant only sends the command's id to trigger it, never the program or script itself. It cannot run arbitrary code on your PC. Requires the HA integration 10.6.0+ to show the buttons.
-
-### Windows Service
-
-The same executable can run as a tray app or as a Windows service. Use the **Service** page to install, start, stop, or uninstall the service (UAC elevation is requested automatically).
-
-**Service** handles features that should work even when nobody is logged in:
-- shutdown, restart, restart_cancel
-- system sensors (CPU, memory, disk, network, etc.)
-- custom sensors (process, service, disk)
-
-**Tray app** handles interactive user-session features:
-- notifications
-- media player
-- active window/process sensors
-- clipboard, audio, monitor state
-- user session details
-
-Use the **Capabilities** page to choose which role handles each feature.
-
-<p align="center"><img src="docs/images/ui-services.png" width="700" alt="Service page"></p>
-
-<p align="center"><img src="docs/images/ui-capabilities.png" width="700" alt="Capabilities page: functions and system commands"></p>
-
-<p align="center"><img src="docs/images/ui-capabilities-custom.png" width="700" alt="Capabilities page: custom commands, dashboard popup, hotkeys"></p>
-
-### Danger Zone
-
-An opt-in maintenance and diagnostics toolbox. Enable it with the **Danger Zone** checkbox on the General page and a new tab appears with the following tools:
-
-| Tool | What it does |
-|------|--------------|
-| **MQTT maintenance** | Lists every retained HASS.Agent message on the broker (this device's or all devices') and deletes the selected ones — the cure for ghost entities after renames or reinstalls. |
-| **Republish discovery** | Re-sends the device discovery on the active connection (MQTT or HA API) without restarting the app. |
-| **Debug log** | Live log viewer with filtering, plus a verbose toggle that enables DEBUG-level logging (including every sent/received MQTT message) until the next restart. |
-| **Live MQTT monitor** | Watches the `hass.agent/#` topics in real time with a payload preview — see exactly what the agent sends and receives. |
-| **Backup / restore** | Exports the settings to a portable JSON file and restores them from one. DPAPI-protected secrets (MQTT password, HA API token) are machine-bound and excluded. |
-| **Factory reset** | Deletes all settings after a double confirmation and restarts the app with a fresh serial number and API key. |
-
-The Danger Zone also hosts the **beta updates** toggle: when enabled, update checks include GitHub pre-releases, so you can follow the beta channel. Stable users are never offered pre-releases.
-
-<p align="center"><img src="docs/images/ui-dangerzone-menu.png" width="700" alt="Danger Zone tools menu"></p>
-
-<p align="center"><img src="docs/images/ui-dangerzone-mqtt-maintenance.png" width="700" alt="Danger Zone MQTT maintenance"></p>
-
----
-
-## Sensors
-
-### Built-in Sensors
-
-The **Sensors** page has two tabs: **Built-in sensors** and **Custom sensors**.
-
-Built-in sensors are predefined system metrics. Each one can be enabled/disabled independently and assigned to the tray app, the service, or both.
-
-The **Default** column shows whether a fresh install starts with the sensor switched on. Sensors that are useful, but not to everyone, start **off** so they do not clutter Home Assistant — enable them on the *Sensors* page. An update never changes a setting you already have: a sensor added by a new version simply arrives switched off.
-
-| Sensor | Profile | Service | Tray | Default |
-|--------|---------|:---:|:---:|:---:|
-| CPU usage | fast | yes | yes | on |
-| GPU usage | normal | yes | yes | off |
-| Memory usage | fast | yes | yes | on |
-| Available memory (MB) | fast | yes | yes | on |
-| System drive free % | normal | yes | yes | on |
-| System drive free (GB) | normal | yes | yes | on |
-| Uptime | fast | yes | yes | on |
-| Boot time | startup | yes | yes | on |
-| Battery level | normal | yes | yes | on |
-| Battery time remaining | normal | yes | yes | on |
-| Power status | **push** | yes | yes | on |
-| LAN IP | normal | yes | yes | on |
-| Session state | **push** | yes | yes | on |
-| Logged in user | normal | yes | yes | on |
-| Logged in users (count) | normal | yes | yes | on |
-| RDP sessions | normal | yes | yes | off |
-| Pending reboot | normal | yes | yes | on |
-| Sleep blocked | fast | yes | | off |
-| VPN connected | normal | yes | yes | off |
-| Wi-Fi SSID | normal | yes | yes | on |
-| Wi-Fi signal | normal | yes | yes | on |
-| Bluetooth enabled | normal | yes | yes | on |
-| Windows Update pending | hourly | yes | yes | on |
-| Recent Event Log errors | hourly | yes | yes | off |
-| Last shutdown reason | startup | yes | yes | off |
-| Last wake reason | **push** | yes | yes | off |
-| Active window | fast | | yes | on |
-| Active process | fast | | yes | on |
-| Foreground app & window | fast | | yes | on |
-| Volume | **push** | | yes | on |
-| Muted | **push** | | yes | on |
-| Monitor power state | **push** | | yes | on |
-| Active displays | normal | | yes | on |
-| Idle time | fast | | yes | on |
-| Session locked | **push** | | yes | on |
-| User present | **push** | | yes | on |
-| Clipboard text available | fast | | yes | off |
-| Camera in use | fast | | yes | off |
-| Microphone in use | fast | | yes | off |
-| Audio input device | **push** | | yes | off |
-| Audio sessions | normal | | yes | off |
-| Display brightness | **push** | | yes | off |
-| Audio output device | **push** | | yes | on |
-| Microphone muted | **push** | | yes | on |
-
-<p align="center"><img src="docs/images/ui-sensors-built-in.png" width="700" alt="Built-in sensors tab"></p>
-
-### Sensor Attributes
-
-Some sensors have a simple primary state but expose richer details as attributes. These attributes can be extracted into separate Home Assistant entities using the `built_in_attribute` custom sensor type (see [Custom Sensors](#custom-sensors)).
-
-Sensors with attributes:
-
-| Sensor | Attributes |
-|--------|-----------|
-| **LAN IP** | `addresses[N].adapter`, `addresses[N].description`, `addresses[N].address` |
-| **Active displays** | `displays[N].name`, `displays[N].primary`, `displays[N].width`, `displays[N].height`, `displays[N].x`, `displays[N].y` |
-| **Recent Event Log errors** | `window_minutes`, `events[N].log`, `events[N].provider`, `events[N].event_id`, `events[N].level`, `events[N].created_at` |
-| **Last shutdown reason** | `reason`, `event_id`, `created_at`, `message` |
-| **Last wake reason** | `source`, `kind` (`modern_standby`, `sleep`, `hibernate`, `fast_startup`), `created_at`, `duration_seconds`, `sleep_entered`, `detail` |
-| **Sleep blocked** | `system_required`, `display_required`, `away_mode_required`, `primary_blocker`, `blockers[N].category`, `blockers[N].type`, `blockers[N].name`, `blockers[N].reason`, `blockers[N].blocking` |
-| **GPU usage** | `engines.<type>` (e.g. `engines.3d`, `engines.videodecode`), `npu_usage`, `memory_dedicated_mb`, `memory_shared_mb`, `adapters[N].name`, `adapters[N].memory_mb` |
-| **Camera in use** / **Microphone in use** | `apps[N]` |
-
-### Sensor Polling Profiles
-
-Sensors are refreshed by profile instead of one global interval. Each profile interval is configurable in the app:
-
-| Profile | Default | Description |
-|---------|---------|-------------|
-| **push** | on change | Event-driven — reports within ~600 ms of a change (monitor power, session lock, power source, volume/mute/audio device). A poll still runs as a safety net. *Last wake reason* follows the event log and is published with the next fast cycle. |
-| **fast** | 10 sec | CPU, memory, active window, etc. |
-| **normal** | 60 sec | Disk, battery, network, Bluetooth, etc. |
-| **hourly** | 3600 sec | Windows Update, Event Log, etc. |
-| **startup** | once | Boot time, last shutdown reason |
-
-Minimum interval is 10 seconds for the timed profiles.
-
-### Availability
-
-The device publishes its online/offline state to Home Assistant — over MQTT with a **Last Will** message, and over the HA API transport with a **heartbeat**. On a clean shutdown, a crash, or a network loss, the entities turn **unavailable** in Home Assistant instead of keeping their last value.
-
-### Custom Sensors
-
-Custom sensors are parameterized sensors you can add multiple times with different settings. Each custom sensor has:
-
-- **Type** - what kind of sensor it is
-- **Name** - the entity name in Home Assistant
-- **Parameter** - what to monitor (depends on type)
-- **Unit** - optional unit of measurement shown in Home Assistant (marks the sensor as a numeric `measurement`)
-- **Profile** - polling interval (fast / normal / hourly / startup)
-
-<p align="center"><img src="docs/images/ui-sensors-custom.png" width="700" alt="Custom sensors tab"></p>
-
-**Add**, or a double click on a row, opens the editor: it explains the chosen type, offers what the PC has (running processes, services, drives, built-in attributes, LibreHardwareMonitor values), and **Test** shows the value the sensor would report.
-
-<p align="center"><img src="docs/images/ui-sensor-editor.png" width="600" alt="Custom sensor editor"></p>
-
-#### `process_running`
-
-Checks whether a Windows process is currently running.
-
-| Field | Example |
-|-------|---------|
-| Parameter | `notepad` or `chrome.exe` |
-| State | `true` / `false` |
-
-The `.exe` extension is optional. The check uses `Process.GetProcessesByName()`, so it matches the process name without path.
-
-**Use case**: trigger an automation when a specific application starts or stops.
-
-```text
-Name: "Chrome running"
-Parameter: chrome
-```
-
-#### `service_status`
-
-Reads the status of a Windows service.
-
-| Field | Example |
-|-------|---------|
-| Parameter | `Spooler` or `wuauserv` |
-| State | `running`, `stopped`, `paused`, etc. |
-
-Use the exact Windows service name (not the display name). You can find it in `services.msc` or with `Get-Service` in PowerShell.
-
-**Use case**: monitor whether a critical service is running (database, backup agent, print spooler).
-
-```text
-Name: "Print Spooler"
-Parameter: Spooler
-```
-
-#### `disk_free`
-
-Reports the free space on a drive in GiB.
-
-| Field | Example |
-|-------|---------|
-| Parameter | `D` or `D:` or `D:\` |
-| State | `123.4` (GiB) |
-
-Any of the three formats work. The sensor reports as a numeric `measurement` with unit `GiB`.
-
-**Use case**: alert when a data drive is running low on space.
-
-```text
-Name: "Data drive free"
-Parameter: D
-```
-
-#### `built_in_attribute`
-
-Extracts a single value from a built-in sensor's attribute tree and exposes it as a standalone sensor entity.
-
-This is the most powerful custom sensor type. Some built-in sensors (like LAN IP, Active displays, Event Log errors) return structured data with multiple values. The `built_in_attribute` type lets you drill into that structure and pull out one specific value.
-
-| Field | Example |
-|-------|---------|
-| Parameter | `network_address.addresses[0].address` |
-| State | `192.168.1.42` |
-
-**Path syntax:**
-
-The parameter is a dot-separated path into the sensor's attribute JSON. Array elements use `[index]` notation:
-
-```text
-sensor_key.property.nested_property
-sensor_key.array[0].property
-sensor_key.array[0].nested[1].value
-```
-
-**Available attribute paths:**
-
-| Built-in sensor | Attribute path | Value |
-|----------------|---------------|-------|
-| LAN IP | `network_address.addresses[0].adapter` | Adapter name |
-| LAN IP | `network_address.addresses[0].description` | Adapter description |
-| LAN IP | `network_address.addresses[0].address` | IPv4 address |
-| Active displays | `active_display.displays[0].name` | Display name |
-| Active displays | `active_display.displays[0].primary` | Primary flag |
-| Active displays | `active_display.displays[0].width` | Width in pixels |
-| Active displays | `active_display.displays[0].height` | Height in pixels |
-| Active displays | `active_display.displays[0].x` | X position |
-| Active displays | `active_display.displays[0].y` | Y position |
-| Event Log errors | `event_log_errors_recent.window_minutes` | Lookup window |
-| Event Log errors | `event_log_errors_recent.events[0].log` | Log name |
-| Event Log errors | `event_log_errors_recent.events[0].provider` | Source |
-| Event Log errors | `event_log_errors_recent.events[0].event_id` | Event ID |
-| Event Log errors | `event_log_errors_recent.events[0].level` | Level |
-| Event Log errors | `event_log_errors_recent.events[0].created_at` | Timestamp |
-| Last shutdown reason | `last_shutdown_reason.reason` | Reason text |
-| Last shutdown reason | `last_shutdown_reason.event_id` | Event ID |
-| Last shutdown reason | `last_shutdown_reason.created_at` | Timestamp |
-| Last shutdown reason | `last_shutdown_reason.message` | Full message |
-| Last wake reason | `last_wake_reason.source` | What woke the machine |
-| Last wake reason | `last_wake_reason.kind` | `modern_standby`, `sleep`, `hibernate` or `fast_startup` |
-| Last wake reason | `last_wake_reason.created_at` | Timestamp |
-| Last wake reason | `last_wake_reason.duration_seconds` | How long it was away |
-| Last wake reason | `last_wake_reason.sleep_entered` | `false` when only the screen was off |
-| Last wake reason | `last_wake_reason.detail` | Waking device or wake timer owner |
-| Sleep blocked | `sleep_blocked.primary_blocker` | First holder that really blocks sleep |
-| Sleep blocked | `sleep_blocked.system_required` | System request held |
-| Sleep blocked | `sleep_blocked.display_required` | Display request held |
-| Sleep blocked | `sleep_blocked.away_mode_required` | Away mode request held |
-| Sleep blocked | `sleep_blocked.blockers[0].name` | Holder (process, service or driver) |
-| Sleep blocked | `sleep_blocked.blockers[0].reason` | Reason given by the holder |
-| GPU usage | `gpu_usage.engines.3d` | 3D engine load (%) |
-| GPU usage | `gpu_usage.engines.videodecode` | Video decode load (%) |
-| GPU usage | `gpu_usage.npu_usage` | NPU load (%) |
-| GPU usage | `gpu_usage.memory_dedicated_mb` | Dedicated GPU memory in use |
-| GPU usage | `gpu_usage.memory_shared_mb` | Shared GPU memory in use |
-| GPU usage | `gpu_usage.adapters[0].name` | Adapter name |
-| GPU usage | `gpu_usage.adapters[0].memory_mb` | Adapter memory size |
-| Camera in use | `camera_in_use.apps[0]` | App using the camera |
-| Microphone in use | `microphone_in_use.apps[0]` | App using the microphone |
-
-> **Tip — auto-create from built-in sensors**: Some built-in sensors publish multiple values (LAN IP, Active displays, Event Log errors, Last shutdown reason). In the **Built-in sensors** tab these sensors show a **+** icon next to their name. Clicking **+** automatically creates a `built_in_attribute` custom sensor for **every** available attribute path of that sensor. Each one becomes a separate Home Assistant entity.
->
-> For example, clicking **+** on **LAN IP** creates three custom sensors: adapter name, adapter description, and IPv4 address. Clicking **+** on **Event Log errors** creates six: window minutes, log name, provider, event ID, level, and timestamp. You can delete any you don't need from the Custom sensors tab.
->
-> This is the easiest way to get individual entities from multi-value sensors — no need to type attribute paths manually.
-
-**Example:** To get the second network adapter's IP address:
-
-```text
-Name: "Secondary adapter IP"
-Parameter: network_address.addresses[1].address
-```
-
-**Example:** To get the last shutdown reason:
-
-```text
-Name: "Last shutdown"
-Parameter: last_shutdown_reason.reason
-```
-
-#### `lhm` (LibreHardwareMonitor)
-
-Reads a hardware value from a running [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor): CPU and GPU temperature, fan speed, voltage, load. The agent has no vendor-specific hardware code of its own; LibreHardwareMonitor does the reading and the agent asks it.
-
-1. Run LibreHardwareMonitor and turn on **Options > Remote Web Server > Run** (port 8085 by default). Let it start with Windows if the sensor should always work.
-2. Add a custom sensor of the type **LibreHardwareMonitor**. The **Sensor** field lists everything LibreHardwareMonitor reports, with the current value; picking one fills in the unit, and the name when it is empty.
-
-- The parameter is LibreHardwareMonitor's own sensor id (e.g. `/amdcpu/0/temperature/2`).
-- The value is null while LibreHardwareMonitor is not running.
-- The **Connection...** button next to the field sets a different address or port (default `http://localhost:8085`), and the user name and password when LibreHardwareMonitor's web server is set to ask for them.
-- No Home Assistant integration update is required.
-
-```text
-Name: "CPU temperature"
-Type: LibreHardwareMonitor
-Parameter: /amdcpu/0/temperature/2
-Unit: °C
-Profile: normal
-State: 45.5 °C
-```
-
-#### `command` / `command_powershell` / `command_pwsh`
-
-Runs a program or PowerShell script and uses its **output** as the sensor value — for anything Windows has no built-in sensor for, such as GPU temperature.
-
-| Type | Parameter | Runs as |
-|------|-----------|---------|
-| **Command (program)** | A program or full command line (e.g. `nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader,nounits`) | The executable directly (fast, no shell) |
-| **Command (PowerShell)** | An inline command or a `.ps1` path | `powershell.exe -NoProfile -ExecutionPolicy Bypass` |
-| **Command (PowerShell 7)** | Same as above | `pwsh.exe -NoProfile -ExecutionPolicy Bypass` |
-
-- The **first non-empty line** of the output (trimmed, max 255 chars) becomes the sensor state — format your command to print a single value. A plain number is published as a numeric value.
-- Set an optional **Unit** (e.g. `°C`) to show it in Home Assistant; a unit also marks the sensor as a numeric `measurement`, so Home Assistant keeps long-term statistics and graphs it.
-- Each run has a timeout (~10 s) so a hung command can't stall reporting. Pick the **Normal** or **Hourly** profile, not Fast.
-- **Security**: you define what runs — Home Assistant only reads the resulting value, it cannot send commands. No Home Assistant integration update is required for these.
-
-```text
-Name: "GPU temperature"
-Type: Command (program)
-Parameter: nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader,nounits
-Unit: °C
-Profile: normal
-State: 54 °C
-```
-
----
-
-## Home Assistant Integration
-
-Install the companion integration — it's in the **HACS default store**, so no custom repository is needed:
-
-[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=v1k70rk4&repository=HASS.Agent.NET10-Integration&category=integration)
-
-Open HACS, search for **HASS.Agent** (or use the button), download it, restart Home Assistant, then add the integration:
-
-[![Open your Home Assistant instance and start setting up a new integration.](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=hass_agent)
-
-Repository: [v1k70rk4/HASS.Agent.NET10-Integration](https://github.com/v1k70rk4/HASS.Agent.NET10-Integration). The integration creates Home Assistant entities dynamically based on the agent's advertised capabilities.
-
-### Connection Modes
-
-The agent supports three connection modes. You can use MQTT and HA API together — HA API acts as an automatic failover when the MQTT broker is unreachable.
-
-| Feature | MQTT | HA API (WebSocket) | Local HTTP API |
-|---------|:----:|:------------------:|:--------------:|
-| Notifications | yes | yes | yes |
-| Media player | yes | yes | |
-| Notification action events | yes | yes | |
-| System sensors | yes | yes | |
-| Command buttons | yes | yes | |
-| Update entity | yes | yes | |
-| Auto-discovery | yes | yes | |
-| Service integration | yes | yes | |
-| Retained state on restart | yes | | |
-| Last Will (offline detection) | yes | | |
-| Remote access (Nabu Casa) | | yes | |
-
-**MQTT** (recommended) — The device is discovered automatically via MQTT discovery. All features work. Requires an MQTT broker on the local network (e.g. Mosquitto). If you use Zigbee2MQTT, you already have one.
-
-**HA API (WebSocket)** — The agent connects directly to Home Assistant's WebSocket API using a long-lived access token. Works remotely (e.g. via Nabu Casa) without an MQTT broker. Almost all features work, with some trade-offs: no retained state (sensor values are lost until the agent reconnects after a restart), no MQTT Last Will (no automatic offline detection), and media thumbnails are ~33% larger (base64 encoding). HTTPS is required for remote access.
-
-**Local HTTP API** — A minimal fallback. The agent runs a small HTTP server that Home Assistant connects to. Only notifications are supported. Requires manual setup (IP address, port, API key). Use MQTT or HA API instead for full functionality.
-
-<p align="center"><img src="docs/images/ui-mqtt.png" width="700" alt="MQTT settings page"></p>
-<p align="center"><img src="docs/images/ui-ha-api.png" width="700" alt="HA API settings page"></p>
-
-### Updating from Home Assistant
-
-When a new release is available, the agent publishes an **update entity** to Home Assistant with a working **Install** button and a **Check for updates** button next to it. With integration 10.7.3 or newer the integration builds the entity on both transports; with an older integration it comes from Home Assistant's own MQTT discovery (and, on the HA API transport, from the agent's events, 10.6.7+). With the Windows service installed, the update is downloaded and applied **fully silently** (no UAC prompt), also when nobody is logged in; otherwise a UAC prompt appears on the PC. Home Assistant receives a **persistent notification** for the progress and result.
-
-<p align="center"><img src="docs/images/ha-update-alert.png" width="500" alt="Update available in Home Assistant"></p>
-<p align="center"><img src="docs/images/ha-client-updated.png" width="500" alt="Update completed notification"></p>
-
-You can also check for updates manually from the **About** page, which shows the installed version, the latest release, and a one-click update download.
-
-<p align="center"><img src="docs/images/ui-about.png" width="700" alt="About page"></p>
-
-### MQTT Topics
-
-Published by the agent:
-
-```text
-hass.agent/devices/{serialNumber}                   # discovery + capabilities
-hass.agent/system/{serialNumber}/state              # service online state
-hass.agent/sensors/{serialNumber}/state             # sensor values
-hass.agent/update/{serialNumber}/state              # app update state
-hass.agent/media_player/{serialNumber}/state        # media player state
-hass.agent/notifications/{serialNumber}/actions     # notification action events
-homeassistant/update/{serial}/hass_agent_net10/config  # HA update entity discovery
-```
-
-Subscribed by the agent:
-
-```text
-hass.agent/notifications/{serialNumber}             # incoming notifications
-hass.agent/media_player/{serialNumber}/cmd          # media player commands
-hass.agent/buttons/{serialNumber}/cmd               # system command buttons
-hass.agent/system/{serialNumber}/cmd                # service-routed commands
-```
-
-### HA API WebSocket Events
-
-When using HA API mode, the agent communicates through Home Assistant's event bus instead of MQTT topics.
-
-Events fired by the agent:
-
-```text
-hass_agent_device_update          # discovery + capabilities (tray app)
-hass_agent_service_update         # Windows service status + capabilities
-hass_agent_update_state           # available app update (drives the update entity)
-hass_agent_sensor_update          # sensor values
-hass_agent_media_update           # media player state
-hass_agent_media_thumbnail        # media thumbnail (base64)
-hass_agent_notification_action    # notification button press
-```
-
-Commands sent by the integration to the agent:
-
-```json
-{
-  "serial_number": "agent-serial",
-  "command_type": "notification | media_command | button_command | update_install",
-  "target": "app | service",
-  "payload": { }
-}
-```
-
-`target` names which side should act on a button command — the tray app or the Windows
-service — the same choice MQTT makes by picking a topic. It is optional: without it each
-side falls back to deciding for itself, which is how integrations older than 10.6.5 behave.
-
-All events and commands are targeted by `serial_number`, so renaming the device in Home Assistant does not break routing.
-
----
-
-## Local HTTP API
-
-The agent runs a lightweight HTTP server on port `5115`. This is used by the Local HTTP API integration mode and for device info.
-
-**Endpoints:**
-
-| Method | Path | Auth | Description |
-|--------|------|:----:|-------------|
-| `GET` | `/info` | | Device info and capabilities |
-| `POST` | `/notify` | Bearer | Send a notification |
-
-The `POST /notify` endpoint requires an API key via the `Authorization: Bearer <key>` header. The key is auto-generated on first launch and displayed on the **General** settings page under **Network**. Copy it from there when setting up the Local HTTP API integration in Home Assistant.
-
-```powershell
-# Test from the local machine
-Invoke-RestMethod http://localhost:5115/info
-
-# Test notification with API key
-$headers = @{ Authorization = "Bearer YOUR_API_KEY_HERE" }
-$body = @{ message = "Test"; title = "Hello" } | ConvertTo-Json
-Invoke-RestMethod http://localhost:5115/notify -Method Post -Body $body -ContentType "application/json" -Headers $headers
-```
-
-> **Note**: `GET /info` is intentionally unauthenticated so the Home Assistant config flow can validate the connection. It only returns the device name, serial number, and capability flags.
-
-Settings and API key are stored in:
-
-```text
-C:\ProgramData\HASS.Agent.NET10\settings.json
-```
-
----
-
-## Installer
-
-The setup package is built with [Inno Setup](https://jrsoftware.org/isinfo.php). Options during install:
-
-- **Desktop icon** (optional)
-- **Start automatically on login** (default: enabled, sets a registry Run key)
-- **Install system service** (optional)
-- **Clean install** (removes existing settings, API key, and log files — useful for a fresh start)
-
-The installer automatically configures a **Windows Firewall** rule (Private profile, TCP port 5115) for the Local HTTP API, so manual firewall setup is not needed.
-
-During upgrades the installer stops the running tray app, stops the system service if installed, replaces the files, reinstalls/starts the service, and restarts the tray app. On uninstall the firewall rule is removed automatically.
-
----
-
-## Build from Source
-
-Install the .NET 10 SDK, then publish:
-
-```powershell
-dotnet publish .\src\HASS.Agent.NET10\HASS.Agent.NET10.csproj `
-    -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true
-```
-
-The output goes to:
-
-```text
-src\HASS.Agent.NET10\bin\Release\net10.0-windows10.0.19041.0\win-x64\publish\HASS.Agent.NET10.exe
-```
-
-To build the installer, also install [Inno Setup](https://jrsoftware.org/isinfo.php) and compile `installer\HASS.Agent.NET10.iss`.
-
-`build-exe.ps1` wraps the common cases: on its own it produces a standalone `.exe` and offers to swap it into the installed copy; `-Tag` builds the signed installer and zip with the CI file names (see [Code Signing](#code-signing) — it needs the maintainer's certificate, so this is a release tool rather than a build step).
-
-## GitHub Actions
-
-This repository includes a Windows GitHub Actions workflow:
-
-- `dotnet restore` + `dotnet build -c Release`
-- self-contained `win-x64` publish
-- Inno Setup installer build
-- downloadable artifacts from manual workflow runs:
-  - `HASS.Agent.NET10-win-x64`
-  - `HASS.Agent.NET10-Setup`
-- release assets on `v*` tags or published GitHub Releases:
-  - `HASS.Agent.NET10-Setup-<version>.exe`
-  - `HASS.Agent.NET10-win-x64-<version>.zip`
-
 ## Privacy Policy
 
 This program will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it.
@@ -1013,55 +144,32 @@ No telemetry, analytics, or usage data is collected or transmitted.
 
 ---
 
-## Windows Firewall
+## What Changed
 
-> **Note**: If you used the installer, the firewall rule is already configured automatically. This section is only needed for manual (non-installer) setups.
+### 10.9.0-beta.1
 
-The agent's Local HTTP API listens on TCP port `5115`. If you run the app without the installer, allow Home Assistant to reach it from your local network:
+> **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered it, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.8.0**, below. The Home Assistant side of the new entities (display light, audio selects, hotkeys, `set_app_volume`) is in the integration's **10.9.0-beta.1**: in HACS, open the integration, choose **Redownload**, turn on **Show beta versions** and pick it. The stable 10.9.0 of both is not out yet.
 
-```powershell
-New-NetFirewallRule `
-  -DisplayName "HASS.Agent .NET10 Local API" `
-  -Direction Inbound `
-  -Action Allow `
-  -Protocol TCP `
-  -LocalPort 5115 `
-  -Profile Private
-```
+Works with the Home Assistant integration **10.6.7** or newer; the display light needs integration **10.9.0**. Signed release.
 
-Keep your Windows network profile set to **Private** for your home LAN. Avoid opening this port on Public networks.
+- **The display as a light in Home Assistant** (integration 10.9.0+). Turn on the new **Display brightness** sensor (tray app, off by default) and the PC gets a *Display* light: its brightness slider sets the screen brightness, off switches the monitor off, on wakes it. It works with what Windows itself offers: the built-in panel of a laptop, and external monitors that speak DDC/CI. With an older integration the sensor does nothing. With no adjustable display (many TVs, some docks) the light is a plain on/off one, without the slider.
+- **Choose the audio device from Home Assistant** (integration 10.9.0+). The *Audio output device* sensor now comes with a select that makes another playback device the default, for "switch to the headset" or "sound to the TV" automations. The new **Audio input device** sensor (off by default) does the same for the recording device.
+- **Hotkeys that reach Home Assistant** (integration 10.9.0+). On the Capabilities page you can list key combinations with a name (`ctrl+alt+h` as "Meeting"); pressing one sends an event to Home Assistant, where the device's new *Hotkeys* event entity triggers automations on it. Only the listed combinations are registered with Windows, nothing else that is typed is seen.
+- **Per-app volume from Home Assistant** (integration 10.9.0+). Turn on the new **Audio sessions** sensor and the apps in the Windows volume mixer show up as its attributes (name, volume, muted, playing); the integration's `hass_agent.set_app_volume` service sets the volume or mutes one of them, for "turn the game down when the doorbell rings". The state is how many apps play right now.
+- **Hibernate and Log off commands.** Two more buttons for Home Assistant, off by default on the Capabilities page.
+- **Hardware sensors through LibreHardwareMonitor.** A new custom sensor type reads CPU and GPU temperature, fan speed, voltage and load from a running [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor) (its Remote Web Server). The editor lists every value it reports and fills in the unit; a *Connection...* button sets the address and the login if it asks for one. The agent itself stays free of vendor-specific hardware code. See [Custom Sensors](docs/sensors.md#custom-sensors).
+- **The service reports a finished update.** After an update installed with nobody logged in, the "updated from X to Y" notification used to wait for somebody to log in, because only the tray app sent it. The service now sends it when no tray app is running.
+- **Quieter log without an audio output.** A PC with no default audio output (an HDMI output whose screen is off) logged three warnings on every poll. It is now logged once when it starts and once when a device is back.
 
-## Minimal Development Setup
+### 10.8.0
 
-You do not need Visual Studio for this project.
+Works with the Home Assistant integration **10.6.7** or newer. Signed release.
 
-Required:
+- **Custom commands and custom sensors get an editor window.** Adding one, or double-clicking a row, opens a window with room for a long command line, a description and an example for the chosen type, a *Browse* button for programs and scripts, and a *Test* button: a command runs right away and says what went wrong if it did, a sensor shows the value it would report. For sensors the parameter field also lists what the PC has: the running processes, the installed services, the drives, or the attributes of the built-in sensors. The tables on the settings pages are now just the overview, with the ticks still one click away.
+- **Dashboard popup (WebView).** A Home Assistant dashboard, or any web page, in a small window above the tray: set its address and size on the **Capabilities** page, then open it from the tray menu, or with a click on the tray icon if you tick that. It closes when you click elsewhere, and nothing is loaded while it is closed. There is a matching custom command type, *Popup window (WebView)*, that shows a page in a window of its own, for example a camera when the doorbell rings. Both use the WebView2 runtime that ships with Windows 11; the login is kept per Windows user. Off until an address is set.
+- **Two new custom command types: *Key press* and *Open address*.** A custom command can now press keys (`win+r`, `ctrl+shift+esc`, `alt+tab`, media and browser keys, or several combinations in a row) or open a link in the default browser, without a script written for it. Both show up in Home Assistant as buttons like any other custom command, and both run in the tray app, since they act on the desktop of the logged-in user. The key names are listed under [Custom Commands](docs/commands.md#custom-commands).
 
-- .NET 10 SDK for Windows x64
-- PowerShell
-
-Optional:
-
-- Visual Studio Code
-- C# Dev Kit extension
-
-Useful commands:
-
-```powershell
-dotnet nuget list source
-dotnet --list-sdks
-dotnet build .\src\HASS.Agent.NET10\HASS.Agent.NET10.csproj -c Release
-dotnet run --project .\src\HASS.Agent.NET10\HASS.Agent.NET10.csproj -c Release
-```
-
-If `dotnet nuget list source` says `No sources found`, add the official NuGet feed:
-
-```powershell
-dotnet nuget add source https://api.nuget.org/v3/index.json --name nuget.org
-```
-
-The technical developer notes:
-[src/HASS.Agent.NET10/README.md](src/HASS.Agent.NET10/README.md)
+Older versions are in the [changelog](CHANGELOG.md).
 
 ---
 
