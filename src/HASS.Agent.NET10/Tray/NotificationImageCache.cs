@@ -22,7 +22,12 @@ internal sealed class NotificationImageCache
     // A notification stays in the Windows notification centre for three days and shows
     // its picture from the file for as long.
     private static readonly TimeSpan KeepFor = TimeSpan.FromDays(4);
-    private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(8) };
+    // An address that is not reachable from here (Home Assistant's internal one, from
+    // outside) has to fail fast: the next one is tried, and the notification waits.
+    private static readonly HttpClient Http = new(new SocketsHttpHandler { ConnectTimeout = TimeSpan.FromSeconds(3) })
+    {
+        Timeout = TimeSpan.FromSeconds(8)
+    };
 
     private readonly CompanionSettings _settings;
     private readonly FileLog _log;
@@ -41,17 +46,23 @@ internal sealed class NotificationImageCache
     public static bool HasImage(NotificationPayload notification)
     {
         return !string.IsNullOrWhiteSpace(notification.Data?.Image) ||
-               !string.IsNullOrWhiteSpace(notification.Data?.ImagePath);
+               !string.IsNullOrWhiteSpace(notification.Data?.ImagePath) ||
+               !string.IsNullOrWhiteSpace(notification.Data?.ImageAlt);
     }
 
     /// <summary>The picture as a local file, or null when there is none or it cannot be had.</summary>
-    public async Task<string?> FetchAsync(NotificationPayload notification)
+    public async Task<string?> FetchAsync(NotificationPayload notification, CancellationToken cancellationToken)
     {
         foreach (var address in Candidates(notification))
         {
+            if (cancellationToken.IsCancellationRequested)
+            {
+                break;
+            }
+
             try
             {
-                var bytes = await DownloadAsync(address);
+                var bytes = await DownloadAsync(address, cancellationToken);
                 if (bytes is null)
                 {
                     continue;
@@ -69,7 +80,9 @@ internal sealed class NotificationImageCache
             catch (Exception ex)
             {
                 // The address may carry a signature; the log gets the host and path only.
-                var why = string.IsNullOrWhiteSpace(ex.Message) ? ex.GetType().Name : ex.Message;
+                var why = ex is OperationCanceledException
+                    ? "no answer in time"
+                    : string.IsNullOrWhiteSpace(ex.Message) ? ex.GetType().Name : ex.Message;
                 _log.Warning($"Notification picture not available from {address.GetLeftPart(UriPartial.Path)}: {why}");
             }
         }
@@ -79,7 +92,7 @@ internal sealed class NotificationImageCache
 
     /// <summary>
     /// Where to look for the picture, best first: the Home Assistant path on this PC's own
-    /// Home Assistant address, then the address the notification gives.
+    /// Home Assistant address, then the address the notification gives, then its second one.
     /// </summary>
     private IEnumerable<Uri> Candidates(NotificationPayload notification)
     {
@@ -109,24 +122,29 @@ internal sealed class NotificationImageCache
         {
             yield return given;
         }
+
+        if (Uri.TryCreate(data.ImageAlt?.Trim(), UriKind.Absolute, out var other) && IsWeb(other) && other != given)
+        {
+            yield return other;
+        }
     }
 
     private static bool IsWeb(Uri address) => address.Scheme == Uri.UriSchemeHttp || address.Scheme == Uri.UriSchemeHttps;
 
-    private static async Task<byte[]?> DownloadAsync(Uri address)
+    private static async Task<byte[]?> DownloadAsync(Uri address, CancellationToken cancellationToken)
     {
-        using var response = await Http.GetAsync(address, HttpCompletionOption.ResponseHeadersRead);
+        using var response = await Http.GetAsync(address, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
         response.EnsureSuccessStatusCode();
         if (response.Content.Headers.ContentLength > MaxDownloadBytes)
         {
             throw new InvalidOperationException($"larger than {MaxDownloadBytes / (1024 * 1024)} MB");
         }
 
-        await using var stream = await response.Content.ReadAsStreamAsync();
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
         using var buffer = new MemoryStream();
         var chunk = new byte[81920];
         int read;
-        while ((read = await stream.ReadAsync(chunk)) > 0)
+        while ((read = await stream.ReadAsync(chunk, cancellationToken)) > 0)
         {
             if (buffer.Length + read > MaxDownloadBytes)
             {

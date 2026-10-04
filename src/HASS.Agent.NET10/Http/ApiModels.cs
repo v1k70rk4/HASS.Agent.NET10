@@ -86,6 +86,14 @@ internal sealed class NotificationDataPayload
     [JsonPropertyName("image_path")]
     public string? ImagePath { get; init; }
 
+    /// <summary>
+    /// A second address of the same picture, tried when <see cref="Image"/> cannot be
+    /// reached: the integration sends Home Assistant's internal address first and the
+    /// external one here.
+    /// </summary>
+    [JsonPropertyName("image_alt")]
+    public string? ImageAlt { get; init; }
+
     [JsonPropertyName("icon_url")]
     public string? IconUrl { get; init; }
 

@@ -129,14 +129,15 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
             return;
         }
 
-        // The picture is fetched first, off the UI thread; without it the notification
-        // is shown all the same.
+        // The picture is fetched first, off the UI thread. A notification is worth more on
+        // time than complete: after ten seconds it is shown without the picture.
         _ = Task.Run(async () =>
         {
             string? imageFile = null;
             try
             {
-                imageFile = await _notificationImages.FetchAsync(notification);
+                using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                imageFile = await _notificationImages.FetchAsync(notification, deadline.Token);
             }
             catch (Exception ex)
             {
