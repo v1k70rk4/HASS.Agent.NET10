@@ -3,11 +3,12 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>HASS.Agent .NET10 — a modern Windows companion for Home Assistant</title>
-<meta name="description" content="A lightweight .NET 10 Windows companion app for Home Assistant: notifications, media control, sensors, commands, and one-click updates over MQTT or the HA WebSocket API.">
+<title>HASS.Agent .NET10 — Windows companion app for Home Assistant</title>
+<meta name="description" content="A free Windows companion app for Home Assistant: notifications, media player, sensors, commands and one-click updates, over MQTT or the WebSocket API.">
 <meta property="og:type" content="website">
-<meta property="og:title" content="HASS.Agent .NET10">
-<meta property="og:description" content="A modern, lightweight Windows companion for Home Assistant: notifications, media control, sensors, commands, and one-click updates.">
+<meta property="og:site_name" content="HASS.Agent .NET10">
+<meta property="og:title" content="HASS.Agent .NET10 — Windows companion app for Home Assistant">
+<meta property="og:description" content="A free Windows companion app for Home Assistant: notifications, media player, sensors, commands and one-click updates, over MQTT or the WebSocket API.">
 <meta property="og:url" content="https://v1k70rk4.github.io/HASS.Agent.NET10/">
 <meta property="og:image" content="https://v1k70rk4.github.io/HASS.Agent.NET10/images/social-preview.png">
 <meta property="og:image:width" content="1280">
@@ -15,6 +16,92 @@
 <meta name="twitter:card" content="summary_large_image">
 <link rel="canonical" href="https://v1k70rk4.github.io/HASS.Agent.NET10/">
 <link rel="icon" href="images/hass_agent_companion_modern_icon.png">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "HASS.Agent .NET10",
+  "description": "A free Windows companion app for Home Assistant: notifications, media player, sensors, commands and one-click updates, over MQTT or the WebSocket API.",
+  "applicationCategory": "UtilitiesApplication",
+  "operatingSystem": "Windows 10, Windows 11",
+  "url": "https://v1k70rk4.github.io/HASS.Agent.NET10/",
+  "downloadUrl": "https://github.com/v1k70rk4/HASS.Agent.NET10/releases/latest",
+  "image": "https://v1k70rk4.github.io/HASS.Agent.NET10/images/social-preview.png",
+  "screenshot": "https://v1k70rk4.github.io/HASS.Agent.NET10/images/ui-general.png",
+  "license": "https://opensource.org/licenses/MIT",
+  "isAccessibleForFree": true,
+  "offers": {
+    "@type": "Offer",
+    "price": "0",
+    "priceCurrency": "USD"
+  },
+  "author": {
+    "@type": "Person",
+    "name": "v1k70rk4",
+    "url": "https://github.com/v1k70rk4"
+  },
+  "sameAs": [
+    "https://github.com/v1k70rk4/HASS.Agent.NET10",
+    "https://github.com/v1k70rk4/HASS.Agent.NET10-Integration"
+  ]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "What is HASS.Agent .NET10?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "A free, open-source Windows app that connects a PC to Home Assistant. Home Assistant can show notifications on the PC, control its media playback and volume, read its sensors (CPU, memory, battery, active window and many more), and run commands on it such as lock, sleep, shutdown or your own scripts."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Is it the same as the original HASS.Agent?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "No. It began as a fork of HASS.Agent and has grown into a project of its own, built on .NET 10 with its own Home Assistant integration. The two do not share settings or entities. Coming from HASS.Agent explains what is the same, what is different and how to switch."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Do I need an MQTT broker?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "No. The app connects over MQTT, over the Home Assistant WebSocket API, or both with automatic failover. The WebSocket API needs no broker and also works remotely, for example through Nabu Casa."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Which Windows versions does it run on?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Windows 11 and Windows 10 version 2004 or newer, on x64. The .NET runtime is included, there is nothing else to install."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "How do I install it?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Install the HASS.Agent integration from the HACS default store in Home Assistant, then run the signed installer from the releases page on the PC and enable MQTT or the HA API in the settings. The PC then turns up in Home Assistant on its own."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Is it free?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. It is MIT-licensed, with no telemetry: the app only talks to your own Home Assistant or MQTT broker, and to GitHub to check for updates."
+      }
+    }
+  ]
+}
+</script>
 <style>
   :root {
     --bg: #0f172a;
@@ -101,7 +188,7 @@
   /* Shots */
   .shots { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-top: 44px; }
   .shots figure { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
-  .shots img { width: 100%; display: block; }
+  .shots img { width: 100%; height: auto; display: block; }
   .shots figcaption { padding: 12px 16px; color: var(--text-muted); font-size: .9rem; text-align: center; }
 
   /* Highlight band */
@@ -131,7 +218,7 @@
 
 <header>
   <div class="wrap">
-    <img class="logo" src="images/hass_agent_companion_modern_icon.png" alt="HASS.Agent .NET10 icon">
+    <img class="logo" src="images/hass_agent_companion_modern_icon.png" alt="HASS.Agent .NET10 icon" width="256" height="256">
     <div class="eyebrow">.NET 10 · WINDOWS 10/11</div>
     <h1>HASS.Agent .NET10</h1>
     <p class="tag">A modern, lightweight Windows companion for Home Assistant — notifications, media control, sensors, commands, and one-click updates.</p>
@@ -199,8 +286,8 @@
       <p>The HA update entity has a real <span class="accent">Install</span> button. With the system service installed, updates apply <span class="accent">fully silently</span> — no UAC prompt, the tray app relaunches itself, and Home Assistant gets a persistent notification when it's finished. Opt into the <span class="accent">beta channel</span> right inside the app to follow pre-releases.</p>
     </div>
     <div class="shots" style="margin-top:28px;">
-      <figure><img src="images/ha-update-alert.png" alt="Update available in Home Assistant"><figcaption>Update entity with the Install button</figcaption></figure>
-      <figure><img src="images/ha-client-updated.png" alt="Update completed notification in Home Assistant"><figcaption>Persistent notification when it's done</figcaption></figure>
+      <figure><img src="images/ha-update-alert.png" alt="Update available in Home Assistant" width="452" height="270" loading="lazy" decoding="async"><figcaption>Update entity with the Install button</figcaption></figure>
+      <figure><img src="images/ha-client-updated.png" alt="Update completed notification in Home Assistant" width="368" height="136" loading="lazy" decoding="async"><figcaption>Persistent notification when it's done</figcaption></figure>
     </div>
   </div>
 </section>
@@ -209,15 +296,15 @@
   <div class="wrap">
     <h2>A look inside</h2>
     <div class="shots">
-      <figure><img src="images/ui-general.png" alt="General settings page"><figcaption>General settings</figcaption></figure>
-      <figure><img src="images/ui-mqtt.png" alt="MQTT settings page"><figcaption>MQTT — with connection test</figcaption></figure>
-      <figure><img src="images/ui-ha-api.png" alt="HA API settings page"><figcaption>HA WebSocket API</figcaption></figure>
-      <figure><img src="images/ui-capabilities.png" alt="Capabilities page"><figcaption>Capabilities — tray app vs. service</figcaption></figure>
-      <figure><img src="images/ui-sensors-built-in.png" alt="Built-in sensors"><figcaption>Built-in sensors</figcaption></figure>
-      <figure><img src="images/ui-services.png" alt="Service page"><figcaption>Windows service</figcaption></figure>
-      <figure><img src="images/ui-capabilities-custom.png" alt="Custom commands, dashboard popup and hotkeys"><figcaption>Custom commands, dashboard popup, hotkeys</figcaption></figure>
-      <figure><img src="images/ui-sensors-custom.png" alt="Custom sensors"><figcaption>Custom sensors — process, service, disk, command and hardware values</figcaption></figure>
-      <figure><img src="images/ui-sensor-editor.png" alt="Custom sensor editor"><figcaption>The sensor editor, with one-click value testing</figcaption></figure>
+      <figure><img src="images/ui-general.png" alt="General settings page" width="960" height="1140" loading="lazy" decoding="async"><figcaption>General settings</figcaption></figure>
+      <figure><img src="images/ui-mqtt.png" alt="MQTT settings page" width="960" height="655" loading="lazy" decoding="async"><figcaption>MQTT — with connection test</figcaption></figure>
+      <figure><img src="images/ui-ha-api.png" alt="HA API settings page" width="960" height="592" loading="lazy" decoding="async"><figcaption>HA WebSocket API</figcaption></figure>
+      <figure><img src="images/ui-capabilities.png" alt="Capabilities page" width="960" height="1075" loading="lazy" decoding="async"><figcaption>Capabilities — tray app vs. service</figcaption></figure>
+      <figure><img src="images/ui-sensors-built-in.png" alt="Built-in sensors" width="960" height="1140" loading="lazy" decoding="async"><figcaption>Built-in sensors</figcaption></figure>
+      <figure><img src="images/ui-services.png" alt="Service page" width="960" height="718" loading="lazy" decoding="async"><figcaption>Windows service</figcaption></figure>
+      <figure><img src="images/ui-capabilities-custom.png" alt="Custom commands, dashboard popup and hotkeys" width="960" height="1075" loading="lazy" decoding="async"><figcaption>Custom commands, dashboard popup, hotkeys</figcaption></figure>
+      <figure><img src="images/ui-sensors-custom.png" alt="Custom sensors" width="960" height="620" loading="lazy" decoding="async"><figcaption>Custom sensors — process, service, disk, command and hardware values</figcaption></figure>
+      <figure><img src="images/ui-sensor-editor.png" alt="Custom sensor editor" width="777" height="571" loading="lazy" decoding="async"><figcaption>The sensor editor, with one-click value testing</figcaption></figure>
     </div>
   </div>
 </section>
@@ -227,11 +314,11 @@
     <h2>The Danger Zone</h2>
     <p class="lead">An opt-in toolbox for maintenance and diagnostics — enable it with a checkbox on the General page.</p>
     <div class="shots">
-      <figure><img src="images/ui-dangerzone-menu.png" alt="Danger Zone tools menu"><figcaption>Tools menu</figcaption></figure>
-      <figure><img src="images/ui-dangerzone-mqtt-maintenance.png" alt="MQTT maintenance"><figcaption>MQTT maintenance — delete retained messages</figcaption></figure>
-      <figure><img src="images/ui-dangerzone-mqtt-monitor.png" alt="Live MQTT monitor"><figcaption>Live MQTT monitor</figcaption></figure>
-      <figure><img src="images/ui-dangerzone-debuglog.png" alt="Debug log viewer"><figcaption>Live debug log</figcaption></figure>
-      <figure><img src="images/ui-dangerzone-backup-restore.png" alt="Backup and restore"><figcaption>Backup / restore &amp; factory reset</figcaption></figure>
+      <figure><img src="images/ui-dangerzone-menu.png" alt="Danger Zone tools menu" width="960" height="739" loading="lazy" decoding="async"><figcaption>Tools menu</figcaption></figure>
+      <figure><img src="images/ui-dangerzone-mqtt-maintenance.png" alt="MQTT maintenance" width="960" height="635" loading="lazy" decoding="async"><figcaption>MQTT maintenance — delete retained messages</figcaption></figure>
+      <figure><img src="images/ui-dangerzone-mqtt-monitor.png" alt="Live MQTT monitor" width="960" height="587" loading="lazy" decoding="async"><figcaption>Live MQTT monitor</figcaption></figure>
+      <figure><img src="images/ui-dangerzone-debuglog.png" alt="Debug log viewer" width="960" height="587" loading="lazy" decoding="async"><figcaption>Live debug log</figcaption></figure>
+      <figure><img src="images/ui-dangerzone-backup-restore.png" alt="Backup and restore" width="960" height="635" loading="lazy" decoding="async"><figcaption>Backup / restore &amp; factory reset</figcaption></figure>
     </div>
   </div>
 </section>
@@ -244,6 +331,35 @@
       <div class="feat"><div class="ico">①</div><h3>Install the integration</h3><p>Search for <strong>HASS.Agent</strong> in HACS — it is in the default store, no custom repository needed. <a href="https://my.home-assistant.io/redirect/hacs_repository/?owner=v1k70rk4&amp;repository=HASS.Agent.NET10-Integration&amp;category=integration">Open it in HACS</a> or see the <a href="https://github.com/v1k70rk4/HASS.Agent.NET10-Integration">repository</a>.</p></div>
       <div class="feat"><div class="ico">②</div><h3>Install the Windows app</h3><p>Grab the signed installer from <a href="https://github.com/v1k70rk4/HASS.Agent.NET10/releases/latest">Releases</a> and run it.</p></div>
       <div class="feat"><div class="ico">③</div><h3>Connect &amp; enjoy</h3><p>Enable MQTT or the HA API in settings — the device appears in Home Assistant automatically.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="alt">
+  <div class="wrap">
+    <h2>Documentation</h2>
+    <p class="lead">Everything in detail, from the first notification to your own sensors.</p>
+    <div class="grid">
+      <div class="feat"><h3><a href="features.html">Features in detail</a></h3><p>Notifications with pictures and replies, the media player, the dashboard popup, display and audio, hotkeys, the Windows service, updates.</p></div>
+      <div class="feat"><h3><a href="sensors.html">Sensors</a></h3><p>The built-in Windows sensors with their attributes and polling profiles, and how to add your own.</p></div>
+      <div class="feat"><h3><a href="commands.html">Commands</a></h3><p>System commands and custom commands: programs, PowerShell, key presses, links, popup windows.</p></div>
+      <div class="feat"><h3><a href="connection.html">Connecting to Home Assistant</a></h3><p>MQTT, the Home Assistant WebSocket API and the local HTTP API, with the topics and events they use.</p></div>
+      <div class="feat"><h3><a href="migrating.html">Coming from HASS.Agent</a></h3><p>What is the same as in the classic client, what is different, and how to switch.</p></div>
+      <div class="feat"><h3><a href="https://github.com/v1k70rk4/HASS.Agent.NET10/blob/main/CHANGELOG.md">Changelog</a></h3><p>Every release and what changed in it.</p></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Questions and answers</h2>
+    <div class="grid">
+      <div class="feat"><h3>What is HASS.Agent .NET10?</h3><p>A free, open-source Windows app that connects a PC to Home Assistant. Home Assistant can show notifications on the PC, control its media playback and volume, read its sensors (CPU, memory, battery, active window and many more), and run commands on it such as lock, sleep, shutdown or your own scripts.</p></div>
+      <div class="feat"><h3>Is it the same as the original HASS.Agent?</h3><p>No. It began as a fork of HASS.Agent and has grown into a project of its own, built on .NET 10 with its own Home Assistant integration. The two do not share settings or entities. <a href="migrating.html">Coming from HASS.Agent</a> explains what is the same, what is different and how to switch.</p></div>
+      <div class="feat"><h3>Do I need an MQTT broker?</h3><p>No. The app connects over MQTT, over the Home Assistant WebSocket API, or both with automatic failover. The WebSocket API needs no broker and also works remotely, for example through Nabu Casa.</p></div>
+      <div class="feat"><h3>Which Windows versions does it run on?</h3><p>Windows 11 and Windows 10 version 2004 or newer, on x64. The .NET runtime is included, there is nothing else to install.</p></div>
+      <div class="feat"><h3>How do I install it?</h3><p>Install the HASS.Agent integration from the HACS default store in Home Assistant, then run the signed installer from the releases page on the PC and enable MQTT or the HA API in the settings. The PC then turns up in Home Assistant on its own.</p></div>
+      <div class="feat"><h3>Is it free?</h3><p>Yes. It is MIT-licensed, with no telemetry: the app only talks to your own Home Assistant or MQTT broker, and to GitHub to check for updates.</p></div>
     </div>
   </div>
 </section>
