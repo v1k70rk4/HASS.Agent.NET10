@@ -17,6 +17,7 @@ internal static partial class Strings
             // Bottom bar
             ["Btn.Save"] = "Save",
             ["Btn.Close"] = "Close",
+            ["Btn.Send"] = "Send",
             ["Btn.Cancel"] = "Cancel",
 
             // General page
@@ -147,6 +148,9 @@ internal static partial class Strings
             ["Cap.Title"] = "Capabilities",
             ["Cap.Functions"] = "Functions",
             ["Cap.Notifications"] = "Notifications (tray app)",
+            ["Cap.NotificationStyle"] = "Notification style",
+            ["Cap.NotificationStyleToast"] = "Windows notification",
+            ["Cap.NotificationStyleWindow"] = "Own window (always visible)",
             ["Cap.MediaPlayer"] = "Media player (tray app)",
             ["Cap.SensorsService"] = "System sensors — service",
             ["Cap.SensorsApp"] = "System sensors — tray app",

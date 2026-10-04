@@ -241,12 +241,16 @@ internal sealed class HaWebSocketService : IDisposable
     }
 
     /// <summary>Publishes a notification action response.</summary>
-    public async Task PublishNotificationActionAsync(string action, CancellationToken cancellationToken)
+    public async Task PublishNotificationActionAsync(
+        string action,
+        IReadOnlyDictionary<string, string>? input,
+        CancellationToken cancellationToken)
     {
         await FireEventAsync("hass_agent_notification_action", new
         {
             serial_number = _settings.SerialNumber,
             action,
+            input,
             created_at = DateTimeOffset.UtcNow
         }, cancellationToken);
     }

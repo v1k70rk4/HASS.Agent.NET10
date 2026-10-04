@@ -140,6 +140,9 @@ internal sealed class CompanionSettings
 
     public bool MqttNotificationsEnabled { get; set; } = true;
 
+    /// <summary>How a notification is shown: <see cref="NotificationStyles"/>.</summary>
+    public string NotificationStyle { get; set; } = NotificationStyles.Toast;
+
     public bool MqttMediaPlayerEnabled { get; set; } = true;
 
     public bool MqttButtonsEnabled { get; set; } = true;
@@ -257,6 +260,7 @@ internal sealed class CompanionSettings
         HaApiUrl = NormalizeUrl(HaApiUrl);
         if (Language is not "hu" and not "en") Language = "en";
         if (HaLanguage is not "hu" and not "en") HaLanguage = "en";
+        NotificationStyle = NotificationStyles.Normalize(NotificationStyle);
 
         if (string.IsNullOrWhiteSpace(SerialNumber))
         {

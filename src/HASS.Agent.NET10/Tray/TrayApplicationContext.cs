@@ -20,7 +20,8 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
     private readonly Control _uiInvoker = new();
     private readonly NotifyIcon _notifyIcon;
     private readonly List<ActionNotificationForm> _actionNotifications = [];
-    private string? _pendingNotificationAction;
+    private readonly NotificationImageCache _notificationImages;
+    private readonly ToastPresenter _toasts;
     private Action? _pendingBalloonAction;
     private MainForm? _mainForm;
     private WebViewForm? _dashboardPopup;
@@ -46,6 +47,11 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
         _log = log;
         _uiInvoker.CreateControl();
         _ = _uiInvoker.Handle;
+
+        _notificationImages = new NotificationImageCache(settings, log);
+        _toasts = new ToastPresenter(log);
+        _toasts.ActionSelected += RaiseNotificationAction;
+        _toasts.Listen();
 
         _hotkeys = new HotkeyService(log);
         _hotkeys.Pressed += (_, hotkey) => HotkeyPressed?.Invoke(this, hotkey);
@@ -87,10 +93,6 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
                 _pendingBalloonAction = null;
                 action();
             }
-            else
-            {
-                PublishPendingNotificationAction();
-            }
         };
     }
 
@@ -120,20 +122,45 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
             return;
         }
 
-        if (_uiInvoker.InvokeRequired)
+        if (!NotificationImageCache.HasImage(notification))
         {
-            try
-            {
-                _uiInvoker.BeginInvoke(() => ShowNotificationOnUiThread(notification));
-            }
-            catch (Exception ex)
-            {
-                _log.Error(ex, "Unable to dispatch notification to UI thread.");
-            }
+            DispatchNotification(notification, imageFile: null);
             return;
         }
 
-        ShowNotificationOnUiThread(notification);
+        // The picture is fetched first, off the UI thread; without it the notification
+        // is shown all the same.
+        _ = Task.Run(async () =>
+        {
+            string? imageFile = null;
+            try
+            {
+                imageFile = await _notificationImages.FetchAsync(notification);
+            }
+            catch (Exception ex)
+            {
+                _log.Warning($"Unable to fetch the notification picture: {ex.Message}");
+            }
+
+            DispatchNotification(notification, imageFile);
+        });
+    }
+
+    private void DispatchNotification(NotificationPayload notification, string? imageFile)
+    {
+        try
+        {
+            if (_uiInvoker.IsDisposed)
+            {
+                return;
+            }
+
+            _uiInvoker.BeginInvoke(() => ShowNotificationOnUiThread(notification, imageFile));
+        }
+        catch (Exception ex)
+        {
+            _log.Error(ex, "Unable to dispatch notification to UI thread.");
+        }
     }
 
     protected override void Dispose(bool disposing)
@@ -291,34 +318,57 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
         }
     }
 
-    private void ShowNotificationOnUiThread(NotificationPayload notification)
+    private void ShowNotificationOnUiThread(NotificationPayload notification, string? imageFile)
     {
-        if (notification.HasActions)
+        // The notification can ask for a style of its own: a doorbell that has to be seen
+        // also during Do not disturb goes to the window whatever the setting says.
+        var style = NotificationStyles.Normalize(notification.Data?.Style, _settings.NotificationStyle);
+        _log.Info(
+            $"Showing notification ({style}, {notification.Actions.Count} action(s), " +
+            $"{notification.Inputs.Count} input(s){(imageFile is null ? string.Empty : ", picture")}).");
+
+        if (style == NotificationStyles.Toast)
         {
-            _log.Info($"Showing actionable notification with {notification.Actions.Count} action(s).");
-            ShowActionNotification(notification);
-            return;
+            var shown = _toasts.TryShow(
+                notification,
+                imageFile,
+                failed: () => DispatchWindowNotification(notification, imageFile),
+                out var reason);
+            if (shown)
+            {
+                return;
+            }
+
+            _log.Warning($"Windows notification not shown: {reason}. Using the app's own window.");
         }
 
-        var title = string.IsNullOrWhiteSpace(notification.Title)
-            ? "Home Assistant"
-            : notification.Title.Trim();
-
-        _pendingNotificationAction = notification.PrimaryAction;
-
-        _notifyIcon.ShowBalloonTip(
-            notification.TimeoutMilliseconds,
-            title,
-            notification.Message!.Trim(),
-            ToolTipIcon.Info);
+        ShowWindowNotification(notification, imageFile);
     }
 
-    private void ShowActionNotification(NotificationPayload notification)
+    /// <summary>From a Windows callback thread: Windows gave up on a notification it had accepted.</summary>
+    private void DispatchWindowNotification(NotificationPayload notification, string? imageFile)
     {
-        var form = new ActionNotificationForm(notification, action =>
+        try
         {
-            NotificationActionRequested?.Invoke(this, new NotificationActionRequestedEventArgs(action));
-        });
+            if (!_uiInvoker.IsDisposed)
+            {
+                _uiInvoker.BeginInvoke(() => ShowWindowNotification(notification, imageFile));
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.Error(ex, "Unable to dispatch notification to UI thread.");
+        }
+    }
+
+    private void RaiseNotificationAction(string action, IReadOnlyDictionary<string, string> input)
+    {
+        NotificationActionRequested?.Invoke(this, new NotificationActionRequestedEventArgs(action, input));
+    }
+
+    private void ShowWindowNotification(NotificationPayload notification, string? imageFile)
+    {
+        var form = new ActionNotificationForm(notification, imageFile, RaiseNotificationAction);
 
         _actionNotifications.Add(form);
         form.FormClosed += (_, _) =>
@@ -341,19 +391,6 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
         }
     }
 
-    private void PublishPendingNotificationAction()
-    {
-        var action = _pendingNotificationAction;
-        _pendingNotificationAction = null;
-
-        if (string.IsNullOrWhiteSpace(action))
-        {
-            return;
-        }
-
-        NotificationActionRequested?.Invoke(this, new NotificationActionRequestedEventArgs(action.Trim()));
-    }
-
     private static Icon LoadTrayIcon()
     {
         var stream = typeof(TrayApplicationContext).Assembly.GetManifestResourceStream("hassagent.ico");
@@ -361,7 +398,12 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
     }
 }
 
-internal sealed class NotificationActionRequestedEventArgs(string action) : EventArgs
+internal sealed class NotificationActionRequestedEventArgs(
+    string action,
+    IReadOnlyDictionary<string, string>? input = null) : EventArgs
 {
     public string Action { get; } = action;
+
+    /// <summary>What was typed into the notification's text fields, by field id.</summary>
+    public IReadOnlyDictionary<string, string>? Input { get; } = input;
 }
