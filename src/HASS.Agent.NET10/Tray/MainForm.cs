@@ -1660,8 +1660,14 @@ internal sealed class MainForm : Form
         supportBtn.Click += (_, _) => OpenUrl(AppIdentity.SupportUrl);
         card.Controls.Add(supportBtn);
 
+        // The star is the one thing the project asks for, here and nowhere else in the app.
+        var starBtn = MakeSecondaryButton(S("About.Star"), 170, 32);
+        starBtn.Location = new Point(supportBtn.Right + D(8), D(214));
+        starBtn.Click += (_, _) => OpenUrl(AppIdentity.GitHubRepositoryUrl);
+        card.Controls.Add(starBtn);
+
         var updateBtn = MakePrimaryButton(S("About.CheckUpdates"), 160, 32);
-        updateBtn.Location = new Point(supportBtn.Right + D(8), D(214));
+        updateBtn.Location = new Point(starBtn.Right + D(8), D(214));
         updateBtn.Click += async (_, _) => await CheckForUpdatesAsync(updateBtn);
         card.Controls.Add(updateBtn);
 

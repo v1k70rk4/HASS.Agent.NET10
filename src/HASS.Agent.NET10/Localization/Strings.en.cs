@@ -343,6 +343,7 @@ internal static partial class Strings
             ["About.ReportIssue"] = "Report issue",
             ["About.ReleaseNotes"] = "Release notes",
             ["About.Support"] = "☕ Buy me a coffee",
+            ["About.Star"] = "⭐ Star on GitHub",
             ["About.WhatsNew"] = "What's new",
             ["About.CheckUpdates"] = "Check updates",
             ["About.CheckingUpdates"] = "Checking...",

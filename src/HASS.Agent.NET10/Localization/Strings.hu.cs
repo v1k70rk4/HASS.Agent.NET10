@@ -343,6 +343,7 @@ internal static partial class Strings
             ["About.ReportIssue"] = "Hibabejelentés",
             ["About.ReleaseNotes"] = "Kiadási jegyzet",
             ["About.Support"] = "☕ Hívj meg egy kávéra",
+            ["About.Star"] = "⭐ Csillag a GitHubon",
             ["About.WhatsNew"] = "Újdonságok",
             ["About.CheckUpdates"] = "Frissítés keresése",
             ["About.CheckingUpdates"] = "Ellenőrzés...",
