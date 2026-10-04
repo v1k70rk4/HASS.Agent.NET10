@@ -4,7 +4,7 @@ Every release of HASS.Agent .NET10, newest first. The downloads are on the [rele
 
 ## Unreleased
 
-- **Fixed: stale data in Home Assistant after its restart, on a PC that only uses the HA API.** What the client sends once on connect (its discovery, the service status, the update state) reached Home Assistant before the integration was listening, and the HA API keeps nothing for latecomers. The device then showed an old version and an unavailable update entity. The client now sends these again when the integration asks (integration 10.9.0), and every ten minutes on its own.
+- **Fixed: stale data in Home Assistant after its restart, on a PC that only uses the HA API.** What the client sends once on connect (its discovery, the service status, the update state) reached Home Assistant before the integration was listening, and the HA API keeps nothing for latecomers. The device then showed an old version and an unavailable update entity. The client now sends these again when the integration asks (integration 10.9.0), and the tray app sends its discovery again every ten minutes on its own.
 - **A *Star on GitHub* button on the About page**, next to the coffee one. The only place the app asks for it.
 
 ## 10.9.0-beta.2
