@@ -366,7 +366,7 @@ Signing happens on the maintainer's machine through SimplySign, unlocked with a 
 
 ## Quick Start
 
-1. Install the Home Assistant integration:
+1. Install the Home Assistant integration from HACS (it is in the default store, search for **HASS.Agent**):
    [v1k70rk4/HASS.Agent.NET10-Integration](https://github.com/v1k70rk4/HASS.Agent.NET10-Integration)
 2. Download a release build or the installer from [Releases](https://github.com/v1k70rk4/HASS.Agent.NET10/releases), or build from source.
 3. Run the installer or start `HASS.Agent.NET10.exe` directly.

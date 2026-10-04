@@ -72,6 +72,12 @@
   .feat .ico { font-size: 1.7rem; }
   .feat h3 { color: var(--text); font-size: 1.15rem; margin: 12px 0 6px; }
   .feat p { color: var(--text-muted); font-size: .96rem; }
+  .beta {
+    display: inline-block; font-size: .7rem; font-weight: 700; letter-spacing: .03em;
+    padding: 2px 8px; border-radius: 999px; background: #fef3c7; color: #92400e;
+    vertical-align: middle; margin-left: 6px;
+  }
+  p.foot { text-align: center; color: var(--text-muted); font-size: .92rem; max-width: 720px; margin: 24px auto 0; }
 
   /* Connection modes */
   .modes { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; margin-top: 44px; }
@@ -140,11 +146,15 @@
     <div class="grid">
       <div class="feat"><div class="ico">🔔</div><h3>Notifications</h3><p>Home Assistant notifications as tray balloons or actionable popups — buttons fire action events back to HA for automations.</p></div>
       <div class="feat"><div class="ico">🎵</div><h3>Media player</h3><p>Control and observe the active media session — play, pause, skip, volume, and album art straight from HA.</p></div>
-      <div class="feat"><div class="ico">📊</div><h3>Sensors</h3><p>Built-in system sensors plus custom sensors (process, service, disk) with fast / normal / hourly / startup polling profiles.</p></div>
-      <div class="feat"><div class="ico">⚡</div><h3>Commands</h3><p>Shutdown, restart, and custom command buttons — run from automations or the HA dashboard.</p></div>
+      <div class="feat"><div class="ico">📊</div><h3>Sensors</h3><p>Built-in system sensors plus your own — a process, a service, a drive, the output of a command or script — with fast / normal / hourly / startup polling profiles. In the beta: CPU and GPU temperatures through LibreHardwareMonitor.</p></div>
+      <div class="feat"><div class="ico">⚡</div><h3>Commands</h3><p>Lock, sleep, shutdown, restart — and your own buttons: programs, PowerShell scripts, key presses, links. Run them from automations or the HA dashboard.</p></div>
+      <div class="feat"><div class="ico">🪟</div><h3>Dashboard popup</h3><p>Your Home Assistant dashboard in a small window above the tray, one click away — or any page in a window of its own, like the camera when the doorbell rings.</p></div>
+      <div class="feat"><div class="ico">🖥️</div><h3>Display &amp; audio <span class="beta">BETA</span></h3><p>The screen as a light in Home Assistant — brightness, off, on. Pick the default speaker or microphone, and set the volume of a single app.</p></div>
+      <div class="feat"><div class="ico">⌨️</div><h3>Hotkeys <span class="beta">BETA</span></h3><p>Give a key combination a name and it becomes an event in Home Assistant — start any automation straight from the keyboard.</p></div>
       <div class="feat"><div class="ico">🛠️</div><h3>Windows service</h3><p>An optional system service handles features that should work even when no user is logged in.</p></div>
       <div class="feat"><div class="ico">🧰</div><h3>Danger Zone</h3><p>Opt-in toolbox: MQTT cleanup, live monitor, debug log, settings backup/restore, and factory reset.</p></div>
     </div>
+    <p class="foot"><span class="beta" style="margin-left:0">BETA</span> is in <a href="https://github.com/v1k70rk4/HASS.Agent.NET10/releases">10.9.0-beta.1</a>, together with the integration's 10.9.0 beta. Tick <em>Beta updates</em> on the Danger Zone page to be offered it.</p>
   </div>
 </section>
 
@@ -222,8 +232,8 @@
     <h2>Get started</h2>
     <p class="lead">Two pieces: the Windows app and the Home Assistant integration.</p>
     <div class="grid">
-      <div class="feat"><div class="ico">①</div><h3>Install the integration</h3><p>Add <a href="https://github.com/v1k70rk4/HASS.Agent.NET10-Integration">HASS.Agent.NET10-Integration</a> to Home Assistant (via HACS custom repository).</p></div>
-      <div class="feat"><div class="ico">②</div><h3>Install the Windows app</h3><p>Grab the installer from <a href="https://github.com/v1k70rk4/HASS.Agent.NET10/releases/latest">Releases</a> and run it.</p></div>
+      <div class="feat"><div class="ico">①</div><h3>Install the integration</h3><p>Search for <strong>HASS.Agent</strong> in HACS — it is in the default store, no custom repository needed. <a href="https://my.home-assistant.io/redirect/hacs_repository/?owner=v1k70rk4&amp;repository=HASS.Agent.NET10-Integration&amp;category=integration">Open it in HACS</a> or see the <a href="https://github.com/v1k70rk4/HASS.Agent.NET10-Integration">repository</a>.</p></div>
+      <div class="feat"><div class="ico">②</div><h3>Install the Windows app</h3><p>Grab the signed installer from <a href="https://github.com/v1k70rk4/HASS.Agent.NET10/releases/latest">Releases</a> and run it.</p></div>
       <div class="feat"><div class="ico">③</div><h3>Connect &amp; enjoy</h3><p>Enable MQTT or the HA API in settings — the device appears in Home Assistant automatically.</p></div>
     </div>
   </div>
@@ -235,7 +245,8 @@
     <div class="row">
       <a href="https://github.com/v1k70rk4/HASS.Agent.NET10">App repo</a> ·
       <a href="https://github.com/v1k70rk4/HASS.Agent.NET10-Integration">Integration</a> ·
-      <a href="https://github.com/v1k70rk4/HASS.Agent.NET10/releases">Releases</a>
+      <a href="https://github.com/v1k70rk4/HASS.Agent.NET10/releases">Releases</a> ·
+      <a href="https://ko-fi.com/v1k70rk4">Ko-fi</a>
     </div>
     <div class="row" style="margin-top:14px; color:#64748b;">MIT licensed · Not affiliated with the Home Assistant project.</div>
   </div>
