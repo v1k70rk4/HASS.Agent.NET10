@@ -195,7 +195,7 @@ internal sealed class MqttCompanionService : IDisposable
             || _subscribedButtons != _settings.MqttButtonsEnabled;
     }
 
-    public async Task PublishNotificationActionAsync(string action)
+    public async Task PublishNotificationActionAsync(string action, IReadOnlyDictionary<string, string>? input = null)
     {
         if (string.IsNullOrWhiteSpace(action))
         {
@@ -205,15 +205,22 @@ internal sealed class MqttCompanionService : IDisposable
         var trimmedAction = action.Trim();
         _log.Info($"Publishing notification action: {trimmedAction}");
 
+        // What was typed into the notification's text fields, by field id. Left out when
+        // there is none, as before.
+        if (input is { Count: 0 })
+        {
+            input = null;
+        }
+
         if (_isOnWebSocket && _haWs is not null)
         {
-            await _haWs.PublishNotificationActionAsync(trimmedAction, _cts?.Token ?? CancellationToken.None);
+            await _haWs.PublishNotificationActionAsync(trimmedAction, input, _cts?.Token ?? CancellationToken.None);
             return;
         }
 
         await PublishJsonAsync(
             $"hass.agent/notifications/{TopicId}/actions",
-            new NotificationActionMessage(_settings.DeviceName, trimmedAction, DateTimeOffset.UtcNow, null),
+            new NotificationActionMessage(_settings.DeviceName, trimmedAction, DateTimeOffset.UtcNow, input),
             retain: false);
     }
 
@@ -2388,7 +2395,7 @@ internal sealed record NotificationActionMessage(
     [property: JsonPropertyName("device_name")] string DeviceName,
     [property: JsonPropertyName("action")] string Action,
     [property: JsonPropertyName("created_at")] DateTimeOffset CreatedAt,
-    [property: JsonPropertyName("input")] string? Input);
+    [property: JsonPropertyName("input")] IReadOnlyDictionary<string, string>? Input);
 
 internal sealed record MqttServiceStatusMessage(
     [property: JsonPropertyName("online")] bool Online,

@@ -1,5 +1,5 @@
 ﻿#ifndef MyAppVersion
-#define MyAppVersion "10.9.0-beta.1"
+#define MyAppVersion "10.9.0-beta.2"
 #endif
 
 ; The file version resource takes numbers only: a pre-release ("10.9.0-beta.1") keeps its
@@ -96,6 +96,7 @@ Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall add rule name=""{
 [UninstallRun]
 Filename: "{app}\{#MyAppExeName}"; Parameters: "--stop-service --quiet"; Flags: runhidden waituntilterminated skipifdoesntexist
 Filename: "{app}\{#MyAppExeName}"; Parameters: "--uninstall-service --quiet"; Flags: runhidden waituntilterminated skipifdoesntexist
+Filename: "{app}\{#MyAppExeName}"; Parameters: "--unregister-notifications"; Flags: runhidden waituntilterminated skipifdoesntexist
 Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=""{#MyAppName} Local API"""; Flags: runhidden waituntilterminated
 
 [Code]

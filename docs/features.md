@@ -4,9 +4,9 @@
 
 ## Notifications
 
-Receive Home Assistant notifications on Windows as tray balloon tips or actionable popup windows.
+Receive Home Assistant notifications on Windows, as a Windows notification or in the app's own window.
 
-Supports actionable notifications: buttons in the popup can publish an action event back to Home Assistant, so automations can react to user choices.
+Supports actionable notifications: buttons on the notification send an action event back to Home Assistant, so automations can react to user choices.
 
 ```yaml
 action: hass_agent.send_notification
@@ -23,7 +23,62 @@ data:
         title: "Turn off"
 ```
 
-Button presses are published to MQTT and appear as an event entity in Home Assistant.
+Button presses arrive in Home Assistant on the device's *Notification actions* event entity, and as a `hass_agent_notifications` event on the event bus.
+
+### Pictures, text fields and more
+
+> From 10.9.0 (in the beta from 10.9.0-beta.2).
+
+What can go under `data`:
+
+| Field | What it does |
+|-------|--------------|
+| `actions` | Buttons, each with an `action` (what comes back) and a `title` (what the button says). Up to five. |
+| `image` | A picture to show: a web address. With the integration 10.9.0 or newer also a path on Home Assistant (`/local/doorbell.jpg`, `/api/camera_proxy/camera.front_door`) or simply a camera or image entity (`camera.front_door`); the integration makes it fetchable for a few minutes, and the PC keeps its own copy. |
+| `inputs` | Text fields, each with an `id` and a `title` (the hint shown in the empty field). Up to five. What was typed comes back with the pressed button, in `input`, by id. With no button of your own, a *Send* button is added, and its action is `reply`. |
+| `duration` | Seconds on screen, 1 to 60 (default 10). Windows knows two lengths for its own notifications: above 10 it uses the long one, about 25 seconds. |
+| `style` | `toast` or `window`: the [notification style](#notification-style) for this one notification, whatever the setting says. |
+
+```yaml
+action: hass_agent.send_notification
+target:
+  entity_id: notify.my_pc_notifications
+data:
+  title: Doorbell
+  message: "Somebody is at the front door."
+  data:
+    image: camera.front_door
+    style: window
+    duration: 30
+    inputs:
+      - id: answer
+        title: "Say something through the intercom"
+    actions:
+      - action: open_door
+        title: "Open"
+      - action: speak
+        title: "Speak"
+```
+
+The event for the pressed button then carries what was typed:
+
+```yaml
+action: speak
+input:
+  answer: "Leave it at the door, please"
+device_name: MY-PC
+```
+
+### Notification style
+
+> From 10.9.0 (in the beta from 10.9.0-beta.2).
+
+The **Notification style** on the Capabilities page decides how a notification is shown:
+
+- **Windows notification** (the default). Windows shows it like any other notification: it follows Do not disturb and focus sessions, it is held back while a full-screen game or a presentation runs, and it stays in the notification centre afterwards, where its buttons still work. If notifications are turned off for HASS.Agent in the Windows settings, the app uses its own window instead.
+- **Own window.** A small always-on-top window in the corner of the screen, visible whatever Windows is doing. It does not take the keyboard focus when it appears, and it closes on its own after the duration, unless somebody has started typing into it.
+
+A single notification can choose with `style`, so the doorbell can use the window while everything else stays a Windows notification.
 
 ## Media Player
 

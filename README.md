@@ -2,7 +2,7 @@
 
 ![Windows](https://img.shields.io/badge/Windows-10%202004%2B%20%7C%2011-0078D4?logo=windows&logoColor=white)
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet&logoColor=white)
-![Version](https://img.shields.io/badge/version-10.9.0--beta.1-orange)
+![Version](https://img.shields.io/badge/version-10.9.0--beta.2-orange)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-MQTT%20%7C%20WebSocket%20API-41BDF5?logo=homeassistant&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 [![Website](https://img.shields.io/badge/website-v1k70rk4.github.io-41bdf5?logo=github)](https://v1k70rk4.github.io/HASS.Agent.NET10/)
@@ -22,9 +22,9 @@ A modern Windows companion app for Home Assistant.
 
 It is designed for Windows PCs you want to observe and control from Home Assistant: media playback, notifications, sensors, shutdown/restart, command buttons, and rich machine state.
 
-The .NET10 line starts at **version 10.0.0**. The classic client is a separate program: if you want to stay with it, it is still available from its own project, and the integration keeps a [`legacy` branch](https://github.com/v1k70rk4/HASS.Agent.NET10-Integration/tree/legacy) for it.
+The .NET10 line starts at **version 10.0.0**. The classic client is a separate program: if you want to stay with it, it is still available from its own project, and the integration keeps a [`legacy` branch](https://github.com/v1k70rk4/HASS.Agent.NET10-Integration/tree/legacy) for it. Thinking about switching? See [Coming from HASS.Agent](docs/migrating.md).
 
-> **Stable:** [10.8.0](https://github.com/v1k70rk4/HASS.Agent.NET10/releases/latest) &nbsp;·&nbsp; **Beta:** [10.9.0-beta.1](https://github.com/v1k70rk4/HASS.Agent.NET10/releases/tag/v10.9.0-beta.1) &nbsp;·&nbsp; [What changed](#what-changed) &nbsp;·&nbsp; [Full changelog](CHANGELOG.md)
+> **Stable:** [10.8.0](https://github.com/v1k70rk4/HASS.Agent.NET10/releases/latest) &nbsp;·&nbsp; **Beta:** [10.9.0-beta.2](https://github.com/v1k70rk4/HASS.Agent.NET10/releases/tag/v10.9.0-beta.2) &nbsp;·&nbsp; [What changed](#what-changed) &nbsp;·&nbsp; [Full changelog](CHANGELOG.md)
 
 ---
 
@@ -84,7 +84,7 @@ During upgrades the installer stops the running tray app, stops the system servi
 
 | | What it does | Details |
 |---|---|---|
-| <a id="notifications"></a>**Notifications** | Home Assistant notifications as tray balloons or actionable popups; a button press comes back to Home Assistant as an event. | [Notifications](docs/features.md#notifications) |
+| <a id="notifications"></a>**Notifications** | Home Assistant notifications as Windows notifications or in the app's own always-visible window, with pictures, buttons and text fields; what is pressed and typed comes back to Home Assistant as an event. | [Notifications](docs/features.md#notifications) |
 | <a id="media-player"></a>**Media player** | The active Windows media session as a `media_player`: title, play / pause, skip, seek, volume, TTS. | [Media Player](docs/features.md#media-player) |
 | <a id="sensors"></a><a id="built-in-sensors"></a>**Sensors** | Built-in system sensors (CPU, memory, drives, network, battery, session, GPU, camera and microphone in use, and more), each with its own polling profile. | [Sensors](docs/sensors.md) |
 | <a id="custom-sensors"></a>**Custom sensors** | Your own: a process, a service, a drive, an attribute of a built-in sensor, the output of a command or script, a LibreHardwareMonitor value (beta). | [Custom Sensors](docs/sensors.md#custom-sensors) |
@@ -107,6 +107,7 @@ During upgrades the installer stops the running tray app, stops the system servi
 - [Sensors](docs/sensors.md): the built-in sensors, their attributes and polling profiles, custom sensors
 - <a id="mqtt-topics"></a><a id="ha-api-websocket-events"></a><a id="local-http-api"></a><a id="windows-firewall"></a>[Connecting to Home Assistant](docs/connection.md): connection modes, MQTT topics, HA API events, the local HTTP API, the firewall rule
 - <a id="build-from-source"></a><a id="minimal-development-setup"></a>[Building and development](docs/development.md): build from source, GitHub Actions, development setup
+- [Coming from HASS.Agent](docs/migrating.md): what is the same, what is different, how to switch
 - [Changelog](CHANGELOG.md): every release
 - [Home Assistant integration](https://github.com/v1k70rk4/HASS.Agent.NET10-Integration): entities, services, events
 
@@ -146,11 +147,18 @@ No telemetry, analytics, or usage data is collected or transmitted.
 
 ## What Changed
 
-### 10.9.0-beta.1
+### 10.9.0-beta.2
 
-> **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered it, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.8.0**, below. The Home Assistant side of the new entities (display light, audio selects, hotkeys, `set_app_volume`) is in the integration's **10.9.0-beta.1**: in HACS, open the integration, choose **Redownload**, turn on **Show beta versions** and pick it. The stable 10.9.0 of both is not out yet.
+> **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered it, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.8.0**, below. The Home Assistant side of the new entities (display light, audio selects, hotkeys, `set_app_volume`) is in the integration's **10.9.0-beta.2**: in HACS, open the integration, choose **Redownload**, turn on **Show beta versions** and pick it. The stable 10.9.0 of both is not out yet.
 
 Works with the Home Assistant integration **10.6.7** or newer; the display light needs integration **10.9.0**. Signed release.
+
+**New since beta.1**
+
+- **Notifications as Windows notifications, with pictures and text fields.** A notification from Home Assistant is now a real Windows notification by default: it follows Do not disturb, stays in the notification centre, and can carry a picture (`image`), up to five buttons, and text fields (`inputs`) whose content comes back to Home Assistant with the pressed button. The app's own window stays as the other **Notification style** on the Capabilities page, for a notification that is visible whatever Windows is doing; it shows the same picture and text fields, and it no longer takes the keyboard focus when it appears. A single notification can pick its style with `style: window` or `style: toast`, so the doorbell can always use the window. Until now a notification without buttons was a tray balloon and one with buttons the app's window. The picture can be a web address; with the integration 10.9.0-beta.2 also a path on Home Assistant or a camera entity. See [Notifications](docs/features.md#notifications).
+- **The update report also arrives after a downgrade.** The installer now tells the service which version it replaced, so the "updated from X to Y" notification is sent when the previous version was older than 10.9.0, or was installed over a newer one.
+
+**From beta.1**
 
 - **The display as a light in Home Assistant** (integration 10.9.0+). Turn on the new **Display brightness** sensor (tray app, off by default) and the PC gets a *Display* light: its brightness slider sets the screen brightness, off switches the monitor off, on wakes it. It works with what Windows itself offers: the built-in panel of a laptop, and external monitors that speak DDC/CI. With an older integration the sensor does nothing. With no adjustable display (many TVs, some docks) the light is a plain on/off one, without the slider.
 - **Choose the audio device from Home Assistant** (integration 10.9.0+). The *Audio output device* sensor now comes with a select that makes another playback device the default, for "switch to the headset" or "sound to the TV" automations. The new **Audio input device** sensor (off by default) does the same for the recording device.

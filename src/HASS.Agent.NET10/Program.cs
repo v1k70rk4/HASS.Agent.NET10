@@ -53,6 +53,21 @@ internal static class Program
             return;
         }
 
+        // The uninstaller: takes back what Windows notifications registered for this user.
+        if (args.Any(arg => string.Equals(arg, "--unregister-notifications", StringComparison.OrdinalIgnoreCase)))
+        {
+            try
+            {
+                Tray.ToastPresenter.Unregister();
+            }
+            catch
+            {
+                // Nothing was registered, or it is not ours to remove; either way, done.
+            }
+
+            return;
+        }
+
         InitializeWindowsForms();
 
         // Load language early so elevated service commands show localized messages
@@ -67,7 +82,11 @@ internal static class Program
         if (!isFirstInstance)
         {
             // --quiet: relaunch watchdogs may race an already-restarted instance.
-            if (!args.Any(arg => string.Equals(arg, "--quiet", StringComparison.OrdinalIgnoreCase)))
+            // -ToastActivated: Windows starting the app for a pressed notification button;
+            // the running instance has it already.
+            if (!args.Any(arg =>
+                    string.Equals(arg, "--quiet", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(arg, "-ToastActivated", StringComparison.OrdinalIgnoreCase)))
             {
                 MessageBox.Show(
                     $"{AppIdentity.DisplayName} is already running.",
@@ -155,7 +174,7 @@ internal static class Program
         trayContext.NotificationActionRequested += (_, args) =>
         {
             log.Info($"Notification action selected: {args.Action}");
-            _ = Task.Run(() => mqttService.PublishNotificationActionAsync(args.Action));
+            _ = Task.Run(() => mqttService.PublishNotificationActionAsync(args.Action, args.Input));
         };
         trayContext.HotkeyPressed += (_, hotkey) => _ = Task.Run(() => mqttService.PublishHotkeyAsync(hotkey));
         trayContext.SettingsSaved += (_, _) =>

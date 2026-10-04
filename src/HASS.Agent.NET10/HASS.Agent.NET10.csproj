@@ -13,7 +13,7 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <PlatformTarget>x64</PlatformTarget>
     <Platforms>x64</Platforms>
-    <Version>10.9.0-beta.1</Version>
+    <Version>10.9.0-beta.2</Version>
     <Company>v1k70rk4</Company>
     <Authors>v1k70rk4</Authors>
     <Description>Modern .NET 10 Windows client for the HASS.Agent Home Assistant integration.</Description>
@@ -29,6 +29,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.Toolkit.Uwp.Notifications" Version="7.1.3" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4258.31" />
     <PackageReference Include="MQTTnet" Version="5.1.0.1559" />
     <PackageReference Include="NAudio" Version="2.3.0" />

@@ -77,6 +77,7 @@ internal sealed class MainForm : Form
     private readonly Label _haApiDisabledWarning = new();
 
     private readonly CheckBox _capNotify = new();
+    private readonly ComboBox _notificationStyle = new() { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly TextBox _webViewUrl = new();
     private readonly NumericUpDown _webViewWidth = new() { Minimum = WebViewOptions.MinimumEdge, Maximum = WebViewOptions.MaximumEdge, Increment = 20 };
     private readonly NumericUpDown _webViewHeight = new() { Minimum = WebViewOptions.MinimumEdge, Maximum = WebViewOptions.MaximumEdge, Increment = 20 };
@@ -824,15 +825,21 @@ internal sealed class MainForm : Form
         }
     }
 
+    private static readonly string[] NotificationStyleValues = [NotificationStyles.Toast, NotificationStyles.Window];
+
     private Panel BuildCapabilitiesPage()
     {
         var page = MakePage();
 
         AddPageTitle(page, S("Cap.Title"));
 
-        var card1 = MakeCard(page, 28, 56, 600, 300, S("Cap.Functions"));
+        var card1 = MakeCard(page, 28, 56, 600, 336, S("Cap.Functions"));
         var y = 44;
         y = AddCheck(card1, _capNotify, S("Cap.Notifications"), y);
+        // Same order as NotificationStyleValues.
+        _notificationStyle.Items.Add(S("Cap.NotificationStyleToast"));
+        _notificationStyle.Items.Add(S("Cap.NotificationStyleWindow"));
+        y = AddField(card1, S("Cap.NotificationStyle"), _notificationStyle, y + 2, inputWidth: 260) + 2;
         y = AddCheck(card1, _capMedia, S("Cap.MediaPlayer"), y);
         y = AddCheck(card1, _capSensorsService, S("Cap.SensorsService"), y);
         y = AddCheck(card1, _capSensorsApp, S("Cap.SensorsApp"), y);
@@ -853,7 +860,7 @@ internal sealed class MainForm : Form
             Text = S("Cap.Seconds"), Location = Pt(296, y - 30), AutoSize = true, ForeColor = TextMuted
         });
 
-        var cmdY = 368;
+        var cmdY = 404;
         var card2 = MakeCard(page, 28, cmdY, 600, 50 + SystemCommandCatalog.Commands.Count * 30 + 16, S("Cap.Commands"));
         y = 44;
         card2.Controls.Add(new Label { Text = "Tray", Font = new Font("Segoe UI", 8.5F, FontStyle.Bold), ForeColor = TextMuted, Location = Pt(320, y), AutoSize = true });
@@ -2382,6 +2389,7 @@ internal sealed class MainForm : Form
         _webViewOnClick.Checked = _settings.WebViewOnTrayClick;
 
         _capNotify.Checked = _settings.MqttNotificationsEnabled;
+        _notificationStyle.SelectedIndex = Math.Max(0, Array.IndexOf(NotificationStyleValues, _settings.NotificationStyle));
         _capMedia.Checked = _settings.MqttMediaPlayerEnabled;
         _capSensorsService.Checked = _settings.MqttServiceSystemSensorsEnabled;
         _capSensorsApp.Checked = _settings.MqttSystemSensorsEnabled;
@@ -2671,6 +2679,7 @@ internal sealed class MainForm : Form
         _settings.WebViewOnTrayClick = _webViewOnClick.Checked;
 
         _settings.MqttNotificationsEnabled = _capNotify.Checked;
+        _settings.NotificationStyle = NotificationStyleValues[Math.Max(0, _notificationStyle.SelectedIndex)];
         _settings.MqttMediaPlayerEnabled = _capMedia.Checked;
         _settings.MqttServiceSystemSensorsEnabled = _capSensorsService.Checked;
         _settings.MqttSystemSensorsEnabled = _capSensorsApp.Checked;

@@ -17,6 +17,7 @@ internal static partial class Strings
             // Bottom bar
             ["Btn.Save"] = "Mentés",
             ["Btn.Close"] = "Bezárás",
+            ["Btn.Send"] = "Küldés",
             ["Btn.Cancel"] = "Mégse",
 
             // General page
@@ -147,6 +148,9 @@ internal static partial class Strings
             ["Cap.Title"] = "Képességek",
             ["Cap.Functions"] = "Funkciók",
             ["Cap.Notifications"] = "Értesítések (tray app)",
+            ["Cap.NotificationStyle"] = "Értesítés stílusa",
+            ["Cap.NotificationStyleToast"] = "Windows-értesítés",
+            ["Cap.NotificationStyleWindow"] = "Saját ablak (mindig látszik)",
             ["Cap.MediaPlayer"] = "Médialejátszó (tray app)",
             ["Cap.SensorsService"] = "Rendszerszenzorok (szolgáltatás)",
             ["Cap.SensorsApp"] = "Rendszerszenzorok (tray app)",

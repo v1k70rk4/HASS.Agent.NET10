@@ -12,14 +12,59 @@ internal sealed class NotificationPayload
 
     public NotificationDataPayload? Data { get; init; }
 
-    public string? PrimaryAction => Data?.Actions.FirstOrDefault(action => !string.IsNullOrWhiteSpace(action.Action))?.Action;
+    /// <summary>The action sent when a notification has text inputs but no button of its own.</summary>
+    public const string ReplyAction = "reply";
+
+    /// <summary>Windows shows at most five buttons on a notification; the app's own window follows suit.</summary>
+    public const int MaxActions = 5;
+
+    public const int MaxInputs = 5;
 
     public IReadOnlyList<NotificationActionPayload> Actions =>
-        Data?.Actions
+        Data?.Actions?
             .Where(action => !string.IsNullOrWhiteSpace(action.Action))
+            .Take(MaxActions)
             .ToList() ?? [];
 
     public bool HasActions => Actions.Count > 0;
+
+    /// <summary>
+    /// The text fields to show, each with an id that is unique within the notification
+    /// (a missing or repeated one is replaced by "input1", "input2", ...).
+    /// </summary>
+    public IReadOnlyList<NotificationInputPayload> Inputs
+    {
+        get
+        {
+            var inputs = new List<NotificationInputPayload>();
+            foreach (var input in Data?.Inputs ?? [])
+            {
+                if (input is null || inputs.Count == MaxInputs)
+                {
+                    continue;
+                }
+
+                var id = input.Id?.Trim();
+                if (string.IsNullOrEmpty(id) || IsTaken(id))
+                {
+                    // The generated id must not be one that an earlier field already has.
+                    var number = inputs.Count + 1;
+                    do
+                    {
+                        id = $"input{number++}";
+                    }
+                    while (IsTaken(id));
+                }
+
+                inputs.Add(new NotificationInputPayload { Id = id, Title = input.Title?.Trim() });
+            }
+
+            return inputs;
+
+            bool IsTaken(string candidate) =>
+                inputs.Any(known => string.Equals(known.Id, candidate, StringComparison.Ordinal));
+        }
+    }
 
     public int TimeoutMilliseconds
     {
@@ -39,12 +84,42 @@ internal sealed class NotificationDataPayload
 {
     public int Duration { get; init; }
 
+    /// <summary>Web address of a picture to show with the notification.</summary>
     public string? Image { get; init; }
+
+    /// <summary>
+    /// The same picture as a path on Home Assistant, signed by the integration (10.9.0+).
+    /// Used with this PC's own Home Assistant address when it has one, since that is the
+    /// address known to be reachable from here.
+    /// </summary>
+    [JsonPropertyName("image_path")]
+    public string? ImagePath { get; init; }
+
+    /// <summary>
+    /// A second address of the same picture, tried when <see cref="Image"/> cannot be
+    /// reached: the integration sends Home Assistant's internal address first and the
+    /// external one here.
+    /// </summary>
+    [JsonPropertyName("image_alt")]
+    public string? ImageAlt { get; init; }
 
     [JsonPropertyName("icon_url")]
     public string? IconUrl { get; init; }
 
-    public List<NotificationActionPayload> Actions { get; init; } = [];
+    /// <summary>"toast" or "window": overrides the notification style setting for this one.</summary>
+    public string? Style { get; init; }
+
+    public List<NotificationActionPayload>? Actions { get; init; } = [];
+
+    public List<NotificationInputPayload?>? Inputs { get; init; } = [];
+}
+
+internal sealed class NotificationInputPayload
+{
+    public string? Id { get; init; }
+
+    /// <summary>Shown in the empty field as a hint.</summary>
+    public string? Title { get; init; }
 }
 
 internal sealed class NotificationActionPayload
