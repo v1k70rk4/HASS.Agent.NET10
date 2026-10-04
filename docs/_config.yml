@@ -1,0 +1,30 @@
+# Settings for the pages GitHub Pages renders from the markdown files in this folder
+# (index.html is a page of its own and does not use them).
+title: HASS.Agent .NET10
+description: A free Windows companion app for Home Assistant, with notifications, media player, sensors, commands and one-click updates.
+lang: en
+url: https://v1k70rk4.github.io
+baseurl: /HASS.Agent.NET10
+
+defaults:
+  - scope: { path: "" }
+    values:
+      image: /images/social-preview.png
+  - scope: { path: "features.md" }
+    values:
+      description: "HASS.Agent .NET10 features in detail: Home Assistant notifications on Windows with pictures and replies, media player, dashboard popup, display and audio control, hotkeys, Windows service, updates."
+  - scope: { path: "sensors.md" }
+    values:
+      description: "Windows sensors for Home Assistant with HASS.Agent .NET10: the built-in sensors, their attributes and polling profiles, and custom sensors for processes, services, drives, commands and LibreHardwareMonitor."
+  - scope: { path: "commands.md" }
+    values:
+      description: "Control a Windows PC from Home Assistant with HASS.Agent .NET10: lock, sleep, shutdown and restart, and custom commands that run programs, PowerShell scripts, key presses, links and popup windows."
+  - scope: { path: "connection.md" }
+    values:
+      description: "How HASS.Agent .NET10 connects to Home Assistant: MQTT, the WebSocket API and the local HTTP API, with the MQTT topics and events it uses."
+  - scope: { path: "migrating.md" }
+    values:
+      description: "Coming from HASS.Agent: what is the same in HASS.Agent .NET10, what is different, what does not carry over, and how to switch step by step."
+  - scope: { path: "development.md" }
+    values:
+      description: "Building HASS.Agent .NET10 from source: the .NET 10 SDK, the installer, GitHub Actions and a minimal development setup."
