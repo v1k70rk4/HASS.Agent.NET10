@@ -52,6 +52,12 @@ internal sealed class HaWebSocketService : IDisposable
 
     /// <summary>Raised when Home Assistant's update entity asks us to install.</summary>
     public event Action? UpdateInstallRequested;
+
+    /// <summary>
+    /// The integration asks for the device data again (10.9.0+): it has just been set up,
+    /// and what was sent on connect may have arrived before it listened.
+    /// </summary>
+    public event Action? AnnounceRequested;
     /// <summary>The tray app asks the service to run the silent install (internal, addressed to the service role).</summary>
     public event Action<string?>? SilentInstallRequested;
 
@@ -630,6 +636,10 @@ internal sealed class HaWebSocketService : IDisposable
 
                 case "update_install":
                     UpdateInstallRequested?.Invoke();
+                    break;
+
+                case "announce":
+                    AnnounceRequested?.Invoke();
                     break;
 
                 case "install_update":

@@ -759,6 +759,7 @@ internal sealed class MqttCompanionService : IDisposable
                 }
             };
             _haWs.UpdateInstallRequested += OnUpdateInstallRequested;
+            _haWs.AnnounceRequested += () => _ = Task.Run(AnnounceOverWebSocketAsync);
             _haWs.SilentInstallRequested += target =>
             {
                 // The WebSocket counterpart of the MQTT service command topic.
@@ -1192,13 +1193,61 @@ internal sealed class MqttCompanionService : IDisposable
         }, cancellationToken);
     }
 
+    /// <summary>
+    /// Sends again what is sent once on connect: the device discovery (or the service
+    /// status), and the update state. The HA API keeps nothing for a listener that comes
+    /// later, and after a Home Assistant restart this client is connected before the
+    /// integration is set up; the integration asks for this when it is.
+    /// </summary>
+    private async Task AnnounceOverWebSocketAsync()
+    {
+        if (!_isOnWebSocket || _haWs is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var cancellationToken = _cts?.Token ?? CancellationToken.None;
+            await PublishDiscoveryViaWebSocketAsync(cancellationToken);
+            if (_role == CompanionRuntimeRole.App)
+            {
+                await PublishAvailabilityAsync(online: true);
+                await PublishUpdateStateAsync(cancellationToken: cancellationToken);
+            }
+            else if (!IsTrayAppRunning())
+            {
+                await PublishUpdateStateAsync(cancellationToken: cancellationToken);
+            }
+
+            TriggerPushUpdate();
+            _log.Info("Announced again over the HA WebSocket API.");
+        }
+        catch (OperationCanceledException)
+        {
+            // Shutting down.
+        }
+        catch (Exception ex)
+        {
+            _log.Debug($"Unable to announce again over the HA WebSocket API: {ex.Message}");
+        }
+    }
+
     private async Task PublishWebSocketHeartbeatLoopAsync(CancellationToken cancellationToken)
     {
+        var beats = 0;
         while (!cancellationToken.IsCancellationRequested && _haWs is not null)
         {
             try
             {
                 await _haWs.PublishAvailabilityAsync(online: true, cancellationToken);
+
+                // A safety net for an integration that does not ask (older than 10.9.0):
+                // the discovery goes out again every ten minutes.
+                if (++beats % 20 == 0)
+                {
+                    await PublishDiscoveryViaWebSocketAsync(cancellationToken);
+                }
             }
             catch (OperationCanceledException)
             {
