@@ -54,6 +54,7 @@ internal sealed class MqttCompanionService : IDisposable
 
     private readonly CompanionSettings _settings;
     private readonly INotificationSink _notificationSink;
+    private readonly Queue<string> _recentPublishes = new();
     private readonly MediaSessionService? _mediaSessionService;
     private readonly SystemMetricsService? _systemMetricsService;
     private readonly SystemCommandService _systemCommandService;
@@ -1031,6 +1032,20 @@ internal sealed class MqttCompanionService : IDisposable
         else
         {
             _log.Warning($"MQTT session closed: {args.Reason}{reason}{error}");
+
+            // A broker that closes the session over what it was sent (a malformed packet, a
+            // protocol error) does not say which packet it was. The last few that went out
+            // are the only lead there is.
+            string[] recent;
+            lock (_recentPublishes)
+            {
+                recent = [.. _recentPublishes];
+            }
+
+            if (recent.Length > 0)
+            {
+                _log.Warning($"Last packets sent before that: {string.Join(" | ", recent)}");
+            }
         }
 
         return Task.CompletedTask;
@@ -2367,6 +2382,7 @@ internal sealed class MqttCompanionService : IDisposable
             }
             catch (Exception ex)
             {
+                NoteSent(message, "threw");
                 _log.Warning($"MQTT publish to {topic} threw ({ex.GetType().Name}); forcing reconnect.");
                 _forceReconnect = true;
                 return false;
@@ -2377,6 +2393,7 @@ internal sealed class MqttCompanionService : IDisposable
             {
                 // Stuck publish — leave it orphaned (observe its exception later) and reconnect.
                 _ = publishTask.ContinueWith(static t => { _ = t.Exception; }, TaskScheduler.Default);
+                NoteSent(message, "stuck");
                 _log.Warning($"MQTT publish to {topic} stuck >{PublishTimeout.TotalSeconds:0}s; forcing reconnect.");
                 _forceReconnect = true;
                 return false;
@@ -2385,10 +2402,12 @@ internal sealed class MqttCompanionService : IDisposable
             try
             {
                 await publishTask;
+                NoteSent(message, "ok");
                 return true;
             }
             catch (Exception ex)
             {
+                NoteSent(message, "failed");
                 _log.Warning($"MQTT publish to {topic} failed ({ex.GetType().Name}); forcing reconnect.");
                 _forceReconnect = true;
                 return false;
@@ -2397,6 +2416,21 @@ internal sealed class MqttCompanionService : IDisposable
         finally
         {
             _publishLock.Release();
+        }
+    }
+
+    /// <summary>Keeps the last few publishes (time, topic, size, outcome) for the disconnect log.</summary>
+    private void NoteSent(MqttApplicationMessage message, string outcome)
+    {
+        var topic = message.Topic.Replace(TopicId, "{id}", StringComparison.Ordinal);
+        var entry = $"{DateTime.Now:HH:mm:ss.fff} {topic} {message.Payload.Length} B {outcome}";
+        lock (_recentPublishes)
+        {
+            _recentPublishes.Enqueue(entry);
+            while (_recentPublishes.Count > 10)
+            {
+                _recentPublishes.Dequeue();
+            }
         }
     }
 
