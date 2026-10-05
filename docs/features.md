@@ -6,6 +6,8 @@
 
 Receive Home Assistant notifications on Windows, as a Windows notification or in the app's own window.
 
+<p align="center"><img src="images/notify-toast.png" width="360" alt="A notification as a Windows notification, with a picture, a text field and two buttons"> <img src="images/notify-window.png" width="400" alt="The same notification in the app's own window"></p>
+
 Supports actionable notifications: buttons on the notification send an action event back to Home Assistant, so automations can react to user choices.
 
 ```yaml
@@ -79,6 +81,8 @@ The **Notification style** on the Capabilities page decides how a notification i
 - **Own window.** A small always-on-top window in the corner of the screen, visible whatever Windows is doing. It does not take the keyboard focus when it appears, and it closes on its own after the duration, unless somebody has started typing into it.
 
 A single notification can choose with `style`, so the doorbell can use the window while everything else stays a Windows notification.
+
+<p align="center"><img src="images/notify-center.png" width="360" alt="A notification in the Windows notification centre, with its text field and buttons"></p>
 
 ## Media Player
 
