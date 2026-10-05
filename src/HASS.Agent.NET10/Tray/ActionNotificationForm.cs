@@ -340,8 +340,16 @@ internal sealed class ActionNotificationForm : Form
 
     private static Icon? LoadAppIcon()
     {
-        var stream = typeof(ActionNotificationForm).Assembly.GetManifestResourceStream("hassagent.ico");
-        return stream is not null ? new Icon(stream) : null;
+        // The icon is decoration: without it the window keeps the default one and shows all the same.
+        try
+        {
+            using var stream = typeof(ActionNotificationForm).Assembly.GetManifestResourceStream("hassagent.ico");
+            return stream is not null ? new Icon(stream) : null;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     /// <summary>
