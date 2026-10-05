@@ -41,6 +41,11 @@ internal sealed class ActionNotificationForm : Form
         _image = LoadImage(imageFile);
 
         Text = AppIdentity.DisplayName;
+        if (LoadAppIcon() is { } icon)
+        {
+            Icon = icon;
+        }
+
         ShowInTaskbar = false;
         StartPosition = FormStartPosition.Manual;
         FormBorderStyle = FormBorderStyle.FixedSingle;
@@ -191,11 +196,31 @@ internal sealed class ActionNotificationForm : Form
     {
         foreach (var input in notification.Inputs)
         {
+            // The hint stands above the field, not in it: a placeholder disappears the
+            // moment the field has the focus, and with several fields nobody could tell
+            // which is which any more.
+            if (!string.IsNullOrWhiteSpace(input.Title))
+            {
+                var caption = new Label
+                {
+                    AutoSize = false,
+                    Location = new Point(D(SideMargin), y),
+                    Size = new Size(ContentWidth, D(18)),
+                    Text = input.Title,
+                    Font = new Font("Segoe UI", 8.5F),
+                    ForeColor = SecondaryTextColor,
+                    BackColor = BackColor,
+                    AutoEllipsis = true,
+                    UseMnemonic = false
+                };
+                Controls.Add(caption);
+                y += caption.Height + D(2);
+            }
+
             var box = new TextBox
             {
                 Location = new Point(D(SideMargin), y),
                 Width = ContentWidth,
-                PlaceholderText = input.Title ?? string.Empty,
                 BackColor = InputColor,
                 ForeColor = PrimaryTextColor,
                 BorderStyle = BorderStyle.FixedSingle
@@ -311,6 +336,20 @@ internal sealed class ActionNotificationForm : Form
         button.FlatAppearance.MouseDownBackColor = AccentColor;
         button.Font = new Font("Segoe UI", 9F, isPrimary ? FontStyle.Bold : FontStyle.Regular);
         button.Cursor = Cursors.Hand;
+    }
+
+    private static Icon? LoadAppIcon()
+    {
+        // The icon is decoration: without it the window keeps the default one and shows all the same.
+        try
+        {
+            using var stream = typeof(ActionNotificationForm).Assembly.GetManifestResourceStream("hassagent.ico");
+            return stream is not null ? new Icon(stream) : null;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     /// <summary>

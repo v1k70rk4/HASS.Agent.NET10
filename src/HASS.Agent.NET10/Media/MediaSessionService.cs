@@ -249,7 +249,7 @@ internal sealed class MediaSessionService : IDisposable
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                _log.Warning($"Unable to publish media state: {ex.Message}");
+                _log.Warning($"Unable to publish media state: {(string.IsNullOrWhiteSpace(ex.Message) ? ex.GetType().Name : ex.Message)}");
             }
 
             await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
