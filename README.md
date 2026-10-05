@@ -59,7 +59,7 @@ If you download a published self-contained build, you do **not** need to install
 6. On the **Capabilities** page, choose which features are handled by the tray app vs. the service.
 7. On the **Sensors** page, enable built-in sensors and add custom sensors.
 8. Optionally install the Windows service from the **Service** page.
-9. The PC turns up on its own under **Discovered** in **Settings → Devices & services** of Home Assistant; click **Add** there. To add it by hand instead:
+9. On MQTT the PC turns up on its own under **Discovered** in **Settings → Devices & services** of Home Assistant; click **Add** there. Over the HA API the first PC is added by hand, with the button below and then **HA API (WebSocket)**; once the integration has a device, further PCs on the HA API are discovered as well.
 
    [![Open your Home Assistant instance and start setting up a new integration.](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=hass_agent)
 
