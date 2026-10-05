@@ -1,5 +1,5 @@
 ﻿#ifndef MyAppVersion
-#define MyAppVersion "10.9.0-beta.2"
+#define MyAppVersion "10.9.0-beta.3"
 #endif
 
 ; The file version resource takes numbers only: a pre-release ("10.9.0-beta.1") keeps its

@@ -17,12 +17,11 @@ target:
 data:
   title: Home Assistant
   message: "Would you like to turn on the lights?"
-  data:
-    actions:
-      - action: lights_on
-        title: "Turn on"
-      - action: lights_off
-        title: "Turn off"
+  actions:
+    - action: lights_on
+      title: "Turn on"
+    - action: lights_off
+      title: "Turn off"
 ```
 
 Button presses arrive in Home Assistant on the device's *Notification actions* event entity, and as a `hass_agent_notifications` event on the event bus.
@@ -31,7 +30,7 @@ Button presses arrive in Home Assistant on the device's *Notification actions* e
 
 > From 10.9.0 (in the beta from 10.9.0-beta.2).
 
-What can go under `data`:
+Besides `message` and `title`, the action takes these fields. In the Home Assistant editor each has an input of its own (integration 10.9.0-beta.3 or newer; with an older one they go inside a `data` object of the action, which still works):
 
 | Field | What it does |
 |-------|--------------|
@@ -48,18 +47,17 @@ target:
 data:
   title: Doorbell
   message: "Somebody is at the front door."
-  data:
-    image: camera.front_door
-    style: window
-    duration: 30
-    inputs:
-      - id: answer
-        title: "Say something through the intercom"
-    actions:
-      - action: open_door
-        title: "Open"
-      - action: speak
-        title: "Speak"
+  image: camera.front_door
+  style: window
+  duration: 30
+  inputs:
+    - id: answer
+      title: "Say something through the intercom"
+  actions:
+    - action: open_door
+      title: "Open"
+    - action: speak
+      title: "Speak"
 ```
 
 The event for the pressed button then carries what was typed:
