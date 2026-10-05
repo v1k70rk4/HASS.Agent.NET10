@@ -183,8 +183,7 @@ internal sealed class HaWebSocketService : IDisposable
             return;
         }
 
-        var id = NextId();
-        await SendAsync(new
+        await SendWithIdAsync(id => new
         {
             id,
             type = "fire_event",
@@ -400,16 +399,15 @@ internal sealed class HaWebSocketService : IDisposable
 
     private async Task SubscribeToCommandEventsAsync(CancellationToken cancellationToken)
     {
-        var id = NextId();
-        _commandSubscriptionId = id;
-        await SendAsync(new
+        var subscriptionId = await SendWithIdAsync(id => new
         {
             id,
             type = "subscribe_events",
             event_type = "hass_agent_command"
         }, cancellationToken);
+        _commandSubscriptionId = subscriptionId;
 
-        await WaitForResultAsync(id, "subscribe_events", cancellationToken);
+        await WaitForResultAsync(subscriptionId, "subscribe_events", cancellationToken);
         _log.Info("HA WebSocket subscribed to hass_agent_command events.");
     }
 
@@ -673,8 +671,7 @@ internal sealed class HaWebSocketService : IDisposable
 
             try
             {
-                var id = NextId();
-                await SendAsync(new { id, type = "ping" }, cancellationToken);
+                await SendWithIdAsync(id => new { id, type = "ping" }, cancellationToken);
             }
             catch (Exception ex)
             {
@@ -712,6 +709,7 @@ internal sealed class HaWebSocketService : IDisposable
         return true;
     }
 
+    /// <summary>Sends a message that carries no id (the authentication).</summary>
     private async Task SendAsync(object payload, CancellationToken cancellationToken)
     {
         await _sendLock.WaitAsync(cancellationToken);
@@ -723,6 +721,32 @@ internal sealed class HaWebSocketService : IDisposable
             }
 
             await SendAsync(_ws, payload, cancellationToken);
+        }
+        finally
+        {
+            _sendLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Sends a message that carries an id, and returns the id. Home Assistant insists on
+    /// ids that grow from one message to the next, so the id is taken under the same lock
+    /// that orders the sends: taken before it, two senders could pass each other, and the
+    /// one with the lower id was refused ("id_reuse") and its message lost.
+    /// </summary>
+    private async Task<int> SendWithIdAsync(Func<int, object> build, CancellationToken cancellationToken)
+    {
+        await _sendLock.WaitAsync(cancellationToken);
+        try
+        {
+            if (_ws is null)
+            {
+                throw new InvalidOperationException("WebSocket is not connected.");
+            }
+
+            var id = NextId();
+            await SendAsync(_ws, build(id), cancellationToken);
+            return id;
         }
         finally
         {

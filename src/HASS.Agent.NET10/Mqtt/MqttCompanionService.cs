@@ -928,10 +928,15 @@ internal sealed class MqttCompanionService : IDisposable
             }
             catch (Exception ex)
             {
-                _log.Warning(ex is MqttConnectRefusedException ? ex.Message : $"MQTT connection loop failed: {ex.Message}");
+                // With MQTT switched off the HA API is the only transport: it is what failed,
+                // and there is nothing to fail over to. The loop tries again after the delay.
+                var apiOnly = !_settings.MqttEnabled;
+                _log.Warning(apiOnly
+                    ? $"HA WebSocket connection failed: {ex.Message}"
+                    : ex is MqttConnectRefusedException ? ex.Message : $"MQTT connection loop failed: {ex.Message}");
 
                 // MQTT failed — try WebSocket failover if configured.
-                if (_haWs is not null && !cancellationToken.IsCancellationRequested)
+                if (!apiOnly && _haWs is not null && !cancellationToken.IsCancellationRequested)
                 {
                     _log.Info("Switching to HA WebSocket API failover.");
                     try
