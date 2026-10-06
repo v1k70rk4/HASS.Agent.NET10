@@ -1,0 +1,94 @@
+# Adds Sigstore signatures next to the assets of a published release.
+#
+# The assets themselves are built by hass-agent-net10.yml and signed with the Certum (Authenticode)
+# certificate on the maintainer's PC (build-exe.ps1 -Tag -Upload), which also publishes the release.
+# This workflow starts on that publish. It never builds and never touches the .exe or the .zip: it
+# downloads them, refuses to go on unless both carry the Certum signature (so the unsigned CI files of
+# a draft can never get a Sigstore signature), signs each with cosign through GitHub's OIDC identity
+# (no key, no secret) and uploads <asset>.sigstore.json beside it.
+#
+# Check a download with:
+#   cosign verify-blob HASS.Agent.NET10-Setup-<version>.exe \
+#     --bundle HASS.Agent.NET10-Setup-<version>.exe.sigstore.json \
+#     --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+#     --certificate-identity-regexp '^https://github\.com/v1k70rk4/HASS\.Agent\.NET10/\.github/workflows/sign-release\.yml@'
+name: Sign release assets (Sigstore)
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to sign (e.g. v10.9.0)"
+        required: true
+
+permissions: {}
+
+jobs:
+  sign:
+    name: Sigstore signatures
+    runs-on: windows-latest
+    permissions:
+      contents: write   # upload the .sigstore.json files to the release
+      id-token: write   # keyless signing with the workflow's OIDC identity
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+      # The Certum code signing certificate the assets must carry (README, Code Signing).
+      CERTUM_THUMBPRINT: 0C09522639318AF1069507568599DFC5B7F86EE4
+    defaults:
+      run:
+        shell: pwsh
+
+    steps:
+      - name: Download the release assets
+        run: |
+          New-Item -ItemType Directory assets | Out-Null
+          gh release download $env:TAG -R $env:GITHUB_REPOSITORY -D assets -p '*.exe' -p '*.zip'
+          if ($LASTEXITCODE -ne 0) { throw "Could not download the assets of $env:TAG." }
+          Get-ChildItem assets | ForEach-Object { "{0}  {1}" -f (Get-FileHash $_.FullName).Hash, $_.Name }
+
+      - name: Require the Certum signature
+        run: |
+          function Assert-Signed([string]$File) {
+            $sig = Get-AuthenticodeSignature -FilePath $File
+            if ($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Thumbprint -ne $env:CERTUM_THUMBPRINT) {
+              throw "$File is not signed with the release certificate (status $($sig.Status), signer $($sig.SignerCertificate.Subject)). Not signing it."
+            }
+            "{0}: signed by {1}" -f (Split-Path $File -Leaf), $sig.SignerCertificate.Subject
+          }
+          $exe = @(Get-ChildItem assets -Filter '*.exe')
+          $zip = @(Get-ChildItem assets -Filter '*.zip')
+          if ($exe.Count -ne 1 -or $zip.Count -ne 1) { throw "Expected one installer and one zip on $env:TAG." }
+          Assert-Signed $exe[0].FullName
+          Expand-Archive $zip[0].FullName -DestinationPath unpacked
+          $app = Get-ChildItem unpacked -Recurse -Filter 'HASS.Agent.NET10.exe' | Select-Object -First 1
+          if (-not $app) { throw "No HASS.Agent.NET10.exe in $($zip[0].Name)." }
+          Assert-Signed $app.FullName
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Sign with Sigstore
+        run: |
+          foreach ($file in Get-ChildItem assets -File | Where-Object { $_.Extension -in '.exe', '.zip' }) {
+            cosign sign-blob --yes --bundle "$($file.FullName).sigstore.json" $file.FullName
+            if ($LASTEXITCODE -ne 0) { throw "cosign could not sign $($file.Name)." }
+          }
+
+      - name: Check the signatures
+        run: |
+          $identity = "^https://github\.com/$([regex]::Escape($env:GITHUB_REPOSITORY))/\.github/workflows/sign-release\.yml@"
+          foreach ($file in Get-ChildItem assets -File | Where-Object { $_.Extension -in '.exe', '.zip' }) {
+            cosign verify-blob $file.FullName --bundle "$($file.FullName).sigstore.json" `
+              --certificate-oidc-issuer https://token.actions.githubusercontent.com `
+              --certificate-identity-regexp $identity
+            if ($LASTEXITCODE -ne 0) { throw "The signature of $($file.Name) does not verify." }
+          }
+
+      - name: Upload the signatures to the release
+        run: |
+          $bundles = @(Get-ChildItem assets -Filter '*.sigstore.json' | ForEach-Object FullName)
+          gh release upload $env:TAG @bundles --clobber -R $env:GITHUB_REPOSITORY
+          if ($LASTEXITCODE -ne 0) { throw "Could not upload the signatures to $env:TAG." }
