@@ -28,9 +28,9 @@ Button presses arrive in Home Assistant on the device's *Notification actions* e
 
 ### Pictures, text fields and more
 
-> From 10.9.0 (in the beta from 10.9.0-beta.2).
+> From 10.9.0.
 
-Besides `message` and `title`, the action takes these fields. In the Home Assistant editor each has an input of its own (integration 10.9.0-beta.3 or newer; with an older one they go inside a `data` object of the action, which still works):
+Besides `message` and `title`, the action takes these fields. In the Home Assistant editor each has an input of its own (integration 10.9.0 or newer; with an older one they go inside a `data` object of the action, which still works):
 
 | Field | What it does |
 |-------|--------------|
@@ -71,7 +71,7 @@ device_name: MY-PC
 
 ### Notification style
 
-> From 10.9.0 (in the beta from 10.9.0-beta.2).
+> From 10.9.0.
 
 The **Notification style** on the Capabilities page decides how a notification is shown:
 
@@ -105,7 +105,7 @@ Both use the WebView2 runtime that ships with Windows 11; the login is kept per 
 
 ## Display and Audio
 
-> In the 10.9.0 beta. The Home Assistant side needs the integration 10.9.0-beta.1 or newer.
+> From 10.9.0. The Home Assistant side needs the integration 10.9.0 or newer.
 
 - **The display as a light.** Turn on the **Display brightness** sensor (tray app, off by default) and the PC gets a *Display* light in Home Assistant: its brightness slider sets the screen brightness, off switches the monitor off, on wakes it. It works with what Windows itself offers: the built-in panel of a laptop, and external monitors that speak DDC/CI. With no adjustable display (many TVs, some docks) the light is a plain on/off one, without the slider.
 - **The default audio device as a select.** The *Audio output device* sensor comes with a select that makes another playback device the default, for "switch to the headset" or "sound to the TV" automations. The **Audio input device** sensor (off by default) does the same for the recording device.
@@ -121,7 +121,7 @@ data:
 
 ## Hotkeys
 
-> In the 10.9.0 beta. The Home Assistant side needs the integration 10.9.0-beta.1 or newer.
+> From 10.9.0. The Home Assistant side needs the integration 10.9.0 or newer.
 
 On the **Capabilities** page you can list key combinations with a name (`ctrl+alt+h` as "Meeting"). Pressing one sends an event to Home Assistant, where the device's *Hotkeys* event entity has one event type per hotkey name, so an automation can trigger on it. The press also fires `hass_agent_hotkey_pressed` on the event bus, with the name in `hotkey`.
 
