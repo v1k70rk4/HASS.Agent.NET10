@@ -267,21 +267,28 @@ function Get-SignerName([string]$File) {
 }
 
 # --- A release build has to match its tag: the signed assets replace the CI's assets of exactly that commit. ---
-if ($Tag -and $hasGit) {
-    if (git status --porcelain 2>$null) {
-        if ($Upload) { throw "The working tree has uncommitted changes - these assets would not match any tag. Not uploading." }
-        Write-Host "WARNING: the working tree has uncommitted changes - these assets will not match any tag." -ForegroundColor Yellow
+# The tag name comes from the project version, so a build of the wrong commit would replace the assets of whatever
+# release carries that version (run from main before the release commit was merged, it would have overwritten the
+# previous beta's files). A build that does not match is still made, for local use, but it is never uploaded:
+# -Upload stops here, and the interactive offer to replace the assets is not made for it either.
+$buildMatchesTag = $false
+$mismatch = ''
+if ($Tag) {
+    if (-not $hasGit) {
+        $mismatch = "no git on PATH, so there is no telling whether this build is the tagged commit."
     }
-    $headTags = @(git tag --points-at HEAD 2>$null)
-    if ($headTags -contains $tagName) { Write-Host "Release tag: $tagName" -ForegroundColor DarkGray }
+    elseif (git status --porcelain 2>$null) {
+        $mismatch = "the working tree has uncommitted changes - these assets will not match any tag."
+    }
     else {
-        $why = if ($headTags.Count -gt 0) { "HEAD is tagged $($headTags -join ', ') but the project version is $appVersion." }
-               else { "HEAD carries no tag - tag the release ($tagName) first, so the signed assets match it." }
-        # With -Upload this is a stop, not a warning: the tag name comes from the project version, so a build of
-        # an untagged commit would replace the assets of whatever release carries that version (run from main
-        # before the release commit was merged, it would have overwritten the previous beta's files).
-        if ($Upload) { throw "$why Not uploading a build that does not match its tag." }
-        Write-Host "WARNING: $why" -ForegroundColor Yellow
+        $headTags = @(git tag --points-at HEAD 2>$null)
+        if ($headTags -contains $tagName) { $buildMatchesTag = $true; Write-Host "Release tag: $tagName" -ForegroundColor DarkGray }
+        elseif ($headTags.Count -gt 0) { $mismatch = "HEAD is tagged $($headTags -join ', ') but the project version is $appVersion." }
+        else { $mismatch = "HEAD carries no tag - tag the release ($tagName) first, so the signed assets match it." }
+    }
+    if (-not $buildMatchesTag) {
+        if ($Upload) { throw "Not uploading: $mismatch" }
+        Write-Host "WARNING: $mismatch" -ForegroundColor Yellow
     }
 }
 
@@ -399,7 +406,12 @@ if ($Tag) {
         if ($LASTEXITCODE -eq 0) {
             Write-Host "GitHub release $tagName exists on $repo." -ForegroundColor Cyan
             $doUpload = $Upload
-            if (-not $doUpload) {
+            if (-not $buildMatchesTag) {
+                # Not offered either: the same guard as -Upload's, for the same reason.
+                Write-Host "Its assets are not replaced with this build: $mismatch" -ForegroundColor Yellow
+                $doUpload = $false
+            }
+            elseif (-not $doUpload) {
                 $answer = Read-Host "Replace its assets with these signed files? [y/N]"
                 $doUpload = $answer -match '^(y|yes|i|igen)$'
             }
