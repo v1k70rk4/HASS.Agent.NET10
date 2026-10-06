@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json.Serialization;
 
 namespace HASS.Agent.Companion.Runtime;
@@ -52,52 +53,104 @@ internal static class AppUpdateService
     }
 
     /// <summary>
-    /// Flattens GitHub release notes (Markdown) into a few plain lines that fit a
-    /// message box: headings and emphasis markers dropped, bullets kept, long
-    /// notes cut after a handful of lines.
+    /// Turns GitHub release notes into plain paragraphs for the update prompt: Markdown
+    /// markers dropped, bullets kept, the hard-wrapped lines of a paragraph joined again
+    /// (the notes come from the tag message, wrapped at 75 columns, and a dialog wraps
+    /// them itself), the title line left out when it only repeats the app's name, and
+    /// the text cut at a paragraph once it gets long. The dialog links to the full notes.
     /// </summary>
-    public static string SummarizeReleaseNotes(string? markdown)
+    public static string SummarizeReleaseNotes(string? markdown, int maxLength = 1400)
     {
-        const int maxLines = 12;
-        const int maxLineLength = 160;
-
         if (string.IsNullOrWhiteSpace(markdown))
         {
             return string.Empty;
         }
 
-        var lines = new List<string>();
+        var paragraphs = new List<(string Text, bool Bullet)>();
+        var current = new StringBuilder();
+        var currentIsBullet = false;
+
+        void Flush()
+        {
+            if (current.Length > 0)
+            {
+                paragraphs.Add((current.ToString(), currentIsBullet));
+                current.Clear();
+            }
+
+            currentIsBullet = false;
+        }
+
         foreach (var raw in markdown.Replace("\r\n", "\n").Split('\n'))
         {
             var line = raw.Trim();
-            if (line.Length == 0 || line.StartsWith("<!--", StringComparison.Ordinal))
+            if (line.StartsWith("<!--", StringComparison.Ordinal))
             {
                 continue;
             }
 
-            line = line.TrimStart('#').Trim();
-            line = line.Replace("**", string.Empty).Replace("`", string.Empty);
-            if (line.StartsWith("- ", StringComparison.Ordinal) || line.StartsWith("* ", StringComparison.Ordinal))
+            if (line.Length == 0)
             {
-                line = "• " + line[2..];
+                Flush();
+                continue;
             }
 
-            if (line.Length > maxLineLength)
+            var bullet = line.StartsWith("- ", StringComparison.Ordinal) || line.StartsWith("* ", StringComparison.Ordinal);
+            var heading = line.StartsWith('#');
+            line = line.TrimStart('#').Trim().Replace("**", string.Empty).Replace("`", string.Empty);
+            if (bullet || heading)
             {
-                line = line[..(maxLineLength - 1)] + "…";
+                Flush();
+                currentIsBullet = bullet;
+                current.Append(bullet ? "• " + line[2..] : line);
+                if (heading)
+                {
+                    Flush();
+                }
+
+                continue;
             }
 
-            // Mark the cut only when a line is actually left out.
-            if (lines.Count == maxLines)
+            // A line that is not blank and not a bullet continues the paragraph before it.
+            if (current.Length > 0)
             {
-                lines.Add("…");
+                current.Append(' ');
+            }
+
+            current.Append(line);
+        }
+
+        Flush();
+
+        // The first line of the tag message is the app's name and the version, which the
+        // dialog's heading already says.
+        if (paragraphs.Count > 0
+            && paragraphs[0].Text.StartsWith(AppIdentity.DisplayName, StringComparison.OrdinalIgnoreCase)
+            && paragraphs[0].Text.Length < AppIdentity.DisplayName.Length + 24)
+        {
+            paragraphs.RemoveAt(0);
+        }
+
+        var text = new StringBuilder();
+        var previousWasBullet = false;
+        foreach (var (paragraph, isBullet) in paragraphs)
+        {
+            if (text.Length > 0 && text.Length + paragraph.Length > maxLength)
+            {
+                text.Append("\n\n…");
                 break;
             }
 
-            lines.Add(line);
+            if (text.Length > 0)
+            {
+                text.Append(isBullet && previousWasBullet ? "\n" : "\n\n");
+            }
+
+            text.Append(paragraph);
+            previousWasBullet = isBullet;
         }
 
-        return string.Join('\n', lines);
+        return text.ToString();
     }
 
     public static async Task<string> DownloadAsync(AppUpdateState update, string targetDirectory, CancellationToken cancellationToken = default)
