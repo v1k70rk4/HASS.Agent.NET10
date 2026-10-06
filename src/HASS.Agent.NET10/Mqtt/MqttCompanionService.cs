@@ -1731,18 +1731,21 @@ internal sealed class MqttCompanionService : IDisposable
     {
         while (!cancellationToken.IsCancellationRequested)
         {
-            var retry = !string.IsNullOrWhiteSpace(_lastUpdateState?.Error) && _updateRetries < MaxUpdateRetries;
-            await Task.Delay(retry ? UpdateRetryInterval : UpdateCheckInterval, cancellationToken);
-            if (retry)
-            {
-                _updateRetries++;
-            }
-
             // The tray app owns the update entity while it runs; the service only stands in
             // for it, so that a PC nobody is logged in to still learns about a new release.
+            // A failed check of the service's is not retried while the tray app checks for
+            // itself: the usual wait applies, and no retry is used up by a skipped check.
+            var deferToTrayApp = _role == CompanionRuntimeRole.Service && IsTrayAppRunning();
+            var retry = !deferToTrayApp && !string.IsNullOrWhiteSpace(_lastUpdateState?.Error) && _updateRetries < MaxUpdateRetries;
+            await Task.Delay(retry ? UpdateRetryInterval : UpdateCheckInterval, cancellationToken);
             if (_role == CompanionRuntimeRole.Service && IsTrayAppRunning())
             {
                 continue;
+            }
+
+            if (retry)
+            {
+                _updateRetries++;
             }
 
             await PublishUpdateStateAsync(forceCheck: true, cancellationToken);
