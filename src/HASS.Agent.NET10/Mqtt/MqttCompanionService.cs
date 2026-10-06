@@ -21,6 +21,12 @@ internal sealed class MqttCompanionService : IDisposable
 {
     private static readonly TimeSpan UpdateCheckInterval = TimeSpan.FromHours(6);
 
+    // A failed check is tried again after a minute, a few times: right after boot the service
+    // asks before the network can resolve names, and six hours is long to wait for a retry.
+    private static readonly TimeSpan UpdateRetryInterval = TimeSpan.FromMinutes(1);
+    private const int MaxUpdateRetries = 3;
+    private int _updateRetries;
+
     // The connect handler publishes the update state on every (re)connect. The unauthenticated
     // GitHub API allows only 60 requests/hour per IP, so with frequent reconnects (and several
     // devices behind one IP) that hits a 403 rate limit. Reuse a cached result within this
@@ -1725,7 +1731,12 @@ internal sealed class MqttCompanionService : IDisposable
     {
         while (!cancellationToken.IsCancellationRequested)
         {
-            await Task.Delay(UpdateCheckInterval, cancellationToken);
+            var retry = !string.IsNullOrWhiteSpace(_lastUpdateState?.Error) && _updateRetries < MaxUpdateRetries;
+            await Task.Delay(retry ? UpdateRetryInterval : UpdateCheckInterval, cancellationToken);
+            if (retry)
+            {
+                _updateRetries++;
+            }
 
             // The tray app owns the update entity while it runs; the service only stands in
             // for it, so that a PC nobody is logged in to still learns about a new release.
@@ -1753,9 +1764,15 @@ internal sealed class MqttCompanionService : IDisposable
             _lastUpdateState = await AppUpdateService.CheckAsync(_settings.SoftwareVersion, _settings.BetaUpdatesEnabled);
             _lastUpdateBeta = _settings.BetaUpdatesEnabled;
             _lastUpdateCheck = now;
-            if (!string.IsNullOrWhiteSpace(_lastUpdateState.Error))
+            if (string.IsNullOrWhiteSpace(_lastUpdateState.Error))
             {
-                _log.Warning($"Unable to publish update state: {_lastUpdateState.Error}");
+                _updateRetries = 0;
+            }
+            else
+            {
+                // The state still goes out, with the error in it; only the check failed.
+                var again = _updateRetries < MaxUpdateRetries ? "; trying again in a minute" : string.Empty;
+                _log.Warning($"Update check failed: {_lastUpdateState.Error}{again}");
             }
         }
 

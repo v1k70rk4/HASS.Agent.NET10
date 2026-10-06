@@ -326,7 +326,7 @@ internal sealed class SystemMetricsService : IDisposable
             EventLogErrorsRecent: _lastRecentErrors.Count,
             LastShutdownReason: _lastShutdown.Summary,
             LastWakeReason: lastWake?.Summary,
-            BootTime: updateStartup ? DateTimeOffset.Now.AddMilliseconds(-Environment.TickCount64) : previous!.BootTime,
+            BootTime: updateStartup ? Safe(ReadBootTime, previous?.BootTime ?? ReadBootTimeFromTicks()) : previous!.BootTime,
             CustomSensors: Safe(() => ReadCustomSensors(customSensors ?? [], serviceRole, attributes, profiles, previous?.CustomSensors ?? []), previous?.CustomSensors ?? []),
             Attributes: attributes,
             UpdatedAt: DateTimeOffset.UtcNow);
@@ -2097,6 +2097,33 @@ internal sealed class SystemMetricsService : IDisposable
         return trimmed.Length <= 255 ? trimmed : $"{trimmed[..252]}...";
     }
 
+    /// <summary>
+    /// The boot time as the kernel keeps it. The service and the tray app both publish this
+    /// sensor; "now minus the tick count" gave each a value a few milliseconds apart, and
+    /// Home Assistant recorded the two, rounded to different seconds, as a change every
+    /// few seconds. The kernel's value is the same in both processes, and it follows
+    /// clock adjustments the way the tick count does.
+    /// </summary>
+    private static DateTimeOffset ReadBootTime()
+    {
+        var info = new SystemTimeOfDayInformation();
+        var status = NtQuerySystemInformation(SystemTimeOfDayInformationClass, ref info, Marshal.SizeOf<SystemTimeOfDayInformation>(), out _);
+        return status == 0 && info.BootTime > 0
+            ? DateTimeOffset.FromFileTime(info.BootTime)
+            : ReadBootTimeFromTicks();
+    }
+
+    private static DateTimeOffset ReadBootTimeFromTicks()
+    {
+        var bootTime = DateTimeOffset.Now.AddMilliseconds(-Environment.TickCount64);
+        return new DateTimeOffset(bootTime.Ticks - bootTime.Ticks % TimeSpan.TicksPerSecond, bootTime.Offset);
+    }
+
+    private const int SystemTimeOfDayInformationClass = 3;
+
+    [DllImport("ntdll.dll")]
+    private static extern int NtQuerySystemInformation(int informationClass, ref SystemTimeOfDayInformation information, int length, out int returnLength);
+
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool GetSystemTimes(out FileTime idleTime, out FileTime kernelTime, out FileTime userTime);
 
@@ -2156,6 +2183,18 @@ internal sealed class SystemMetricsService : IDisposable
         {
             return ((ulong)HighDateTime << 32) | LowDateTime;
         }
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct SystemTimeOfDayInformation
+    {
+        public long BootTime;
+        public long CurrentTime;
+        public long TimeZoneBias;
+        public uint TimeZoneId;
+        public uint Reserved;
+        public ulong BootTimeBias;
+        public ulong SleepTimeBias;
     }
 
     [StructLayout(LayoutKind.Sequential)]
