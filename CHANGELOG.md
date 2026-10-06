@@ -6,6 +6,7 @@ Every release of HASS.Agent .NET10, newest first. The downloads are on the [rele
 
 - **Fixed: the Boot time sensor changed every few seconds.** The service and the tray app both publish it, each computed it from its own clock a few milliseconds apart, and Home Assistant recorded the two values, rounded to different seconds, as a change on every publish. Both now report the boot time the kernel keeps, which is the same in both.
 - A failed update check (right after boot the service often asks before the network can resolve names) is tried again after a minute, three times at most, instead of waiting six hours. The log line says what failed and that it will try again; the earlier "Unable to publish update state" was misleading, the state did go out.
+- With MQTT switched off, the service no longer warns that it "will stay idle": it connects over the HA API right after, as the next log line says.
 
 ## 10.9.0-beta.3
 
