@@ -73,7 +73,7 @@ The integration creates the Home Assistant entities from what the agent advertis
 
 ### Installer
 
-The setup package is built with [Inno Setup](https://jrsoftware.org/isinfo.php). It is also what winget installs and upgrades (`winget install v1k70rk4.HASSAgentNET10`, `winget upgrade v1k70rk4.HASSAgentNET10`), silently, with the same result as running it by hand. Options during install:
+The setup package is built with [Inno Setup](https://jrsoftware.org/isinfo.php). It is also what winget installs and upgrades (`winget install v1k70rk4.HASSAgentNET10`, `winget upgrade v1k70rk4.HASSAgentNET10`). winget runs it without its wizard pages, showing only the progress, so the options below keep their defaults on a first install (start on login on, the rest off) and their earlier choices on an upgrade; add `--interactive` to go through the wizard. Options during install:
 
 - **Desktop icon** (optional)
 - **Start automatically on login** (default: enabled, sets a registry Run key)
