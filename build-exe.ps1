@@ -269,12 +269,20 @@ function Get-SignerName([string]$File) {
 # --- A release build has to match its tag: the signed assets replace the CI's assets of exactly that commit. ---
 if ($Tag -and $hasGit) {
     if (git status --porcelain 2>$null) {
+        if ($Upload) { throw "The working tree has uncommitted changes - these assets would not match any tag. Not uploading." }
         Write-Host "WARNING: the working tree has uncommitted changes - these assets will not match any tag." -ForegroundColor Yellow
     }
     $headTags = @(git tag --points-at HEAD 2>$null)
     if ($headTags -contains $tagName) { Write-Host "Release tag: $tagName" -ForegroundColor DarkGray }
-    elseif ($headTags.Count -gt 0) { Write-Host "WARNING: HEAD is tagged $($headTags -join ', ') but the project version is $appVersion." -ForegroundColor Yellow }
-    else { Write-Host "WARNING: HEAD carries no tag - tag the release ($tagName) first, so the signed assets match it." -ForegroundColor Yellow }
+    else {
+        $why = if ($headTags.Count -gt 0) { "HEAD is tagged $($headTags -join ', ') but the project version is $appVersion." }
+               else { "HEAD carries no tag - tag the release ($tagName) first, so the signed assets match it." }
+        # With -Upload this is a stop, not a warning: the tag name comes from the project version, so a build of
+        # an untagged commit would replace the assets of whatever release carries that version (run from main
+        # before the release commit was merged, it would have overwritten the previous beta's files).
+        if ($Upload) { throw "$why Not uploading a build that does not match its tag." }
+        Write-Host "WARNING: $why" -ForegroundColor Yellow
+    }
 }
 
 # --- Build -----------------------------------------------------------------------------------------------------
