@@ -163,11 +163,6 @@ internal sealed class CompanionWindowsService : ServiceBase
             return;
         }
 
-        if (!settings.MqttEnabled)
-        {
-            _log.Warning("MQTT disabled; system service will stay idle.");
-        }
-
         _mqttService = new MqttCompanionService(
             settings,
             new NullNotificationSink(),

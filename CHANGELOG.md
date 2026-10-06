@@ -2,6 +2,13 @@
 
 Every release of HASS.Agent .NET10, newest first. The downloads are on the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases).
 
+## Unreleased
+
+- **Fixed: the Boot time sensor changed every few seconds.** The service and the tray app both publish it, each computed it from its own clock a few milliseconds apart, and Home Assistant recorded the two values, rounded to different seconds, as a change on every publish. Both now report the boot time the kernel keeps, which is the same in both.
+- A failed update check (right after boot the service often asks before the network can resolve names) is tried again after a minute, three times at most, instead of waiting six hours. The log line says what failed and that it will try again; the earlier "Unable to publish update state" was misleading, the state did go out.
+- With MQTT switched off, the service no longer warns that it "will stay idle": it connects over the HA API right after, as the next log line says.
+- **The update prompt of the About page is a proper dialog.** The version found and the installed one on top, the release notes as readable paragraphs under a "What's new" expander (the hard-wrapped lines of the tag message are joined again, long notes cut at a paragraph), a link to the full notes on GitHub, and **Download / Not now** buttons in the app's language; the message box used before got its buttons from Windows, so an English app asked "Igen / Nem" on a Hungarian PC. The dialog after the download asks **Install now / Later** the same way.
+
 ## 10.9.0-beta.3
 
 > **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered it, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.8.0**, below. The Home Assistant side of the new entities (display light, audio selects, hotkeys, `set_app_volume`) is in the integration's **10.9.0-beta.3**: in HACS, open the integration, choose **Redownload**, turn on **Show beta versions** and pick it. The stable 10.9.0 of both is not out yet.

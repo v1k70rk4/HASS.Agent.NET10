@@ -2595,19 +2595,7 @@ internal sealed class MainForm : Form
                 return;
             }
 
-            var message = string.Format(S("About.UpdateAvailable"), update.LatestVersion, update.InstalledVersion);
-            var notes = AppUpdateService.SummarizeReleaseNotes(update.ReleaseNotes);
-            if (notes.Length > 0)
-            {
-                message = $"{S("About.WhatsNew")}:\n{notes}\n\n{message}";
-            }
-
-            var confirm = MessageBox.Show(
-                message,
-                AppIdentity.DisplayName,
-                MessageBoxButtons.YesNo,
-                MessageBoxIcon.Information);
-            if (confirm != DialogResult.Yes)
+            if (!UpdatePromptDialog.ShowUpdateAvailable(this, update))
             {
                 return;
             }
@@ -2622,12 +2610,7 @@ internal sealed class MainForm : Form
             var downloads = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
             var targetPath = await AppUpdateService.DownloadAsync(update, downloads);
 
-            var open = MessageBox.Show(
-                string.Format(S("About.UpdateDownloaded"), targetPath),
-                AppIdentity.DisplayName,
-                MessageBoxButtons.YesNo,
-                MessageBoxIcon.Information);
-            if (open == DialogResult.Yes)
+            if (UpdatePromptDialog.ShowDownloaded(this, targetPath))
             {
                 // Launch detached from this process tree: the installer closes the running
                 // app with `taskkill /IM ... /T`, which would also kill the installer if it
