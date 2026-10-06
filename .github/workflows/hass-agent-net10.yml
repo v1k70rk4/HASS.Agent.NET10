@@ -22,8 +22,9 @@ on:
   # signed ones a few minutes later: 10.7.3 and 10.8.0 were public unsigned that way.
   workflow_dispatch:
 
+# Read-only by default; only the build job, which creates the release, may write.
 permissions:
-  contents: write
+  contents: read
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -56,6 +57,8 @@ jobs:
     name: Build and publish
     needs: audit
     runs-on: windows-latest
+    permissions:
+      contents: write   # create the draft release and upload its assets
 
     env:
       PROJECT: src/HASS.Agent.NET10/HASS.Agent.NET10.csproj
