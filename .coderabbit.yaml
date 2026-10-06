@@ -3,6 +3,9 @@
 # methods are UI builders/layout helpers; doc comments are kept where the code
 # genuinely needs explanation (security, failover, update flows).
 reviews:
+  # Approve the pull request once every CodeRabbit comment on it is resolved (and request
+  # changes while some are open), so the review shows as an approval, not just comments.
+  request_changes_workflow: true
   pre_merge_checks:
     docstrings:
       mode: "off"
