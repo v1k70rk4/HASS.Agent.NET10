@@ -51,7 +51,13 @@ If you download a published self-contained build, you do **not** need to install
 1. Install the Home Assistant integration, [v1k70rk4/HASS.Agent.NET10-Integration](https://github.com/v1k70rk4/HASS.Agent.NET10-Integration). It is in the **HACS default store**, so no custom repository is needed: open HACS, search for **HASS.Agent** (or use the button), download it and restart Home Assistant.
 
    [![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=v1k70rk4&repository=HASS.Agent.NET10-Integration&category=integration)
-2. Download the signed installer from [Releases](https://github.com/v1k70rk4/HASS.Agent.NET10/releases) (see [Code Signing](#code-signing)), or [build from source](docs/development.md#build-from-source).
+2. Install the Windows app with winget:
+
+   ```powershell
+   winget install v1k70rk4.HASSAgentNET10
+   ```
+
+   Or download the signed installer from [Releases](https://github.com/v1k70rk4/HASS.Agent.NET10/releases) (see [Code Signing](#code-signing)), or [build from source](docs/development.md#build-from-source).
 3. Run the installer or start `HASS.Agent.NET10.exe` directly.
 4. Open the tray icon and go to settings.
 5. On the **MQTT** page, enable MQTT and enter your broker address and credentials.
@@ -67,7 +73,7 @@ The integration creates the Home Assistant entities from what the agent advertis
 
 ### Installer
 
-The setup package is built with [Inno Setup](https://jrsoftware.org/isinfo.php). Options during install:
+The setup package is built with [Inno Setup](https://jrsoftware.org/isinfo.php). It is also what winget installs and upgrades (`winget install v1k70rk4.HASSAgentNET10`, `winget upgrade v1k70rk4.HASSAgentNET10`). winget runs it without its wizard pages, showing only the progress, so the options below keep their defaults on a first install (start on login on, the rest off) and their earlier choices on an upgrade; add `--interactive` to go through the wizard. Options during install:
 
 - **Desktop icon** (optional)
 - **Start automatically on login** (default: enabled, sets a registry Run key)

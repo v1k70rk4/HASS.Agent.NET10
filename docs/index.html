@@ -206,6 +206,10 @@
   footer { background: var(--bg); color: #94a3b8; padding: 48px 0; text-align: center; font-size: .92rem; }
   footer a { color: var(--accent); }
   footer .row { margin-bottom: 8px; }
+  .cmd { margin: 14px 0 0; color: var(--text-muted); font-size: .95rem; }
+  code { font-family: Consolas, "Cascadia Mono", ui-monospace, monospace; font-size: .92em; padding: 2px 7px; border-radius: 6px; background: rgba(127,127,127,.16); color: var(--text); overflow-wrap: anywhere; }
+  header .cmd { color: #94a3b8; }
+  header code { background: rgba(255,255,255,.12); color: #e2e8f0; }
 </style>
 </head>
 <body>
@@ -220,6 +224,7 @@
       <a class="btn btn-primary" href="https://github.com/v1k70rk4/HASS.Agent.NET10/releases/latest">⬇ Download</a>
       <a class="btn btn-ghost" href="https://github.com/v1k70rk4/HASS.Agent.NET10">★ View on GitHub</a>
     </div>
+    <p class="cmd">or <code>winget install v1k70rk4.HASSAgentNET10</code></p>
     <div class="badges">
       <img src="https://img.shields.io/github/v/release/v1k70rk4/HASS.Agent.NET10?include_prereleases&label=version&color=41bdf5" alt="Version">
       <img src="https://img.shields.io/badge/Windows-10%202004%2B%20%7C%2011-0078D4?logo=windows&logoColor=white" alt="Windows">
@@ -346,7 +351,7 @@
     <p class="lead">Two pieces: the Windows app and the Home Assistant integration.</p>
     <div class="grid">
       <div class="feat"><div class="ico">①</div><h3>Install the integration</h3><p>Search for <strong>HASS.Agent</strong> in HACS — it is in the default store, no custom repository needed. <a href="https://my.home-assistant.io/redirect/hacs_repository/?owner=v1k70rk4&amp;repository=HASS.Agent.NET10-Integration&amp;category=integration">Open it in HACS</a> or see the <a href="https://github.com/v1k70rk4/HASS.Agent.NET10-Integration">repository</a>.</p></div>
-      <div class="feat"><div class="ico">②</div><h3>Install the Windows app</h3><p>Grab the signed installer from <a href="https://github.com/v1k70rk4/HASS.Agent.NET10/releases/latest">Releases</a> and run it.</p></div>
+      <div class="feat"><div class="ico">②</div><h3>Install the Windows app</h3><p><code>winget install v1k70rk4.HASSAgentNET10</code> — or grab the signed installer from <a href="https://github.com/v1k70rk4/HASS.Agent.NET10/releases/latest">Releases</a> and run it.</p></div>
       <div class="feat"><div class="ico">③</div><h3>Connect &amp; enjoy</h3><p>Enable MQTT or the HA API in settings. On MQTT the PC turns up in Home Assistant on its own; over the HA API you add the first one by hand.</p></div>
     </div>
   </div>
