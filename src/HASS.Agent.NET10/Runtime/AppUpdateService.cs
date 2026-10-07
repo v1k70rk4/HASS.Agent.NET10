@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using HASS.Agent.Companion.Security;
 using System.Text;
 using System.Text.Json.Serialization;
 
@@ -166,10 +167,34 @@ internal static class AppUpdateService
         Directory.CreateDirectory(targetDirectory);
         var targetPath = Path.Combine(targetDirectory, SanitizeFileName(update.AssetName));
 
-        await using var source = await http.GetStreamAsync(update.DownloadUrl, cancellationToken);
-        await using var destination = File.Create(targetPath);
-        await source.CopyToAsync(destination, cancellationToken);
+        await using (var source = await http.GetStreamAsync(update.DownloadUrl, cancellationToken))
+        await using (var destination = File.Create(targetPath))
+        {
+            await source.CopyToAsync(destination, cancellationToken);
+        }
+
+        // Every way an update is installed (the About page, the tray app or the service on a
+        // request from Home Assistant) goes through here, so nothing starts an installer that
+        // is not signed by the publisher.
+        if (!InstallerSignature.IsTrusted(targetPath, out var reason))
+        {
+            TryDelete(targetPath);
+            throw new InvalidOperationException($"The downloaded installer was not run: {reason}.");
+        }
+
         return targetPath;
+    }
+
+    private static void TryDelete(string path)
+    {
+        try
+        {
+            File.Delete(path);
+        }
+        catch (Exception)
+        {
+            // Left behind in the download folder; it is never started.
+        }
     }
 
     private static GitHubReleaseAsset? SelectReleaseAsset(IReadOnlyList<GitHubReleaseAsset>? assets)
