@@ -34,26 +34,33 @@ internal sealed class SettingsAccessForm : Form
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = false;
-        StartPosition = FormStartPosition.CenterScreen;
-        AutoScaleMode = AutoScaleMode.Dpi;
-        AutoScaleDimensions = new SizeF(96F, 96F);
+        ShowInTaskbar = false;
+        StartPosition = FormStartPosition.CenterParent;
         Font = new Font("Segoe UI", 9.5F);
-        ClientSize = new Size(520, 420);
-        Padding = new Padding(16);
+
+        // Everything sizes itself to its text and to the DPI of the screen: a TV at 300 %
+        // cut the fixed sizes this had at first (and hid two of the three buttons).
+        AutoScaleMode = AutoScaleMode.None;
+        AutoSize = true;
+        AutoSizeMode = AutoSizeMode.GrowAndShrink;
+        var width = LogicalToDeviceUnits(480);
+        var gap = LogicalToDeviceUnits(10);
 
         var restricted = SettingsAccess.IsRestricted(paths.ConfigDirectory);
         var heading = new Label
         {
-            Dock = DockStyle.Top,
-            Height = 30,
+            AutoSize = true,
+            MaximumSize = new Size(width, 0),
+            Margin = new Padding(0, 0, 0, gap),
             Font = new Font("Segoe UI Semibold", 12F),
             Text = Strings.Get("Access.Heading"),
         };
         var text = new Label
         {
-            Dock = DockStyle.Top,
-            Height = 110,
-            Text = (firstTime ? Strings.Get("Access.FirstTime") + "\n\n" : string.Empty)
+            AutoSize = true,
+            MaximumSize = new Size(width, 0),
+            Margin = new Padding(0, 0, 0, gap),
+            Text = (firstTime ? Strings.Get("Access.FirstTime") + Environment.NewLine + Environment.NewLine : string.Empty)
                 + Strings.Get(restricted ? "Access.NowRestricted" : "Access.NowEveryone"),
         };
 
@@ -71,27 +78,50 @@ internal sealed class SettingsAccessForm : Form
             _users.SetItemChecked(0, true);
         }
 
-        _users.Dock = DockStyle.Fill;
+        _users.Width = width;
+        _users.Height = _users.ItemHeight * Math.Clamp(_users.Items.Count, 3, 8) + LogicalToDeviceUnits(6);
+        _users.Margin = new Padding(0, 0, 0, gap);
 
-        var limit = new Button { Text = Strings.Get("Access.Limit"), AutoSize = true, Padding = new Padding(8, 2, 8, 2) };
-        var everyone = new Button { Text = Strings.Get("Access.KeepEveryone"), AutoSize = true, Padding = new Padding(8, 2, 8, 2) };
-        var later = new Button { Text = Strings.Get(firstTime ? "Access.Later" : "Access.Close"), AutoSize = true, Padding = new Padding(8, 2, 8, 2), DialogResult = DialogResult.Cancel };
+        Button MakeButton(string key) => new()
+        {
+            Text = Strings.Get(key),
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            Padding = new Padding(LogicalToDeviceUnits(10), LogicalToDeviceUnits(4), LogicalToDeviceUnits(10), LogicalToDeviceUnits(4)),
+            Margin = new Padding(LogicalToDeviceUnits(8), 0, 0, 0),
+        };
+        var limit = MakeButton("Access.Limit");
+        var everyone = MakeButton("Access.KeepEveryone");
+        var later = MakeButton(firstTime ? "Access.Later" : "Access.Close");
+        later.DialogResult = DialogResult.Cancel;
         limit.Click += (_, _) => Limit();
         everyone.Click += (_, _) => KeepForEveryone();
 
         var buttons = new FlowLayoutPanel
         {
-            Dock = DockStyle.Bottom,
-            Height = 44,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
             FlowDirection = FlowDirection.RightToLeft,
-            Padding = new Padding(0, 8, 0, 0),
+            WrapContents = false,
+            Anchor = AnchorStyles.Right,
+            Margin = Padding.Empty,
         };
         buttons.Controls.AddRange([later, everyone, limit]);
 
-        Controls.Add(_users);
-        Controls.Add(buttons);
-        Controls.Add(text);
-        Controls.Add(heading);
+        var layout = new TableLayoutPanel
+        {
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            ColumnCount = 1,
+            Margin = Padding.Empty,
+            // The form sizes itself to this panel, so the space around the content lives here.
+            Padding = new Padding(LogicalToDeviceUnits(18)),
+        };
+        layout.Controls.Add(heading);
+        layout.Controls.Add(text);
+        layout.Controls.Add(_users);
+        layout.Controls.Add(buttons);
+        Controls.Add(layout);
         AcceptButton = limit;
         CancelButton = later;
     }
