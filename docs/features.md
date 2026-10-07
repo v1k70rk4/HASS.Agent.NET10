@@ -145,6 +145,12 @@ The same executable can run as a tray app or as a Windows service. Use the **Ser
 
 Use the **Capabilities** page to choose which role handles each feature.
 
+### Commands the service runs
+
+> From 10.9.1.
+
+The service runs as SYSTEM, so it runs a custom command or a command sensor set for the service only when an administrator has approved it. The approvals are kept in `service-policy.json` next to the program, which only administrators can change, each by its id and what it runs. Installing or updating the app approves what the settings already ask the service to run. A command or command sensor added or changed for the service later asks for administrator approval (UAC) when the settings are saved; until it is approved the service leaves it to the tray app, and the log says which ones. The built-in sensors and the harmless custom sensor types (process, service, drive) need no approval.
+
 <p align="center"><img src="images/ui-services.png" width="700" alt="Service page"></p>
 
 <p align="center"><img src="images/ui-capabilities.png" width="700" alt="Capabilities page: functions and system commands"></p>
@@ -162,6 +168,24 @@ You can also check for updates manually from the **About** page, which shows the
 
 <p align="center"><img src="images/ui-about.png" width="700" alt="About page"></p>
 
+A downloaded installer is started only when it carries the publisher's Authenticode signature (*Open Source Developer Viktor Révész*, issued by *Certum Code Signing 2021 CA*, with a valid timestamp). Anything else is deleted and the update stops, with the reason in the log and in Home Assistant.
+
+## Who May Use It on This PC
+
+> From 10.9.1.
+
+The settings are shared by every Windows user of the PC, and they hold the Home Assistant token, the MQTT login and the commands the app runs. They can be limited to some users:
+
+- A **first install** asks: *Only me* or *Every user of this PC*. A silent install (winget, or an update started from Home Assistant) takes *Every user*, and the app asks later.
+- On a PC that **already has HASS.Agent**, an update does this by itself:
+  - If every user of the PC is an administrator, it limits the settings to them. This takes nothing from anyone and keeps out a user added later.
+  - If there is a user who is not an administrator, nothing changes. Home Assistant gets a notification once, and the question comes when someone opens the HASS.Agent window, never at logon. Until a choice is made everything keeps working as before.
+- It can be changed any time under **Danger Zone → Users of this PC**.
+
+Limiting needs an administrator (UAC). It uses a local group, **HASS.Agent Users**, that an administrator can also manage with Windows' own tools; the ticked users are also given access by name, so they can go on without logging on again. Administrators and the service keep their access. Someone left out gets a note once, and HASS.Agent does not start for them.
+
+From the command line (as administrator): `HASS.Agent.NET10.exe --settings-access only USER [USER ...]`, `--settings-access everyone`.
+
 ## Danger Zone
 
 An opt-in maintenance and diagnostics toolbox. Enable it with the **Danger Zone** checkbox on the General page and a new tab appears with the following tools:
@@ -174,6 +198,7 @@ An opt-in maintenance and diagnostics toolbox. Enable it with the **Danger Zone*
 | **Live MQTT monitor** | Watches the `hass.agent/#` topics in real time with a payload preview — see exactly what the agent sends and receives. |
 | **Backup / restore** | Exports the settings to a portable JSON file and restores them from one. DPAPI-protected secrets (MQTT password, HA API token) are machine-bound and excluded. |
 | **Factory reset** | Deletes all settings after a double confirmation and restarts the app with a fresh serial number and API key. |
+| **Users of this PC** | Who may use HASS.Agent on this PC: every user, or only the ticked ones. See [Who May Use It on This PC](#who-may-use-it-on-this-pc). |
 
 The Danger Zone also hosts the **beta updates** toggle: when enabled, update checks include GitHub pre-releases, so you can follow the beta channel. Stable users are never offered pre-releases.
 

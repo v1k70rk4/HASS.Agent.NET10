@@ -2,7 +2,7 @@
 
 ![Windows](https://img.shields.io/badge/Windows-10%202004%2B%20%7C%2011-0078D4?logo=windows&logoColor=white)
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet&logoColor=white)
-![Version](https://img.shields.io/badge/version-10.9.0-brightgreen)
+![Version](https://img.shields.io/badge/version-10.9.1--beta.1-orange)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-MQTT%20%7C%20WebSocket%20API-41BDF5?logo=homeassistant&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 [![Website](https://img.shields.io/badge/website-v1k70rk4.github.io-41bdf5?logo=github)](https://v1k70rk4.github.io/HASS.Agent.NET10/)
@@ -24,7 +24,7 @@ It is designed for Windows PCs you want to observe and control from Home Assista
 
 The .NET10 line starts at **version 10.0.0**. The classic client is a separate program: if you want to stay with it, it is still available from its own project, and the integration keeps a [`legacy` branch](https://github.com/v1k70rk4/HASS.Agent.NET10-Integration/tree/legacy) for it. Thinking about switching? See [Coming from HASS.Agent](docs/migrating.md).
 
-> **Stable:** [10.9.0](https://github.com/v1k70rk4/HASS.Agent.NET10/releases/latest) &nbsp;·&nbsp; [What changed](#what-changed) &nbsp;·&nbsp; [Full changelog](CHANGELOG.md)
+> **Stable:** [10.9.0](https://github.com/v1k70rk4/HASS.Agent.NET10/releases/latest) &nbsp;·&nbsp; **Beta:** [10.9.1-beta.1](https://github.com/v1k70rk4/HASS.Agent.NET10/releases/tag/v10.9.1-beta.1) &nbsp;·&nbsp; [What changed](#what-changed) &nbsp;·&nbsp; [Full changelog](CHANGELOG.md)
 
 ---
 
@@ -79,6 +79,7 @@ The setup package is built with [Inno Setup](https://jrsoftware.org/isinfo.php).
 - **Start automatically on login** (default: enabled, sets a registry Run key)
 - **Install system service** (optional)
 - **Clean install** (removes existing settings, API key, and log files — useful for a fresh start)
+- **Who may use it** (first install only): *Only me* or *Every user of this PC*, see [Who May Use It on This PC](docs/features.md#who-may-use-it-on-this-pc)
 
 The installer automatically configures a **Windows Firewall** rule (Private profile, TCP port 5115) for the Local HTTP API, so manual firewall setup is not needed.
 
@@ -100,7 +101,8 @@ During upgrades the installer stops the running tray app, stops the system servi
 | **Display and audio** | The screen as a light in Home Assistant, the default audio device as a select, the volume of a single app. | [Display and Audio](docs/features.md#display-and-audio) |
 | **Hotkeys** | A named key combination becomes an event in Home Assistant, to start automations from the keyboard. | [Hotkeys](docs/features.md#hotkeys) |
 | <a id="windows-service"></a>**Windows service** | The same program as a system service, for what should work with nobody logged in. | [Windows Service](docs/features.md#windows-service) |
-| <a id="updating-from-home-assistant"></a>**Updates from Home Assistant** | An update entity with a working Install button; silent when the service is installed. | [Updating](docs/features.md#updating-from-home-assistant) |
+| <a id="updating-from-home-assistant"></a>**Updates from Home Assistant** | An update entity with a working Install button; silent when the service is installed; only installers signed by the publisher are run. | [Updating](docs/features.md#updating-from-home-assistant) |
+| **Who may use it** | The settings, with the Home Assistant token and the commands, for every user of the PC or only for the ones you tick. | [Who May Use It](docs/features.md#who-may-use-it-on-this-pc) |
 | <a id="danger-zone"></a>**Danger Zone** | Opt-in toolbox: MQTT cleanup, live monitor, debug log, backup / restore, factory reset, beta updates. | [Danger Zone](docs/features.md#danger-zone) |
 | <a id="connection-modes"></a><a id="home-assistant-integration"></a>**Connection** | MQTT, the Home Assistant WebSocket API, or both with automatic failover; a notification-only local HTTP API as a fallback. | [Connection Modes](docs/connection.md#connection-modes) |
 
@@ -110,7 +112,7 @@ During upgrades the installer stops the running tray app, stops the system servi
 
 ## Documentation
 
-- [Features in detail](docs/features.md): notifications, media player, dashboard popup, display and audio, hotkeys, Windows service, updates, Danger Zone
+- [Features in detail](docs/features.md): notifications, media player, dashboard popup, display and audio, hotkeys, Windows service, updates, who may use it, Danger Zone
 - [Commands](docs/commands.md): system commands and custom commands, with the key names
 - [Sensors](docs/sensors.md): the built-in sensors, their attributes and polling profiles, custom sensors
 - <a id="mqtt-topics"></a><a id="ha-api-websocket-events"></a><a id="local-http-api"></a><a id="windows-firewall"></a>[Connecting to Home Assistant](docs/connection.md): connection modes, MQTT topics, HA API events, the local HTTP API, the firewall rule
@@ -163,6 +165,23 @@ No telemetry, analytics, or usage data is collected or transmitted.
 ---
 
 ## What Changed
+
+### 10.9.1-beta.1
+
+> **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered it, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.9.0**, below.
+
+A security release: what CodeRabbit's AI Deep Scan found in the app, fixed. Mostly invisible, except that on a PC with more than one Windows user the app asks once who may use it. Works with the Home Assistant integration **10.6.7** or newer, no new integration needed; the new entities of 10.9.0 need the integration **10.9.0**. Signed release.
+
+- **Fixed: a user of the PC could have a command run as SYSTEM.** The settings live in ProgramData, where every user of the PC can write, and the Windows service (SYSTEM) ran the custom commands and command sensors set for it there. The service now runs one only when an administrator has approved it: `service-policy.json` next to the program, which only administrators can write, approves each by its id and what it runs. Installing or updating the app approves what the settings already ask the service to run, so nothing stops working; a command or command sensor added or changed for the service later asks for administrator approval (UAC) when the settings are saved. Until then the service leaves it to the tray app, and the log says which ones. Found by CodeRabbit's AI Deep Scan.
+- **Who may use HASS.Agent on this PC.** Its settings, with the Home Assistant token, the MQTT login and the commands it runs, could be read and changed by every user of the PC. They can now be limited to some users: a first install asks (*Only me* or *Every user of this PC*), and on a PC that already has HASS.Agent the app asks once, when it is opened, with the users of the PC to tick; it is also under Danger Zone, *Users of this PC*. Limiting needs an administrator (UAC) and uses a local group, *HASS.Agent Users*, that an administrator can also manage with Windows' own tools; the ticked users get access at once, without logging on again. Someone left out gets a note once, and HASS.Agent does not start for them. On a PC whose users are all administrators the update limits the settings to them by itself, which takes nothing from anyone and keeps out a user added later. On a PC with a user who is not an administrator nothing changes by itself: Home Assistant gets a notification once, and the question comes when someone opens the HASS.Agent window, never at logon.
+- **An update installer runs only when it is signed by the publisher.** The app downloaded the installer of a new release and started it without checking it, elevated, and from the service as SYSTEM. It now asks Windows to check the Authenticode signature first (unchanged since signing, a trusted certificate chain, a valid timestamp) and requires the signer to be the publisher of the releases (*Open Source Developer Viktor Révész*, issued by *Certum Code Signing 2021 CA*). Anything else, a damaged download or a release file replaced by someone else, is deleted and the update stops with the reason in the log and in Home Assistant. The publisher is checked by name rather than by certificate, so a renewed certificate keeps updates working.
+- **The local HTTP API compares the API key in constant time**, so the time an answer takes says nothing about a guessed key, and it lets nothing in if the key were ever missing from the settings (it is always generated, so this changes nothing in practice).
+- **Switched-off sensors stay at home.** A built-in sensor switched off on the Sensors page was only left out of what Home Assistant builds entities from; its value still went to the broker or the HA API with every update, the title of the active window and the logged-in user included. Only the sensors switched on for the tray app or the service are sent now, plus what the display light and the audio selects need.
+- **Notifications and media commands over the HA API follow their switches.** With notifications or the media player switched off, MQTT does not even subscribe to them, but over the HA API they were still shown or carried out. They are ignored there too now.
+- **Windows tools are started by their full path** (`sc.exe`, `schtasks.exe`, `shutdown.exe`, PowerShell and others). A bare name is looked up in the current folder first, so the app started elevated from a folder someone else can write to could run a planted copy.
+- **The update prompt only links to GitHub.** Links inside the release notes are shown as text, and only an https page on github.com is opened.
+- **The log cannot be fooled by line breaks** in text that comes from outside (a notification, an MQTT message): the lines after the first are indented, so they never look like a record of their own.
+- The release signatures (Sigstore) are only made after every file in the zip has been checked: the app with the Certum signature, the bundled WebView2 and ASP.NET Core libraries with Microsoft's, and nothing else that could run.
 
 ### 10.9.0
 
