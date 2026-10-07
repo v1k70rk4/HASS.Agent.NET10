@@ -29,7 +29,7 @@ To build the installer, also install [Inno Setup](https://jrsoftware.org/isinfo.
 dotnet test --project tests/HASS.Agent.NET10.Tests -c Release
 ```
 
-`global.json` selects the Microsoft.Testing.Platform runner that xUnit v3 uses. Two tests need a signed release installer, which is too big for the repository; set `HASS_AGENT_SIGNED_INSTALLER` to one (for example `artifacts\installer\HASS.Agent.NET10-Setup-<version>.exe` after `build-exe.ps1 -Tag`) to run them, otherwise they are skipped.
+`global.json` selects the Microsoft.Testing.Platform runner that xUnit v3 uses. The installer signature tests need a signed release installer, which is too big for the repository. CI downloads the installer of the latest release; locally, set `HASS_AGENT_SIGNED_INSTALLER` to one (for example `artifacts\installer\HASS.Agent.NET10-Setup-<version>.exe` after `build-exe.ps1 -Tag`), otherwise those tests are skipped.
 
 Every bug fix comes with a test that fails without the fix, so the same bug cannot come back unnoticed.
 

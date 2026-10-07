@@ -74,8 +74,8 @@ public class InstallerSignatureTests : IDisposable
         Assert.False(InstallerSignature.IsTrusted(Path.Combine(_folder, "nothing.exe"), out _));
     }
 
-    // The real installers are too big for the repository. Point HASS_AGENT_SIGNED_INSTALLER at a
-    // signed release installer to run these too (build-exe.ps1 leaves them in artifacts\installer).
+    // The real installers are too big for the repository. CI points HASS_AGENT_SIGNED_INSTALLER at
+    // the latest release's installer; locally, point it at one in artifacts\installer (build-exe.ps1).
     private static string? SignedInstaller =>
         Environment.GetEnvironmentVariable("HASS_AGENT_SIGNED_INSTALLER") is { Length: > 0 } path && File.Exists(path) ? path : null;
 
