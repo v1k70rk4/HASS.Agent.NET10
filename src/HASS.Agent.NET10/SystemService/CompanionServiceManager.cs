@@ -25,12 +25,14 @@ internal static class CompanionServiceManager
         }
 
         var command = args[0].Trim().ToLowerInvariant();
-        if (command is not ("--install-service" or "--uninstall-service" or "--start-service" or "--stop-service" or "--approve-service-commands"))
+        if (command is not ("--install-service" or "--uninstall-service" or "--start-service" or "--stop-service" or "--approve-service-commands" or "--settings-access"))
         {
             return false;
         }
 
-        var result = ExecuteControlCommand(command);
+        var result = command == "--settings-access"
+            ? ChangeSettingsAccess(args.Skip(1).Where(arg => !string.Equals(arg, "--quiet", StringComparison.OrdinalIgnoreCase)).ToList())
+            : ExecuteControlCommand(command);
         if (!args.Any(arg => string.Equals(arg, "--quiet", StringComparison.OrdinalIgnoreCase)))
         {
             MessageBox.Show(
@@ -174,6 +176,61 @@ internal static class CompanionServiceManager
         catch (Exception ex)
         {
             return new ControlCommandResult(false, string.Format(S("SvcMgr.ApprovalFailed"), ex.Message));
+        }
+    }
+
+    /// <summary>
+    /// "--settings-access only USER [USER ...]": the settings for these users only (the
+    /// "HASS.Agent Users" group); "everyone": every user of the PC, as before; "keep": what the
+    /// folder had, after an update. Needs an administrator.
+    /// </summary>
+    private static ControlCommandResult ChangeSettingsAccess(IReadOnlyList<string> arguments)
+    {
+        if (!IsAdministrator())
+        {
+            return new ControlCommandResult(false, S("Access.NeedsAdmin"));
+        }
+
+        var mode = arguments.FirstOrDefault()?.ToLowerInvariant();
+        var users = arguments.Skip(1).Where(user => !string.IsNullOrWhiteSpace(user)).ToList();
+        var paths = AppPaths.Create();
+        using var log = new FileLog(paths.LogFile);
+        try
+        {
+            switch (mode)
+            {
+                case "only" when users.Count > 0:
+                    SettingsAccess.RestrictTo(paths.ConfigDirectory, users);
+                    RememberAccessDecision(paths, log);
+                    log.Info($"Settings limited to {SettingsAccess.GroupName}: {string.Join(", ", users)}.");
+                    return new ControlCommandResult(true, string.Format(S("Access.Restricted"), string.Join(", ", users)));
+                case "everyone":
+                    SettingsAccess.OpenToEveryone(paths.ConfigDirectory);
+                    RememberAccessDecision(paths, log);
+                    log.Info("Settings open to every user of this PC.");
+                    return new ControlCommandResult(true, S("Access.Everyone"));
+                case "keep":
+                    SettingsAccess.KeepAsIs(paths.ConfigDirectory);
+                    return new ControlCommandResult(true, string.Empty);
+                default:
+                    return new ControlCommandResult(false, S("Access.Usage"));
+            }
+        }
+        catch (Exception ex)
+        {
+            log.Warning($"Changing the settings access failed: {ex.Message}");
+            return new ControlCommandResult(false, string.Format(S("Access.Failed"), ex.Message));
+        }
+    }
+
+    // A choice made at install time or in the app: the app does not ask about it again.
+    private static void RememberAccessDecision(AppPaths paths, FileLog log)
+    {
+        var settings = SettingsStore.LoadOrCreate(paths, log);
+        if (!settings.SettingsAccessDecided)
+        {
+            settings.SettingsAccessDecided = true;
+            SettingsStore.Save(paths, settings);
         }
     }
 

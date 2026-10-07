@@ -2129,6 +2129,11 @@ internal sealed class MainForm : Form
         importBtn.Click += (_, _) => ImportSettings();
         card.Controls.Add(importBtn);
 
+        var accessBtn = MakeSecondaryButton(S("Access.Button"), 210, 32);
+        accessBtn.Location = Pt(456, 128);
+        accessBtn.Click += (_, _) => SettingsAccessForm.Show(this, _paths, _settings, _log);
+        card.Controls.Add(accessBtn);
+
         return card;
     }
 

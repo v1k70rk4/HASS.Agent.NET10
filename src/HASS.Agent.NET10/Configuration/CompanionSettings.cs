@@ -26,6 +26,9 @@ internal sealed class CompanionSettings
 
     public bool BetaUpdatesEnabled { get; set; }
 
+    // Someone answered "who may use HASS.Agent on this PC" (SettingsAccessForm): not asked again.
+    public bool SettingsAccessDecided { get; set; }
+
     /// <summary>Version of the previous run — used to detect a completed update on startup.</summary>
     public string LastRunVersion { get; set; } = string.Empty;
 
