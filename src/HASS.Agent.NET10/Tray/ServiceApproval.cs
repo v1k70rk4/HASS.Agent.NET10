@@ -17,7 +17,7 @@ namespace HASS.Agent.Companion.Tray;
 /// </summary>
 internal static class ServiceApproval
 {
-    public static void RequestIfNeeded(IWin32Window owner, CompanionSettings settings, FileLog log)
+    public static async Task RequestIfNeededAsync(IWin32Window owner, CompanionSettings settings, FileLog log)
     {
         if (!CompanionServiceManager.IsInstalled())
         {
@@ -39,7 +39,7 @@ internal static class ServiceApproval
             return;
         }
 
-        var outcome = ElevatedRun.Start("--approve-service-commands --quiet", out var error);
+        var (outcome, error) = await ElevatedRun.StartAsync("--approve-service-commands --quiet");
         if (error is not null)
         {
             log.Warning($"Unable to start the service approval: {error}");

@@ -105,8 +105,8 @@ internal sealed class SettingsAccessForm : Form
         var everyone = MakeButton("Access.KeepEveryone", elevates: true);
         var later = MakeButton(firstTime ? "Access.Later" : "Access.Close", elevates: false);
         later.DialogResult = DialogResult.Cancel;
-        limit.Click += (_, _) => Limit();
-        everyone.Click += (_, _) => KeepForEveryone();
+        limit.Click += async (_, _) => await WhileWaitingAsync(LimitAsync);
+        everyone.Click += async (_, _) => await WhileWaitingAsync(KeepForEveryoneAsync);
 
         var buttons = new FlowLayoutPanel
         {
@@ -169,7 +169,37 @@ internal sealed class SettingsAccessForm : Form
         form.ShowDialog(owner);
     }
 
-    private void Limit()
+    // The dialog stays responsive while the administrator's run is waited for, but its
+    // buttons are off so that nobody starts a second one meanwhile.
+    private async Task WhileWaitingAsync(Func<Task> action)
+    {
+        UseWaitCursor = true;
+        foreach (var button in Controls.OfType<Control>().SelectMany(Descendants).OfType<Button>())
+        {
+            button.Enabled = false;
+        }
+
+        try
+        {
+            await action();
+        }
+        finally
+        {
+            if (!IsDisposed)
+            {
+                UseWaitCursor = false;
+                foreach (var button in Controls.OfType<Control>().SelectMany(Descendants).OfType<Button>())
+                {
+                    button.Enabled = true;
+                }
+            }
+        }
+
+        static IEnumerable<Control> Descendants(Control control) =>
+            new[] { control }.Concat(control.Controls.OfType<Control>().SelectMany(Descendants));
+    }
+
+    private async Task LimitAsync()
     {
         var users = _users.CheckedItems.Cast<string>().ToList();
         if (!users.Contains(Environment.UserName, StringComparer.OrdinalIgnoreCase))
@@ -178,7 +208,7 @@ internal sealed class SettingsAccessForm : Form
             users.Insert(0, Environment.UserName);
         }
 
-        if (!RunElevated("--settings-access only " + string.Join(' ', users.Select(Quote))))
+        if (!await RunElevatedAsync("--settings-access only " + string.Join(' ', users.Select(Quote))))
         {
             return;
         }
@@ -195,11 +225,11 @@ internal sealed class SettingsAccessForm : Form
         DialogResult = DialogResult.OK;
     }
 
-    private void KeepForEveryone()
+    private async Task KeepForEveryoneAsync()
     {
         // Also when nothing changes on the folder: it is a decision for an administrator, the
         // same as limiting, and once made the app does not ask again.
-        if (!RunElevated("--settings-access everyone"))
+        if (!await RunElevatedAsync("--settings-access everyone"))
         {
             return;
         }
@@ -229,9 +259,10 @@ internal sealed class SettingsAccessForm : Form
     }
 
     /// <summary>True once the administrator's run has ended; it says what it changed on its own.</summary>
-    private bool RunElevated(string arguments)
+    private async Task<bool> RunElevatedAsync(string arguments)
     {
-        switch (ElevatedRun.Start(arguments + " --quiet", out var error))
+        var (outcome, error) = await ElevatedRun.StartAsync(arguments + " --quiet");
+        switch (outcome)
         {
             case ElevatedOutcome.Finished:
                 return true;

@@ -296,7 +296,7 @@ internal sealed class MainForm : Form
 
         var save = MakePrimaryButton(S("Btn.Save"), 110, 36);
         save.Anchor = AnchorStyles.Right | AnchorStyles.Top;
-        save.Click += (_, _) => SaveSettings();
+        save.Click += async (_, _) => await SaveSettingsAsync();
 
         var close = MakeSecondaryButton(S("Btn.Close"), 100, 36);
         close.Anchor = AnchorStyles.Right | AnchorStyles.Top;
@@ -2130,7 +2130,7 @@ internal sealed class MainForm : Form
 
         var importBtn = MakeSecondaryButton(S("Danger.Import"), 210, 32);
         importBtn.Location = Pt(238, 128);
-        importBtn.Click += (_, _) => ImportSettings();
+        importBtn.Click += async (_, _) => await ImportSettingsAsync();
         card.Controls.Add(importBtn);
 
         var accessBtn = MakeSecondaryButton(S("Access.Button"), 210, 32);
@@ -2165,7 +2165,7 @@ internal sealed class MainForm : Form
         }
     }
 
-    private void ImportSettings()
+    private async Task ImportSettingsAsync()
     {
         using var dialog = new OpenFileDialog { Filter = "JSON (*.json)|*.json" };
         if (dialog.ShowDialog(this) != DialogResult.OK)
@@ -2188,7 +2188,7 @@ internal sealed class MainForm : Form
         {
             var imported = SettingsStore.Import(dialog.FileName);
             SettingsStore.Save(_paths, imported);
-            ServiceApproval.RequestIfNeeded(this, imported, _log);
+            await ServiceApproval.RequestIfNeededAsync(this, imported, _log);
             _log.Info("Settings imported from file; restarting.");
             MessageBox.Show(S("Danger.ImportDone"), AppIdentity.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Information);
             RestartApplication();
@@ -2642,7 +2642,7 @@ internal sealed class MainForm : Form
         }
     }
 
-    private void SaveSettings()
+    private async Task SaveSettingsAsync()
     {
         _settings.DeviceName = _deviceName.Text.Trim();
         _settings.BindHost = _bindHost.Text.Trim();
@@ -2776,7 +2776,7 @@ internal sealed class MainForm : Form
 
         SettingsStore.Save(_paths, _settings);
         SettingsSaved?.Invoke(this, EventArgs.Empty);
-        ServiceApproval.RequestIfNeeded(this, _settings, _log);
+        await ServiceApproval.RequestIfNeededAsync(this, _settings, _log);
         UpdateGeneralStatusMessages();
         UpdateServiceStatusMessage();
 
