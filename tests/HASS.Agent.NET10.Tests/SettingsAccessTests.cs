@@ -98,6 +98,18 @@ public class SettingsAccessTests : IDisposable
     }
 
     [Fact]
+    public void An_update_does_not_open_a_folder_whose_rule_it_cannot_read()
+    {
+        // Default-deny: unknown is not "open", so an update leaves it alone (and creates nothing).
+        var missing = Path.Combine(_folder, "unreadable");
+
+        Assert.Null(SettingsAccess.RestrictionState(missing));
+        SettingsAccess.KeepAsIs(missing);
+
+        Assert.False(Directory.Exists(missing));
+    }
+
+    [Fact]
     public void A_folder_that_is_not_there_yet_can_be_used()
     {
         Assert.True(SettingsAccess.CurrentUserCanUse(Path.Combine(_folder, "not-yet")));

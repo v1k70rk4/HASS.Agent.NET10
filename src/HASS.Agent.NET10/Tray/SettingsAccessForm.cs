@@ -16,8 +16,6 @@ namespace HASS.Agent.Companion.Tray;
 /// </summary>
 internal sealed class SettingsAccessForm : Form
 {
-    private const int ErrorCancelled = 1223;
-
     private readonly AppPaths _paths;
     private readonly CompanionSettings _settings;
     private readonly FileLog _log;
@@ -230,29 +228,24 @@ internal sealed class SettingsAccessForm : Form
         }
     }
 
+    /// <summary>True once the administrator's run has ended; it says what it changed on its own.</summary>
     private bool RunElevated(string arguments)
     {
-        try
+        switch (ElevatedRun.Start(arguments + " --quiet", out var error))
         {
-            using var process = Process.Start(new ProcessStartInfo
-            {
-                FileName = Environment.ProcessPath ?? Application.ExecutablePath,
-                Arguments = arguments + " --quiet",
-                UseShellExecute = true,
-                Verb = "runas",
-            });
-            process?.WaitForExit(TimeSpan.FromSeconds(60));
-            return true;
-        }
-        catch (Win32Exception ex) when (ex.NativeErrorCode == ErrorCancelled)
-        {
-            return false;
-        }
-        catch (Exception ex)
-        {
-            _log.Warning($"Unable to change the settings access: {ex.Message}");
-            MessageBox.Show(this, string.Format(Strings.Get("Access.Failed"), ex.Message), AppIdentity.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Error);
-            return false;
+            case ElevatedOutcome.Finished:
+                return true;
+            case ElevatedOutcome.StillRunning:
+                // It may still finish: not reported as a failure, and the dialog stays open.
+                _log.Warning($"The settings access change has not finished yet ({arguments}).");
+                MessageBox.Show(this, Strings.Get("Access.StillRunning"), AppIdentity.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return false;
+            case ElevatedOutcome.Failed:
+                _log.Warning($"Unable to change the settings access: {error}");
+                MessageBox.Show(this, string.Format(Strings.Get("Access.Failed"), error), AppIdentity.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return false;
+            default:
+                return false;
         }
     }
 

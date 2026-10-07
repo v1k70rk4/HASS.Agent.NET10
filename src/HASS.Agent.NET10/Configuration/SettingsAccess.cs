@@ -23,8 +23,14 @@ internal static class SettingsAccess
     private static readonly SecurityIdentifier BuiltinUsers = new(WellKnownSidType.BuiltinUsersSid, null);
     private static readonly SecurityIdentifier Everyone = new(WellKnownSidType.WorldSid, null);
 
-    /// <summary>Whether access is limited to the group: no "every user" rule lets anyone else in.</summary>
-    public static bool IsRestricted(string configDirectory)
+    /// <summary>
+    /// Whether access is limited: no "every user" rule lets anyone else in. For the prompts and
+    /// the notice only; an unreadable rule counts as open there, which at worst asks once more.
+    /// </summary>
+    public static bool IsRestricted(string configDirectory) => RestrictionState(configDirectory) ?? false;
+
+    /// <summary>Limited (true), open to every user (false), or unknown when the rule cannot be read.</summary>
+    internal static bool? RestrictionState(string configDirectory)
     {
         try
         {
@@ -38,7 +44,7 @@ internal static class SettingsAccess
         }
         catch (Exception)
         {
-            return false;
+            return null;
         }
     }
 
@@ -185,13 +191,17 @@ internal static class SettingsAccess
     {
         var group = EnsureGroup();
         var wanted = users.Select(Sid).ToHashSet();
-        var current = Members().Select(Sid).ToHashSet();
+        var current = GroupMemberSids(GroupName);
         foreach (var sid in wanted.Except(current))
         {
             ChangeMember(sid, add: true);
         }
 
-        foreach (var sid in current.Except(wanted))
+        // Only local users left unticked are taken out. Someone an administrator added by other
+        // means (a domain account, another group) is not in the list this was chosen from, so
+        // it stays a member.
+        var localUsers = LocalUsers().Select(TrySid).OfType<SecurityIdentifier>().ToHashSet();
+        foreach (var sid in current.Except(wanted).Where(localUsers.Contains))
         {
             ChangeMember(sid, add: false);
         }
@@ -208,8 +218,11 @@ internal static class SettingsAccess
     /// </summary>
     public static void KeepAsIs(string configDirectory)
     {
-        if (IsRestricted(configDirectory))
+        var state = RestrictionState(configDirectory);
+        if (state is not false)
         {
+            // Limited, or the rule could not be read: an update never opens a folder it is not
+            // sure about.
             return;
         }
 

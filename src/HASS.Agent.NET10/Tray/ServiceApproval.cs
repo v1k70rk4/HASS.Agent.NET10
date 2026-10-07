@@ -17,8 +17,6 @@ namespace HASS.Agent.Companion.Tray;
 /// </summary>
 internal static class ServiceApproval
 {
-    private const int ErrorCancelled = 1223;
-
     public static void RequestIfNeeded(IWin32Window owner, CompanionSettings settings, FileLog log)
     {
         if (!CompanionServiceManager.IsInstalled())
@@ -41,24 +39,19 @@ internal static class ServiceApproval
             return;
         }
 
-        try
+        var outcome = ElevatedRun.Start("--approve-service-commands --quiet", out var error);
+        if (error is not null)
         {
-            using var process = Process.Start(new ProcessStartInfo
-            {
-                FileName = Environment.ProcessPath ?? Application.ExecutablePath,
-                Arguments = "--approve-service-commands --quiet",
-                UseShellExecute = true,
-                Verb = "runas",
-            });
-            process?.WaitForExit(TimeSpan.FromSeconds(30));
+            log.Warning($"Unable to start the service approval: {error}");
         }
-        catch (Win32Exception ex) when (ex.NativeErrorCode == ErrorCancelled)
+
+        if (outcome == ElevatedOutcome.StillRunning)
         {
-            // The UAC prompt was declined; reported below like any other failure.
-        }
-        catch (Exception ex)
-        {
-            log.Warning($"Unable to start the service approval: {ex.Message}");
+            // Not a refusal: the approval may still finish, and the service picks it up when it does.
+            log.Warning($"The service approval has not finished yet: {names}.");
+            MessageBox.Show(owner, string.Format(Strings.Get("SvcMgr.ApprovalPending"), names), AppIdentity.DisplayName,
+                MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
         }
 
         var approved = ServicePolicy.Load(ServicePolicy.DefaultPath);

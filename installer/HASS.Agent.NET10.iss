@@ -206,8 +206,12 @@ var
   Users: string;
   Original: string;
 begin
-  { PreviousVersion, read before the files went in: by now this setup is registered itself. }
-  if (PreviousVersion = '') and WizardIsTaskSelected('accessme') then
+  { PreviousVersion, read before the files went in: by now this setup is registered itself.
+    "Only me" needs a person who chose it: a silent install (winget, a deployment tool, an
+    install as SYSTEM) keeps the folder open to every user, as before; the app asks later. }
+  if (PreviousVersion = '') and WizardIsTaskSelected('accessme') and (not WizardSilent())
+    and (CompareText(ExpandConstant('{username}'), 'SYSTEM') <> 0)
+    and (Copy(ExpandConstant('{username}'), Length(ExpandConstant('{username}')), 1) <> '$') then
   begin
     Users := '"' + ExpandConstant('{username}') + '"';
     Original := OriginalUserName();

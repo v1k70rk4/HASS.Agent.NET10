@@ -14,12 +14,25 @@ internal static class SystemTools
     public static string WindowsPowerShell => InSystem32(@"WindowsPowerShell\v1.0\powershell.exe");
 
     /// <summary>
-    /// PowerShell 7 is installed separately, so it is found on PATH (absolute entries only);
-    /// without it on PATH, its default install location.
+    /// PowerShell 7 is installed separately. The service (SYSTEM) takes only its install folder
+    /// under Program Files: a PATH entry ordinary users can write to would let one of them plant
+    /// a pwsh.exe that runs with the service's rights. The tray app runs as its user anyway and
+    /// also looks on PATH (absolute entries only), for a PowerShell installed elsewhere.
     /// </summary>
-    public static string Pwsh =>
-        FindOnPath("pwsh.exe", Environment.GetEnvironmentVariable("PATH"))
-        ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "PowerShell", "7", "pwsh.exe");
+    public static string Pwsh
+    {
+        get
+        {
+            var installed = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "PowerShell", "7", "pwsh.exe");
+            using var identity = System.Security.Principal.WindowsIdentity.GetCurrent();
+            if (identity.IsSystem || File.Exists(installed))
+            {
+                return installed;
+            }
+
+            return FindOnPath("pwsh.exe", Environment.GetEnvironmentVariable("PATH")) ?? installed;
+        }
+    }
 
     /// <summary>
     /// The first PATH entry that holds the file. Relative entries (".", "tools") are skipped:
