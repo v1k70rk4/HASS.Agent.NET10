@@ -18,27 +18,32 @@ internal enum ElevatedOutcome
 /// blocking the window that asked: the wait is awaited, so its UI keeps working. The wait is
 /// long, since someone may take a while at the prompt or type an administrator's password, and
 /// a run that has not ended by then is reported as such, not as a failure: it may still finish.
+/// Only one run at a time: two administrator runs must never change the same folder or file in
+/// an order nobody chose.
 /// </summary>
 internal static class ElevatedRun
 {
     private const int ErrorCancelled = 1223;
     private static readonly TimeSpan Wait = TimeSpan.FromMinutes(5);
 
-    // A run that outlived the wait: until it ends no other is started, so two administrator
-    // runs never change the same folder or file in an order nobody chose.
-    private static Process? _stillRunning;
+    // 1 from the moment a run is reserved until it is known to have ended (or never started).
+    private static int _busy;
+
+    // The run in progress, kept past the wait until it has ended.
+    private static Process? _running;
 
     public static async Task<(ElevatedOutcome Outcome, string? Error)> StartAsync(string arguments)
     {
-        if (_stillRunning is { } earlier)
+        if (_running is { } earlier && HasEnded(earlier))
         {
-            if (!HasExited(earlier))
-            {
-                return (ElevatedOutcome.StillRunning, null);
-            }
-
             earlier.Dispose();
-            _stillRunning = null;
+            _running = null;
+            Interlocked.Exchange(ref _busy, 0);
+        }
+
+        if (Interlocked.CompareExchange(ref _busy, 1, 0) != 0)
+        {
+            return (ElevatedOutcome.StillRunning, null);
         }
 
         Process? process;
@@ -55,42 +60,41 @@ internal static class ElevatedRun
         }
         catch (Win32Exception ex) when (ex.NativeErrorCode == ErrorCancelled)
         {
+            Interlocked.Exchange(ref _busy, 0);
             return (ElevatedOutcome.Cancelled, null);
         }
         catch (Exception ex)
         {
+            Interlocked.Exchange(ref _busy, 0);
             return (ElevatedOutcome.Failed, ex.Message);
         }
 
         if (process is null)
         {
+            Interlocked.Exchange(ref _busy, 0);
             return (ElevatedOutcome.Failed, null);
         }
 
+        _running = process;
         using var timeout = new CancellationTokenSource(Wait);
         try
         {
             await process.WaitForExitAsync(timeout.Token);
-            process.Dispose();
-            return (ElevatedOutcome.Finished, null);
         }
         catch (OperationCanceledException)
         {
-            _stillRunning = process;
+            // Still reserved: the next call checks whether it has ended by then.
             return (ElevatedOutcome.StillRunning, null);
         }
+
+        _running = null;
+        process.Dispose();
+        Interlocked.Exchange(ref _busy, 0);
+        return (ElevatedOutcome.Finished, null);
     }
 
-    private static bool HasExited(Process process)
-    {
-        try
-        {
-            return process.HasExited;
-        }
-        catch (Exception)
-        {
-            // An elevated process may not let this one ask; then it is treated as ended.
-            return true;
-        }
-    }
+    // A zero wait on the handle the start gave us, which can always wait on the process: it says
+    // whether the process has ended without asking for its exit code, which an elevated process
+    // may not give an ordinary one.
+    private static bool HasEnded(Process process) => process.WaitForExit(0);
 }
