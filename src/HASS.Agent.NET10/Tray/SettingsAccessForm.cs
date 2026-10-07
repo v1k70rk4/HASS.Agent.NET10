@@ -82,17 +82,30 @@ internal sealed class SettingsAccessForm : Form
         _users.Height = _users.ItemHeight * Math.Clamp(_users.Items.Count, 3, 8) + LogicalToDeviceUnits(6);
         _users.Margin = new Padding(0, 0, 0, gap);
 
-        Button MakeButton(string key) => new()
+        Button MakeButton(string key, bool elevates)
         {
-            Text = Strings.Get(key),
-            AutoSize = true,
-            AutoSizeMode = AutoSizeMode.GrowAndShrink,
-            Padding = new Padding(LogicalToDeviceUnits(10), LogicalToDeviceUnits(4), LogicalToDeviceUnits(10), LogicalToDeviceUnits(4)),
-            Margin = new Padding(LogicalToDeviceUnits(8), 0, 0, 0),
-        };
-        var limit = MakeButton("Access.Limit");
-        var everyone = MakeButton("Access.KeepEveryone");
-        var later = MakeButton(firstTime ? "Access.Later" : "Access.Close");
+            var button = new Button
+            {
+                Text = Strings.Get(key),
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                Padding = new Padding(LogicalToDeviceUnits(10), LogicalToDeviceUnits(4), LogicalToDeviceUnits(10), LogicalToDeviceUnits(4)),
+                Margin = new Padding(LogicalToDeviceUnits(8), 0, 0, 0),
+            };
+            if (elevates)
+            {
+                // The UAC shield, as Windows puts it on every button that asks for an administrator.
+                using var shield = SystemIcons.GetStockIcon(StockIconId.Shield, LogicalToDeviceUnits(16));
+                button.Image = shield.ToBitmap();
+                button.TextImageRelation = TextImageRelation.ImageBeforeText;
+            }
+
+            return button;
+        }
+
+        var limit = MakeButton("Access.Limit", elevates: true);
+        var everyone = MakeButton("Access.KeepEveryone", elevates: true);
+        var later = MakeButton(firstTime ? "Access.Later" : "Access.Close", elevates: false);
         later.DialogResult = DialogResult.Cancel;
         limit.Click += (_, _) => Limit();
         everyone.Click += (_, _) => KeepForEveryone();
@@ -186,12 +199,21 @@ internal sealed class SettingsAccessForm : Form
 
     private void KeepForEveryone()
     {
-        if (SettingsAccess.IsRestricted(_paths.ConfigDirectory) && !RunElevated("--settings-access everyone"))
+        // Also when nothing changes on the folder: it is a decision for an administrator, the
+        // same as limiting, and once made the app does not ask again.
+        if (!RunElevated("--settings-access everyone"))
         {
             return;
         }
 
-        Remember();
+        // The administrator's process records the decision; without it nothing was decided.
+        if (!SettingsStore.LoadOrCreate(_paths, _log).SettingsAccessDecided)
+        {
+            MessageBox.Show(this, Strings.Get("Access.NotChanged"), AppIdentity.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
+        _settings.SettingsAccessDecided = true;
         DialogResult = DialogResult.OK;
     }
 
