@@ -2,6 +2,7 @@ using System.Buffers;
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using HASS.Agent.Companion.Configuration;
 using HASS.Agent.Companion.Http;
@@ -757,10 +758,18 @@ internal sealed class MqttCompanionService : IDisposable
         if (_settings.HaApiEnabled && !string.IsNullOrWhiteSpace(_settings.HaApiUrl))
         {
             _haWs = new HaWebSocketService(_settings, _log);
-            _haWs.NotificationReceived += notification => _notificationSink.ShowNotification(notification);
+            // Over MQTT a switched-off capability is not even subscribed to; the HA API
+            // delivers every event, so the same switches are checked here.
+            _haWs.NotificationReceived += notification =>
+            {
+                if (_settings.MqttNotificationsEnabled)
+                {
+                    _notificationSink.ShowNotification(notification);
+                }
+            };
             _haWs.MediaCommandReceived += command =>
             {
-                if (_mediaSessionService is not null)
+                if (_settings.MqttMediaPlayerEnabled && _mediaSessionService is not null)
                 {
                     _ = _mediaSessionService.HandleCommandAsync(command);
                 }
@@ -1322,11 +1331,7 @@ internal sealed class MqttCompanionService : IDisposable
                 var pushed = await WaitForPushOrDelayAsync(delay, cancellationToken);
                 if (pushed)
                 {
-                    var pushData = _systemMetricsService?.Read(
-                        _settings.CustomSensors,
-                        _role == CompanionRuntimeRole.Service,
-                        PushProfiles,
-                        _settings.BuiltInSensors);
+                    var pushData = ReadSensorPayload(PushProfiles);
                     if (pushData is not null)
                     {
                         await _haWs!.PublishSensorStateAsync(new
@@ -1340,11 +1345,7 @@ internal sealed class MqttCompanionService : IDisposable
                 continue;
             }
 
-            var sensorData = _systemMetricsService?.Read(
-                _settings.CustomSensors,
-                _role == CompanionRuntimeRole.Service,
-                dueProfiles,
-                _settings.BuiltInSensors);
+            var sensorData = ReadSensorPayload(dueProfiles);
 
             if (sensorData is not null)
             {
@@ -1877,10 +1878,10 @@ internal sealed class MqttCompanionService : IDisposable
             return;
         }
 
-        SystemMetricsMessage message;
+        JsonObject? message;
         try
         {
-            message = _systemMetricsService.Read(_settings.CustomSensors, _role == CompanionRuntimeRole.Service, profiles, _settings.BuiltInSensors);
+            message = ReadSensorPayload(profiles);
         }
         catch (Exception ex)
         {
@@ -1888,7 +1889,20 @@ internal sealed class MqttCompanionService : IDisposable
             return;
         }
 
-        await PublishJsonAsync($"hass.agent/sensors/{TopicId}/state", message, retain: false);
+        if (message is not null)
+        {
+            await PublishJsonAsync($"hass.agent/sensors/{TopicId}/state", message, retain: false);
+        }
+    }
+
+    /// <summary>The sensor values of this role, without the built-in sensors switched off for it.</summary>
+    private JsonObject? ReadSensorPayload(IReadOnlySet<SensorPollingProfile> profiles)
+    {
+        var serviceRole = _role == CompanionRuntimeRole.Service;
+        var message = _systemMetricsService?.Read(_settings.CustomSensors, serviceRole, profiles, _settings.BuiltInSensors);
+        return message is null
+            ? null
+            : SensorPayloadFilter.WithoutDisabled(message, JsonOptions, _settings.BuiltInSensors, serviceRole);
     }
 
     private async Task PublishSystemSensorsLoopAsync(CancellationToken cancellationToken)

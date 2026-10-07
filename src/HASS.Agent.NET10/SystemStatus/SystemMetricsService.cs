@@ -657,7 +657,7 @@ internal sealed class SystemMetricsService : IDisposable
         {
             using var process = Process.Start(new ProcessStartInfo
             {
-                FileName = "netsh.exe",
+                FileName = SystemTools.InSystem32("netsh.exe"),
                 Arguments = "wlan show interfaces",
                 CreateNoWindow = true,
                 RedirectStandardOutput = true,
@@ -909,7 +909,7 @@ internal sealed class SystemMetricsService : IDisposable
 
         using var process = Process.Start(new ProcessStartInfo
         {
-            FileName = "powercfg.exe",
+            FileName = SystemTools.InSystem32("powercfg.exe"),
             Arguments = "/requests",
             CreateNoWindow = true,
             RedirectStandardOutput = true,
@@ -1890,7 +1890,7 @@ internal sealed class SystemMetricsService : IDisposable
 
         if (sensor.IsCommandPowerShell || sensor.IsCommandPwsh)
         {
-            startInfo.FileName = sensor.IsCommandPwsh ? "pwsh.exe" : "powershell.exe";
+            startInfo.FileName = sensor.IsCommandPwsh ? SystemTools.Pwsh : SystemTools.WindowsPowerShell;
             var isScriptFile = parameter.EndsWith(".ps1", StringComparison.OrdinalIgnoreCase);
             startInfo.Arguments = isScriptFile
                 ? $"-NoProfile -ExecutionPolicy Bypass -File \"{parameter}\""

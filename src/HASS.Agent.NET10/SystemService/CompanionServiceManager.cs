@@ -228,7 +228,7 @@ internal static class CompanionServiceManager
         {
             using var process = Process.Start(new ProcessStartInfo
             {
-                FileName = "sc.exe",
+                FileName = SystemTools.InSystem32("sc.exe"),
                 Arguments = $"{command} {arguments}",
                 CreateNoWindow = true,
                 RedirectStandardError = true,

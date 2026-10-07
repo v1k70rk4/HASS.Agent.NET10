@@ -2258,7 +2258,7 @@ internal sealed class MainForm : Form
         // so relaunch after a short delay from a detached shell.
         Process.Start(new ProcessStartInfo
         {
-            FileName = "cmd.exe",
+            FileName = SystemTools.InSystem32("cmd.exe"),
             Arguments = $"/c timeout /t 2 /nobreak >nul & start \"\" \"{Application.ExecutablePath}\"",
             WindowStyle = ProcessWindowStyle.Hidden,
             CreateNoWindow = true,

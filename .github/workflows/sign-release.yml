@@ -62,10 +62,37 @@ jobs:
           $zip = @(Get-ChildItem assets -Filter '*.zip')
           if ($exe.Count -ne 1 -or $zip.Count -ne 1) { throw "Expected one installer and one zip on $env:TAG." }
           Assert-Signed $exe[0].FullName
+          # The Sigstore signature covers the whole zip, so everything in it is checked, not
+          # only the app: our executable with the Certum signature, the third-party DLLs
+          # (WebView2, ASP.NET Core) with a valid Microsoft signature, and nothing else that
+          # could run. Debug symbols and documentation files are data.
           Expand-Archive $zip[0].FullName -DestinationPath unpacked
-          $app = Get-ChildItem unpacked -Recurse -Filter 'HASS.Agent.NET10.exe' | Select-Object -First 1
-          if (-not $app) { throw "No HASS.Agent.NET10.exe in $($zip[0].Name)." }
-          Assert-Signed $app.FullName
+          $root = (Resolve-Path unpacked).Path
+          $apps = 0
+          foreach ($file in Get-ChildItem unpacked -Recurse -File) {
+            $name = $file.FullName.Substring($root.Length + 1)
+            switch -Regex ($file.Extension.ToLowerInvariant()) {
+              '^\.(pdb|xml)$' { "${name}: data"; continue }
+              '^\.exe$' {
+                if ($file.Name -ne 'HASS.Agent.NET10.exe') { throw "Unexpected program in $($zip[0].Name): $name. Not signing it." }
+                Assert-Signed $file.FullName
+                $apps++
+                continue
+              }
+              '^\.dll$' {
+                $sig = Get-AuthenticodeSignature -FilePath $file.FullName
+                $subject = if ($sig.SignerCertificate) { $sig.SignerCertificate.GetNameInfo([System.Security.Cryptography.X509Certificates.X509NameType]::SimpleName, $false) } else { 'nobody' }
+                $issuer = if ($sig.SignerCertificate) { $sig.SignerCertificate.GetNameInfo([System.Security.Cryptography.X509Certificates.X509NameType]::SimpleName, $true) } else { '' }
+                if ($sig.Status -ne 'Valid' -or $subject -notin @('Microsoft Corporation', '.NET') -or -not $issuer.StartsWith('Microsoft')) {
+                  throw "$name in $($zip[0].Name) is not a Microsoft-signed library (status $($sig.Status), signer $subject, issuer $issuer). Not signing it."
+                }
+                "${name}: signed by $subject"
+                continue
+              }
+              default { throw "Unexpected file in $($zip[0].Name): $name. Not signing it." }
+            }
+          }
+          if ($apps -ne 1) { throw "Expected exactly one HASS.Agent.NET10.exe in $($zip[0].Name), found $apps." }
 
       - name: Install cosign
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2

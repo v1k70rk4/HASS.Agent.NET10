@@ -36,7 +36,9 @@ internal static class UpdatePromptDialog
         {
             page.Expander = new TaskDialogExpander
             {
-                Text = notes,
+                // EnableLinks makes "<a href=...>" in any text of the page a link; the notes are
+                // shown as text only, never as links of their own.
+                Text = notes.Replace("<", "‹"),
                 Expanded = true,
                 CollapsedButtonText = Strings.Get("About.WhatsNew"),
                 ExpandedButtonText = Strings.Get("About.UpdateHideNotes"),
@@ -44,9 +46,16 @@ internal static class UpdatePromptDialog
             };
         }
 
-        var releaseUrl = update.ReleaseUrl ?? $"{AppIdentity.GitHubRepositoryUrl}/releases/latest";
+        var releaseUrl = IsGitHubPage(update.ReleaseUrl) ? update.ReleaseUrl! : $"{AppIdentity.GitHubRepositoryUrl}/releases/latest";
         page.Footnote = new TaskDialogFootnote($"<a href=\"{releaseUrl}\">{Strings.Get("About.UpdateReleaseNotesLink")}</a>");
-        page.LinkClicked += (_, e) => OpenUrl(e.LinkHref);
+        page.LinkClicked += (_, e) =>
+        {
+            // Opened by the shell: only ever a page on GitHub, nothing it would run.
+            if (IsGitHubPage(e.LinkHref))
+            {
+                OpenUrl(e.LinkHref);
+            }
+        };
 
         return TaskDialog.ShowDialog(owner, page) == download;
     }
@@ -77,6 +86,16 @@ internal static class UpdatePromptDialog
         return version.Length > 1 && (version[0] == 'v' || version[0] == 'V') && char.IsDigit(version[1])
             ? version[1..]
             : version;
+    }
+
+    /// <summary>An https page on github.com, the only place the dialog links to.</summary>
+    internal static bool IsGitHubPage(string? url)
+    {
+        return Uri.TryCreate(url, UriKind.Absolute, out var uri)
+            && uri.Scheme == Uri.UriSchemeHttps
+            && string.Equals(uri.Host, "github.com", StringComparison.OrdinalIgnoreCase)
+            && uri.IsDefaultPort
+            && string.IsNullOrEmpty(uri.UserInfo);
     }
 
     private static void OpenUrl(string url)

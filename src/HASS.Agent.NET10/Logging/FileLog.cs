@@ -62,7 +62,7 @@ internal sealed class FileLog : IDisposable
             return;
         }
 
-        var line = $"{DateTimeOffset.Now:O} [{level}] {message}{Environment.NewLine}";
+        var line = FormatRecord(DateTimeOffset.Now, level, message);
         lock (_gate)
         {
             try
@@ -76,6 +76,19 @@ internal sealed class FileLog : IDisposable
                 // for it. A lost log line must never take the app down.
             }
         }
+    }
+
+    /// <summary>
+    /// One record: the timestamp and level, then the message. The lines after the first one
+    /// (a stack trace, or a line break in text that came from outside, such as a notification
+    /// or an MQTT payload) are indented, so no line of a message can pass for a record of its own.
+    /// </summary>
+    internal static string FormatRecord(DateTimeOffset time, string level, string message)
+    {
+        var text = (message ?? string.Empty).Replace("\r\n", "\n")
+            .Replace('\r', '\n').Replace('\u0085', '\n').Replace('\u2028', '\n').Replace('\u2029', '\n')
+            .Replace("\n", Environment.NewLine + "    ");
+        return $"{time:O} [{level}] {text}{Environment.NewLine}";
     }
 
     private void Maintain()
