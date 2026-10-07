@@ -21,10 +21,23 @@ To build the installer, also install [Inno Setup](https://jrsoftware.org/isinfo.
 
 `build-exe.ps1` wraps the common cases: on its own it produces a standalone `.exe` and offers to swap it into the installed copy; `-Tag` builds the signed installer and zip with the CI file names (see [Code Signing](https://github.com/v1k70rk4/HASS.Agent.NET10#code-signing) — it needs the maintainer's certificate, so this is a release tool rather than a build step).
 
+## Tests
+
+`tests/HASS.Agent.NET10.Tests` holds the unit tests (xUnit v3). They cover the logic that has an input and an output: version comparison and the choice of release asset, the release notes shown in the update prompt, notification payloads (buttons, text fields, durations), key combinations and hotkeys, popup window sizes, LibreHardwareMonitor readings, settings normalization, the local API key check and the signature check of update installers. What needs Windows itself (displays, audio devices, the tray icon, the windows) is tested by hand on real PCs.
+
+```powershell
+dotnet test --project tests/HASS.Agent.NET10.Tests -c Release
+```
+
+`global.json` selects the Microsoft.Testing.Platform runner that xUnit v3 uses. Two tests need a signed release installer, which is too big for the repository; set `HASS_AGENT_SIGNED_INSTALLER` to one (for example `artifacts\installer\HASS.Agent.NET10-Setup-<version>.exe` after `build-exe.ps1 -Tag`) to run them, otherwise they are skipped.
+
+Every bug fix comes with a test that fails without the fix, so the same bug cannot come back unnoticed.
+
 ## GitHub Actions
 
 This repository includes a Windows GitHub Actions workflow:
 
+- the unit tests (a release build waits for them)
 - `dotnet restore` + `dotnet build -c Release`
 - self-contained `win-x64` publish
 - Inno Setup installer build

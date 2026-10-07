@@ -118,15 +118,18 @@ internal sealed class LocalApiServer : IDisposable
 
     private bool IsAuthorized(HttpContext context)
     {
+        return IsAuthorized(context.Request.Headers.Authorization.ToString(), _settings.ApiKey);
+    }
+
+    internal static bool IsAuthorized(string? authorization, string? apiKey)
+    {
         // The settings always generate a key; without one nothing is let in.
-        var apiKey = _settings.ApiKey;
         if (string.IsNullOrWhiteSpace(apiKey))
         {
             return false;
         }
 
-        var authorization = context.Request.Headers.Authorization.ToString();
-        if (!authorization.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+        if (authorization is null || !authorization.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
         {
             return false;
         }

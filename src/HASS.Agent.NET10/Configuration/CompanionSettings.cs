@@ -420,7 +420,7 @@ internal sealed class CompanionSettings
         return normalized;
     }
 
-    private static string NormalizeCustomSensorId(string value, HashSet<string> usedIds)
+    internal static string NormalizeCustomSensorId(string value, HashSet<string> usedIds)
     {
         var id = new string((value ?? string.Empty)
             .Trim()

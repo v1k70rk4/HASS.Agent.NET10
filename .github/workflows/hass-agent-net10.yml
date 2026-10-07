@@ -6,6 +6,8 @@ on:
       - "v*"
     paths:
       - "src/HASS.Agent.NET10/**"
+      - "tests/**"
+      - "global.json"
       - "installer/**"
       - "NuGet.config"
       - ".github/workflows/hass-agent-net10.yml"
@@ -13,6 +15,8 @@ on:
   pull_request:
     paths:
       - "src/HASS.Agent.NET10/**"
+      - "tests/**"
+      - "global.json"
       - "installer/**"
       - "NuGet.config"
       - ".github/workflows/hass-agent-net10.yml"
@@ -53,9 +57,27 @@ jobs:
           fi
           echo "No vulnerable NuGet packages."
 
+  test:
+    name: Tests
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.x
+      # The two tests that need a signed release installer are skipped here (too big for the
+      # repository); they run on the maintainer's PC with HASS_AGENT_SIGNED_INSTALLER set.
+      - name: Run the tests
+        run: dotnet test --project tests/HASS.Agent.NET10.Tests -c Release
+
   build:
     name: Build and publish
-    needs: audit
+    # No release is built from code whose tests fail.
+    needs: [audit, test]
     runs-on: windows-latest
     permissions:
       contents: write   # create the draft release and upload its assets

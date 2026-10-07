@@ -197,7 +197,7 @@ internal static class AppUpdateService
         }
     }
 
-    private static GitHubReleaseAsset? SelectReleaseAsset(IReadOnlyList<GitHubReleaseAsset>? assets)
+    internal static GitHubReleaseAsset? SelectReleaseAsset(IReadOnlyList<GitHubReleaseAsset>? assets)
     {
         return assets?
             .Where(asset => !string.IsNullOrWhiteSpace(asset.DownloadUrl))
@@ -219,7 +219,7 @@ internal static class AppUpdateService
         return 100;
     }
 
-    private static bool IsNewerVersion(string latestTag, string currentVersion)
+    internal static bool IsNewerVersion(string latestTag, string currentVersion)
     {
         var (latestCore, latestPre) = SplitVersion(latestTag);
         var (currentCore, currentPre) = SplitVersion(currentVersion);
@@ -308,7 +308,7 @@ internal static class AppUpdateService
         return 0;
     }
 
-    private static string SanitizeFileName(string name)
+    internal static string SanitizeFileName(string name)
     {
         var invalid = Path.GetInvalidFileNameChars();
         return new string(name.Select(character => invalid.Contains(character) ? '_' : character).ToArray());
@@ -322,7 +322,7 @@ internal static class AppUpdateService
         [property: JsonPropertyName("body")] string? Body,
         [property: JsonPropertyName("assets")] IReadOnlyList<GitHubReleaseAsset>? Assets);
 
-    private sealed record GitHubReleaseAsset(
+    internal sealed record GitHubReleaseAsset(
         [property: JsonPropertyName("name")] string Name,
         [property: JsonPropertyName("browser_download_url")] string DownloadUrl);
 }
