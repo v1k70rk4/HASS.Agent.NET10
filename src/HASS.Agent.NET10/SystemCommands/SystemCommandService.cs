@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using HASS.Agent.Companion.Logging;
 using HASS.Agent.Companion.Media;
+using HASS.Agent.Companion.Runtime;
 
 namespace HASS.Agent.Companion.SystemCommands;
 
@@ -199,7 +200,7 @@ internal sealed class SystemCommandService : IDisposable
     {
         if (command.IsPowerShell || command.IsPwsh)
         {
-            var shell = command.IsPwsh ? "pwsh.exe" : "powershell.exe";
+            var shell = command.IsPwsh ? SystemTools.Pwsh : SystemTools.WindowsPowerShell;
             var isScriptFile = command.Command.EndsWith(".ps1", StringComparison.OrdinalIgnoreCase);
             var arguments = isScriptFile
                 ? $"-NoProfile -ExecutionPolicy Bypass -File \"{command.Command}\" {command.Arguments}".Trim()
@@ -407,7 +408,7 @@ internal sealed class SystemCommandService : IDisposable
         {
             using var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
             {
-                FileName = "shutdown.exe",
+                FileName = SystemTools.InSystem32("shutdown.exe"),
                 Arguments = arguments,
                 CreateNoWindow = true,
                 UseShellExecute = false

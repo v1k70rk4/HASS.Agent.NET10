@@ -19,6 +19,7 @@ internal sealed class CompanionWindowsService : ServiceBase
     private SystemMetricsService? _systemMetricsService;
     private MqttCompanionService? _mqttService;
     private FileSystemWatcher? _settingsWatcher;
+    private FileSystemWatcher? _policyWatcher;
     private System.Threading.Timer? _settingsReloadTimer;
     private string? _updatedFrom;
     private string _runningVersion = string.Empty;
@@ -40,7 +41,7 @@ internal sealed class CompanionWindowsService : ServiceBase
 
         try
         {
-            var settings = SettingsStore.LoadOrCreate(_paths, _log);
+            var settings = LoadSettings(_paths, _log);
             ApplyLanguage(settings);
             _updatedFrom = DetectCompletedUpdate(settings);
             _systemCommandService = new SystemCommandService(_log);
@@ -106,6 +107,23 @@ internal sealed class CompanionWindowsService : ServiceBase
         _settingsWatcher.Changed += ScheduleSettingsReload;
         _settingsWatcher.Created += ScheduleSettingsReload;
         _settingsWatcher.Renamed += ScheduleSettingsReload;
+
+        // An approval arrives after the settings were saved (once the user said yes to the
+        // prompt), so a new policy reloads the settings too.
+        var policyFolder = Path.GetDirectoryName(ServicePolicy.DefaultPath);
+        if (policyFolder is not null && Directory.Exists(policyFolder))
+        {
+            _policyWatcher = new FileSystemWatcher(policyFolder)
+            {
+                Filter = ServicePolicy.FileName,
+                NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.Size | NotifyFilters.FileName,
+                EnableRaisingEvents = true
+            };
+            _policyWatcher.Changed += ScheduleSettingsReload;
+            _policyWatcher.Created += ScheduleSettingsReload;
+            _policyWatcher.Renamed += ScheduleSettingsReload;
+            _policyWatcher.Deleted += ScheduleSettingsReload;
+        }
     }
 
     private void ScheduleSettingsReload(object sender, FileSystemEventArgs args)
@@ -128,7 +146,7 @@ internal sealed class CompanionWindowsService : ServiceBase
         try
         {
             _log.Info("Settings changed; reloading system service runtime.");
-            var settings = SettingsStore.LoadOrCreate(_paths, _log);
+            var settings = LoadSettings(_paths, _log);
             ApplyLanguage(settings);
 
             lock (_runtimeLock)
@@ -143,10 +161,35 @@ internal sealed class CompanionWindowsService : ServiceBase
         }
     }
 
+    /// <summary>
+    /// The shared settings, with what the service policy does not approve taken away from the
+    /// service: anyone who can log on to this PC can write the settings, and this runs as SYSTEM.
+    /// </summary>
+    private static CompanionSettings LoadSettings(AppPaths paths, FileLog log)
+    {
+        var settings = SettingsStore.LoadOrCreate(paths, log);
+        var restricted = ServicePolicy.Load(ServicePolicy.DefaultPath).Restrict(settings);
+        if (restricted.Count > 0)
+        {
+            log.Warning(
+                $"Not run by the service, as no administrator approved them: {string.Join(", ", restricted)}. " +
+                "Save the settings in the app and approve the prompt to let the service run them.");
+        }
+
+        return settings;
+    }
+
     private void StopSettingsWatcher()
     {
         _settingsReloadTimer?.Dispose();
         _settingsReloadTimer = null;
+
+        if (_policyWatcher is not null)
+        {
+            _policyWatcher.EnableRaisingEvents = false;
+            _policyWatcher.Dispose();
+            _policyWatcher = null;
+        }
 
         if (_settingsWatcher is not null)
         {

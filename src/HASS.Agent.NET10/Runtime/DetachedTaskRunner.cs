@@ -117,7 +117,7 @@ internal static class DetachedTaskRunner
         {
             using var process = Process.Start(new ProcessStartInfo
             {
-                FileName = "schtasks.exe",
+                FileName = SystemTools.InSystem32("schtasks.exe"),
                 Arguments = arguments,
                 UseShellExecute = false,
                 CreateNoWindow = true,

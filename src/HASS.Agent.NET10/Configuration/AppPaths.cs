@@ -9,11 +9,14 @@ internal sealed record AppPaths(
     string DeviceIdFile,
     IReadOnlyList<string> LegacySettingsFiles)
 {
+    /// <summary>The shared settings folder, ProgramData\HASS.Agent.NET10.</summary>
+    public static string ConfigDirectoryPath => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+        AppIdentity.ConfigurationDirectoryName);
+
     public static AppPaths Create()
     {
-        var configDirectory = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
-            AppIdentity.ConfigurationDirectoryName);
+        var configDirectory = ConfigDirectoryPath;
         var legacyProgramDataDirectory = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
             AppIdentity.LegacyConfigurationDirectoryName);

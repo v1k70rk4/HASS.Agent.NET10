@@ -58,6 +58,9 @@ english.TaskGroupOptional=Optional components:
 english.TaskCleanInstall=Clean install (remove existing settings, API key, and log files)
 english.TaskGroupAdvanced=Advanced:
 english.StatusFirewall=Configuring firewall...
+english.TaskGroupAccess=Who will use HASS.Agent on this PC? (its settings hold the Home Assistant token)
+english.TaskAccessMe=Only me
+english.TaskAccessAll=Every user of this PC
 
 hungarian.TaskAutostart=Automatikus indítás bejelentkezéskor
 hungarian.TaskGroupStartup=Indítás:
@@ -66,6 +69,9 @@ hungarian.TaskGroupOptional=Opcionális összetevők:
 hungarian.TaskCleanInstall=Tiszta telepítés (meglévő beállítások, API kulcs és naplófájlok törlése)
 hungarian.TaskGroupAdvanced=Haladó:
 hungarian.StatusFirewall=Tűzfal beállítása...
+hungarian.TaskGroupAccess=Ki fogja használni a HASS.Agentet ezen a gépen? (a beállításai a Home Assistant tokent is tartalmazzák)
+hungarian.TaskAccessMe=Csak én
+hungarian.TaskAccessAll=A gép minden felhasználója
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
@@ -75,12 +81,14 @@ Name: "installservice"; Description: "{cm:TaskInstallService}"; GroupDescription
 ; so one past clean install would silently repeat on every later update.
 ; This keeps the task available but never pre-ticked on an upgrade.
 Name: "cleaninstall"; Description: "{cm:TaskCleanInstall}"; GroupDescription: "{cm:TaskGroupAdvanced}"; Flags: unchecked checkedonce
+Name: "accessme"; Description: "{cm:TaskAccessMe}"; GroupDescription: "{cm:TaskGroupAccess}"; Flags: exclusive; Check: IsFirstInstall
+Name: "accessall"; Description: "{cm:TaskAccessAll}"; GroupDescription: "{cm:TaskGroupAccess}"; Flags: exclusive unchecked; Check: IsFirstInstall
 
 [Files]
 Source: "..\artifacts\HASS.Agent.NET10\win-x64\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Dirs]
-Name: "{commonappdata}\HASS.Agent.NET10"; Permissions: authusers-modify
+Name: "{commonappdata}\HASS.Agent.NET10"
 
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"
@@ -98,6 +106,10 @@ Filename: "{app}\{#MyAppExeName}"; Parameters: "--stop-service --quiet"; Flags: 
 Filename: "{app}\{#MyAppExeName}"; Parameters: "--uninstall-service --quiet"; Flags: runhidden waituntilterminated skipifdoesntexist
 Filename: "{app}\{#MyAppExeName}"; Parameters: "--unregister-notifications"; Flags: runhidden waituntilterminated skipifdoesntexist
 Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=""{#MyAppName} Local API"""; Flags: runhidden waituntilterminated
+
+[UninstallDelete]
+; Written by the app as administrator (what the Windows service may run), not by Setup.
+Type: files; Name: "{app}\service-policy.json"
 
 [Code]
 var
@@ -117,6 +129,27 @@ begin
     'Software\Microsoft\Windows\CurrentVersion\Uninstall\{8E71E6C1-B215-4C54-B8A5-A7172D7CF3D2}_is1',
     'DisplayVersion',
     Result);
+end;
+
+{ No HASS.Agent .NET10 installed yet: the question about who uses it is asked. }
+function IsFirstInstall(): Boolean;
+begin
+  Result := ReadPreviousVersion() = '';
+end;
+
+{ The user logged on to the PC who started Setup. Setup itself may run as another account,
+  an administrator whose password was typed in; that account is added too, below. }
+function OriginalUserName(): string;
+var
+  NameFile: string;
+  Lines: TArrayOfString;
+  ResultCode: Integer;
+begin
+  Result := '';
+  NameFile := ExpandConstant('{tmp}\hass-agent-user.txt');
+  if ExecAsOriginalUser(ExpandConstant('{cmd}'), '/C echo %USERNAME%>"' + NameFile + '"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode)
+    and LoadStringsFromFile(NameFile, Lines) and (GetArrayLength(Lines) > 0) then
+    Result := Trim(Lines[0]);
 end;
 
 function RunHidden(FileName: string; Parameters: string): Boolean;
@@ -165,11 +198,31 @@ begin
   Result := ResultCode = 0;
 end;
 
+{ Who may use the shared settings. A first install asks (only the user who installs, or
+  every user, as every version before 10.9.1 had it); an update, including a silent one from
+  Home Assistant that runs as SYSTEM, keeps what the PC has. The app does the work. }
 procedure EnsureConfigDirectoryPermissions();
+var
+  Users: string;
+  Original: string;
 begin
-  RunHidden(
-    ExpandConstant('{sys}\icacls.exe'),
-    '"' + ExpandConstant('{commonappdata}\HASS.Agent.NET10') + '" /grant *S-1-5-11:(OI)(CI)M /T /C');
+  { PreviousVersion, read before the files went in: by now this setup is registered itself.
+    "Only me" needs a person who chose it: a silent install (winget, a deployment tool, an
+    install as SYSTEM) keeps the folder open to every user, as before; the app asks later. }
+  if (PreviousVersion = '') and WizardIsTaskSelected('accessme') and (not WizardSilent())
+    and (CompareText(ExpandConstant('{username}'), 'SYSTEM') <> 0)
+    and (Copy(ExpandConstant('{username}'), Length(ExpandConstant('{username}')), 1) <> '$') then
+  begin
+    Users := '"' + ExpandConstant('{username}') + '"';
+    Original := OriginalUserName();
+    if (Original <> '') and (CompareText(Original, ExpandConstant('{username}')) <> 0) then
+      Users := Users + ' "' + Original + '"';
+    RunHidden(ExpandConstant('{app}\{#MyAppExeName}'), '--settings-access only ' + Users + ' --quiet');
+  end
+  else if PreviousVersion = '' then
+    RunHidden(ExpandConstant('{app}\{#MyAppExeName}'), '--settings-access everyone --quiet')
+  else
+    RunHidden(ExpandConstant('{app}\{#MyAppExeName}'), '--settings-access keep --quiet');
 end;
 
 procedure StopInstalledService();
@@ -226,6 +279,8 @@ begin
     if (PreviousVersion <> '') and (PreviousVersion <> '{#MyAppVersion}') then
       SaveStringToFile(ExpandConstant('{commonappdata}\HASS.Agent.NET10\updated-from'), PreviousVersion, False);
 
+    { Installing the service also approves what the current settings ask it to run
+      (service-policy.json next to the program): an update keeps everything working. }
     if ExistingServiceInstalled or WizardIsTaskSelected('installservice') then
     begin
       RunHidden(ExpandConstant('{app}\{#MyAppExeName}'), '--install-service --quiet');

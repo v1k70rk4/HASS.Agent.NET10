@@ -106,7 +106,16 @@ internal static class Program
             Timeout.InfiniteTimeSpan,
             executeOnlyOnce: false);
 
+        // Before AppPaths.Create, which already reads and copies files there.
+        if (!SettingsAccess.CurrentUserCanUse(AppPaths.ConfigDirectoryPath))
+        {
+            // The settings of this PC are limited to other users: say so once, then stay out.
+            TellOnceAboutLimitedAccess();
+            return;
+        }
+
         var paths = AppPaths.Create();
+
         using var log = new FileLog(paths.LogFile);
         log.Info($"Starting {AppIdentity.DisplayName}.");
 
@@ -247,6 +256,31 @@ internal static class Program
         mqttService.StopAsync().GetAwaiter().GetResult();
         localApi.StopAsync().GetAwaiter().GetResult();
         log.Info($"Stopped {AppIdentity.DisplayName}.");
+    }
+
+    private static void TellOnceAboutLimitedAccess()
+    {
+        const string keyPath = @"Software\HASS.Agent.NET10";
+        try
+        {
+            using var key = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(keyPath);
+            if (key.GetValue("LimitedAccessNoticeShown") is not null)
+            {
+                return;
+            }
+
+            key.SetValue("LimitedAccessNoticeShown", 1);
+        }
+        catch (Exception)
+        {
+            // Without the registry the notice comes every time, which is still better than none.
+        }
+
+        MessageBox.Show(
+            string.Format(Localization.Strings.Get("Access.NotForYou"), Environment.UserName, SettingsAccess.GroupName),
+            AppIdentity.DisplayName,
+            MessageBoxButtons.OK,
+            MessageBoxIcon.Information);
     }
 
     private static void SignalExistingInstanceToExit()

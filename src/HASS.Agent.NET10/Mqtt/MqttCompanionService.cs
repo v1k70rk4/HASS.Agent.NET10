@@ -2,6 +2,7 @@ using System.Buffers;
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using HASS.Agent.Companion.Configuration;
 using HASS.Agent.Companion.Http;
@@ -322,6 +323,51 @@ internal sealed class MqttCompanionService : IDisposable
             string.Format(Strings.GetHa("HaPn.UpdateCompleted"), _settings.DeviceName, previousVersion, _settings.SoftwareVersion));
         _log.Info($"Reported the finished update ({previousVersion} to {_settings.SoftwareVersion}) to Home Assistant.");
         UpdateCompletionHandled?.Invoke();
+    }
+
+    /// <summary>
+    /// Once per PC, from the tray app: the settings are still open to every user of the PC and
+    /// one of them is not an administrator. Home Assistant says so, and that the choice is made
+    /// in the app's window (SettingsAccessForm). A marker in the settings folder keeps it to once.
+    /// </summary>
+    private async Task PublishSettingsAccessNoticeAsync()
+    {
+        var folder = AppPaths.ConfigDirectoryPath;
+        var marker = Path.Combine(folder, "settings-access-notified");
+        IReadOnlyList<string> others;
+        try
+        {
+            if (_settings.SettingsAccessDecided || File.Exists(marker) || SettingsAccess.IsRestricted(folder))
+            {
+                return;
+            }
+
+            others = SettingsAccess.NonAdministratorUsers();
+        }
+        catch (Exception ex)
+        {
+            _log.Warning($"Unable to check who may use the settings: {ex.Message}");
+            return;
+        }
+
+        if (others.Count == 0)
+        {
+            return;
+        }
+
+        await PublishPersistentNotificationAsync(
+            Strings.GetHa("HaPn.AccessTitle"),
+            string.Format(Strings.GetHa("HaPn.AccessOpen"), _settings.DeviceName, string.Join(", ", others)));
+        try
+        {
+            File.WriteAllText(marker, DateTimeOffset.Now.ToString("O"));
+        }
+        catch (Exception ex)
+        {
+            _log.Warning($"Unable to remember the settings access notice: {ex.Message}");
+        }
+
+        _log.Info($"Told Home Assistant that every user of this PC may use the settings (users who are not administrators: {string.Join(", ", others)}).");
     }
 
     /// <summary>A tray app runs: it reports the finished update itself.</summary>
@@ -757,10 +803,18 @@ internal sealed class MqttCompanionService : IDisposable
         if (_settings.HaApiEnabled && !string.IsNullOrWhiteSpace(_settings.HaApiUrl))
         {
             _haWs = new HaWebSocketService(_settings, _log);
-            _haWs.NotificationReceived += notification => _notificationSink.ShowNotification(notification);
+            // Over MQTT a switched-off capability is not even subscribed to; the HA API
+            // delivers every event, so the same switches are checked here.
+            _haWs.NotificationReceived += notification =>
+            {
+                if (_settings.MqttNotificationsEnabled)
+                {
+                    _notificationSink.ShowNotification(notification);
+                }
+            };
             _haWs.MediaCommandReceived += command =>
             {
-                if (_mediaSessionService is not null)
+                if (_settings.MqttMediaPlayerEnabled && _mediaSessionService is not null)
                 {
                     _ = _mediaSessionService.HandleCommandAsync(command);
                 }
@@ -852,6 +906,7 @@ internal sealed class MqttCompanionService : IDisposable
                     await PublishAvailabilityAsync(online: true);
                     await PublishUpdateStateAsync();
                     await PublishPendingUpdateNotificationAsync();
+                    await PublishSettingsAccessNoticeAsync();
                 }
                 else if (!IsTrayAppRunning())
                 {
@@ -1077,6 +1132,7 @@ internal sealed class MqttCompanionService : IDisposable
             await PublishAvailabilityAsync(online: true);
             await PublishUpdateStateAsync(cancellationToken: wsCts.Token);
             await PublishPendingUpdateNotificationAsync();
+            await PublishSettingsAccessNoticeAsync();
         }
         else if (!IsTrayAppRunning())
         {
@@ -1322,11 +1378,7 @@ internal sealed class MqttCompanionService : IDisposable
                 var pushed = await WaitForPushOrDelayAsync(delay, cancellationToken);
                 if (pushed)
                 {
-                    var pushData = _systemMetricsService?.Read(
-                        _settings.CustomSensors,
-                        _role == CompanionRuntimeRole.Service,
-                        PushProfiles,
-                        _settings.BuiltInSensors);
+                    var pushData = ReadSensorPayload(PushProfiles);
                     if (pushData is not null)
                     {
                         await _haWs!.PublishSensorStateAsync(new
@@ -1340,11 +1392,7 @@ internal sealed class MqttCompanionService : IDisposable
                 continue;
             }
 
-            var sensorData = _systemMetricsService?.Read(
-                _settings.CustomSensors,
-                _role == CompanionRuntimeRole.Service,
-                dueProfiles,
-                _settings.BuiltInSensors);
+            var sensorData = ReadSensorPayload(dueProfiles);
 
             if (sensorData is not null)
             {
@@ -1877,10 +1925,10 @@ internal sealed class MqttCompanionService : IDisposable
             return;
         }
 
-        SystemMetricsMessage message;
+        JsonObject? message;
         try
         {
-            message = _systemMetricsService.Read(_settings.CustomSensors, _role == CompanionRuntimeRole.Service, profiles, _settings.BuiltInSensors);
+            message = ReadSensorPayload(profiles);
         }
         catch (Exception ex)
         {
@@ -1888,7 +1936,20 @@ internal sealed class MqttCompanionService : IDisposable
             return;
         }
 
-        await PublishJsonAsync($"hass.agent/sensors/{TopicId}/state", message, retain: false);
+        if (message is not null)
+        {
+            await PublishJsonAsync($"hass.agent/sensors/{TopicId}/state", message, retain: false);
+        }
+    }
+
+    /// <summary>The sensor values of this role, without the built-in sensors switched off for it.</summary>
+    private JsonObject? ReadSensorPayload(IReadOnlySet<SensorPollingProfile> profiles)
+    {
+        var serviceRole = _role == CompanionRuntimeRole.Service;
+        var message = _systemMetricsService?.Read(_settings.CustomSensors, serviceRole, profiles, _settings.BuiltInSensors);
+        return message is null
+            ? null
+            : SensorPayloadFilter.WithoutDisabled(message, JsonOptions, _settings.BuiltInSensors, serviceRole);
     }
 
     private async Task PublishSystemSensorsLoopAsync(CancellationToken cancellationToken)
