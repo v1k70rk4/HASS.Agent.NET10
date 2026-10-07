@@ -78,7 +78,7 @@ internal static partial class Strings
 
             // HA persistent notifications (HA entity language)
             ["HaPn.AccessTitle"] = "HASS.Agent: who may use it on this PC",
-            ["HaPn.AccessOpen"] = "{0}: every Windows user of this PC can read the HASS.Agent settings, the Home Assistant token included, and change the commands it runs. Some of them are not administrators: {1}. Open the HASS.Agent window on the PC to choose who may use it (an administrator has to approve).",
+            ["HaPn.AccessOpen"] = "{0}: every Windows user of this PC can read the HASS.Agent settings, the Home Assistant token included, and change the commands it runs. Some of them are not administrators: {1}. Open the HASS.Agent window on the PC to choose who may use it (an administrator has to approve). Until then everything keeps working as before.",
             ["HaPn.UpdateTitle"] = "HASS.Agent update",
             ["HaPn.UpdateCompleted"] = "{0}: updated from {1} to {2}.",
             ["HaPn.NoUpdate"] = "{0}: no update available.",
@@ -403,7 +403,7 @@ internal static partial class Strings
             ["SvcMgr.ApprovalDeclined"] = "Not approved. The service skips these until the settings are saved again and the prompt is approved: {0}",
             ["Access.Button"] = "Users of this PC...",
             ["Access.Heading"] = "Who may use HASS.Agent on this PC?",
-            ["Access.FirstTime"] = "On this PC every user can read the HASS.Agent settings, with the Home Assistant token and the MQTT login, and change the commands it runs.",
+            ["Access.FirstTime"] = "On this PC every user can read the HASS.Agent settings, with the Home Assistant token and the MQTT login, and change the commands it runs. Until you choose, everything keeps working as before.",
             ["Access.NowEveryone"] = "Right now every user of this PC may use them. Tick who should, then Limit (an administrator has to approve it). Everyone else gets a note once, and their HASS.Agent does not start.",
             ["Access.NowRestricted"] = "Right now only the users ticked below may use them (and administrators). An administrator can also add someone to the \"HASS.Agent Users\" group.",
             ["Access.Limit"] = "Limit to these users",

@@ -78,7 +78,7 @@ internal static partial class Strings
 
             // HA persistent notifications (HA entitás nyelv)
             ["HaPn.AccessTitle"] = "HASS.Agent: ki használhatja ezen a gépen",
-            ["HaPn.AccessOpen"] = "{0}: a gép minden Windows-felhasználója olvashatja a HASS.Agent beállításait, a Home Assistant tokent is, és módosíthatja az általa futtatott parancsokat. Közülük nem rendszergazda: {1}. Nyisd meg a gépen a HASS.Agent ablakát, és válaszd ki, ki használhatja (rendszergazdának jóvá kell hagynia).",
+            ["HaPn.AccessOpen"] = "{0}: a gép minden Windows-felhasználója olvashatja a HASS.Agent beállításait, a Home Assistant tokent is, és módosíthatja az általa futtatott parancsokat. Közülük nem rendszergazda: {1}. Nyisd meg a gépen a HASS.Agent ablakát, és válaszd ki, ki használhatja (rendszergazdának jóvá kell hagynia). Addig minden ugyanúgy működik, mint eddig.",
             ["HaPn.UpdateTitle"] = "HASS.Agent frissítés",
             ["HaPn.UpdateCompleted"] = "{0}: frissítve {1} → {2}.",
             ["HaPn.NoUpdate"] = "{0}: nincs elérhető frissítés.",
@@ -402,7 +402,7 @@ internal static partial class Strings
             ["SvcMgr.ApprovalDeclined"] = "Nincs jóváhagyva. A szolgáltatás kihagyja ezeket, amíg a beállításokat újra nem mented és a kérést jóvá nem hagyod: {0}",
             ["Access.Button"] = "A gép felhasználói...",
             ["Access.Heading"] = "Ki használhatja a HASS.Agentet ezen a gépen?",
-            ["Access.FirstTime"] = "Ezen a gépen minden felhasználó olvashatja a HASS.Agent beállításait a Home Assistant tokennel és az MQTT-belépéssel együtt, és módosíthatja az általa futtatott parancsokat.",
+            ["Access.FirstTime"] = "Ezen a gépen minden felhasználó olvashatja a HASS.Agent beállításait a Home Assistant tokennel és az MQTT-belépéssel együtt, és módosíthatja az általa futtatott parancsokat. Amíg nem választasz, minden ugyanúgy működik, mint eddig.",
             ["Access.NowEveryone"] = "Most a gép minden felhasználója használhatja. Pipáld ki, kik használják, majd Korlátozás (rendszergazdának jóvá kell hagynia). A többiek egyszer kapnak egy értesítést, és náluk a HASS.Agent nem indul el.",
             ["Access.NowRestricted"] = "Most csak a lent kipipált felhasználók (és a rendszergazdák) használhatják. Rendszergazda a \"HASS.Agent Users\" csoportba is felvehet valakit.",
             ["Access.Limit"] = "Korlátozás ezekre",
