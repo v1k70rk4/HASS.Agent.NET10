@@ -88,6 +88,39 @@ public class InstallerSignatureTests : IDisposable
     }
 
     [Fact]
+    public void Release_installer_carries_a_timestamp()
+    {
+        Assert.SkipWhen(SignedInstaller is null, "HASS_AGENT_SIGNED_INSTALLER is not set.");
+
+        Assert.True(InstallerSignature.HasTimestamp(SignedInstaller!));
+    }
+
+    [Fact]
+    public void Program_without_a_signature_has_no_timestamp()
+    {
+        Assert.False(InstallerSignature.HasTimestamp(typeof(InstallerSignatureTests).Assembly.Location));
+    }
+
+    [Fact]
+    public void Truncated_program_has_no_timestamp()
+    {
+        Assert.SkipWhen(SignedInstaller is null, "HASS_AGENT_SIGNED_INSTALLER is not set.");
+
+        // The first 4 KB of a signed installer: the headers point at a certificate table
+        // that is not there any more.
+        var path = Path.Combine(_folder, "truncated.exe");
+        using (var source = File.OpenRead(SignedInstaller!))
+        using (var target = File.Create(path))
+        {
+            var head = new byte[4096];
+            target.Write(head, 0, source.Read(head, 0, head.Length));
+        }
+
+        Assert.False(InstallerSignature.HasTimestamp(path));
+        Assert.False(InstallerSignature.IsTrusted(path, out _));
+    }
+
+    [Fact]
     public void Signed_installer_changed_by_one_byte_is_refused()
     {
         Assert.SkipWhen(SignedInstaller is null, "HASS_AGENT_SIGNED_INSTALLER is not set.");
