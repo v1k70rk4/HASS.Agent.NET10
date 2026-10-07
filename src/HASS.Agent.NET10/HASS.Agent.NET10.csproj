@@ -25,6 +25,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The test project (tests/HASS.Agent.NET10.Tests) reaches the internal helpers. -->
+    <InternalsVisibleTo Include="HASS.Agent.NET10.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <EmbeddedResource Include="Assets\hassagent.ico" LogicalName="hassagent.ico" />
   </ItemGroup>
 

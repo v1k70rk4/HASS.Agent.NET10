@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using HASS.Agent.Companion.Configuration;
 using HASS.Agent.Companion.Logging;
@@ -116,18 +118,26 @@ internal sealed class LocalApiServer : IDisposable
 
     private bool IsAuthorized(HttpContext context)
     {
-        var apiKey = _settings.ApiKey;
+        return IsAuthorized(context.Request.Headers.Authorization.ToString(), _settings.ApiKey);
+    }
+
+    internal static bool IsAuthorized(string? authorization, string? apiKey)
+    {
+        // The settings always generate a key; without one nothing is let in.
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            return true;
+            return false;
         }
 
-        var authorization = context.Request.Headers.Authorization.ToString();
-        if (authorization.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+        if (authorization is null || !authorization.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
         {
-            return string.Equals(authorization[7..].Trim(), apiKey, StringComparison.Ordinal);
+            return false;
         }
 
-        return false;
+        // Compared in constant time, on hashes so the lengths match too: how long the
+        // comparison takes says nothing about how much of a guessed key was right.
+        var given = SHA256.HashData(Encoding.UTF8.GetBytes(authorization[7..].Trim()));
+        var expected = SHA256.HashData(Encoding.UTF8.GetBytes(apiKey));
+        return CryptographicOperations.FixedTimeEquals(given, expected);
     }
 }

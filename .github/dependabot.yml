@@ -14,9 +14,11 @@ updates:
       actions:
         patterns: ["*"]
 
-  # NuGet packages for the app project
+  # NuGet packages for the app project and its tests
   - package-ecosystem: "nuget"
-    directory: "/src/HASS.Agent.NET10"
+    directories:
+      - "/src/HASS.Agent.NET10"
+      - "/tests/HASS.Agent.NET10.Tests"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 10

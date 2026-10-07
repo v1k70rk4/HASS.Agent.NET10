@@ -6,6 +6,8 @@ on:
       - "v*"
     paths:
       - "src/HASS.Agent.NET10/**"
+      - "tests/**"
+      - "global.json"
       - "installer/**"
       - "NuGet.config"
       - ".github/workflows/hass-agent-net10.yml"
@@ -13,6 +15,8 @@ on:
   pull_request:
     paths:
       - "src/HASS.Agent.NET10/**"
+      - "tests/**"
+      - "global.json"
       - "installer/**"
       - "NuGet.config"
       - ".github/workflows/hass-agent-net10.yml"
@@ -53,9 +57,37 @@ jobs:
           fi
           echo "No vulnerable NuGet packages."
 
+  test:
+    name: Tests
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.x
+      # The installer signature tests need a real signed installer, too big for the
+      # repository: the one of the latest published release is the reference.
+      - name: Get the signed installer of the latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $folder = Join-Path $env:RUNNER_TEMP 'signed'
+          gh release download -R $env:GITHUB_REPOSITORY -p 'HASS.Agent.NET10-Setup-*.exe' -D $folder
+          if ($LASTEXITCODE -ne 0) { throw "Could not download the latest release's installer." }
+          $installer = Get-ChildItem $folder -Filter '*.exe' | Select-Object -First 1
+          "Signed installer: $($installer.Name)"
+          "HASS_AGENT_SIGNED_INSTALLER=$($installer.FullName)" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Run the tests
+        run: dotnet test --project tests/HASS.Agent.NET10.Tests -c Release
+
   build:
     name: Build and publish
-    needs: audit
+    # No release is built from code whose tests fail.
+    needs: [audit, test]
     runs-on: windows-latest
     permissions:
       contents: write   # create the draft release and upload its assets
