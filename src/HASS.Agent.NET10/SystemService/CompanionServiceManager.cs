@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.ServiceProcess;
 using System.Text;
 using System.Windows.Forms;
+using HASS.Agent.Companion.Configuration;
 using HASS.Agent.Companion.Localization;
 using HASS.Agent.Companion.Logging;
 using HASS.Agent.Companion.Runtime;
@@ -24,7 +25,7 @@ internal static class CompanionServiceManager
         }
 
         var command = args[0].Trim().ToLowerInvariant();
-        if (command is not ("--install-service" or "--uninstall-service" or "--start-service" or "--stop-service"))
+        if (command is not ("--install-service" or "--uninstall-service" or "--start-service" or "--stop-service" or "--approve-service-commands"))
         {
             return false;
         }
@@ -92,6 +93,7 @@ internal static class CompanionServiceManager
             "--uninstall-service" => Uninstall(),
             "--start-service" => RunSc("start", Quote(ServiceName)),
             "--stop-service" => RunSc("stop", Quote(ServiceName)),
+            "--approve-service-commands" => ApproveServiceCommands(),
             _ => new ControlCommandResult(false, string.Format(S("SvcMgr.UnknownCommand"), command))
         };
     }
@@ -129,6 +131,9 @@ internal static class CompanionServiceManager
         _ = RunSc("description", $"{Quote(ServiceName)} {Quote(Description)}");
         _ = RunSc("failure", $"{Quote(ServiceName)} reset= 86400 actions= restart/60000/restart/60000/none/0");
 
+        // Whoever installs the service approves what the settings already ask it to run.
+        _ = ApproveServiceCommands();
+
         var start = RunSc("start", Quote(ServiceName));
         if (!start.Success)
         {
@@ -136,6 +141,72 @@ internal static class CompanionServiceManager
         }
 
         return new ControlCommandResult(true, string.Format(S("SvcMgr.InstalledAndStarted"), AppIdentity.ServiceDisplayName));
+    }
+
+    /// <summary>
+    /// Writes the service policy from the current settings: what they ask the service to run
+    /// is approved. Only as administrator, and only into a folder only administrators can
+    /// write; run by the installer, by the service installation and after the user approves
+    /// the prompt the app shows when a new command for the service is saved.
+    /// </summary>
+    private static ControlCommandResult ApproveServiceCommands()
+    {
+        if (!IsAdministrator())
+        {
+            return new ControlCommandResult(false, S("SvcMgr.ApprovalNeedsAdmin"));
+        }
+
+        try
+        {
+            var paths = AppPaths.Create();
+            using var log = new FileLog(paths.LogFile);
+            var settings = SettingsStore.LoadOrCreate(paths, log);
+            var policy = ServicePolicy.FromSettings(settings);
+            if (!ServicePolicyFolderIsProtected(Path.GetDirectoryName(ServicePolicy.DefaultPath)!))
+            {
+                log.Warning($"The service policy is written next to {Environment.ProcessPath}, a folder users can write to; it protects nothing there.");
+            }
+
+            policy.Save(ServicePolicy.DefaultPath);
+            log.Info($"Service policy written: {policy.Commands.Count} command(s), {policy.Sensors.Count} sensor(s) approved.");
+            return new ControlCommandResult(true, S("SvcMgr.Approved"));
+        }
+        catch (Exception ex)
+        {
+            return new ControlCommandResult(false, string.Format(S("SvcMgr.ApprovalFailed"), ex.Message));
+        }
+    }
+
+    internal static bool IsAdministrator()
+    {
+        using var identity = System.Security.Principal.WindowsIdentity.GetCurrent();
+        return new System.Security.Principal.WindowsPrincipal(identity).IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator);
+    }
+
+    /// <summary>Whether ordinary users are kept from writing to the folder (Program Files is).</summary>
+    private static bool ServicePolicyFolderIsProtected(string folder)
+    {
+        try
+        {
+            var rules = new DirectoryInfo(folder).GetAccessControl()
+                .GetAccessRules(includeExplicit: true, includeInherited: true, typeof(System.Security.Principal.SecurityIdentifier));
+            var users = new[]
+            {
+                new System.Security.Principal.SecurityIdentifier(System.Security.Principal.WellKnownSidType.BuiltinUsersSid, null),
+                new System.Security.Principal.SecurityIdentifier(System.Security.Principal.WellKnownSidType.AuthenticatedUserSid, null),
+                new System.Security.Principal.SecurityIdentifier(System.Security.Principal.WellKnownSidType.WorldSid, null),
+            };
+            const System.Security.AccessControl.FileSystemRights write =
+                System.Security.AccessControl.FileSystemRights.WriteData | System.Security.AccessControl.FileSystemRights.AppendData;
+            return !rules.Cast<System.Security.AccessControl.FileSystemAccessRule>().Any(rule =>
+                rule.AccessControlType == System.Security.AccessControl.AccessControlType.Allow
+                && users.Contains(rule.IdentityReference)
+                && (rule.FileSystemRights & write) != 0);
+        }
+        catch (Exception)
+        {
+            return false;
+        }
     }
 
     private static ControlCommandResult Uninstall()

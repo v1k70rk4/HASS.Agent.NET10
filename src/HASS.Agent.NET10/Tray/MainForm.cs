@@ -2179,6 +2179,7 @@ internal sealed class MainForm : Form
         {
             var imported = SettingsStore.Import(dialog.FileName);
             SettingsStore.Save(_paths, imported);
+            ServiceApproval.RequestIfNeeded(this, imported, _log);
             _log.Info("Settings imported from file; restarting.");
             MessageBox.Show(S("Danger.ImportDone"), AppIdentity.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Information);
             RestartApplication();
@@ -2766,6 +2767,7 @@ internal sealed class MainForm : Form
 
         SettingsStore.Save(_paths, _settings);
         SettingsSaved?.Invoke(this, EventArgs.Empty);
+        ServiceApproval.RequestIfNeeded(this, _settings, _log);
         UpdateGeneralStatusMessages();
         UpdateServiceStatusMessage();
 

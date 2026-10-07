@@ -99,6 +99,10 @@ Filename: "{app}\{#MyAppExeName}"; Parameters: "--uninstall-service --quiet"; Fl
 Filename: "{app}\{#MyAppExeName}"; Parameters: "--unregister-notifications"; Flags: runhidden waituntilterminated skipifdoesntexist
 Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=""{#MyAppName} Local API"""; Flags: runhidden waituntilterminated
 
+[UninstallDelete]
+; Written by the app as administrator (what the Windows service may run), not by Setup.
+Type: files; Name: "{app}\service-policy.json"
+
 [Code]
 var
   ExistingServiceInstalled: Boolean;
@@ -226,6 +230,8 @@ begin
     if (PreviousVersion <> '') and (PreviousVersion <> '{#MyAppVersion}') then
       SaveStringToFile(ExpandConstant('{commonappdata}\HASS.Agent.NET10\updated-from'), PreviousVersion, False);
 
+    { Installing the service also approves what the current settings ask it to run
+      (service-policy.json next to the program): an update keeps everything working. }
     if ExistingServiceInstalled or WizardIsTaskSelected('installservice') then
     begin
       RunHidden(ExpandConstant('{app}\{#MyAppExeName}'), '--install-service --quiet');
