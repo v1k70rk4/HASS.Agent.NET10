@@ -138,9 +138,6 @@ internal static class Program
         Localization.Strings.Language = settings.Language;
         Localization.Strings.HaLanguage = settings.HaLanguage;
 
-        // Installs from before 10.9.1 left the settings open to every user of the PC: asked once.
-        Tray.SettingsAccessForm.AskOnceIfOpen(paths, settings, log);
-
         // If an update ran, its one-shot scheduled tasks have already done their job by the
         // time we are up again. Clear any left behind (older versions never removed them).
         _ = Task.Run(() => DetachedUpdateLauncher.CleanUpLeftoverTasks(log));

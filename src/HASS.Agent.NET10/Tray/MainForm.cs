@@ -159,6 +159,10 @@ internal sealed class MainForm : Form
         _content.Controls.Add(BuildAboutPage());
         _content.Controls.Add(BuildDangerZonePage());
 
+        // A PC whose settings every user may still use, with a user who is not an administrator:
+        // asked when someone opens this window, never by itself at logon.
+        Shown += (_, _) => BeginInvoke(() => SettingsAccessForm.AskOnceIfOpen(this, _paths, _settings, _log));
+
         LoadSettings();
         SelectPage(initialPage);
 

@@ -97,6 +97,56 @@ internal static class SettingsAccess
         return users.Order(StringComparer.OrdinalIgnoreCase).ToList();
     }
 
+    /// <summary>
+    /// The local users who are not administrators. While there are none, limiting the settings
+    /// to the users of the PC takes nothing from anyone, so an update does it without asking.
+    /// </summary>
+    public static IReadOnlyList<string> NonAdministratorUsers()
+    {
+        // The group's name depends on the language of Windows ("Rendszergazdák"): looked up by its SID.
+        var administratorsGroup = ((NTAccount)Administrators.Translate(typeof(NTAccount))).Value;
+        var administrators = GroupMemberSids(administratorsGroup[(administratorsGroup.LastIndexOf('\\') + 1)..]);
+        return LocalUsers().Where(user => TrySid(user) is not { } sid || !administrators.Contains(sid)).ToList();
+    }
+
+    private static HashSet<SecurityIdentifier> GroupMemberSids(string group)
+    {
+        var sids = new HashSet<SecurityIdentifier>();
+        var resume = IntPtr.Zero;
+        if (NetLocalGroupGetMembers(null, group, 0, out var buffer, MaxPreferredLength, out var read, out _, ref resume) != 0)
+        {
+            return sids;
+        }
+
+        try
+        {
+            var size = Marshal.SizeOf<LocalGroupMembersInfo0>();
+            for (var index = 0; index < read; index++)
+            {
+                var info = Marshal.PtrToStructure<LocalGroupMembersInfo0>(buffer + index * size);
+                sids.Add(new SecurityIdentifier(info.Sid));
+            }
+        }
+        finally
+        {
+            NetApiBufferFree(buffer);
+        }
+
+        return sids;
+    }
+
+    private static SecurityIdentifier? TrySid(string user)
+    {
+        try
+        {
+            return Sid(user);
+        }
+        catch (IdentityNotMappedException)
+        {
+            return null;
+        }
+    }
+
     /// <summary>The members of the group, by name; empty when there is no group.</summary>
     public static IReadOnlySet<string> Members()
     {
@@ -158,7 +208,20 @@ internal static class SettingsAccess
     /// </summary>
     public static void KeepAsIs(string configDirectory)
     {
-        if (!IsRestricted(configDirectory))
+        if (IsRestricted(configDirectory))
+        {
+            return;
+        }
+
+        // Only administrators log on to this PC: limiting the settings to them changes nothing
+        // for anyone today, and keeps out a user added later. Otherwise the choice is someone's
+        // to make (the app asks when its window is opened, and Home Assistant is told).
+        var users = LocalUsers();
+        if (users.Count > 0 && NonAdministratorUsers().Count == 0)
+        {
+            RestrictTo(configDirectory, users);
+        }
+        else
         {
             OpenToEveryone(configDirectory);
         }

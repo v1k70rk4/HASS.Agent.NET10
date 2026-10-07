@@ -77,6 +77,8 @@ internal static partial class Strings
             ["Danger.BetaUpdates"] = "Beta frissítések — a frissítéskeresés a pre-release kiadásokat is felajánlja",
 
             // HA persistent notifications (HA entitás nyelv)
+            ["HaPn.AccessTitle"] = "HASS.Agent: ki használhatja ezen a gépen",
+            ["HaPn.AccessOpen"] = "{0}: a gép minden Windows-felhasználója olvashatja a HASS.Agent beállításait, a Home Assistant tokent is, és módosíthatja az általa futtatott parancsokat. Közülük nem rendszergazda: {1}. Nyisd meg a gépen a HASS.Agent ablakát, és válaszd ki, ki használhatja (rendszergazdának jóvá kell hagynia).",
             ["HaPn.UpdateTitle"] = "HASS.Agent frissítés",
             ["HaPn.UpdateCompleted"] = "{0}: frissítve {1} → {2}.",
             ["HaPn.NoUpdate"] = "{0}: nincs elérhető frissítés.",

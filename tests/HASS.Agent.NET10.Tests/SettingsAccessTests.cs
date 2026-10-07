@@ -100,6 +100,14 @@ public class SettingsAccessTests : IDisposable
     }
 
     [Fact]
+    public void Users_who_are_not_administrators_are_among_the_local_users()
+    {
+        var users = SettingsAccess.LocalUsers();
+
+        Assert.All(SettingsAccess.NonAdministratorUsers(), user => Assert.Contains(user, users, StringComparer.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void Local_users_include_the_one_running_this()
     {
         Assert.Contains(Environment.UserName, SettingsAccess.LocalUsers(), StringComparer.OrdinalIgnoreCase);

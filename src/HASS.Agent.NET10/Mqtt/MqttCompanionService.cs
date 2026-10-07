@@ -325,6 +325,51 @@ internal sealed class MqttCompanionService : IDisposable
         UpdateCompletionHandled?.Invoke();
     }
 
+    /// <summary>
+    /// Once per PC, from the tray app: the settings are still open to every user of the PC and
+    /// one of them is not an administrator. Home Assistant says so, and that the choice is made
+    /// in the app's window (SettingsAccessForm). A marker in the settings folder keeps it to once.
+    /// </summary>
+    private async Task PublishSettingsAccessNoticeAsync()
+    {
+        var folder = AppPaths.ConfigDirectoryPath;
+        var marker = Path.Combine(folder, "settings-access-notified");
+        IReadOnlyList<string> others;
+        try
+        {
+            if (_settings.SettingsAccessDecided || File.Exists(marker) || SettingsAccess.IsRestricted(folder))
+            {
+                return;
+            }
+
+            others = SettingsAccess.NonAdministratorUsers();
+        }
+        catch (Exception ex)
+        {
+            _log.Warning($"Unable to check who may use the settings: {ex.Message}");
+            return;
+        }
+
+        if (others.Count == 0)
+        {
+            return;
+        }
+
+        await PublishPersistentNotificationAsync(
+            Strings.GetHa("HaPn.AccessTitle"),
+            string.Format(Strings.GetHa("HaPn.AccessOpen"), _settings.DeviceName, string.Join(", ", others)));
+        try
+        {
+            File.WriteAllText(marker, DateTimeOffset.Now.ToString("O"));
+        }
+        catch (Exception ex)
+        {
+            _log.Warning($"Unable to remember the settings access notice: {ex.Message}");
+        }
+
+        _log.Info($"Told Home Assistant that every user of this PC may use the settings (users who are not administrators: {string.Join(", ", others)}).");
+    }
+
     /// <summary>A tray app runs: it reports the finished update itself.</summary>
     private void LeaveUpdateNotificationToTrayApp()
     {
@@ -861,6 +906,7 @@ internal sealed class MqttCompanionService : IDisposable
                     await PublishAvailabilityAsync(online: true);
                     await PublishUpdateStateAsync();
                     await PublishPendingUpdateNotificationAsync();
+                    await PublishSettingsAccessNoticeAsync();
                 }
                 else if (!IsTrayAppRunning())
                 {
@@ -1086,6 +1132,7 @@ internal sealed class MqttCompanionService : IDisposable
             await PublishAvailabilityAsync(online: true);
             await PublishUpdateStateAsync(cancellationToken: wsCts.Token);
             await PublishPendingUpdateNotificationAsync();
+            await PublishSettingsAccessNoticeAsync();
         }
         else if (!IsTrayAppRunning())
         {

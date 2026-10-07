@@ -96,16 +96,30 @@ internal sealed class SettingsAccessForm : Form
         CancelButton = later;
     }
 
-    /// <summary>Once, at start, on a PC whose settings every user may still use.</summary>
-    public static void AskOnceIfOpen(AppPaths paths, CompanionSettings settings, FileLog log)
+    /// <summary>
+    /// When the app's window is opened, on a PC whose settings every user may still use and
+    /// that has a user who is not an administrator (one with only administrators is limited by
+    /// the update itself). "Ask me later" asks again the next time the window opens.
+    /// </summary>
+    public static void AskOnceIfOpen(IWin32Window owner, AppPaths paths, CompanionSettings settings, FileLog log)
     {
-        if (settings.SettingsAccessDecided || SettingsAccess.IsRestricted(paths.ConfigDirectory))
+        try
         {
+            if (settings.SettingsAccessDecided
+                || SettingsAccess.IsRestricted(paths.ConfigDirectory)
+                || SettingsAccess.NonAdministratorUsers().Count == 0)
+            {
+                return;
+            }
+        }
+        catch (Exception ex)
+        {
+            log.Warning($"Unable to check who may use the settings: {ex.Message}");
             return;
         }
 
         using var form = new SettingsAccessForm(paths, settings, log, firstTime: true);
-        form.ShowDialog();
+        form.ShowDialog(owner);
     }
 
     public static void Show(IWin32Window owner, AppPaths paths, CompanionSettings settings, FileLog log)

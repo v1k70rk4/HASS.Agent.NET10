@@ -77,6 +77,8 @@ internal static partial class Strings
             ["Danger.BetaUpdates"] = "Beta updates — update checks also offer pre-releases",
 
             // HA persistent notifications (HA entity language)
+            ["HaPn.AccessTitle"] = "HASS.Agent: who may use it on this PC",
+            ["HaPn.AccessOpen"] = "{0}: every Windows user of this PC can read the HASS.Agent settings, the Home Assistant token included, and change the commands it runs. Some of them are not administrators: {1}. Open the HASS.Agent window on the PC to choose who may use it (an administrator has to approve).",
             ["HaPn.UpdateTitle"] = "HASS.Agent update",
             ["HaPn.UpdateCompleted"] = "{0}: updated from {1} to {2}.",
             ["HaPn.NoUpdate"] = "{0}: no update available.",
