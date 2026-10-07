@@ -83,14 +83,18 @@ public class SettingsAccessTests : IDisposable
         Assert.True(SettingsAccess.IsRestricted(_folder));
     }
 
-    [Fact]
-    public void An_update_keeps_an_open_folder_open()
+    // What an update decides, without doing it: doing it on an open folder would create the
+    // local group and change its members on the machine that runs the tests.
+    [Theory]
+    [InlineData(true, 3, 1, "LeaveAsItIs")]       // already limited
+    [InlineData(true, 1, 0, "LeaveAsItIs")]
+    [InlineData(false, 1, 0, "LimitToTheUsers")]  // administrators only
+    [InlineData(false, 2, 0, "LimitToTheUsers")]
+    [InlineData(false, 2, 1, "OpenToEveryone")]   // someone else's choice
+    [InlineData(false, 0, 0, "OpenToEveryone")]   // no users found: as before
+    public void What_an_update_does_with_the_folder(bool restricted, int users, int nonAdministrators, string expected)
     {
-        SettingsAccess.OpenToEveryone(_folder);
-
-        SettingsAccess.KeepAsIs(_folder);
-
-        Assert.False(SettingsAccess.IsRestricted(_folder));
+        Assert.Equal(expected, SettingsAccess.OnUpdate(restricted, users, nonAdministrators).ToString());
     }
 
     [Fact]

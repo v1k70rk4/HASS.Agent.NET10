@@ -213,19 +213,36 @@ internal static class SettingsAccess
             return;
         }
 
-        // Only administrators log on to this PC: limiting the settings to them changes nothing
-        // for anyone today, and keeps out a user added later. Otherwise the choice is someone's
-        // to make (the app asks when its window is opened, and Home Assistant is told).
         var users = LocalUsers();
-        if (users.Count > 0 && NonAdministratorUsers().Count == 0)
+        switch (OnUpdate(restricted: false, users.Count, NonAdministratorUsers().Count))
         {
-            RestrictTo(configDirectory, users);
-        }
-        else
-        {
-            OpenToEveryone(configDirectory);
+            case UpdateAction.LimitToTheUsers:
+                RestrictTo(configDirectory, users);
+                break;
+            case UpdateAction.OpenToEveryone:
+                OpenToEveryone(configDirectory);
+                break;
         }
     }
+
+    internal enum UpdateAction
+    {
+        LeaveAsItIs,
+        LimitToTheUsers,
+        OpenToEveryone,
+    }
+
+    /// <summary>
+    /// What an update does with the folder. A limited one stays as it is. One open to every
+    /// user on a PC whose users are all administrators is limited to them: it changes nothing
+    /// for anyone today and keeps out a user added later. Otherwise the choice is someone's to
+    /// make (the app asks when its window is opened, and Home Assistant is told), and the folder
+    /// gets the rule every install had.
+    /// </summary>
+    internal static UpdateAction OnUpdate(bool restricted, int users, int nonAdministrators) =>
+        restricted ? UpdateAction.LeaveAsItIs
+        : users > 0 && nonAdministrators == 0 ? UpdateAction.LimitToTheUsers
+        : UpdateAction.OpenToEveryone;
 
     // Exactly this on the folder: SYSTEM and administrators full control, the given users
     // Modify, nothing inherited from ProgramData (which lets every user read). Then the files
