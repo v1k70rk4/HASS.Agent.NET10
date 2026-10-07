@@ -24,8 +24,23 @@ internal static class ElevatedRun
     private const int ErrorCancelled = 1223;
     private static readonly TimeSpan Wait = TimeSpan.FromMinutes(5);
 
+    // A run that outlived the wait: until it ends no other is started, so two administrator
+    // runs never change the same folder or file in an order nobody chose.
+    private static Process? _stillRunning;
+
     public static async Task<(ElevatedOutcome Outcome, string? Error)> StartAsync(string arguments)
     {
+        if (_stillRunning is { } earlier)
+        {
+            if (!HasExited(earlier))
+            {
+                return (ElevatedOutcome.StillRunning, null);
+            }
+
+            earlier.Dispose();
+            _stillRunning = null;
+        }
+
         Process? process;
         try
         {
@@ -52,18 +67,30 @@ internal static class ElevatedRun
             return (ElevatedOutcome.Failed, null);
         }
 
-        using (process)
-        using (var timeout = new CancellationTokenSource(Wait))
+        using var timeout = new CancellationTokenSource(Wait);
+        try
         {
-            try
-            {
-                await process.WaitForExitAsync(timeout.Token);
-                return (ElevatedOutcome.Finished, null);
-            }
-            catch (OperationCanceledException)
-            {
-                return (ElevatedOutcome.StillRunning, null);
-            }
+            await process.WaitForExitAsync(timeout.Token);
+            process.Dispose();
+            return (ElevatedOutcome.Finished, null);
+        }
+        catch (OperationCanceledException)
+        {
+            _stillRunning = process;
+            return (ElevatedOutcome.StillRunning, null);
+        }
+    }
+
+    private static bool HasExited(Process process)
+    {
+        try
+        {
+            return process.HasExited;
+        }
+        catch (Exception)
+        {
+            // An elevated process may not let this one ask; then it is treated as ended.
+            return true;
         }
     }
 }
