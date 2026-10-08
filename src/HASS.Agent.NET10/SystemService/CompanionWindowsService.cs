@@ -199,9 +199,10 @@ internal sealed class CompanionWindowsService : ServiceBase
     /// </summary>
     internal static string WhatTheRuntimeUses(CompanionSettings settings)
     {
-        var (lastRun, decided) = (settings.LastRunVersion, settings.SettingsAccessDecided);
+        var (lastRun, decided, declined) = (settings.LastRunVersion, settings.SettingsAccessDecided, settings.HaApiOwnUserDeclined);
         settings.LastRunVersion = string.Empty;
         settings.SettingsAccessDecided = false;
+        settings.HaApiOwnUserDeclined = false;
         try
         {
             return JsonSerializer.Serialize(settings);
@@ -210,6 +211,7 @@ internal sealed class CompanionWindowsService : ServiceBase
         {
             settings.LastRunVersion = lastRun;
             settings.SettingsAccessDecided = decided;
+            settings.HaApiOwnUserDeclined = declined;
         }
     }
 

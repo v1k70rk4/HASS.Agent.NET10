@@ -62,6 +62,7 @@ internal sealed class MqttCompanionService : IDisposable
     private readonly CompanionSettings _settings;
     private readonly INotificationSink _notificationSink;
     private readonly Queue<string> _recentPublishes = new();
+    private OutgoingPacketCheck? _packetCheck;
     private readonly MediaSessionService? _mediaSessionService;
     private readonly SystemMetricsService? _systemMetricsService;
     private readonly SystemCommandService _systemCommandService;
@@ -230,6 +231,86 @@ internal sealed class MqttCompanionService : IDisposable
             $"hass.agent/notifications/{TopicId}/actions",
             new NotificationActionMessage(_settings.DeviceName, trimmedAction, DateTimeOffset.UtcNow, input),
             retain: false);
+    }
+
+    /// <summary>
+    /// Whose this PC's HA API token is, and whether the integration can give the PC a user of
+    /// its own (10.9.1+); the user is null without a live HA API connection.
+    /// </summary>
+    public (HaTokenUser? User, bool CanProvision) HaTokenStatus
+    {
+        get
+        {
+            if (_haWs is { IsConnected: true } ws)
+            {
+                return (ws.TokenUser, ws.HasOwnCommands);
+            }
+
+            // On MQTT the HA API connection is only up while MQTT fails: a short connection of
+            // its own answers, at most once a minute, and the last answer stands meanwhile.
+            var token = _settings.HaApiEnabled && !string.IsNullOrWhiteSpace(_settings.HaApiUrl) ? _settings.GetHaApiToken() : string.Empty;
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return (null, false);
+            }
+
+            var probe = _tokenProbe;
+            if (probe is null || probe.Token != token || DateTime.UtcNow - probe.At > TimeSpan.FromMinutes(1))
+            {
+                StartTokenProbe(token);
+            }
+
+            return probe is not null && probe.Token == token ? (probe.User, probe.CanProvision) : (null, false);
+        }
+    }
+
+    private sealed record TokenProbe(string Token, HaTokenUser? User, bool CanProvision, DateTime At);
+
+    private volatile TokenProbe? _tokenProbe;
+    private int _probing;
+
+    private void StartTokenProbe(string token)
+    {
+        if (Interlocked.Exchange(ref _probing, 1) == 1)
+        {
+            return;
+        }
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                var (user, canProvision) = await HaWebSocketService.ProbeTokenAsync(
+                    _settings.HaApiUrl, token, _settings.SerialNumber, timeout.Token);
+                _tokenProbe = new TokenProbe(token, user, canProvision, DateTime.UtcNow);
+            }
+            catch (Exception ex)
+            {
+                _log.Debug($"Unable to ask Home Assistant whose the HA API token is: {ex.Message}");
+                _tokenProbe = new TokenProbe(token, null, false, DateTime.UtcNow);
+            }
+            finally
+            {
+                Volatile.Write(ref _probing, 0);
+            }
+        });
+    }
+
+    /// <summary>Asks the integration for a Home Assistant user of this PC's own and a token for it.</summary>
+    public async Task<(string Token, string User)> ProvisionHaUserAsync()
+    {
+        if (_haWs is { IsConnected: true, HasOwnCommands: true } ws)
+        {
+            return await ws.ProvisionUserAsync(_cts?.Token ?? CancellationToken.None);
+        }
+
+        // On MQTT: a short connection of its own, with the saved token.
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        var result = await HaWebSocketService.ProvisionOnceAsync(
+            _settings.HaApiUrl, _settings.GetHaApiToken(), _settings.SerialNumber, timeout.Token);
+        _tokenProbe = null;
+        return result;
     }
 
     /// <summary>Re-sends the device discovery on the active transport. Returns false when not connected.</summary>
@@ -876,6 +957,21 @@ internal sealed class MqttCompanionService : IDisposable
                 _client = _factory.CreateMqttClient();
                 _client.ApplicationMessageReceivedAsync += HandleMessageAsync;
                 _client.DisconnectedAsync += LogDisconnectAsync;
+                // Before connecting: MQTTnet only inspects packets when a handler is there then.
+                if (OutgoingPacketCheck.IsSwitchedOn(_log))
+                {
+                    if (_packetCheck is null)
+                    {
+                        _log.Info($"MQTT packet diagnostics on (the '{OutgoingPacketCheck.SwitchFileName}' file).");
+                    }
+
+                    _packetCheck ??= new OutgoingPacketCheck(_log);
+                    _client.InspectPacketAsync += _packetCheck.InspectAsync;
+                }
+                else
+                {
+                    _packetCheck = null;
+                }
 
                 var options = BuildOptions();
                 _log.Info($"Connecting MQTT to {_settings.MqttHost}:{_settings.MqttPort}.");
@@ -1107,6 +1203,8 @@ internal sealed class MqttCompanionService : IDisposable
             {
                 _log.Warning($"Last packets sent before that: {string.Join(" | ", recent)}");
             }
+
+            _packetCheck?.Dump("session-closed");
         }
 
         return Task.CompletedTask;
@@ -2476,6 +2574,7 @@ internal sealed class MqttCompanionService : IDisposable
                 _ = publishTask.ContinueWith(static t => { _ = t.Exception; }, TaskScheduler.Default);
                 NoteSent(message, "stuck");
                 _log.Warning($"MQTT publish to {topic} stuck >{PublishTimeout.TotalSeconds:0}s; forcing reconnect.");
+                _packetCheck?.Dump("publish-stuck");
                 _forceReconnect = true;
                 return false;
             }
@@ -2489,7 +2588,8 @@ internal sealed class MqttCompanionService : IDisposable
             catch (Exception ex)
             {
                 NoteSent(message, "failed");
-                _log.Warning($"MQTT publish to {topic} failed ({ex.GetType().Name}); forcing reconnect.");
+                _log.Warning($"MQTT publish to {topic} failed ({ex.GetType().Name}: {ex.Message}); forcing reconnect.");
+                _packetCheck?.Dump("publish-failed");
                 _forceReconnect = true;
                 return false;
             }

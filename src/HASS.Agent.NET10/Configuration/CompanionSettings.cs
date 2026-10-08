@@ -29,6 +29,9 @@ internal sealed class CompanionSettings
     // Someone answered "who may use HASS.Agent on this PC" (SettingsAccessForm): not asked again.
     public bool SettingsAccessDecided { get; set; }
 
+    /// <summary>"Don't ask again" on the offer of a Home Assistant user of this PC's own.</summary>
+    public bool HaApiOwnUserDeclined { get; set; }
+
     /// <summary>Version of the previous run — used to detect a completed update on startup.</summary>
     public string LastRunVersion { get; set; } = string.Empty;
 

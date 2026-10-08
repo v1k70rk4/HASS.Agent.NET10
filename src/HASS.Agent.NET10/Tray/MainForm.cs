@@ -74,6 +74,11 @@ internal sealed class MainForm : Form
     private readonly TextBox _haApiToken = new() { UseSystemPasswordChar = true };
     private readonly Label _haApiHttpWarningIcon = new();
     private readonly Label _haApiTestResult = new();
+    private readonly Label _haApiTokenUser = new();
+    private Button? _haApiCreateUser;
+    // The last connection test: whose the token in the field was, while that token is not saved.
+    private string? _testedToken;
+    private HaTokenUser? _testedTokenUser;
     private readonly Label _haApiDisabledWarning = new();
 
     private readonly CheckBox _capNotify = new();
@@ -124,6 +129,16 @@ internal sealed class MainForm : Form
     [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
     public Func<AppUpdateState, Task>? UpdateStateHandler { get; set; }
 
+    /// <summary>Wired by TrayApplicationContext: whose the HA API token is, and whether a user of the PC's own can be made.</summary>
+    [System.ComponentModel.Browsable(false)]
+    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+    public Func<(HaTokenUser? User, bool CanProvision)>? HaTokenProbe { get; set; }
+
+    /// <summary>Wired by TrayApplicationContext: a Home Assistant user of this PC's own and its token.</summary>
+    [System.ComponentModel.Browsable(false)]
+    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+    public Func<Task<(string Token, string User)>>? HaUserProvisioner { get; set; }
+
     public MainForm(CompanionSettings settings, AppPaths paths, FileLog log, int initialPage = 0)
     {
         _settings = settings;
@@ -161,7 +176,17 @@ internal sealed class MainForm : Form
 
         // A PC whose settings every user may still use, with a user who is not an administrator:
         // asked when someone opens this window, never by itself at logon.
-        Shown += (_, _) => BeginInvoke(() => SettingsAccessForm.AskOnceIfOpen(this, _paths, _settings, _log));
+        // One question per opening, not two in a row. The user of the PC's own first: an
+        // administrator's token works from anywhere Home Assistant can be reached, and the swap is
+        // one click; limiting the settings (against the other users of this PC) needs an
+        // administrator, and comes the next time if the first question was asked.
+        Shown += (_, _) => BeginInvoke(async () =>
+        {
+            if (!await OfferOwnHaUserAsync())
+            {
+                SettingsAccessForm.AskOnceIfOpen(this, _paths, _settings, _log);
+            }
+        });
 
         LoadSettings();
         SelectPage(initialPage);
@@ -583,7 +608,7 @@ internal sealed class MainForm : Form
 
         Label limLabel = null!;
         var cardTop = _haApiDisabledWarning.Visible ? 138 : 96;
-        var card = MakeCard(page, 28, cardTop, 600, 300, S("HaApi.Connection"));
+        var card = MakeCard(page, 28, cardTop, 600, 336, S("HaApi.Connection"));
         void LayoutHaApiPage()
         {
             _haApiDisabledWarning.Location = Pt(28, 56);
@@ -646,6 +671,33 @@ internal sealed class MainForm : Form
 
         y += 4;
         y = AddField(card, S("HaApi.Token"), _haApiToken, y);
+
+        // Whose the token is: an administrator's can be swapped for a user of the PC's own.
+        _haApiTokenUser.Location = Pt(20, y);
+        _haApiTokenUser.Size = Sz(330, 30);
+        _haApiTokenUser.Font = new Font("Segoe UI", 9F);
+        _haApiTokenUser.TextAlign = ContentAlignment.MiddleLeft;
+        card.Controls.Add(_haApiTokenUser);
+        _haApiCreateUser = MakeSecondaryButton(S("HaUser.Create"), 230, 30);
+        _haApiCreateUser.Location = Pt(356, y);
+        _haApiCreateUser.Visible = false;
+        _haApiCreateUser.Click += async (_, _) => await CreateOwnHaUserAsync();
+        card.Controls.Add(_haApiCreateUser);
+        y += 36;
+
+        // The connection comes up a moment after a save; the line follows it while the page shows.
+        var tokenUserTimer = new System.Windows.Forms.Timer { Interval = 3000 };
+        tokenUserTimer.Tick += (_, _) => ShowTokenUser();
+        page.VisibleChanged += (_, _) =>
+        {
+            tokenUserTimer.Enabled = page.Visible;
+            if (page.Visible)
+            {
+                ShowTokenUser();
+            }
+        };
+        _haApiToken.TextChanged += (_, _) => ShowTokenUser();
+        page.Disposed += (_, _) => tokenUserTimer.Dispose();
         y += 6;
 
         var testBtn = MakeSecondaryButton(S("HaApi.TestButton"), 160, 32);
@@ -721,11 +773,66 @@ internal sealed class MainForm : Form
 
             _haApiTestResult.ForeColor = Color.FromArgb(21, 128, 61);
             _haApiTestResult.Text = string.Format(S("HaApi.TestSuccess"), result.HomeAssistantVersion, result.IntegrationVersion);
+            // The token in the field, saved or not.
+            _testedToken = token;
+            _testedTokenUser = result.TokenUser;
+            ShowTokenUser();
         }
         catch (Exception ex)
         {
             _haApiTestResult.ForeColor = Color.FromArgb(153, 27, 27);
             _haApiTestResult.Text = string.Format(S("HaApi.TestFailed"), ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// The line under the token: whose it is, and the button that swaps an administrator's for a
+    /// user of the PC's own. For a token typed but not saved yet, what its connection test said;
+    /// for the saved one, what the running connection knows.
+    /// </summary>
+    private void ShowTokenUser()
+    {
+        if (IsDisposed)
+        {
+            return;
+        }
+
+        var typed = _haApiToken.Text.Trim();
+        var unsaved = typed != _settings.GetHaApiToken();
+        var (live, canProvision) = HaTokenProbe?.Invoke() ?? (null, false);
+
+        HaTokenUser? user;
+        if (!unsaved)
+        {
+            user = live;
+        }
+        else if (typed == _testedToken && _testedTokenUser is not null)
+        {
+            user = _testedTokenUser;
+        }
+        else
+        {
+            // Typed, neither saved nor tested: the running connection says nothing about it.
+            _haApiTokenUser.ForeColor = TextMuted;
+            _haApiTokenUser.Text = typed.Length == 0 ? string.Empty : S("HaApi.TokenUntested");
+            _haApiCreateUser?.Hide();
+            return;
+        }
+
+        if (user is null)
+        {
+            _haApiTokenUser.Text = string.Empty;
+            _haApiCreateUser?.Hide();
+            return;
+        }
+
+        _haApiTokenUser.ForeColor = user.IsAdmin ? Color.FromArgb(180, 83, 9) : Color.FromArgb(21, 128, 61);
+        _haApiTokenUser.Text = string.Format(S(user.IsAdmin ? "HaApi.TokenOfAdmin" : "HaApi.TokenOfUser"), user.Name)
+            + (unsaved ? " " + S("HaApi.TokenNotSaved") : string.Empty);
+        // Only for the saved token in use: the integration makes the user for the PC it is connected as.
+        if (_haApiCreateUser is not null)
+        {
+            _haApiCreateUser.Visible = user.IsAdmin && !unsaved && canProvision;
         }
     }
 
@@ -2243,6 +2350,87 @@ internal sealed class MainForm : Form
         catch (Exception ex)
         {
             MessageBox.Show(string.Format(S("Danger.Error"), ex.Message), AppIdentity.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    /// <summary>
+    /// A PC connected with an administrator's token: offers, once the window opens, to swap it
+    /// for a Home Assistant user of the PC's own (not an administrator), made by the integration.
+    /// "Not now" asks again the next time; "Don't ask again" is kept in the settings.
+    /// </summary>
+    /// <returns>Whether the question was asked.</returns>
+    private async Task<bool> OfferOwnHaUserAsync()
+    {
+        var (user, canProvision) = HaTokenProbe?.Invoke() ?? (null, false);
+        if (_settings.HaApiOwnUserDeclined || HaUserProvisioner is null || user is not { IsAdmin: true } || !canProvision || IsDisposed)
+        {
+            return false;
+        }
+
+        var create = new TaskDialogButton(S("HaUser.Create"));
+        var later = new TaskDialogButton(S("HaUser.Later"));
+        var never = new TaskDialogButton(S("HaUser.Never"));
+        var page = new TaskDialogPage
+        {
+            Caption = AppIdentity.DisplayName,
+            Heading = S("HaUser.Heading"),
+            Text = S("HaUser.Text"),
+            Icon = TaskDialogIcon.ShieldWarningYellowBar,
+            Buttons = { create, later, never },
+            DefaultButton = create,
+        };
+
+        var answer = TaskDialog.ShowDialog(this, page);
+        if (answer == never)
+        {
+            _settings.HaApiOwnUserDeclined = true;
+            SettingsStore.Save(_paths, _settings);
+        }
+        else if (answer == create)
+        {
+            await CreateOwnHaUserAsync();
+        }
+
+        return true;
+    }
+
+    /// <summary>Has the integration make a Home Assistant user of this PC's own, and switches to its token.</summary>
+    private async Task CreateOwnHaUserAsync()
+    {
+        if (HaUserProvisioner is null)
+        {
+            return;
+        }
+
+        _haApiCreateUser?.Hide();
+        try
+        {
+            var (token, user) = await HaUserProvisioner();
+            _settings.SetHaApiToken(token);
+            // The field is what a later Save writes: it must hold the new token as well.
+            _haApiToken.Text = token;
+            SettingsStore.Save(_paths, _settings);
+            _log.Info($"The HA API now uses the Home Assistant user {user}, made for this PC.");
+            SettingsSaved?.Invoke(this, EventArgs.Empty);
+            TaskDialog.ShowDialog(this, new TaskDialogPage
+            {
+                Caption = AppIdentity.DisplayName,
+                Heading = S("HaUser.DoneHeading"),
+                Text = string.Format(S("HaUser.DoneText"), user),
+                Icon = TaskDialogIcon.ShieldSuccessGreenBar,
+            });
+            ShowTokenUser();
+        }
+        catch (Exception ex)
+        {
+            _log.Warning($"Creating a Home Assistant user for this PC failed: {ex.Message}");
+            TaskDialog.ShowDialog(this, new TaskDialogPage
+            {
+                Caption = AppIdentity.DisplayName,
+                Heading = S("HaUser.FailedHeading"),
+                Text = string.Format(S("HaUser.FailedText"), ex.Message),
+                Icon = TaskDialogIcon.Error,
+            });
         }
     }
 

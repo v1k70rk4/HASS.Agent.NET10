@@ -2,6 +2,14 @@
 
 Every release of HASS.Agent .NET10, newest first. The downloads are on the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases).
 
+## 10.9.1-beta.4
+
+> **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered it, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.9.0**, below.
+
+The fourth beta of 10.9.1: the HA API no longer needs an administrator's token. With the integration's [10.9.1-beta.4](https://github.com/v1k70rk4/HASS.Agent.NET10-Integration/releases/tag/v10.9.1-beta.4) (in HACS: **Redownload**, **Show beta versions**) the app offers to create a Home Assistant user of the PC's own, and switches to it. Works with the integration **10.6.7** or newer; with one older than 10.9.1-beta.4 the HA API connects as before. Signed release.
+
+- **The HA API no longer needs an administrator's token.** The connection used Home Assistant's `fire_event` and `subscribe_events`, which only an administrator may use, so the token on the PC was one that can change everything in Home Assistant, and a PC that was broken into gave it away. With the integration 10.9.1 or newer the app uses the integration's own commands instead, which work with a token of a Home Assistant user who is not an administrator; an administrator approves such a PC once in Home Assistant. The app also only gets the commands meant for itself now, not those of every PC. An administrator's token keeps working, and with an older integration the app connects as before. **The easy way there:** when the app connects with an administrator's token, its window offers to create a Home Assistant user for this PC (not an administrator, without a password) and switches to its token; the HA API page shows whose the token is and has the same button. How it works, and the way by hand: [A Home Assistant user for the PC](docs/connection.md#a-home-assistant-user-for-the-pc).
+- The question who may use HASS.Agent on this PC now names what is at stake: the MQTT password, which opens the whole broker, and what the Home Assistant token can do. When both questions are due, the window asks one per opening: the user of the PC's own first.
 ## 10.9.1-beta.3
 
 > **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered it, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.9.0**, below.

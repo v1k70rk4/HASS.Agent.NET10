@@ -2,7 +2,7 @@
 
 ![Windows](https://img.shields.io/badge/Windows-10%202004%2B%20%7C%2011-0078D4?logo=windows&logoColor=white)
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet&logoColor=white)
-![Version](https://img.shields.io/badge/version-10.9.1--beta.3-orange)
+![Version](https://img.shields.io/badge/version-10.9.1--beta.4-orange)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-MQTT%20%7C%20WebSocket%20API-41BDF5?logo=homeassistant&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 [![Website](https://img.shields.io/badge/website-v1k70rk4.github.io-41bdf5?logo=github)](https://v1k70rk4.github.io/HASS.Agent.NET10/)
@@ -24,7 +24,7 @@ It is designed for Windows PCs you want to observe and control from Home Assista
 
 The .NET10 line starts at **version 10.0.0**. The classic client is a separate program: if you want to stay with it, it is still available from its own project, and the integration keeps a [`legacy` branch](https://github.com/v1k70rk4/HASS.Agent.NET10-Integration/tree/legacy) for it. Thinking about switching? See [Coming from HASS.Agent](docs/migrating.md).
 
-> **Stable:** [10.9.0](https://github.com/v1k70rk4/HASS.Agent.NET10/releases/latest) &nbsp;·&nbsp; **Beta:** [10.9.1-beta.3](https://github.com/v1k70rk4/HASS.Agent.NET10/releases/tag/v10.9.1-beta.3) &nbsp;·&nbsp; [What changed](#what-changed) &nbsp;·&nbsp; [Full changelog](CHANGELOG.md)
+> **Stable:** [10.9.0](https://github.com/v1k70rk4/HASS.Agent.NET10/releases/latest) &nbsp;·&nbsp; **Beta:** [10.9.1-beta.4](https://github.com/v1k70rk4/HASS.Agent.NET10/releases/tag/v10.9.1-beta.4) &nbsp;·&nbsp; [What changed](#what-changed) &nbsp;·&nbsp; [Full changelog](CHANGELOG.md)
 
 ---
 
@@ -166,13 +166,18 @@ No telemetry, analytics, or usage data is collected or transmitted.
 
 ## What Changed
 
-### 10.9.1-beta.3
+### 10.9.1-beta.4
 
 > **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered it, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.9.0**, below.
 
-The third beta of 10.9.1: the hotkey editor takes the combination you press and says at once whether it is free, and the service keeps its connection after an update. Works with the integration **10.6.7** or newer; the integration's [10.9.1-beta.3](https://github.com/v1k70rk4/HASS.Agent.NET10-Integration/releases/tag/v10.9.1-beta.3) has the security fixes of beta.2 and a small text fix (in HACS: **Redownload**, **Show beta versions**). Signed release.
+The fourth beta of 10.9.1: the HA API no longer needs an administrator's token. With the integration's [10.9.1-beta.4](https://github.com/v1k70rk4/HASS.Agent.NET10-Integration/releases/tag/v10.9.1-beta.4) (in HACS: **Redownload**, **Show beta versions**) the app offers to create a Home Assistant user of the PC's own, and switches to it. Works with the integration **10.6.7** or newer; with one older than 10.9.1-beta.4 the HA API connects as before. Signed release.
 
-**New since beta.2**
+**New since beta.3**
+
+- **The HA API no longer needs an administrator's token.** The connection used Home Assistant's `fire_event` and `subscribe_events`, which only an administrator may use, so the token on the PC was one that can change everything in Home Assistant, and a PC that was broken into gave it away. With the integration 10.9.1 or newer the app uses the integration's own commands instead, which work with a token of a Home Assistant user who is not an administrator; an administrator approves such a PC once in Home Assistant. The app also only gets the commands meant for itself now, not those of every PC. An administrator's token keeps working, and with an older integration the app connects as before. **The easy way there:** when the app connects with an administrator's token, its window offers to create a Home Assistant user for this PC (not an administrator, without a password) and switches to its token; the HA API page shows whose the token is and has the same button. How it works, and the way by hand: [A Home Assistant user for the PC](docs/connection.md#a-home-assistant-user-for-the-pc).
+- The question who may use HASS.Agent on this PC now names what is at stake: the MQTT password, which opens the whole broker, and what the Home Assistant token can do. When both questions are due, the window asks one per opening: the user of the PC's own first.
+
+**From beta.3**
 
 - **A hotkey is pressed, not typed, and you see at once whether it is free.** In the hotkey editor the combination is pressed in its field (Backspace clears it). The line under it says straight away whether Windows lets HASS.Agent have it, or whether Windows or another program already uses it (the Win+number keys are the taskbar's, for one); before, that only showed in the log. It also says when another hotkey of the list has the same combination, and warns about one modifier alone (ctrl+c, alt+f4), which programs use themselves. A taken combination is kept only when OK is pressed twice; the app then tries it again every minute, so it starts working once the other program lets it go. A combination Windows keeps for itself does not even show up in the field.
 - The service no longer restarts its connection after an update. The tray app records the version it now runs in the settings, and the service took that as a change of its own settings.

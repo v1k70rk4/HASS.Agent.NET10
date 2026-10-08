@@ -1,0 +1,137 @@
+using System.Text;
+using HASS.Agent.Companion.Mqtt;
+
+namespace HASS.Agent.Companion.Tests;
+
+public class MqttPacketCheckTests
+{
+    // An MQTT 5 PUBLISH, QoS 0, no properties, built byte by byte.
+    private static byte[] Publish(string topic, byte[] payload, int? claimedRemaining = null)
+    {
+        var topicBytes = Encoding.UTF8.GetBytes(topic);
+        var body = new List<byte> { (byte)(topicBytes.Length >> 8), (byte)topicBytes.Length };
+        body.AddRange(topicBytes);
+        body.Add(0); // property length
+        body.AddRange(payload);
+
+        var packet = new List<byte> { 0x30 };
+        var remaining = claimedRemaining ?? body.Count;
+        do
+        {
+            var digit = (byte)(remaining % 128);
+            remaining /= 128;
+            packet.Add(remaining > 0 ? (byte)(digit | 0x80) : digit);
+        }
+        while (remaining > 0);
+
+        packet.AddRange(body);
+        return [.. packet];
+    }
+
+    [Fact]
+    public void A_good_publish_passes()
+    {
+        var packet = Publish("hass.agent/sensors/abc/state", Encoding.UTF8.GetBytes("""{"cpu":12.5,"title":"Árvíztűrő"}"""));
+
+        Assert.Null(OutgoingPacketCheck.Check(packet));
+    }
+
+    [Fact]
+    public void A_long_payload_with_a_multi_byte_length_passes()
+    {
+        var payload = Encoding.UTF8.GetBytes("{\"x\":\"" + new string('a', 20_000) + "\"}");
+
+        Assert.Null(OutgoingPacketCheck.Check(Publish("hass.agent/media_player/abc/state", payload)));
+    }
+
+    [Fact]
+    public void A_wrong_remaining_length_is_caught()
+    {
+        var packet = Publish("hass.agent/sensors/abc/state", Encoding.UTF8.GetBytes("{\"a\":1}"), claimedRemaining: 10);
+
+        Assert.Contains("remaining length", OutgoingPacketCheck.Check(packet));
+    }
+
+    [Fact]
+    public void A_payload_that_is_not_json_is_caught()
+    {
+        var packet = Publish("hass.agent/sensors/abc/state", Encoding.UTF8.GetBytes("{\"cpu\":12.5,\"tit"));
+
+        Assert.Contains("not valid JSON", OutgoingPacketCheck.Check(packet));
+    }
+
+    [Fact]
+    public void Binary_and_plain_payloads_are_not_read_as_json()
+    {
+        Assert.Null(OutgoingPacketCheck.Check(Publish("hass.agent/media_player/abc/thumbnail", [0xFF, 0xD8, 0xFF, 0x00])));
+        Assert.Null(OutgoingPacketCheck.Check(Publish("hass.agent/availability/abc", Encoding.UTF8.GetBytes("online"))));
+    }
+
+    [Fact]
+    public void A_topic_with_a_wildcard_is_caught()
+    {
+        Assert.Contains("unusable topic", OutgoingPacketCheck.Check(Publish("hass.agent/+/state", Encoding.UTF8.GetBytes("{}"))));
+    }
+
+    [Fact]
+    public void The_login_of_a_connect_is_never_kept()
+    {
+        var connect = new MQTTnet.Packets.MqttConnectPacket
+        {
+            ClientId = "hass-agent",
+            Username = "rviktor",
+            Password = Encoding.UTF8.GetBytes("secret-password"),
+        };
+        var formatter = new MQTTnet.Formatter.MqttPacketFormatterAdapter(
+            MQTTnet.Formatter.MqttProtocolVersion.V500, new MQTTnet.Formatter.MqttBufferWriter(4096, 65535));
+        var bytes = formatter.Encode(connect).Join().ToArray();
+
+        var kept = OutgoingPacketCheck.WithoutLogin(bytes);
+
+        Assert.Equal(0x10, kept[0]);
+        Assert.True(kept.Length <= 5);
+        Assert.DoesNotContain("secret-password", Encoding.UTF8.GetString(kept));
+        Assert.DoesNotContain("rviktor", Encoding.UTF8.GetString(kept));
+    }
+
+    [Fact]
+    public void What_mqttnet_encodes_passes()
+    {
+        // The bytes MQTTnet itself puts on the wire for a PUBLISH like ours.
+        var message = new MQTTnet.MqttApplicationMessageBuilder()
+            .WithTopic("hass.agent/sensors/abc/state")
+            .WithPayload("""{"cpu":1}""")
+            .Build();
+        var formatter = new MQTTnet.Formatter.MqttPacketFormatterAdapter(
+            MQTTnet.Formatter.MqttProtocolVersion.V500, new MQTTnet.Formatter.MqttBufferWriter(4096, 65535));
+        var buffer = formatter.Encode(MQTTnet.Formatter.MqttPublishPacketFactory.Create(message));
+
+        Assert.Null(OutgoingPacketCheck.Check(buffer.Join().ToArray()));
+    }
+}
+
+public class ProvisionResultTests
+{
+    [Theory]
+    [InlineData("""{"access_token":"abc","user":"HASS.Agent PC"}""", "abc", "HASS.Agent PC")]
+    [InlineData("""{"access_token":"abc"}""", "abc", "")]
+    public void The_token_and_the_user_are_read(string json, string token, string user)
+    {
+        using var document = System.Text.Json.JsonDocument.Parse(json);
+
+        Assert.Equal((token, user), HASS.Agent.Companion.Mqtt.HaWebSocketService.ReadProvisioned(document.RootElement));
+    }
+
+    [Theory]
+    [InlineData("""{"user":"x"}""")]
+    [InlineData("""{"access_token":""}""")]
+    [InlineData("""{"access_token":42}""")]
+    [InlineData("""["access_token"]""")]
+    [InlineData("null")]
+    public void No_token_is_no_result(string json)
+    {
+        using var document = System.Text.Json.JsonDocument.Parse(json);
+
+        Assert.Null(HASS.Agent.Companion.Mqtt.HaWebSocketService.ReadProvisioned(document.RootElement));
+    }
+}
