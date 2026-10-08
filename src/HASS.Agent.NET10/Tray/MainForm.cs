@@ -176,10 +176,16 @@ internal sealed class MainForm : Form
 
         // A PC whose settings every user may still use, with a user who is not an administrator:
         // asked when someone opens this window, never by itself at logon.
+        // One question per opening, not two in a row. The user of the PC's own first: an
+        // administrator's token works from anywhere Home Assistant can be reached, and the swap is
+        // one click; limiting the settings (against the other users of this PC) needs an
+        // administrator, and comes the next time if the first question was asked.
         Shown += (_, _) => BeginInvoke(async () =>
         {
-            SettingsAccessForm.AskOnceIfOpen(this, _paths, _settings, _log);
-            await OfferOwnHaUserAsync();
+            if (!await OfferOwnHaUserAsync())
+            {
+                SettingsAccessForm.AskOnceIfOpen(this, _paths, _settings, _log);
+            }
         });
 
         LoadSettings();
@@ -2352,12 +2358,13 @@ internal sealed class MainForm : Form
     /// for a Home Assistant user of the PC's own (not an administrator), made by the integration.
     /// "Not now" asks again the next time; "Don't ask again" is kept in the settings.
     /// </summary>
-    private async Task OfferOwnHaUserAsync()
+    /// <returns>Whether the question was asked.</returns>
+    private async Task<bool> OfferOwnHaUserAsync()
     {
         var (user, canProvision) = HaTokenProbe?.Invoke() ?? (null, false);
         if (_settings.HaApiOwnUserDeclined || HaUserProvisioner is null || user is not { IsAdmin: true } || !canProvision || IsDisposed)
         {
-            return;
+            return false;
         }
 
         var create = new TaskDialogButton(S("HaUser.Create"));
@@ -2378,13 +2385,13 @@ internal sealed class MainForm : Form
         {
             _settings.HaApiOwnUserDeclined = true;
             SettingsStore.Save(_paths, _settings);
-            return;
         }
-
-        if (answer == create)
+        else if (answer == create)
         {
             await CreateOwnHaUserAsync();
         }
+
+        return true;
     }
 
     /// <summary>Has the integration make a Home Assistant user of this PC's own, and switches to its token.</summary>
