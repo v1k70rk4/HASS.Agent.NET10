@@ -212,6 +212,8 @@ function Select-Source {
         Expand-Archive -LiteralPath $archive -DestinationPath $exportDir -Force
         Remove-Item $archive -Force
     }
+    # An export has no .git, so the build cannot read the commit for the version (10.9.1+<sha>).
+    $script:exportedSha = $sha
     return $exportDir
 }
 
@@ -302,6 +304,7 @@ $publishArgs = @(
     "-p:PublishSingleFile=true"
 )
 if ($Version) { $publishArgs += "-p:Version=$Version" }
+if ($script:exportedSha) { $publishArgs += "-p:SourceRevisionId=$($script:exportedSha)" }
 
 if ($Tag) {
     # Same layout and flags as the CI workflow: the installer script's Source path and the zip contents match a
