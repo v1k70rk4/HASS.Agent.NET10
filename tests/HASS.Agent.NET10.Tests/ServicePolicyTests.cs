@@ -6,6 +6,35 @@ using HASS.Agent.Companion.Tray;
 
 namespace HASS.Agent.Companion.Tests;
 
+public class ServiceReloadTests
+{
+    [Fact]
+    public void The_tray_apps_bookkeeping_does_not_restart_the_service()
+    {
+        var before = new CompanionSettings { MqttHost = "broker.local", LastRunVersion = "10.9.1-beta.1" };
+        var after = new CompanionSettings { MqttHost = "broker.local", LastRunVersion = "10.9.1-beta.2", SettingsAccessDecided = true };
+        before.SerialNumber = after.SerialNumber = "0123456789abcdef0123456789abcdef";
+
+        Assert.Equal(
+            SystemService.CompanionWindowsService.WhatTheRuntimeUses(before),
+            SystemService.CompanionWindowsService.WhatTheRuntimeUses(after));
+        Assert.Equal("10.9.1-beta.2", after.LastRunVersion);   // given back as it was
+        Assert.True(after.SettingsAccessDecided);
+    }
+
+    [Fact]
+    public void A_setting_the_service_uses_restarts_it()
+    {
+        var before = new CompanionSettings { MqttHost = "broker.local" };
+        var after = new CompanionSettings { MqttHost = "other.local" };
+        before.SerialNumber = after.SerialNumber = "0123456789abcdef0123456789abcdef";
+
+        Assert.NotEqual(
+            SystemService.CompanionWindowsService.WhatTheRuntimeUses(before),
+            SystemService.CompanionWindowsService.WhatTheRuntimeUses(after));
+    }
+}
+
 public class ServicePolicyTests : IDisposable
 {
     private readonly string _folder = Directory.CreateTempSubdirectory("hass-agent-policy-").FullName;

@@ -6,6 +6,13 @@ using HASS.Agent.Companion.SystemCommands;
 
 namespace HASS.Agent.Companion.Tray;
 
+internal enum HotkeyAvailability
+{
+    Free,
+    Taken,
+    HeldByThisApp,
+}
+
 /// <summary>
 /// Global hotkeys that go to Home Assistant as events. Only the combinations the user
 /// put on the list are registered: Windows hands a registered combination to this app
@@ -16,9 +23,18 @@ internal sealed class HotkeyService : NativeWindow, IDisposable
 {
     private const int WmHotkey = 0x0312;
     private const uint ModNoRepeat = 0x4000;
+    private const int ProbeId = 0xBFFF;
+
+    // What this app holds right now, so that a check does not call our own hotkey taken.
+    private static readonly HashSet<(uint Modifiers, uint VirtualKey)> Held = [];
 
     private readonly FileLog _log;
     private readonly Dictionary<int, HotkeyDefinition> _registered = [];
+
+    // Hotkeys another program held when they were registered: tried again every minute,
+    // so one starts working once that program lets it go.
+    private readonly List<(HotkeyDefinition Hotkey, uint Modifiers, uint VirtualKey)> _waiting = [];
+    private readonly System.Windows.Forms.Timer _retry = new() { Interval = 60_000 };
     private int _nextId = 1;
 
     public HotkeyService(FileLog log)
@@ -26,6 +42,7 @@ internal sealed class HotkeyService : NativeWindow, IDisposable
         _log = log;
         // A message-only window: it exists to receive WM_HOTKEY and nothing else.
         CreateHandle(new CreateParams { Parent = new IntPtr(-3) });
+        _retry.Tick += (_, _) => RetryWaiting();
     }
 
     /// <summary>A registered hotkey was pressed.</summary>
@@ -43,15 +60,11 @@ internal sealed class HotkeyService : NativeWindow, IDisposable
                 continue;
             }
 
-            var id = _nextId++;
-            if (RegisterHotKey(Handle, id, modifiers | ModNoRepeat, virtualKey))
-            {
-                _registered[id] = hotkey;
-            }
-            else
+            if (!TryRegister(hotkey, modifiers, virtualKey))
             {
                 // Usually another program holds the same combination.
-                _log.Warning($"Hotkey '{hotkey.Name}' ({hotkey.Keys}) could not be registered; another program may already use it.");
+                _log.Warning($"Hotkey '{hotkey.Name}' ({hotkey.Keys}) could not be registered; another program may already use it. It is tried again every minute.");
+                _waiting.Add((hotkey, modifiers, virtualKey));
             }
         }
 
@@ -59,6 +72,36 @@ internal sealed class HotkeyService : NativeWindow, IDisposable
         {
             _log.Info($"{_registered.Count} hotkey(s) registered.");
         }
+
+        _retry.Enabled = _waiting.Count > 0;
+    }
+
+    private bool TryRegister(HotkeyDefinition hotkey, uint modifiers, uint virtualKey)
+    {
+        var id = _nextId++;
+        if (!RegisterHotKey(Handle, id, modifiers | ModNoRepeat, virtualKey))
+        {
+            return false;
+        }
+
+        _registered[id] = hotkey;
+        Held.Add((modifiers, virtualKey));
+        return true;
+    }
+
+    private void RetryWaiting()
+    {
+        for (var index = _waiting.Count - 1; index >= 0; index--)
+        {
+            var (hotkey, modifiers, virtualKey) = _waiting[index];
+            if (TryRegister(hotkey, modifiers, virtualKey))
+            {
+                _log.Info($"Hotkey '{hotkey.Name}' ({hotkey.Keys}) is registered now; the program that held it let it go.");
+                _waiting.RemoveAt(index);
+            }
+        }
+
+        _retry.Enabled = _waiting.Count > 0;
     }
 
     protected override void WndProc(ref Message message)
@@ -79,11 +122,35 @@ internal sealed class HotkeyService : NativeWindow, IDisposable
         }
 
         _registered.Clear();
+        Held.Clear();
+        _waiting.Clear();
+        _retry.Enabled = false;
+    }
+
+    /// <summary>
+    /// Whether Windows would give this combination to the app: registering it and letting
+    /// it go at once is the only way Windows tells. On the UI thread, like the hotkeys.
+    /// </summary>
+    public static HotkeyAvailability Check(uint modifiers, uint virtualKey)
+    {
+        if (Held.Contains((modifiers, virtualKey)))
+        {
+            return HotkeyAvailability.HeldByThisApp;
+        }
+
+        if (!RegisterHotKey(IntPtr.Zero, ProbeId, modifiers | ModNoRepeat, virtualKey))
+        {
+            return HotkeyAvailability.Taken;
+        }
+
+        UnregisterHotKey(IntPtr.Zero, ProbeId);
+        return HotkeyAvailability.Free;
     }
 
     public void Dispose()
     {
         UnregisterAll();
+        _retry.Dispose();
         DestroyHandle();
     }
 

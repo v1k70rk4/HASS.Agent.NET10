@@ -70,6 +70,30 @@ public class KeyCombinationTests
     {
         Assert.False(KeySender.TryParseHotkey(text, out _, out _));
     }
+
+    // What the hotkey editor writes for a pressed combination, and that it reads back.
+    [Theory]
+    [InlineData(0x0003u, 'H', "ctrl+alt+h")]
+    [InlineData(0x0003u, '5', "ctrl+alt+5")]
+    [InlineData(0x0006u, 0x7Bu, "ctrl+shift+f12")]
+    [InlineData(0x0001u, 0x65u, "alt+num5")]
+    [InlineData(0x0003u, 0xBBu, "ctrl+alt+plus")]
+    [InlineData(0x0008u, 0x26u, "win+up")]
+    [InlineData(0x000Fu, 'K', "ctrl+alt+shift+win+k")]
+    public void Pressed_combination_is_written_as_the_list_reads_it(uint modifiers, uint key, string text)
+    {
+        Assert.Equal(text, KeySender.DescribeHotkey(modifiers, key));
+        Assert.True(KeySender.TryParseHotkey(text, out var parsedModifiers, out var parsedKey));
+        Assert.Equal((modifiers, key), (parsedModifiers, parsedKey));
+    }
+
+    [Theory]
+    [InlineData(0u, 'H')]        // no modifier
+    [InlineData(0x0002u, 0x07u)] // a key without a name (an undefined virtual key)
+    public void Not_every_pressed_combination_is_a_hotkey(uint modifiers, uint key)
+    {
+        Assert.Null(KeySender.DescribeHotkey(modifiers, key));
+    }
 }
 
 public class PopupSizeTests

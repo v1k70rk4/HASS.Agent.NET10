@@ -994,7 +994,7 @@ internal sealed class MainForm : Form
         addHotkeyBtn.Location = Pt(20, 212);
         addHotkeyBtn.Click += (_, _) =>
         {
-            using var editor = new HotkeyEditorForm(new HotkeyDefinition());
+            using var editor = new HotkeyEditorForm(new HotkeyDefinition(), HotkeysInGrid(except: null));
             if (editor.ShowDialog(this) == DialogResult.OK)
             {
                 AddHotkeyRow(editor.Result);
@@ -1073,6 +1073,17 @@ internal sealed class MainForm : Form
         return rowIndex;
     }
 
+    // The hotkeys of the list as it is now, saved or not, but the one being edited.
+    private List<HotkeyDefinition> HotkeysInGrid(DataGridViewRow? except) =>
+        _hotkeyGrid.Rows.Cast<DataGridViewRow>()
+            .Where(row => !row.IsNewRow && row != except)
+            .Select(row => new HotkeyDefinition
+            {
+                Name = Convert.ToString(row.Cells["Name"].Value) ?? string.Empty,
+                Keys = Convert.ToString(row.Cells["Keys"].Value) ?? string.Empty,
+            })
+            .ToList();
+
     private void EditHotkeyRow(DataGridViewRow? row)
     {
         if (row is null || row.IsNewRow)
@@ -1087,7 +1098,7 @@ internal sealed class MainForm : Form
             Enabled = Convert.ToBoolean(row.Cells["Enabled"].Value ?? true),
             Name = Convert.ToString(row.Cells["Name"].Value) ?? string.Empty,
             Keys = Convert.ToString(row.Cells["Keys"].Value) ?? string.Empty
-        });
+        }, HotkeysInGrid(except: row));
         if (editor.ShowDialog(this) == DialogResult.OK)
         {
             row.SetValues(editor.Result.Enabled, editor.Result.Name, editor.Result.Keys);

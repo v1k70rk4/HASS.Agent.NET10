@@ -382,7 +382,8 @@ $rows = foreach ($file in @($fullPath) + $releaseFiles) {
     $item = Get-Item $file
     [pscustomobject]@{
         File    = $item.Name
-        Version = if ($item.Extension -eq '.exe') { $item.VersionInfo.FileVersion } else { $appVersion }
+        # The product version: the file version of an exe can only be four numbers (10.9.1.0).
+        Version = if ($item.Extension -eq '.exe') { ($item.VersionInfo.ProductVersion -split '\+')[0] } else { $appVersion }
         Signed  = if ($item.Extension -eq '.exe') { (Get-AuthenticodeSignature $file).Status } else { '-' }
         Signer  = if ($item.Extension -eq '.exe') { Get-SignerName $file } else { '' }
         MB      = [math]::Round($item.Length / 1MB, 1)
