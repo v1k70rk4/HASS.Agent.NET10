@@ -18,6 +18,13 @@ internal static class LibreHardwareMonitorClient
     // One request serves every sensor of a polling cycle, and a monitor that is not
     // running costs one timeout per cycle rather than one per sensor.
     private static readonly TimeSpan CacheLifetime = TimeSpan.FromSeconds(2);
+
+    // A real data.json is tens of kilobytes with a few hundred sensors; the limits only
+    // keep a broken or hostile server from making the app hold an unbounded amount.
+    internal const int MaxResponseBytes = 4 * 1024 * 1024;
+    internal const int MaxReadings = 5000;
+    internal const int MaxNameLength = 200;
+    private const int MaxDepth = 32;
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(2) };
     private static readonly object Gate = new();
     private static IReadOnlyList<Reading> _cache = [];
@@ -80,8 +87,12 @@ internal static class LibreHardwareMonitorClient
                 }
 
                 response.EnsureSuccessStatusCode();
-                using var reader = new StreamReader(response.Content.ReadAsStream(), Encoding.UTF8);
-                _cache = Parse(reader.ReadToEnd());
+                if (response.Content.Headers.ContentLength > MaxResponseBytes)
+                {
+                    throw new InvalidOperationException($"its answer is larger than {MaxResponseBytes / (1024 * 1024)} MB");
+                }
+
+                _cache = Parse(ReadLimited(response.Content.ReadAsStream()));
                 _cacheError = null;
                 return _cache;
             }
@@ -127,10 +138,28 @@ internal static class LibreHardwareMonitorClient
             : trimmed.TrimEnd('/') + "/data.json";
     }
 
+    private static string ReadLimited(Stream stream)
+    {
+        using var buffer = new MemoryStream();
+        var chunk = new byte[81920];
+        int read;
+        while ((read = stream.Read(chunk, 0, chunk.Length)) > 0)
+        {
+            if (buffer.Length + read > MaxResponseBytes)
+            {
+                throw new InvalidOperationException($"its answer is larger than {MaxResponseBytes / (1024 * 1024)} MB");
+            }
+
+            buffer.Write(chunk, 0, read);
+        }
+
+        return Encoding.UTF8.GetString(buffer.GetBuffer(), 0, (int)buffer.Length);
+    }
+
     internal static IReadOnlyList<Reading> Parse(string json)
     {
         var readings = new List<Reading>();
-        using var document = JsonDocument.Parse(json);
+        using var document = JsonDocument.Parse(json, new JsonDocumentOptions { MaxDepth = MaxDepth });
         Walk(document.RootElement, [], readings);
         return readings;
     }
@@ -139,15 +168,20 @@ internal static class LibreHardwareMonitorClient
     // a group per kind ("Temperatures"), then the sensors, which are the leaves.
     private static void Walk(JsonElement node, List<string> path, List<Reading> readings)
     {
-        var text = GetString(node, "Text");
+        if (readings.Count >= MaxReadings)
+        {
+            return;
+        }
+
+        var text = Shorten(GetString(node, "Text"));
         var hasChildren = node.TryGetProperty("Children", out var children)
             && children.ValueKind == JsonValueKind.Array
             && children.GetArrayLength() > 0;
 
         if (!hasChildren)
         {
-            var value = GetString(node, "Value");
-            var sensorId = GetString(node, "SensorId");
+            var value = Shorten(GetString(node, "Value"));
+            var sensorId = Shorten(GetString(node, "SensorId"));
             if (value.Length == 0 && sensorId.Length == 0)
             {
                 return;
@@ -196,6 +230,8 @@ internal static class LibreHardwareMonitorClient
             ? (number, unit)
             : (null, unit);
     }
+
+    private static string Shorten(string text) => text.Length > MaxNameLength ? text[..MaxNameLength] : text;
 
     private static string GetString(JsonElement node, string name)
     {

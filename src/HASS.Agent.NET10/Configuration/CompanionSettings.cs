@@ -316,10 +316,63 @@ internal sealed class CompanionSettings
         if (!url.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
             !url.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
         {
-            url = "http://" + url;
+            url = (IsLocalAddress(url) ? "http://" : "https://") + url;
         }
 
         return url;
+    }
+
+    /// <summary>
+    /// Whether an address given without a scheme points into the home network, where Home
+    /// Assistant usually answers on plain http. Anything else (a domain on the internet, a
+    /// Nabu Casa address) gets https, so the token never goes out unencrypted by a guess.
+    /// </summary>
+    internal static bool IsLocalAddress(string address)
+    {
+        var host = address.Trim();
+        var slash = host.IndexOf('/');
+        if (slash >= 0)
+        {
+            host = host[..slash];
+        }
+
+        if (host.StartsWith('['))
+        {
+            var close = host.IndexOf(']');
+            host = close > 0 ? host[1..close] : host.Trim('[');
+        }
+        else if (host.Count(c => c == ':') == 1)
+        {
+            host = host[..host.IndexOf(':')];
+        }
+
+        if (System.Net.IPAddress.TryParse(host, out var ip))
+        {
+            if (System.Net.IPAddress.IsLoopback(ip))
+            {
+                return true;
+            }
+
+            if (ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6)
+            {
+                return ip.IsIPv6LinkLocal || ip.IsIPv6SiteLocal || ip.IsIPv6UniqueLocal;
+            }
+
+            var bytes = ip.GetAddressBytes();
+            return bytes[0] == 10
+                || (bytes[0] == 172 && bytes[1] is >= 16 and <= 31)
+                || (bytes[0] == 192 && bytes[1] == 168)
+                || (bytes[0] == 169 && bytes[1] == 254)
+                || (bytes[0] == 100 && bytes[1] is >= 64 and <= 127); // CGNAT, Tailscale
+        }
+
+        host = host.TrimEnd('.').ToLowerInvariant();
+        return !host.Contains('.')
+            || host.EndsWith(".local", StringComparison.Ordinal)
+            || host.EndsWith(".lan", StringComparison.Ordinal)
+            || host.EndsWith(".home", StringComparison.Ordinal)
+            || host.EndsWith(".internal", StringComparison.Ordinal)
+            || host.EndsWith(".home.arpa", StringComparison.Ordinal);
     }
 
     private static int NormalizeInterval(int value, int fallback, int max)

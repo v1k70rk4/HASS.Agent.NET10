@@ -372,9 +372,15 @@ internal sealed class HaWebSocketService : IDisposable
         return BuildWebSocketUrl(_settings.HaApiUrl);
     }
 
-    private static string BuildWebSocketUrl(string url)
+    internal static string BuildWebSocketUrl(string url)
     {
         url = url.Trim().TrimEnd('/');
+        if (url.Length > 0 && !url.Contains("://", StringComparison.Ordinal))
+        {
+            // No scheme: plain only inside the home network (see CompanionSettings.IsLocalAddress).
+            url = (CompanionSettings.IsLocalAddress(url) ? "ws://" : "wss://") + url;
+        }
+
         if (url.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
         {
             url = "wss://" + url["https://".Length..];

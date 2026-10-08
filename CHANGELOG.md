@@ -2,6 +2,12 @@
 
 Every release of HASS.Agent .NET10, newest first. The downloads are on the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases).
 
+## Unreleased
+
+- **A Home Assistant address typed without `http://` or `https://` gets https unless it points into the home network.** It always got plain http before, so an address on the internet (a Nabu Casa one, your own domain) sent the token unencrypted, or did not work at all. A `.local` name, a name without a dot, a private or Tailscale IP address and `localhost` still get http, as Home Assistant answers there by default.
+- **Limits on what LibreHardwareMonitor sends.** The answer is read up to 4 MB, at most 5000 values are kept, and names are cut at 200 characters, so a broken or hostile server cannot make the app hold an unbounded amount of memory. A real one sends a few hundred values in tens of kilobytes.
+- Old notification pictures are cleaned up once an hour instead of on every notification with a picture.
+
 ## 10.9.1-beta.1
 
 > **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered it, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.9.0**, below.

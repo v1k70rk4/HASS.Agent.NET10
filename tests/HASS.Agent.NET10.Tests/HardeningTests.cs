@@ -162,3 +162,72 @@ public class UpdateDialogLinkTests
         Assert.Equal(opens, UpdatePromptDialog.IsGitHubPage(url));
     }
 }
+
+public class AddressWithoutSchemeTests
+{
+    // An address typed without http:// or https://: plain only inside the home network,
+    // so the Home Assistant token never goes over the internet unencrypted by a guess.
+    [Theory]
+    [InlineData("homeassistant.local:8123", "http://homeassistant.local:8123")]
+    [InlineData("192.168.1.10:8123", "http://192.168.1.10:8123")]
+    [InlineData("10.0.0.5", "http://10.0.0.5")]
+    [InlineData("homeassistant:8123", "http://homeassistant:8123")]
+    [InlineData("[fd00::5]:8123", "http://[fd00::5]:8123")]
+    [InlineData("100.101.1.2:8123", "http://100.101.1.2:8123")]
+    [InlineData("abcdef.ui.nabu.casa", "https://abcdef.ui.nabu.casa")]
+    [InlineData("ha.example.com:8443/", "https://ha.example.com:8443")]
+    [InlineData("8.8.8.8", "https://8.8.8.8")]
+    [InlineData("http://ha.example.com", "http://ha.example.com")]
+    [InlineData("https://192.168.1.10:8123", "https://192.168.1.10:8123")]
+    public void The_scheme_is_chosen_by_where_the_address_points(string typed, string saved)
+    {
+        var settings = new CompanionSettings { HaApiUrl = typed };
+        settings.Normalize();
+
+        Assert.Equal(saved, settings.HaApiUrl);
+    }
+
+    [Theory]
+    [InlineData("homeassistant.local:8123", "ws://homeassistant.local:8123/api/websocket")]
+    [InlineData("abcdef.ui.nabu.casa", "wss://abcdef.ui.nabu.casa/api/websocket")]
+    [InlineData("https://abcdef.ui.nabu.casa", "wss://abcdef.ui.nabu.casa/api/websocket")]
+    [InlineData("http://192.168.1.10:8123/", "ws://192.168.1.10:8123/api/websocket")]
+    public void The_websocket_address_follows_the_same_rule(string url, string expected)
+    {
+        Assert.Equal(expected, HASS.Agent.Companion.Mqtt.HaWebSocketService.BuildWebSocketUrl(url));
+    }
+}
+
+public class LibreHardwareMonitorLimitTests
+{
+    [Fact]
+    public void Long_names_are_cut()
+    {
+        var name = new string('x', 10_000);
+        var json = $$"""{"Text":"root","Children":[{"Text":"pc","Children":[{"Text":"{{name}}","Children":[{"Text":"Temperatures","Children":[{"Text":"{{name}}","Value":"45 °C","SensorId":"/{{name}}"}]}]}]}]}""";
+
+        var reading = Assert.Single(LibreHardwareMonitorClient.Parse(json));
+
+        Assert.Equal(LibreHardwareMonitorClient.MaxNameLength, reading.Name.Length);
+        Assert.Equal(LibreHardwareMonitorClient.MaxNameLength, reading.Id.Length);
+        Assert.Equal(LibreHardwareMonitorClient.MaxNameLength, reading.Hardware.Length);
+    }
+
+    [Fact]
+    public void The_number_of_readings_is_capped()
+    {
+        var sensors = string.Join(',', Enumerable.Range(0, LibreHardwareMonitorClient.MaxReadings + 100)
+            .Select(i => $$"""{"Text":"s{{i}}","Value":"1 V","SensorId":"/s/{{i}}"}"""));
+        var json = $$"""{"Text":"root","Children":[{"Text":"pc","Children":[{"Text":"board","Children":[{"Text":"Voltages","Children":[{{sensors}}]}]}]}]}""";
+
+        Assert.Equal(LibreHardwareMonitorClient.MaxReadings, LibreHardwareMonitorClient.Parse(json).Count);
+    }
+
+    [Fact]
+    public void Deep_nesting_is_refused()
+    {
+        var json = string.Concat(Enumerable.Repeat("""{"Text":"n","Children":[""", 40)) + """{"Text":"s","Value":"1 V"}""" + string.Concat(Enumerable.Repeat("]}", 40));
+
+        Assert.ThrowsAny<System.Text.Json.JsonException>(() => LibreHardwareMonitorClient.Parse(json));
+    }
+}
