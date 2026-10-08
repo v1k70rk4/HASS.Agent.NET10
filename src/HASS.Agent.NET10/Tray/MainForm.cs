@@ -76,6 +76,9 @@ internal sealed class MainForm : Form
     private readonly Label _haApiTestResult = new();
     private readonly Label _haApiTokenUser = new();
     private Button? _haApiCreateUser;
+    // The last connection test: whose the token in the field was, while that token is not saved.
+    private string? _testedToken;
+    private HaTokenUser? _testedTokenUser;
     private readonly Label _haApiDisabledWarning = new();
 
     private readonly CheckBox _capNotify = new();
@@ -678,15 +681,16 @@ internal sealed class MainForm : Form
 
         // The connection comes up a moment after a save; the line follows it while the page shows.
         var tokenUserTimer = new System.Windows.Forms.Timer { Interval = 3000 };
-        tokenUserTimer.Tick += (_, _) => ShowTokenUser(null);
+        tokenUserTimer.Tick += (_, _) => ShowTokenUser();
         page.VisibleChanged += (_, _) =>
         {
             tokenUserTimer.Enabled = page.Visible;
             if (page.Visible)
             {
-                ShowTokenUser(null);
+                ShowTokenUser();
             }
         };
+        _haApiToken.TextChanged += (_, _) => ShowTokenUser();
         page.Disposed += (_, _) => tokenUserTimer.Dispose();
         y += 6;
 
@@ -764,7 +768,9 @@ internal sealed class MainForm : Form
             _haApiTestResult.ForeColor = Color.FromArgb(21, 128, 61);
             _haApiTestResult.Text = string.Format(S("HaApi.TestSuccess"), result.HomeAssistantVersion, result.IntegrationVersion);
             // The token in the field, saved or not.
-            ShowTokenUser(result.TokenUser);
+            _testedToken = token;
+            _testedTokenUser = result.TokenUser;
+            ShowTokenUser();
         }
         catch (Exception ex)
         {
@@ -775,17 +781,38 @@ internal sealed class MainForm : Form
 
     /// <summary>
     /// The line under the token: whose it is, and the button that swaps an administrator's for a
-    /// user of the PC's own. From a connection test, or else from the running connection.
+    /// user of the PC's own. For a token typed but not saved yet, what its connection test said;
+    /// for the saved one, what the running connection knows.
     /// </summary>
-    private void ShowTokenUser(HaTokenUser? tested)
+    private void ShowTokenUser()
     {
         if (IsDisposed)
         {
             return;
         }
 
+        var typed = _haApiToken.Text.Trim();
+        var unsaved = typed != _settings.GetHaApiToken();
         var (live, canProvision) = HaTokenProbe?.Invoke() ?? (null, false);
-        var user = tested ?? live;
+
+        HaTokenUser? user;
+        if (!unsaved)
+        {
+            user = live;
+        }
+        else if (typed == _testedToken && _testedTokenUser is not null)
+        {
+            user = _testedTokenUser;
+        }
+        else
+        {
+            // Typed, neither saved nor tested: the running connection says nothing about it.
+            _haApiTokenUser.ForeColor = TextMuted;
+            _haApiTokenUser.Text = typed.Length == 0 ? string.Empty : S("HaApi.TokenUntested");
+            _haApiCreateUser?.Hide();
+            return;
+        }
+
         if (user is null)
         {
             _haApiTokenUser.Text = string.Empty;
@@ -794,11 +821,12 @@ internal sealed class MainForm : Form
         }
 
         _haApiTokenUser.ForeColor = user.IsAdmin ? Color.FromArgb(180, 83, 9) : Color.FromArgb(21, 128, 61);
-        _haApiTokenUser.Text = string.Format(S(user.IsAdmin ? "HaApi.TokenOfAdmin" : "HaApi.TokenOfUser"), user.Name);
-        // Only for the token in use: the integration makes the user for the PC it is connected as.
+        _haApiTokenUser.Text = string.Format(S(user.IsAdmin ? "HaApi.TokenOfAdmin" : "HaApi.TokenOfUser"), user.Name)
+            + (unsaved ? " " + S("HaApi.TokenNotSaved") : string.Empty);
+        // Only for the saved token in use: the integration makes the user for the PC it is connected as.
         if (_haApiCreateUser is not null)
         {
-            _haApiCreateUser.Visible = user.IsAdmin && tested is null && canProvision;
+            _haApiCreateUser.Visible = user.IsAdmin && !unsaved && canProvision;
         }
     }
 
@@ -2384,7 +2412,7 @@ internal sealed class MainForm : Form
                 Text = string.Format(S("HaUser.DoneText"), user),
                 Icon = TaskDialogIcon.ShieldSuccessGreenBar,
             });
-            ShowTokenUser(null);
+            ShowTokenUser();
         }
         catch (Exception ex)
         {

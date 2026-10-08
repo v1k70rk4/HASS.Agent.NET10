@@ -408,6 +408,8 @@ internal static partial class Strings
             ["SvcMgr.ApprovalFailed"] = "The commands for the service could not be approved: {0}",
             ["SvcMgr.ApprovalNeeded"] = "The service runs as SYSTEM, so a command or command sensor it runs needs an administrator's approval. Windows asks for it next.\n\nWithout it the service skips these, and the tray app runs what it can: {0}",
             ["SvcMgr.ApprovalDeclined"] = "Not approved. The service skips these until the settings are saved again and the prompt is approved: {0}",
+            ["HaApi.TokenNotSaved"] = "(not saved yet)",
+            ["HaApi.TokenUntested"] = "Not saved yet: Test connection says whose this token is.",
             ["HaApi.TokenOfAdmin"] = "⚠  The token is of {0}, an administrator.",
             ["HaApi.TokenOfUser"] = "✓  The token is of {0}, not an administrator.",
             ["HaUser.Heading"] = "This PC connects to Home Assistant as an administrator",
