@@ -1,4 +1,5 @@
 using System.ServiceProcess;
+using System.Text.Json;
 using HASS.Agent.Companion.Configuration;
 using HASS.Agent.Companion.Http;
 using HASS.Agent.Companion.Localization;
@@ -23,6 +24,7 @@ internal sealed class CompanionWindowsService : ServiceBase
     private System.Threading.Timer? _settingsReloadTimer;
     private string? _updatedFrom;
     private string _runningVersion = string.Empty;
+    private string? _runtimeSettings;
     private bool _disposed;
 
     public CompanionWindowsService()
@@ -46,6 +48,7 @@ internal sealed class CompanionWindowsService : ServiceBase
             _updatedFrom = DetectCompletedUpdate(settings);
             _systemCommandService = new SystemCommandService(_log);
             _systemMetricsService = new SystemMetricsService(_log, monitorPowerStateService: null, includeInteractiveMetrics: false);
+            _runtimeSettings = WhatTheRuntimeUses(settings);
             StartRuntime(settings);
             StartSettingsWatcher();
         }
@@ -145,13 +148,23 @@ internal sealed class CompanionWindowsService : ServiceBase
 
         try
         {
-            _log.Info("Settings changed; reloading system service runtime.");
             var settings = LoadSettings(_paths, _log);
+            var uses = WhatTheRuntimeUses(settings);
+            if (uses == _runtimeSettings)
+            {
+                // The tray app's own bookkeeping (the version it last ran, after an update):
+                // a restart would only drop and rebuild the connection.
+                _log.Debug("Settings file written; nothing the service uses changed.");
+                return;
+            }
+
+            _log.Info("Settings changed; reloading system service runtime.");
             ApplyLanguage(settings);
 
             lock (_runtimeLock)
             {
                 StopRuntime();
+                _runtimeSettings = uses;
                 StartRuntime(settings);
             }
         }
@@ -177,6 +190,26 @@ internal sealed class CompanionWindowsService : ServiceBase
         }
 
         return settings;
+    }
+
+    /// <summary>
+    /// What the service's runtime is built from: the settings as loaded (the policy already
+    /// applied), without what only the tray app keeps there for itself.
+    /// </summary>
+    internal static string WhatTheRuntimeUses(CompanionSettings settings)
+    {
+        var (lastRun, decided) = (settings.LastRunVersion, settings.SettingsAccessDecided);
+        settings.LastRunVersion = string.Empty;
+        settings.SettingsAccessDecided = false;
+        try
+        {
+            return JsonSerializer.Serialize(settings);
+        }
+        finally
+        {
+            settings.LastRunVersion = lastRun;
+            settings.SettingsAccessDecided = decided;
+        }
     }
 
     private void StopSettingsWatcher()
