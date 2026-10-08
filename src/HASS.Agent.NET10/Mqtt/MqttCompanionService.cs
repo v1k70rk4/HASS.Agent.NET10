@@ -257,22 +257,24 @@ internal sealed class MqttCompanionService : IDisposable
             // On MQTT the HA API connection is only up while MQTT fails: a short connection of
             // its own answers, at most once a minute, and the last answer stands meanwhile.
 
+            var url = _settings.HaApiUrl;
             var probe = _tokenProbe;
-            if (probe is null || probe.Token != token || DateTime.UtcNow - probe.At > TimeSpan.FromMinutes(1))
+            var current = probe is not null && probe.Url == url && probe.Token == token;
+            if (!current || DateTime.UtcNow - probe!.At > TimeSpan.FromMinutes(1))
             {
-                StartTokenProbe(token);
+                StartTokenProbe(url, token);
             }
 
-            return probe is not null && probe.Token == token ? (probe.User, probe.CanProvision) : (null, false);
+            return current ? (probe!.User, probe.CanProvision) : (null, false);
         }
     }
 
-    private sealed record TokenProbe(string Token, HaTokenUser? User, bool CanProvision, DateTime At);
+    private sealed record TokenProbe(string Url, string Token, HaTokenUser? User, bool CanProvision, DateTime At);
 
     private volatile TokenProbe? _tokenProbe;
     private int _probing;
 
-    private void StartTokenProbe(string token)
+    private void StartTokenProbe(string url, string token)
     {
         if (Interlocked.Exchange(ref _probing, 1) == 1)
         {
@@ -285,13 +287,13 @@ internal sealed class MqttCompanionService : IDisposable
             {
                 using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
                 var (user, canProvision) = await HaWebSocketService.ProbeTokenAsync(
-                    _settings.HaApiUrl, token, _settings.SerialNumber, timeout.Token);
-                _tokenProbe = new TokenProbe(token, user, canProvision, DateTime.UtcNow);
+                    url, token, _settings.SerialNumber, timeout.Token);
+                _tokenProbe = new TokenProbe(url, token, user, canProvision, DateTime.UtcNow);
             }
             catch (Exception ex)
             {
                 _log.Debug($"Unable to ask Home Assistant whose the HA API token is: {ex.Message}");
-                _tokenProbe = new TokenProbe(token, null, false, DateTime.UtcNow);
+                _tokenProbe = new TokenProbe(url, token, null, false, DateTime.UtcNow);
             }
             finally
             {

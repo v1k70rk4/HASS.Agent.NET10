@@ -108,7 +108,10 @@ internal sealed class HaWebSocketService : IDisposable
         _approvalNoticeLogged = false;
         TokenUser = null;
 
-        var wsUrl = BuildWebSocketUrl();
+        // The address and token this connection is made with, taken once: the settings may
+        // change while it connects, and IsConnectedWith must describe this very socket.
+        var url = _settings.HaApiUrl;
+        var wsUrl = BuildWebSocketUrl(url);
         _log.Info($"HA WebSocket connecting to {wsUrl}");
 
         await _ws.ConnectAsync(new Uri(wsUrl), cancellationToken);
@@ -124,7 +127,7 @@ internal sealed class HaWebSocketService : IDisposable
 
         // Step 2: Send auth message.
         var token = _settings.GetHaApiToken();
-        _connectedUrl = _settings.HaApiUrl;
+        _connectedUrl = url;
         _connectedToken = token;
         await SendAsync(new { type = "auth", access_token = token }, cancellationToken);
 
