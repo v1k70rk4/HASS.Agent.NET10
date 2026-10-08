@@ -118,6 +118,7 @@ During upgrades the installer stops the running tray app, stops the system servi
 - <a id="mqtt-topics"></a><a id="ha-api-websocket-events"></a><a id="local-http-api"></a><a id="windows-firewall"></a>[Connecting to Home Assistant](docs/connection.md): connection modes, MQTT topics, HA API events, the local HTTP API, the firewall rule
 - <a id="build-from-source"></a><a id="minimal-development-setup"></a>[Building and development](docs/development.md): build from source, GitHub Actions, development setup
 - [Coming from HASS.Agent](docs/migrating.md): what is the same, what is different, how to switch
+- [Contributing](CONTRIBUTING.md): reporting bugs, sending pull requests
 - [Changelog](CHANGELOG.md): every release
 - [Home Assistant integration](https://github.com/v1k70rk4/HASS.Agent.NET10-Integration): entities, services, events
 

@@ -2,6 +2,8 @@
 
 [← Back to the README](https://github.com/v1k70rk4/HASS.Agent.NET10#readme)
 
+Sending a pull request? [CONTRIBUTING.md](https://github.com/v1k70rk4/HASS.Agent.NET10/blob/main/CONTRIBUTING.md) says what it needs.
+
 ## Build from Source
 
 Install the .NET 10 SDK, then publish:
