@@ -892,8 +892,20 @@ internal sealed class MqttCompanionService : IDisposable
                 _client.ApplicationMessageReceivedAsync += HandleMessageAsync;
                 _client.DisconnectedAsync += LogDisconnectAsync;
                 // Before connecting: MQTTnet only inspects packets when a handler is there then.
-                _packetCheck ??= new OutgoingPacketCheck(_log);
-                _client.InspectPacketAsync += _packetCheck.InspectAsync;
+                if (OutgoingPacketCheck.IsSwitchedOn(_log))
+                {
+                    if (_packetCheck is null)
+                    {
+                        _log.Info($"MQTT packet diagnostics on (the '{OutgoingPacketCheck.SwitchFileName}' file).");
+                    }
+
+                    _packetCheck ??= new OutgoingPacketCheck(_log);
+                    _client.InspectPacketAsync += _packetCheck.InspectAsync;
+                }
+                else
+                {
+                    _packetCheck = null;
+                }
 
                 var options = BuildOptions();
                 _log.Info($"Connecting MQTT to {_settings.MqttHost}:{_settings.MqttPort}.");

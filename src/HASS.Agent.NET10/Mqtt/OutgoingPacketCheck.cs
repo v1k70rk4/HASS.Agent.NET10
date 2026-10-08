@@ -12,9 +12,13 @@ namespace HASS.Agent.Companion.Mqtt;
 /// side said which packet it was. A packet that is broken before it leaves is reported at
 /// once, with its bytes; when the broker closes the connection or a publish fails, the last
 /// packets are written to a file next to the log, so the one the broker refused is among them.
+/// Off unless a file named "mqtt-debug" is in the folder of the log (both the tray app and the
+/// service see it, and it needs no reinstall); read when the MQTT connection is made.
 /// </summary>
 internal sealed class OutgoingPacketCheck
 {
+    public const string SwitchFileName = "mqtt-debug";
+
     private const int Kept = 30;
     private const int MaxDumps = 20;
     private const int FullHexUpTo = 16 * 1024;
@@ -24,6 +28,10 @@ internal sealed class OutgoingPacketCheck
     private readonly Queue<(DateTime Time, MqttPacketFlowDirection Direction, byte[] Bytes, string? Problem)> _recent = new();
     private readonly object _gate = new();
     private DateTime _lastDump = DateTime.MinValue;
+
+    /// <summary>Whether the switch file is there.</summary>
+    public static bool IsSwitchedOn(FileLog log) =>
+        File.Exists(Path.Combine(Path.GetDirectoryName(log.FilePath) ?? AppContext.BaseDirectory, SwitchFileName));
 
     public OutgoingPacketCheck(FileLog log)
     {
