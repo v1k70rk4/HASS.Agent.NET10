@@ -181,8 +181,9 @@ internal static class CompanionServiceManager
 
     /// <summary>
     /// "--settings-access only USER [USER ...]": the settings for these users only (the
-    /// "HASS.Agent Users" group); "everyone": every user of the PC, as before; "keep": what the
-    /// folder had, after an update. Needs an administrator.
+    /// "HASS.Agent Users" group); "everyone": every user of the PC, as before; "open": the same
+    /// without recording a choice, for a silent first install where nobody chose, so the app
+    /// still asks; "keep": what the folder had, after an update. Needs an administrator.
     /// </summary>
     private static ControlCommandResult ChangeSettingsAccess(IReadOnlyList<string> arguments)
     {
@@ -208,6 +209,10 @@ internal static class CompanionServiceManager
                     SettingsAccess.OpenToEveryone(paths.ConfigDirectory);
                     RememberAccessDecision(paths, log);
                     log.Info("Settings open to every user of this PC.");
+                    return new ControlCommandResult(true, S("Access.Everyone"));
+                case "open":
+                    SettingsAccess.OpenToEveryone(paths.ConfigDirectory);
+                    log.Info("Settings open to every user of this PC until someone chooses in the app.");
                     return new ControlCommandResult(true, S("Access.Everyone"));
                 case "keep":
                     SettingsAccess.KeepAsIs(paths.ConfigDirectory);

@@ -435,7 +435,7 @@ internal static partial class Strings
             ["Access.NotChanged"] = "Nothing changed: the administrator approval was not given or did not work.",
             ["Access.Failed"] = "The access to the settings could not be changed: {0}",
             ["Access.NeedsAdmin"] = "Changing who may use HASS.Agent needs an administrator.",
-            ["Access.Usage"] = "Usage: --settings-access only USER [USER ...] | everyone | keep",
+            ["Access.Usage"] = "Usage: --settings-access only USER [USER ...] | everyone | open | keep",
             ["SvcMgr.ApprovalPending"] = "The approval has not finished yet. When it does, the service runs these on its own: {0}",
             ["Access.StillRunning"] = "The change has not finished yet. Open this window again in a moment to see the result.",
             ["Access.NotForYou"] = "HASS.Agent on this PC is set up for other users, so it does not start for {0}.\n\nAn administrator can add you to the \"{1}\" group, or in HASS.Agent of an allowed user: Danger Zone, Users of this PC. This note is not shown again.",

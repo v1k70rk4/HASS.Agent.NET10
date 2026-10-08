@@ -241,71 +241,100 @@ internal sealed class MqttCompanionService : IDisposable
     {
         get
         {
-            if (_haWs is { IsConnected: true } ws)
-            {
-                return (ws.TokenUser, ws.HasOwnCommands);
-            }
-
-            // On MQTT the HA API connection is only up while MQTT fails: a short connection of
-            // its own answers, at most once a minute, and the last answer stands meanwhile.
             var token = _settings.HaApiEnabled && !string.IsNullOrWhiteSpace(_settings.HaApiUrl) ? _settings.GetHaApiToken() : string.Empty;
             if (string.IsNullOrWhiteSpace(token))
             {
                 return (null, false);
             }
 
-            var probe = _tokenProbe;
-            if (probe is null || probe.Token != token || DateTime.UtcNow - probe.At > TimeSpan.FromMinutes(1))
+            // Only a connection made with the token now saved speaks for it: right after a
+            // change the one still up may be the earlier token's.
+            if (_haWs is { } ws && ws.IsConnectedWith(_settings.HaApiUrl, token))
             {
-                StartTokenProbe(token);
+                return (ws.TokenUser, ws.HasOwnCommands);
             }
 
-            return probe is not null && probe.Token == token ? (probe.User, probe.CanProvision) : (null, false);
+            // On MQTT the HA API connection is only up while MQTT fails: a short connection of
+            // its own answers, at most once a minute, and the last answer stands meanwhile.
+
+            var url = _settings.HaApiUrl;
+            var probe = _tokenProbe;
+            var current = probe is not null && probe.Url == url && probe.Token == token;
+            if (!current || DateTime.UtcNow - probe!.At > TimeSpan.FromMinutes(1))
+            {
+                StartTokenProbe(url, token);
+            }
+
+            return current ? (probe!.User, probe.CanProvision) : (null, false);
         }
     }
 
-    private sealed record TokenProbe(string Token, HaTokenUser? User, bool CanProvision, DateTime At);
+    private sealed record TokenProbe(string Url, string Token, HaTokenUser? User, bool CanProvision, DateTime At);
 
     private volatile TokenProbe? _tokenProbe;
-    private int _probing;
 
-    private void StartTokenProbe(string token)
+    // The check running now and what it asks about. A newly saved token does not wait for the
+    // previous token's check: that one is cancelled, and its answer is not kept.
+    private readonly object _probeGate = new();
+    private CancellationTokenSource? _probeRun;
+    private (string Url, string Token)? _probeTarget;
+
+    private void StartTokenProbe(string url, string token)
     {
-        if (Interlocked.Exchange(ref _probing, 1) == 1)
+        CancellationTokenSource run;
+        lock (_probeGate)
         {
-            return;
+            if (_probeTarget is { } target && target.Url == url && target.Token == token)
+            {
+                return;
+            }
+
+            _probeRun?.Cancel();
+            _probeRun = run = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            _probeTarget = (url, token);
         }
 
         _ = Task.Run(async () =>
         {
+            TokenProbe answer;
             try
             {
-                using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
                 var (user, canProvision) = await HaWebSocketService.ProbeTokenAsync(
-                    _settings.HaApiUrl, token, _settings.SerialNumber, timeout.Token);
-                _tokenProbe = new TokenProbe(token, user, canProvision, DateTime.UtcNow);
+                    url, token, _settings.SerialNumber, run.Token);
+                answer = new TokenProbe(url, token, user, canProvision, DateTime.UtcNow);
             }
             catch (Exception ex)
             {
                 _log.Debug($"Unable to ask Home Assistant whose the HA API token is: {ex.Message}");
-                _tokenProbe = new TokenProbe(token, null, false, DateTime.UtcNow);
+                answer = new TokenProbe(url, token, null, false, DateTime.UtcNow);
             }
-            finally
+
+            lock (_probeGate)
             {
-                Volatile.Write(ref _probing, 0);
+                // A check that a newer one replaced keeps its answer to itself.
+                if (ReferenceEquals(_probeRun, run))
+                {
+                    _tokenProbe = answer;
+                    _probeRun = null;
+                    _probeTarget = null;
+                }
             }
+
+            run.Dispose();
         });
     }
 
     /// <summary>Asks the integration for a Home Assistant user of this PC's own and a token for it.</summary>
     public async Task<(string Token, string User)> ProvisionHaUserAsync()
     {
-        if (_haWs is { IsConnected: true, HasOwnCommands: true } ws)
+        // The live connection only when it was made with the saved token: the user is made in
+        // the account that token belongs to.
+        if (_haWs is { HasOwnCommands: true } ws && ws.IsConnectedWith(_settings.HaApiUrl, _settings.GetHaApiToken()))
         {
             return await ws.ProvisionUserAsync(_cts?.Token ?? CancellationToken.None);
         }
 
-        // On MQTT: a short connection of its own, with the saved token.
+        // Otherwise a short connection of its own, with the saved token.
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
         var result = await HaWebSocketService.ProvisionOnceAsync(
             _settings.HaApiUrl, _settings.GetHaApiToken(), _settings.SerialNumber, timeout.Token);

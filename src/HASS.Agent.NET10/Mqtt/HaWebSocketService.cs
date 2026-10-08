@@ -52,6 +52,15 @@ internal sealed class HaWebSocketService : IDisposable
     /// <summary>The integration offers its own commands (10.9.1+), provisioning among them.</summary>
     public bool HasOwnCommands => _ownCommands;
 
+    // What this connection was made with: after the settings change it may still be the
+    // earlier token's (or address's) until it reconnects.
+    private string? _connectedUrl;
+    private string? _connectedToken;
+
+    /// <summary>Whether this connection is up and was made with this address and token.</summary>
+    public bool IsConnectedWith(string url, string token) =>
+        IsConnected && _connectedUrl == url && _connectedToken == token;
+
     /// <summary>Fired when a notification is received from HA via the event bus.</summary>
     public event Action<NotificationPayload>? NotificationReceived;
 
@@ -98,8 +107,13 @@ internal sealed class HaWebSocketService : IDisposable
         _ownCommands = false;
         _approvalNoticeLogged = false;
         TokenUser = null;
+        _connectedUrl = null;
+        _connectedToken = null;
 
-        var wsUrl = BuildWebSocketUrl();
+        // The address and token this connection is made with, taken once: the settings may
+        // change while it connects, and IsConnectedWith must describe this very socket.
+        var url = _settings.HaApiUrl;
+        var wsUrl = BuildWebSocketUrl(url);
         _log.Info($"HA WebSocket connecting to {wsUrl}");
 
         await _ws.ConnectAsync(new Uri(wsUrl), cancellationToken);
@@ -144,6 +158,11 @@ internal sealed class HaWebSocketService : IDisposable
         var userId = await SendWithIdAsync(i => new { id = i, type = "auth/current_user" }, cancellationToken);
         var (ok, _, _, result) = await ReadResultAsync(userId, cancellationToken);
         TokenUser = ok ? HaTokenUser.From(result) : null;
+
+        // Only now, with the connection authenticated and its user known, does it answer for
+        // this address and token; until then the short check does.
+        _connectedUrl = url;
+        _connectedToken = token;
     }
 
     /// <summary>
