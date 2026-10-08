@@ -169,14 +169,7 @@ internal sealed class HaWebSocketService : IDisposable
         try
         {
             var result = await completion.Task.WaitAsync(TimeSpan.FromSeconds(20), cancellationToken);
-            var token = result.GetProperty("access_token").GetString();
-            var user = result.TryGetProperty("user", out var name) ? name.GetString() : null;
-            if (string.IsNullOrWhiteSpace(token))
-            {
-                throw new InvalidOperationException("Home Assistant returned no token");
-            }
-
-            return (token, user ?? string.Empty);
+            return ReadProvisioned(result) ?? throw new InvalidOperationException("Home Assistant returned no token");
         }
         finally
         {
@@ -439,12 +432,23 @@ internal sealed class HaWebSocketService : IDisposable
         var (ok, result, error) = await RequestAsync(
             ws, 1, new { id = 1, type = "hass_agent/provision", serial_number = serialNumber }, cancellationToken);
         await CloseQuietlyAsync(ws, cancellationToken);
-        if (!ok || result is not { } answer || answer.GetProperty("access_token").GetString() is not { Length: > 0 } newToken)
+        return (ok ? ReadProvisioned(result) : null)
+            ?? throw new InvalidOperationException(error ?? "Home Assistant returned no token");
+    }
+
+    /// <summary>The token and the user's name out of hass_agent/provision's result; null when there is no token.</summary>
+    internal static (string Token, string User)? ReadProvisioned(JsonElement? result)
+    {
+        if (result is not { ValueKind: JsonValueKind.Object } answer
+            || !answer.TryGetProperty("access_token", out var token)
+            || token.ValueKind != JsonValueKind.String
+            || token.GetString() is not { Length: > 0 } value)
         {
-            throw new InvalidOperationException(error ?? "Home Assistant returned no token");
+            return null;
         }
 
-        return (newToken, answer.TryGetProperty("user", out var name) ? name.GetString() ?? string.Empty : string.Empty);
+        var user = answer.TryGetProperty("user", out var name) && name.ValueKind == JsonValueKind.String ? name.GetString() : null;
+        return (value, user ?? string.Empty);
     }
 
     private static async Task<ClientWebSocket> OpenAuthenticatedAsync(string url, string token, CancellationToken cancellationToken)

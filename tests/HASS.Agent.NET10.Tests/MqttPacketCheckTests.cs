@@ -109,3 +109,29 @@ public class MqttPacketCheckTests
         Assert.Null(OutgoingPacketCheck.Check(buffer.Join().ToArray()));
     }
 }
+
+public class ProvisionResultTests
+{
+    [Theory]
+    [InlineData("""{"access_token":"abc","user":"HASS.Agent PC"}""", "abc", "HASS.Agent PC")]
+    [InlineData("""{"access_token":"abc"}""", "abc", "")]
+    public void The_token_and_the_user_are_read(string json, string token, string user)
+    {
+        using var document = System.Text.Json.JsonDocument.Parse(json);
+
+        Assert.Equal((token, user), HASS.Agent.Companion.Mqtt.HaWebSocketService.ReadProvisioned(document.RootElement));
+    }
+
+    [Theory]
+    [InlineData("""{"user":"x"}""")]
+    [InlineData("""{"access_token":""}""")]
+    [InlineData("""{"access_token":42}""")]
+    [InlineData("""["access_token"]""")]
+    [InlineData("null")]
+    public void No_token_is_no_result(string json)
+    {
+        using var document = System.Text.Json.JsonDocument.Parse(json);
+
+        Assert.Null(HASS.Agent.Companion.Mqtt.HaWebSocketService.ReadProvisioned(document.RootElement));
+    }
+}
