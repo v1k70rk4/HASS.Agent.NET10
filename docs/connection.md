@@ -32,6 +32,12 @@ The agent supports three connection modes. You can use MQTT and HA API together 
 
 The token in the **HA API** settings belongs to a Home Assistant user, and works with that user's rights. Give the PC a user of its own who is **not an administrator**: if the PC is ever broken into, its token then cannot install add-ons, read `secrets`, change users or the configuration. (Any Home Assistant user can still see states and call actions; Home Assistant has no finer permissions than that.)
 
+The **HA API** page shows whose the token is, under the token field.
+
+**The easy way:** connect with your own (administrator's) token as usual. When the app's window opens, it offers to create a user for this PC; the same is the **Create a user for this PC** button next to the line under the token. The integration makes a Home Assistant user named *HASS.Agent* and the PC's name, who is not an administrator and has no password (nobody can log in with it), gives it a token, and the app switches to it. Your administrator token stays in Home Assistant: delete it in your profile (**Security**) if nothing else uses it. Deleting the PC's user later cuts the PC off until it gets a token again.
+
+**By hand**, if you would rather not put an administrator's token on the PC even once:
+
 1. In Home Assistant, **Settings → People → Add person**: a name such as *hass-agent-office-pc*, **Allow login** on, **Administrator** off.
 2. Log in as that user once, open its profile, **Security** tab, and create a **long-lived access token** at the bottom.
 3. Put the token in the **HA API** page of the app.
