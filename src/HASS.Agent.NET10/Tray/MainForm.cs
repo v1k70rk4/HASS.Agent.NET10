@@ -2869,7 +2869,9 @@ internal sealed class MainForm : Form
 
         _settings.HaApiEnabled = _haApiEnabled.Checked;
         _settings.HaApiUrl = _haApiUrl.Text.Trim();
-        var newHaToken = _settings.HaApiEnabled && _haApiToken.Text != _settings.GetHaApiToken();
+        var newHaToken = _settings.HaApiEnabled
+            && !string.IsNullOrWhiteSpace(_haApiToken.Text)
+            && _haApiToken.Text != _settings.GetHaApiToken();
         _settings.SetHaApiToken(_haApiToken.Text);
 
         _settings.WebViewUrl = _webViewUrl.Text.Trim();

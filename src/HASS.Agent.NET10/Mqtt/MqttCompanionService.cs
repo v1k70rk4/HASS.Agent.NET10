@@ -241,18 +241,21 @@ internal sealed class MqttCompanionService : IDisposable
     {
         get
         {
-            if (_haWs is { IsConnected: true } ws)
+            var token = _settings.HaApiEnabled && !string.IsNullOrWhiteSpace(_settings.HaApiUrl) ? _settings.GetHaApiToken() : string.Empty;
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return (null, false);
+            }
+
+            // Only a connection made with the token now saved speaks for it: right after a
+            // change the one still up may be the earlier token's.
+            if (_haWs is { } ws && ws.IsConnectedWith(_settings.HaApiUrl, token))
             {
                 return (ws.TokenUser, ws.HasOwnCommands);
             }
 
             // On MQTT the HA API connection is only up while MQTT fails: a short connection of
             // its own answers, at most once a minute, and the last answer stands meanwhile.
-            var token = _settings.HaApiEnabled && !string.IsNullOrWhiteSpace(_settings.HaApiUrl) ? _settings.GetHaApiToken() : string.Empty;
-            if (string.IsNullOrWhiteSpace(token))
-            {
-                return (null, false);
-            }
 
             var probe = _tokenProbe;
             if (probe is null || probe.Token != token || DateTime.UtcNow - probe.At > TimeSpan.FromMinutes(1))
@@ -300,12 +303,14 @@ internal sealed class MqttCompanionService : IDisposable
     /// <summary>Asks the integration for a Home Assistant user of this PC's own and a token for it.</summary>
     public async Task<(string Token, string User)> ProvisionHaUserAsync()
     {
-        if (_haWs is { IsConnected: true, HasOwnCommands: true } ws)
+        // The live connection only when it was made with the saved token: the user is made in
+        // the account that token belongs to.
+        if (_haWs is { HasOwnCommands: true } ws && ws.IsConnectedWith(_settings.HaApiUrl, _settings.GetHaApiToken()))
         {
             return await ws.ProvisionUserAsync(_cts?.Token ?? CancellationToken.None);
         }
 
-        // On MQTT: a short connection of its own, with the saved token.
+        // Otherwise a short connection of its own, with the saved token.
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
         var result = await HaWebSocketService.ProvisionOnceAsync(
             _settings.HaApiUrl, _settings.GetHaApiToken(), _settings.SerialNumber, timeout.Token);

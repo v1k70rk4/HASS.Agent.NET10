@@ -52,6 +52,15 @@ internal sealed class HaWebSocketService : IDisposable
     /// <summary>The integration offers its own commands (10.9.1+), provisioning among them.</summary>
     public bool HasOwnCommands => _ownCommands;
 
+    // What this connection was made with: after the settings change it may still be the
+    // earlier token's (or address's) until it reconnects.
+    private string? _connectedUrl;
+    private string? _connectedToken;
+
+    /// <summary>Whether this connection is up and was made with this address and token.</summary>
+    public bool IsConnectedWith(string url, string token) =>
+        IsConnected && _connectedUrl == url && _connectedToken == token;
+
     /// <summary>Fired when a notification is received from HA via the event bus.</summary>
     public event Action<NotificationPayload>? NotificationReceived;
 
@@ -115,6 +124,8 @@ internal sealed class HaWebSocketService : IDisposable
 
         // Step 2: Send auth message.
         var token = _settings.GetHaApiToken();
+        _connectedUrl = _settings.HaApiUrl;
+        _connectedToken = token;
         await SendAsync(new { type = "auth", access_token = token }, cancellationToken);
 
         // Step 3: Read auth result.
