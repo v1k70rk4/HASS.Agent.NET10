@@ -272,33 +272,55 @@ internal sealed class MqttCompanionService : IDisposable
     private sealed record TokenProbe(string Url, string Token, HaTokenUser? User, bool CanProvision, DateTime At);
 
     private volatile TokenProbe? _tokenProbe;
-    private int _probing;
+
+    // The check running now and what it asks about. A newly saved token does not wait for the
+    // previous token's check: that one is cancelled, and its answer is not kept.
+    private readonly object _probeGate = new();
+    private CancellationTokenSource? _probeRun;
+    private (string Url, string Token)? _probeTarget;
 
     private void StartTokenProbe(string url, string token)
     {
-        if (Interlocked.Exchange(ref _probing, 1) == 1)
+        CancellationTokenSource run;
+        lock (_probeGate)
         {
-            return;
+            if (_probeTarget is { } target && target.Url == url && target.Token == token)
+            {
+                return;
+            }
+
+            _probeRun?.Cancel();
+            _probeRun = run = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            _probeTarget = (url, token);
         }
 
         _ = Task.Run(async () =>
         {
+            TokenProbe answer;
             try
             {
-                using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
                 var (user, canProvision) = await HaWebSocketService.ProbeTokenAsync(
-                    url, token, _settings.SerialNumber, timeout.Token);
-                _tokenProbe = new TokenProbe(url, token, user, canProvision, DateTime.UtcNow);
+                    url, token, _settings.SerialNumber, run.Token);
+                answer = new TokenProbe(url, token, user, canProvision, DateTime.UtcNow);
             }
             catch (Exception ex)
             {
                 _log.Debug($"Unable to ask Home Assistant whose the HA API token is: {ex.Message}");
-                _tokenProbe = new TokenProbe(url, token, null, false, DateTime.UtcNow);
+                answer = new TokenProbe(url, token, null, false, DateTime.UtcNow);
             }
-            finally
+
+            lock (_probeGate)
             {
-                Volatile.Write(ref _probing, 0);
+                // A check that a newer one replaced keeps its answer to itself.
+                if (ReferenceEquals(_probeRun, run))
+                {
+                    _tokenProbe = answer;
+                    _probeRun = null;
+                    _probeTarget = null;
+                }
             }
+
+            run.Dispose();
         });
     }
 
