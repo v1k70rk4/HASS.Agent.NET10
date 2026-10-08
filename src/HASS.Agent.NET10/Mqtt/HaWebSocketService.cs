@@ -107,6 +107,8 @@ internal sealed class HaWebSocketService : IDisposable
         _ownCommands = false;
         _approvalNoticeLogged = false;
         TokenUser = null;
+        _connectedUrl = null;
+        _connectedToken = null;
 
         // The address and token this connection is made with, taken once: the settings may
         // change while it connects, and IsConnectedWith must describe this very socket.
@@ -127,8 +129,6 @@ internal sealed class HaWebSocketService : IDisposable
 
         // Step 2: Send auth message.
         var token = _settings.GetHaApiToken();
-        _connectedUrl = url;
-        _connectedToken = token;
         await SendAsync(new { type = "auth", access_token = token }, cancellationToken);
 
         // Step 3: Read auth result.
@@ -158,6 +158,11 @@ internal sealed class HaWebSocketService : IDisposable
         var userId = await SendWithIdAsync(i => new { id = i, type = "auth/current_user" }, cancellationToken);
         var (ok, _, _, result) = await ReadResultAsync(userId, cancellationToken);
         TokenUser = ok ? HaTokenUser.From(result) : null;
+
+        // Only now, with the connection authenticated and its user known, does it answer for
+        // this address and token; until then the short check does.
+        _connectedUrl = url;
+        _connectedToken = token;
     }
 
     /// <summary>
