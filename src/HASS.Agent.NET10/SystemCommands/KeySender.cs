@@ -97,6 +97,72 @@ internal static class KeySender
     }
 
     /// <summary>
+    /// The text of a combination as the hotkey list writes it ("ctrl+alt+h"), from what
+    /// RegisterHotKey takes; null when the key has no name that reads back as the same key.
+    /// </summary>
+    public static string? DescribeHotkey(uint modifiers, uint virtualKey)
+    {
+        var name = KeyName(virtualKey);
+        if (name is null)
+        {
+            return null;
+        }
+
+        var parts = new List<string>();
+        if ((modifiers & 0x0002) != 0) parts.Add("ctrl");
+        if ((modifiers & 0x0001) != 0) parts.Add("alt");
+        if ((modifiers & 0x0004) != 0) parts.Add("shift");
+        if ((modifiers & 0x0008) != 0) parts.Add("win");
+        parts.Add(name);
+
+        var text = string.Join('+', parts);
+        return TryParseHotkey(text, out var parsedModifiers, out var parsedKey)
+            && parsedModifiers == modifiers && parsedKey == virtualKey
+                ? text
+                : null;
+    }
+
+    // The names a key is written with; the first one of a key wins.
+    private static readonly string[] CanonicalNames =
+    [
+        "enter", "esc", "tab", "space", "backspace", "delete", "insert", "home", "end", "pageup", "pagedown",
+        "up", "down", "left", "right", "printscreen", "pause", "capslock", "numlock", "scrolllock", "menu",
+        "plus", "minus", "comma", "period", "play_pause", "next_track", "prev_track", "media_stop",
+        "volume_up", "volume_down", "volume_mute", "browser_back", "browser_forward", "browser_refresh", "browser_home",
+    ];
+
+    private static string? KeyName(uint virtualKey)
+    {
+        if (virtualKey is (>= 'A' and <= 'Z') or (>= '0' and <= '9'))
+        {
+            return char.ToLowerInvariant((char)virtualKey).ToString();
+        }
+
+        if (virtualKey is >= 0x70 and <= 0x87)
+        {
+            return $"f{virtualKey - 0x6F}";
+        }
+
+        if (virtualKey is >= 0x60 and <= 0x69)
+        {
+            return $"num{virtualKey - 0x60}";
+        }
+
+        foreach (var name in CanonicalNames)
+        {
+            if (NamedKeys[name].VirtualKey == virtualKey)
+            {
+                return name;
+            }
+        }
+
+        // A key of the keyboard layout ("ö", "-"): the character it types. A dead key has
+        // the top bit set, and is no use here.
+        var character = MapVirtualKey(virtualKey, 2);
+        return character is > 32 and < 0x8000 ? char.ToLowerInvariant((char)character).ToString() : null;
+    }
+
+    /// <summary>
     /// Presses the combinations one after the other. Returns false when Windows refused the
     /// input: the foreground window is elevated and the agent is not, or the desktop is locked.
     /// </summary>

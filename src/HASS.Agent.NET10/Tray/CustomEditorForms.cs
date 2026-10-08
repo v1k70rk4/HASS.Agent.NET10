@@ -894,18 +894,28 @@ internal sealed class HardwareMonitorConnectionForm : Form
     }
 }
 
-/// <summary>Adds or edits one hotkey: a name for Home Assistant and the key combination.</summary>
+/// <summary>
+/// Adds or edits one hotkey: a name for Home Assistant and the key combination, which is
+/// pressed in its field rather than typed; the result line says at once whether Windows
+/// would give it to the app.
+/// </summary>
 internal sealed class HotkeyEditorForm : CustomEditorForm
 {
+    private static readonly Color WarnAmber = Color.FromArgb(180, 83, 9);
+
     private readonly string _id;
     private readonly TextBox _name;
-    private readonly TextBox _keys;
+    private readonly HotkeyCaptureBox _keys;
     private readonly CheckBox _enabled;
+    private readonly IReadOnlyList<HotkeyDefinition> _others;
+    private string? _keptAlthoughTaken;
 
-    public HotkeyEditorForm(HotkeyDefinition hotkey)
+    /// <param name="others">The other hotkeys of the list, which this one must not repeat.</param>
+    public HotkeyEditorForm(HotkeyDefinition hotkey, IReadOnlyList<HotkeyDefinition> others)
         : base(S("Editor.HotkeyTitle"))
     {
         _id = hotkey.Id;
+        _others = others;
 
         var y = 20;
         var hint = AddHint(y, 76);
@@ -917,8 +927,10 @@ internal sealed class HotkeyEditorForm : CustomEditorForm
 
         y += RowHeight;
         AddLabel(S("Cap.HotkeyKeys"), y);
-        _keys = AddTextBox(y);
-        _keys.PlaceholderText = "ctrl+alt+h";
+        _keys = new HotkeyCaptureBox { Location = Pt(FieldX, y), Size = Sz(FieldWidth, 26), PlaceholderText = "ctrl+alt+h" };
+        _keys.Changed += (_, _) => ShowAvailability();
+        _keys.Rejected += (_, reason) => ShowResult(S(reason), ErrorRed);
+        Controls.Add(_keys);
 
         y += RowHeight;
         _enabled = new CheckBox { Text = S("Sensors.Active"), Location = Pt(FieldX, y), Size = Sz(200, 24), ForeColor = TextBody };
@@ -928,8 +940,51 @@ internal sealed class HotkeyEditorForm : CustomEditorForm
         TestButton.Visible = false;
 
         _name.Text = hotkey.Name;
-        _keys.Text = hotkey.Keys;
+        _keys.SetCombination(hotkey.Keys);
         _enabled.Checked = hotkey.Enabled;
+        Shown += (_, _) => ShowAvailability();
+    }
+
+    private HotkeyDefinition? OtherWith(uint modifiers, uint virtualKey) =>
+        _others.FirstOrDefault(other =>
+            KeySender.TryParseHotkey(other.Keys, out var otherModifiers, out var otherKey)
+            && otherModifiers == modifiers && otherKey == virtualKey);
+
+    // What the result line says about the combination in the field.
+    private (string Text, Color Color, bool Taken) Assess()
+    {
+        var keys = _keys.Text.Trim();
+        if (keys.Length == 0)
+        {
+            return (S("Editor.HotkeyPress"), TextMuted, false);
+        }
+
+        if (!KeySender.TryParseHotkey(keys, out var modifiers, out var virtualKey))
+        {
+            return (S("Editor.HotkeyInvalid"), ErrorRed, false);
+        }
+
+        if (OtherWith(modifiers, virtualKey) is { } twin)
+        {
+            return (string.Format(S("Editor.HotkeyDuplicate"), twin.Name), ErrorRed, false);
+        }
+
+        // Held by this app: this very hotkey, or one taken off the list but not saved yet.
+        if (HotkeyService.Check(modifiers, virtualKey) == HotkeyAvailability.Taken)
+        {
+            return (S("Editor.HotkeyTaken"), ErrorRed, true);
+        }
+
+        // ctrl+c, alt+f4, shift+a: free for Windows, but every program uses them itself.
+        return modifiers is 0x0001 or 0x0002 or 0x0004
+            ? (S("Editor.HotkeyCommon"), WarnAmber, false)
+            : (S("Editor.HotkeyFree"), OkGreen, false);
+    }
+
+    private void ShowAvailability()
+    {
+        var (text, color, _) = Assess();
+        ShowResult(text, color);
     }
 
     public HotkeyDefinition Result { get; private set; } = new();
@@ -943,9 +998,24 @@ internal sealed class HotkeyEditorForm : CustomEditorForm
             return false;
         }
 
-        if (!KeySender.TryParseHotkey(keys, out _, out _))
+        if (!KeySender.TryParseHotkey(keys, out var modifiers, out var virtualKey))
         {
             ShowResult(S("Editor.HotkeyInvalid"), ErrorRed);
+            return false;
+        }
+
+        if (OtherWith(modifiers, virtualKey) is { } twin)
+        {
+            ShowResult(string.Format(S("Editor.HotkeyDuplicate"), twin.Name), ErrorRed);
+            return false;
+        }
+
+        // A taken one is kept only when OK is pressed again: the program that holds it may
+        // let it go later, but nobody should end up with a dead hotkey without knowing.
+        if (Assess().Taken && _keptAlthoughTaken != keys)
+        {
+            _keptAlthoughTaken = keys;
+            ShowResult(S("Editor.HotkeyTakenConfirm"), ErrorRed);
             return false;
         }
 
@@ -960,4 +1030,105 @@ internal sealed class HotkeyEditorForm : CustomEditorForm
     }
 
     protected override Task RunTestAsync() => Task.CompletedTask;
+}
+
+/// <summary>
+/// The keys field of the hotkey editor: it shows the combination pressed in it. Held
+/// modifiers show while they are down; Backspace or Delete alone clears it; Tab, Escape
+/// and Enter alone keep their meaning in the dialog.
+/// </summary>
+internal sealed class HotkeyCaptureBox : TextBox
+{
+    private string _combination = string.Empty;
+
+    public HotkeyCaptureBox()
+    {
+        // ctrl+c, ctrl+v and the like are combinations to take, not clipboard commands.
+        ShortcutsEnabled = false;
+    }
+
+    /// <summary>The combination in the field changed.</summary>
+    public event EventHandler? Changed;
+
+    /// <summary>A key was pressed that cannot be a hotkey; the string key of the reason.</summary>
+    public event EventHandler<string>? Rejected;
+
+    public void SetCombination(string text)
+    {
+        _combination = text.Trim();
+        Text = _combination;
+    }
+
+    protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+    {
+        var key = keyData & Keys.KeyCode;
+        var modifiers = keyData & Keys.Modifiers;
+        var win = IsDown(0x5B) || IsDown(0x5C);
+        var plain = modifiers == Keys.None && !win;
+
+        if (plain && key is Keys.Tab or Keys.Escape or Keys.Enter)
+        {
+            return base.ProcessCmdKey(ref msg, keyData);
+        }
+
+        if (plain && key is Keys.Back or Keys.Delete)
+        {
+            SetCombination(string.Empty);
+            Changed?.Invoke(this, EventArgs.Empty);
+            return true;
+        }
+
+        uint flags = 0;
+        if ((modifiers & Keys.Control) != 0) flags |= 0x0002;
+        if ((modifiers & Keys.Alt) != 0) flags |= 0x0001;
+        if ((modifiers & Keys.Shift) != 0) flags |= 0x0004;
+        if (win) flags |= 0x0008;
+
+        if (key is Keys.ControlKey or Keys.ShiftKey or Keys.Menu or Keys.LWin or Keys.RWin)
+        {
+            // Only modifiers so far: show them, and wait for the key.
+            Text = KeySender.DescribeHotkey(flags, 'X')?[..^1] ?? _combination;
+            return true;
+        }
+
+        if (flags == 0)
+        {
+            Text = _combination;
+            Rejected?.Invoke(this, "Editor.HotkeyInvalid");
+            return true;
+        }
+
+        var text = KeySender.DescribeHotkey(flags, (uint)key);
+        if (text is null)
+        {
+            Text = _combination;
+            Rejected?.Invoke(this, "Editor.HotkeyUnknownKey");
+            return true;
+        }
+
+        SetCombination(text);
+        Changed?.Invoke(this, EventArgs.Empty);
+        return true;
+    }
+
+    protected override void OnKeyUp(KeyEventArgs e)
+    {
+        base.OnKeyUp(e);
+        // Modifiers let go without a key: back to the combination there was.
+        if (ModifierKeys == Keys.None && !IsDown(0x5B) && !IsDown(0x5C))
+        {
+            Text = _combination;
+        }
+    }
+
+    protected override void OnKeyPress(KeyPressEventArgs e)
+    {
+        // Nothing is typed into it.
+        e.Handled = true;
+    }
+
+    private static bool IsDown(int virtualKey) => (GetKeyState(virtualKey) & 0x8000) != 0;
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern short GetKeyState(int virtualKey);
 }

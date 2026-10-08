@@ -6,6 +6,13 @@ using HASS.Agent.Companion.SystemCommands;
 
 namespace HASS.Agent.Companion.Tray;
 
+internal enum HotkeyAvailability
+{
+    Free,
+    Taken,
+    HeldByThisApp,
+}
+
 /// <summary>
 /// Global hotkeys that go to Home Assistant as events. Only the combinations the user
 /// put on the list are registered: Windows hands a registered combination to this app
@@ -16,6 +23,10 @@ internal sealed class HotkeyService : NativeWindow, IDisposable
 {
     private const int WmHotkey = 0x0312;
     private const uint ModNoRepeat = 0x4000;
+    private const int ProbeId = 0xBFFF;
+
+    // What this app holds right now, so that a check does not call our own hotkey taken.
+    private static readonly HashSet<(uint Modifiers, uint VirtualKey)> Held = [];
 
     private readonly FileLog _log;
     private readonly Dictionary<int, HotkeyDefinition> _registered = [];
@@ -47,6 +58,7 @@ internal sealed class HotkeyService : NativeWindow, IDisposable
             if (RegisterHotKey(Handle, id, modifiers | ModNoRepeat, virtualKey))
             {
                 _registered[id] = hotkey;
+                Held.Add((modifiers, virtualKey));
             }
             else
             {
@@ -79,6 +91,27 @@ internal sealed class HotkeyService : NativeWindow, IDisposable
         }
 
         _registered.Clear();
+        Held.Clear();
+    }
+
+    /// <summary>
+    /// Whether Windows would give this combination to the app: registering it and letting
+    /// it go at once is the only way Windows tells. On the UI thread, like the hotkeys.
+    /// </summary>
+    public static HotkeyAvailability Check(uint modifiers, uint virtualKey)
+    {
+        if (Held.Contains((modifiers, virtualKey)))
+        {
+            return HotkeyAvailability.HeldByThisApp;
+        }
+
+        if (!RegisterHotKey(IntPtr.Zero, ProbeId, modifiers | ModNoRepeat, virtualKey))
+        {
+            return HotkeyAvailability.Taken;
+        }
+
+        UnregisterHotKey(IntPtr.Zero, ProbeId);
+        return HotkeyAvailability.Free;
     }
 
     public void Dispose()
