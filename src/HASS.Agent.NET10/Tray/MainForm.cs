@@ -2869,6 +2869,7 @@ internal sealed class MainForm : Form
 
         _settings.HaApiEnabled = _haApiEnabled.Checked;
         _settings.HaApiUrl = _haApiUrl.Text.Trim();
+        var newHaToken = _settings.HaApiEnabled && _haApiToken.Text != _settings.GetHaApiToken();
         _settings.SetHaApiToken(_haApiToken.Text);
 
         _settings.WebViewUrl = _webViewUrl.Text.Trim();
@@ -2983,6 +2984,30 @@ internal sealed class MainForm : Form
             ? $"{S("Msg.SettingsSaved")}\n\n{S("Msg.RestartRequired")}"
             : S("Msg.SettingsSaved");
         MessageBox.Show(msg, AppIdentity.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Information);
+
+        if (newHaToken)
+        {
+            await OfferAfterNewTokenAsync();
+        }
+    }
+
+    /// <summary>
+    /// A token was just put in: the moment to offer a user of the PC's own, if it turns out to be
+    /// an administrator's (a new install sets one up right here). Waits a little for the
+    /// connection, or the short check of a PC on MQTT, to say whose it is.
+    /// </summary>
+    private async Task OfferAfterNewTokenAsync()
+    {
+        for (var attempt = 0; attempt < 15 && !IsDisposed; attempt++)
+        {
+            await Task.Delay(TimeSpan.FromSeconds(1));
+            var (user, _) = HaTokenProbe?.Invoke() ?? (null, false);
+            if (user is not null)
+            {
+                await OfferOwnHaUserAsync();
+                return;
+            }
+        }
     }
 
     // ── Layout helpers ─────────────────────────────────────────────

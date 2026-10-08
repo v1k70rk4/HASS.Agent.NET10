@@ -434,7 +434,7 @@ internal static partial class Strings
             ["Access.NotChanged"] = "Nem változott semmi: a rendszergazdai jóváhagyás elmaradt, vagy nem sikerült.",
             ["Access.Failed"] = "A beállításokhoz való hozzáférést nem sikerült módosítani: {0}",
             ["Access.NeedsAdmin"] = "Annak módosításához, ki használhatja a HASS.Agentet, rendszergazda kell.",
-            ["Access.Usage"] = "Használat: --settings-access only FELHASZNÁLÓ [FELHASZNÁLÓ ...] | everyone | keep",
+            ["Access.Usage"] = "Használat: --settings-access only FELHASZNÁLÓ [FELHASZNÁLÓ ...] | everyone | open | keep",
             ["SvcMgr.ApprovalPending"] = "A jóváhagyás még nem fejeződött be. Ha befejeződik, a szolgáltatás magától futtatja ezeket: {0}",
             ["Access.StillRunning"] = "A módosítás még nem fejeződött be. Nyisd meg kicsit később újra ezt az ablakot, és látod az eredményt.",
             ["Access.NotForYou"] = "A HASS.Agent ezen a gépen más felhasználóknak van beállítva, ezért {0} számára nem indul el.\n\nRendszergazda felvehet a \"{1}\" csoportba, vagy egy jogosult felhasználó HASS.Agentjében: Danger Zone, A gép felhasználói. Ez az értesítés többször nem jelenik meg.",

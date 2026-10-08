@@ -219,8 +219,12 @@ begin
       Users := Users + ' "' + Original + '"';
     RunHidden(ExpandConstant('{app}\{#MyAppExeName}'), '--settings-access only ' + Users + ' --quiet');
   end
-  else if PreviousVersion = '' then
+  else if (PreviousVersion = '') and WizardIsTaskSelected('accessall') and (not WizardSilent()) then
     RunHidden(ExpandConstant('{app}\{#MyAppExeName}'), '--settings-access everyone --quiet')
+  else if PreviousVersion = '' then
+    { Nobody chose: open as before, without recording a choice, so the app asks when its
+      window is opened on a PC with a user who is not an administrator. }
+    RunHidden(ExpandConstant('{app}\{#MyAppExeName}'), '--settings-access open --quiet')
   else
     RunHidden(ExpandConstant('{app}\{#MyAppExeName}'), '--settings-access keep --quiet');
 end;
