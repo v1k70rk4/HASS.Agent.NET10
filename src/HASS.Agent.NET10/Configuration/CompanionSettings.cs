@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Reflection;
+using System.Security.Cryptography;
 using System.Text.Json.Serialization;
 using HASS.Agent.Companion.Runtime;
 using HASS.Agent.Companion.Security;
@@ -275,7 +276,9 @@ internal sealed class CompanionSettings
 
         if (string.IsNullOrWhiteSpace(ApiKey))
         {
-            ApiKey = Guid.NewGuid().ToString("N");
+            // A secret, so from the cryptographic generator: a GUID is only promised to be unique.
+            // Same 32 lowercase hex characters as the keys made before.
+            ApiKey = RandomNumberGenerator.GetHexString(32, lowercase: true);
         }
 
         if (Port is < 1 or > 65535)
