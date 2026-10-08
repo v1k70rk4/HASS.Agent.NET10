@@ -407,6 +407,8 @@ internal static partial class Strings
             ["SvcMgr.ApprovalFailed"] = "A szolgáltatás parancsait nem sikerült jóváhagyni: {0}",
             ["SvcMgr.ApprovalNeeded"] = "A szolgáltatás SYSTEM-ként fut, ezért az általa futtatott parancsokhoz és parancs-szenzorokhoz rendszergazdai jóváhagyás kell. Ezt a Windows most kéri.\n\nNélküle a szolgáltatás ezeket kihagyja, és amit tud, a tray app futtatja: {0}",
             ["SvcMgr.ApprovalDeclined"] = "Nincs jóváhagyva. A szolgáltatás kihagyja ezeket, amíg a beállításokat újra nem mented és a kérést jóvá nem hagyod: {0}",
+            ["HaApi.TokenOfAdmin"] = "⚠  A token: {0}, rendszergazda.",
+            ["HaApi.TokenOfUser"] = "✓  A token: {0}, nem rendszergazda.",
             ["HaUser.Heading"] = "Ez a gép rendszergazdaként csatlakozik a Home Assistanthoz",
             ["HaUser.Text"] = "A gép HA API tokenje egy Home Assistant-rendszergazdáé: aki megszerzi, mindent átállíthat a Home Assistantban, kiegészítőt telepíthet és olvashatja a titkaidat.\n\nA HASS.Agent létrehozhat ennek a gépnek egy saját Home Assistant-felhasználót, aki nem rendszergazda és jelszava sincs, és átállhat annak a tokenjére. Minden ugyanúgy működik tovább.\n\nA rendszergazdai tokened megmarad a Home Assistantban: a profilodban (Biztonság) törölheted, ha máshol nem használod.",
             ["HaUser.Create"] = "Felhasználó létrehozása ennek a gépnek",

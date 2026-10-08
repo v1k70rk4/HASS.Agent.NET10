@@ -46,11 +46,8 @@ internal sealed class HaWebSocketService : IDisposable
     // Requests made while the receive loop runs: their result comes in through HandleMessage.
     private readonly ConcurrentDictionary<int, TaskCompletionSource<JsonElement>> _pending = new();
 
-    /// <summary>
-    /// Whether the token's user is a Home Assistant administrator; null when not known (an
-    /// integration older than 10.9.1, or not connected).
-    /// </summary>
-    public bool? TokenUserIsAdmin { get; private set; }
+    /// <summary>The Home Assistant user the token belongs to; null when not known.</summary>
+    public HaTokenUser? TokenUser { get; private set; }
 
     /// <summary>The integration offers its own commands (10.9.1+), provisioning among them.</summary>
     public bool HasOwnCommands => _ownCommands;
@@ -100,7 +97,7 @@ internal sealed class HaWebSocketService : IDisposable
         _commandSubscriptionId = null;
         _ownCommands = false;
         _approvalNoticeLogged = false;
-        TokenUserIsAdmin = null;
+        TokenUser = null;
 
         var wsUrl = BuildWebSocketUrl();
         _log.Info($"HA WebSocket connecting to {wsUrl}");
@@ -142,16 +139,11 @@ internal sealed class HaWebSocketService : IDisposable
         // Step 5: Subscribe to hass_agent_command events.
         await SubscribeToCommandEventsAsync(cancellationToken);
 
-        // Step 6: whose token this is. An administrator's token can be swapped for a user
-        // of the PC's own (the app offers it), which only the integration's commands allow.
-        if (_ownCommands)
-        {
-            var id = await SendWithIdAsync(i => new { id = i, type = "auth/current_user" }, cancellationToken);
-            var (ok, _, _, result) = await ReadResultAsync(id, cancellationToken);
-            TokenUserIsAdmin = ok && result is { } user && user.TryGetProperty("is_admin", out var admin)
-                ? admin.GetBoolean()
-                : null;
-        }
+        // Step 6: whose token this is (shown on the HA API page). An administrator's token
+        // can be swapped for a user of the PC's own, which the integration's commands allow.
+        var userId = await SendWithIdAsync(i => new { id = i, type = "auth/current_user" }, cancellationToken);
+        var (ok, _, _, result) = await ReadResultAsync(userId, cancellationToken);
+        TokenUser = ok ? HaTokenUser.From(result) : null;
     }
 
     /// <summary>
@@ -408,12 +400,40 @@ internal sealed class HaWebSocketService : IDisposable
         }
 
         var integration = await TryGetIntegrationVersionAsync(ws, NextTestId(ref messageId), cancellationToken);
+        var tokenUser = await TryGetCurrentUserAsync(ws, NextTestId(ref messageId), cancellationToken);
 
         await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "test", cancellationToken);
         return new HaConnectionTestResult(
             haVersion ?? "unknown",
             integration.Version,
-            integration.Error);
+            integration.Error,
+            tokenUser);
+    }
+
+    private static async Task<HaTokenUser?> TryGetCurrentUserAsync(ClientWebSocket ws, int id, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await SendAsync(ws, new { id, type = "auth/current_user" }, cancellationToken);
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                using var message = await ReceiveMessageAsync(ws, cancellationToken);
+                if (message.RootElement.TryGetProperty("type", out var type) && type.GetString() == "result"
+                    && message.RootElement.TryGetProperty("id", out var idElement) && idElement.GetInt32() == id)
+                {
+                    return message.RootElement.TryGetProperty("success", out var success) && success.GetBoolean()
+                        && message.RootElement.TryGetProperty("result", out var result)
+                            ? HaTokenUser.From(result)
+                            : null;
+                }
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Only for the page; the test itself went through.
+        }
+
+        return null;
     }
 
     public static bool IsIntegrationVersionSupported(string? version)
@@ -957,9 +977,21 @@ internal sealed class HaWebSocketService : IDisposable
     }
 }
 
+/// <summary>The Home Assistant user a token belongs to.</summary>
+internal sealed record HaTokenUser(string Name, bool IsAdmin)
+{
+    public static HaTokenUser? From(JsonElement? result) =>
+        result is { ValueKind: JsonValueKind.Object } user
+            ? new HaTokenUser(
+                user.TryGetProperty("name", out var name) ? name.GetString() ?? string.Empty : string.Empty,
+                user.TryGetProperty("is_admin", out var admin) && admin.ValueKind == JsonValueKind.True)
+            : null;
+}
+
 internal sealed record HaConnectionTestResult(
     string HomeAssistantVersion,
     string? IntegrationVersion,
-    string? IntegrationVersionError);
+    string? IntegrationVersionError,
+    HaTokenUser? TokenUser = null);
 
 internal sealed record HaIntegrationVersionInfo(string? Version, string? Error);

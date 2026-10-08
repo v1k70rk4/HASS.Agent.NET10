@@ -4,6 +4,7 @@ using System.Windows.Forms;
 using HASS.Agent.Companion.Configuration;
 using HASS.Agent.Companion.Http;
 using HASS.Agent.Companion.Logging;
+using HASS.Agent.Companion.Mqtt;
 using HASS.Agent.Companion.Networking;
 using HASS.Agent.Companion.Localization;
 using HASS.Agent.Companion.Runtime;
@@ -41,8 +42,8 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
     /// <summary>Set by Program to the MQTT service: reports a manual update check to Home Assistant.</summary>
     public Func<AppUpdateState, Task>? UpdateStateHandler { get; set; }
 
-    /// <summary>Set by Program: whether the HA API token is an administrator's (null: not known).</summary>
-    public Func<bool?>? HaTokenAdminProbe { get; set; }
+    /// <summary>Set by Program: whose the HA API token is, and whether a user of the PC's own can be made.</summary>
+    public Func<(HaTokenUser? User, bool CanProvision)>? HaTokenProbe { get; set; }
 
     /// <summary>Set by Program: asks Home Assistant for a user of this PC's own and its token.</summary>
     public Func<Task<(string Token, string User)>>? HaUserProvisioner { get; set; }
@@ -234,7 +235,7 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
         _mainForm.DiscoveryRepublishHandler = () => DiscoveryRepublishHandler?.Invoke() ?? Task.FromResult(false);
         _mainForm.UpdateStateHandler = state => UpdateStateHandler?.Invoke(state) ?? Task.CompletedTask;
         _mainForm.DashboardPreviewHandler = ShowDashboard;
-        _mainForm.HaTokenAdminProbe = () => HaTokenAdminProbe?.Invoke();
+        _mainForm.HaTokenProbe = () => HaTokenProbe?.Invoke() ?? (null, false);
         _mainForm.HaUserProvisioner = HaUserProvisioner;
         _mainForm.SettingsSaved += (_, _) =>
         {

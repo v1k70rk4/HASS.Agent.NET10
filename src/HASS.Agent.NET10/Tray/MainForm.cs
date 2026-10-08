@@ -74,6 +74,8 @@ internal sealed class MainForm : Form
     private readonly TextBox _haApiToken = new() { UseSystemPasswordChar = true };
     private readonly Label _haApiHttpWarningIcon = new();
     private readonly Label _haApiTestResult = new();
+    private readonly Label _haApiTokenUser = new();
+    private Button? _haApiCreateUser;
     private readonly Label _haApiDisabledWarning = new();
 
     private readonly CheckBox _capNotify = new();
@@ -124,10 +126,10 @@ internal sealed class MainForm : Form
     [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
     public Func<AppUpdateState, Task>? UpdateStateHandler { get; set; }
 
-    /// <summary>Wired by TrayApplicationContext: whether the HA API token is an administrator's.</summary>
+    /// <summary>Wired by TrayApplicationContext: whose the HA API token is, and whether a user of the PC's own can be made.</summary>
     [System.ComponentModel.Browsable(false)]
     [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
-    public Func<bool?>? HaTokenAdminProbe { get; set; }
+    public Func<(HaTokenUser? User, bool CanProvision)>? HaTokenProbe { get; set; }
 
     /// <summary>Wired by TrayApplicationContext: a Home Assistant user of this PC's own and its token.</summary>
     [System.ComponentModel.Browsable(false)]
@@ -597,7 +599,7 @@ internal sealed class MainForm : Form
 
         Label limLabel = null!;
         var cardTop = _haApiDisabledWarning.Visible ? 138 : 96;
-        var card = MakeCard(page, 28, cardTop, 600, 300, S("HaApi.Connection"));
+        var card = MakeCard(page, 28, cardTop, 600, 336, S("HaApi.Connection"));
         void LayoutHaApiPage()
         {
             _haApiDisabledWarning.Location = Pt(28, 56);
@@ -660,6 +662,32 @@ internal sealed class MainForm : Form
 
         y += 4;
         y = AddField(card, S("HaApi.Token"), _haApiToken, y);
+
+        // Whose the token is: an administrator's can be swapped for a user of the PC's own.
+        _haApiTokenUser.Location = Pt(20, y);
+        _haApiTokenUser.Size = Sz(330, 30);
+        _haApiTokenUser.Font = new Font("Segoe UI", 9F);
+        _haApiTokenUser.TextAlign = ContentAlignment.MiddleLeft;
+        card.Controls.Add(_haApiTokenUser);
+        _haApiCreateUser = MakeSecondaryButton(S("HaUser.Create"), 230, 30);
+        _haApiCreateUser.Location = Pt(356, y);
+        _haApiCreateUser.Visible = false;
+        _haApiCreateUser.Click += async (_, _) => await CreateOwnHaUserAsync();
+        card.Controls.Add(_haApiCreateUser);
+        y += 36;
+
+        // The connection comes up a moment after a save; the line follows it while the page shows.
+        var tokenUserTimer = new System.Windows.Forms.Timer { Interval = 3000 };
+        tokenUserTimer.Tick += (_, _) => ShowTokenUser(null);
+        page.VisibleChanged += (_, _) =>
+        {
+            tokenUserTimer.Enabled = page.Visible;
+            if (page.Visible)
+            {
+                ShowTokenUser(null);
+            }
+        };
+        page.Disposed += (_, _) => tokenUserTimer.Dispose();
         y += 6;
 
         var testBtn = MakeSecondaryButton(S("HaApi.TestButton"), 160, 32);
@@ -735,11 +763,42 @@ internal sealed class MainForm : Form
 
             _haApiTestResult.ForeColor = Color.FromArgb(21, 128, 61);
             _haApiTestResult.Text = string.Format(S("HaApi.TestSuccess"), result.HomeAssistantVersion, result.IntegrationVersion);
+            // The token in the field, saved or not.
+            ShowTokenUser(result.TokenUser);
         }
         catch (Exception ex)
         {
             _haApiTestResult.ForeColor = Color.FromArgb(153, 27, 27);
             _haApiTestResult.Text = string.Format(S("HaApi.TestFailed"), ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// The line under the token: whose it is, and the button that swaps an administrator's for a
+    /// user of the PC's own. From a connection test, or else from the running connection.
+    /// </summary>
+    private void ShowTokenUser(HaTokenUser? tested)
+    {
+        if (IsDisposed)
+        {
+            return;
+        }
+
+        var (live, canProvision) = HaTokenProbe?.Invoke() ?? (null, false);
+        var user = tested ?? live;
+        if (user is null)
+        {
+            _haApiTokenUser.Text = string.Empty;
+            _haApiCreateUser?.Hide();
+            return;
+        }
+
+        _haApiTokenUser.ForeColor = user.IsAdmin ? Color.FromArgb(180, 83, 9) : Color.FromArgb(21, 128, 61);
+        _haApiTokenUser.Text = string.Format(S(user.IsAdmin ? "HaApi.TokenOfAdmin" : "HaApi.TokenOfUser"), user.Name);
+        // Only for the token in use: the integration makes the user for the PC it is connected as.
+        if (_haApiCreateUser is not null)
+        {
+            _haApiCreateUser.Visible = user.IsAdmin && tested is null && canProvision;
         }
     }
 
@@ -2267,7 +2326,8 @@ internal sealed class MainForm : Form
     /// </summary>
     private async Task OfferOwnHaUserAsync()
     {
-        if (_settings.HaApiOwnUserDeclined || HaUserProvisioner is null || HaTokenAdminProbe?.Invoke() != true || IsDisposed)
+        var (user, canProvision) = HaTokenProbe?.Invoke() ?? (null, false);
+        if (_settings.HaApiOwnUserDeclined || HaUserProvisioner is null || user is not { IsAdmin: true } || !canProvision || IsDisposed)
         {
             return;
         }
@@ -2293,11 +2353,21 @@ internal sealed class MainForm : Form
             return;
         }
 
-        if (answer != create)
+        if (answer == create)
+        {
+            await CreateOwnHaUserAsync();
+        }
+    }
+
+    /// <summary>Has the integration make a Home Assistant user of this PC's own, and switches to its token.</summary>
+    private async Task CreateOwnHaUserAsync()
+    {
+        if (HaUserProvisioner is null)
         {
             return;
         }
 
+        _haApiCreateUser?.Hide();
         try
         {
             var (token, user) = await HaUserProvisioner();
@@ -2314,6 +2384,7 @@ internal sealed class MainForm : Form
                 Text = string.Format(S("HaUser.DoneText"), user),
                 Icon = TaskDialogIcon.ShieldSuccessGreenBar,
             });
+            ShowTokenUser(null);
         }
         catch (Exception ex)
         {
