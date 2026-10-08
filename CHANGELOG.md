@@ -2,7 +2,11 @@
 
 Every release of HASS.Agent .NET10, newest first. The downloads are on the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases).
 
-## Unreleased
+## 10.9.1-beta.3
+
+> **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered it, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.9.0**, below.
+
+The third beta of 10.9.1: the hotkey editor takes the combination you press and says at once whether it is free, and the service keeps its connection after an update. Works with the integration **10.6.7** or newer; the integration's [10.9.1-beta.3](https://github.com/v1k70rk4/HASS.Agent.NET10-Integration/releases/tag/v10.9.1-beta.3) has the security fixes of beta.2 and a small text fix (in HACS: **Redownload**, **Show beta versions**). Signed release.
 
 - **A hotkey is pressed, not typed, and you see at once whether it is free.** In the hotkey editor the combination is pressed in its field (Backspace clears it). The line under it says straight away whether Windows lets HASS.Agent have it, or whether Windows or another program already uses it (the Win+number keys are the taskbar's, for one); before, that only showed in the log. It also says when another hotkey of the list has the same combination, and warns about one modifier alone (ctrl+c, alt+f4), which programs use themselves. A taken combination is kept only when OK is pressed twice.
 - The service no longer restarts its connection after an update. The tray app records the version it now runs in the settings, and the service took that as a change of its own settings.
