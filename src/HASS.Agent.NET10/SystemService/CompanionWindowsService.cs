@@ -148,21 +148,22 @@ internal sealed class CompanionWindowsService : ServiceBase
 
         try
         {
-            var settings = LoadSettings(_paths, _log);
-            var uses = WhatTheRuntimeUses(settings);
-            if (uses == _runtimeSettings)
-            {
-                // The tray app's own bookkeeping (the version it last ran, after an update):
-                // a restart would only drop and rebuild the connection.
-                _log.Debug("Settings file written; nothing the service uses changed.");
-                return;
-            }
-
-            _log.Info("Settings changed; reloading system service runtime.");
-            ApplyLanguage(settings);
-
+            // Timer callbacks can overlap: the comparison and the restart are one step, so a
+            // second callback sees what the first one started.
             lock (_runtimeLock)
             {
+                var settings = LoadSettings(_paths, _log);
+                var uses = WhatTheRuntimeUses(settings);
+                if (uses == _runtimeSettings)
+                {
+                    // The tray app's own bookkeeping (the version it last ran, after an
+                    // update): a restart would only drop and rebuild the connection.
+                    _log.Debug("Settings file written; nothing the service uses changed.");
+                    return;
+                }
+
+                _log.Info("Settings changed; reloading system service runtime.");
+                ApplyLanguage(settings);
                 StopRuntime();
                 _runtimeSettings = uses;
                 StartRuntime(settings);

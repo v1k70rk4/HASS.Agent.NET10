@@ -174,7 +174,7 @@ The third beta of 10.9.1: the hotkey editor takes the combination you press and 
 
 **New since beta.2**
 
-- **A hotkey is pressed, not typed, and you see at once whether it is free.** In the hotkey editor the combination is pressed in its field (Backspace clears it). The line under it says straight away whether Windows lets HASS.Agent have it, or whether Windows or another program already uses it (the Win+number keys are the taskbar's, for one); before, that only showed in the log. It also says when another hotkey of the list has the same combination, and warns about one modifier alone (ctrl+c, alt+f4), which programs use themselves. A taken combination is kept only when OK is pressed twice.
+- **A hotkey is pressed, not typed, and you see at once whether it is free.** In the hotkey editor the combination is pressed in its field (Backspace clears it). The line under it says straight away whether Windows lets HASS.Agent have it, or whether Windows or another program already uses it (the Win+number keys are the taskbar's, for one); before, that only showed in the log. It also says when another hotkey of the list has the same combination, and warns about one modifier alone (ctrl+c, alt+f4), which programs use themselves. A taken combination is kept only when OK is pressed twice; the app then tries it again every minute, so it starts working once the other program lets it go. A combination Windows keeps for itself does not even show up in the field.
 - The service no longer restarts its connection after an update. The tray app records the version it now runs in the settings, and the service took that as a change of its own settings.
 
 **From beta.2**
