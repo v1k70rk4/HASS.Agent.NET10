@@ -2,7 +2,7 @@
 
 ![Windows](https://img.shields.io/badge/Windows-10%202004%2B%20%7C%2011-0078D4?logo=windows&logoColor=white)
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet&logoColor=white)
-![Version](https://img.shields.io/badge/version-10.9.1--beta.1-orange)
+![Version](https://img.shields.io/badge/version-10.9.1--beta.2-orange)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-MQTT%20%7C%20WebSocket%20API-41BDF5?logo=homeassistant&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 [![Website](https://img.shields.io/badge/website-v1k70rk4.github.io-41bdf5?logo=github)](https://v1k70rk4.github.io/HASS.Agent.NET10/)
@@ -24,7 +24,7 @@ It is designed for Windows PCs you want to observe and control from Home Assista
 
 The .NET10 line starts at **version 10.0.0**. The classic client is a separate program: if you want to stay with it, it is still available from its own project, and the integration keeps a [`legacy` branch](https://github.com/v1k70rk4/HASS.Agent.NET10-Integration/tree/legacy) for it. Thinking about switching? See [Coming from HASS.Agent](docs/migrating.md).
 
-> **Stable:** [10.9.0](https://github.com/v1k70rk4/HASS.Agent.NET10/releases/latest) &nbsp;·&nbsp; **Beta:** [10.9.1-beta.1](https://github.com/v1k70rk4/HASS.Agent.NET10/releases/tag/v10.9.1-beta.1) &nbsp;·&nbsp; [What changed](#what-changed) &nbsp;·&nbsp; [Full changelog](CHANGELOG.md)
+> **Stable:** [10.9.0](https://github.com/v1k70rk4/HASS.Agent.NET10/releases/latest) &nbsp;·&nbsp; **Beta:** [10.9.1-beta.2](https://github.com/v1k70rk4/HASS.Agent.NET10/releases/tag/v10.9.1-beta.2) &nbsp;·&nbsp; [What changed](#what-changed) &nbsp;·&nbsp; [Full changelog](CHANGELOG.md)
 
 ---
 
@@ -166,11 +166,19 @@ No telemetry, analytics, or usage data is collected or transmitted.
 
 ## What Changed
 
-### 10.9.1-beta.1
+### 10.9.1-beta.2
 
 > **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered it, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.9.0**, below.
 
-A security release: what CodeRabbit's AI Deep Scan found in the app, fixed. Mostly invisible, except that on a PC with more than one Windows user the app asks once who may use it. Works with the Home Assistant integration **10.6.7** or newer, no new integration needed; the new entities of 10.9.0 need the integration **10.9.0**. Signed release.
+The second beta of 10.9.1, still about security: the last three findings of the AI Deep Scan, and a security review of the Home Assistant integration, whose fixes are in the integration's [10.9.1-beta.2](https://github.com/v1k70rk4/HASS.Agent.NET10-Integration/releases/tag/v10.9.1-beta.2) (in HACS: **Redownload**, **Show beta versions**). Works with the integration **10.6.7** or newer; the new entities of 10.9.0 need the integration **10.9.0**. Signed release.
+
+**New since beta.1**
+
+- **A Home Assistant address typed without `http://` or `https://` gets https unless it points into the home network.** It always got plain http before, so an address on the internet (a Nabu Casa one, your own domain) sent the token unencrypted, or did not work at all. A `.local` name, a name without a dot, a private or Tailscale IP address and `localhost` still get http, as Home Assistant answers there by default.
+- **Limits on what LibreHardwareMonitor sends.** The answer is read up to 4 MB, at most 5000 values are kept, and names are cut at 200 characters, so a broken or hostile server cannot make the app hold an unbounded amount of memory. A real one sends a few hundred values in tens of kilobytes.
+- Old notification pictures are cleaned up once an hour instead of on every notification with a picture.
+
+**From beta.1**
 
 - **Fixed: a user of the PC could have a command run as SYSTEM.** The settings live in ProgramData, where every user of the PC can write, and the Windows service (SYSTEM) ran the custom commands and command sensors set for it there. The service now runs one only when an administrator has approved it: `service-policy.json` next to the program, which only administrators can write, approves each by its id and what it runs. Installing or updating the app approves what the settings already ask the service to run, so nothing stops working; a command or command sensor added or changed for the service later asks for administrator approval (UAC) when the settings are saved. Until then the service leaves it to the tray app, and the log says which ones. Found by CodeRabbit's AI Deep Scan.
 - **Who may use HASS.Agent on this PC.** Its settings, with the Home Assistant token, the MQTT login and the commands it runs, could be read and changed by every user of the PC. They can now be limited to some users: a first install asks (*Only me* or *Every user of this PC*), and on a PC that already has HASS.Agent the app asks once, when it is opened, with the users of the PC to tick; it is also under Danger Zone, *Users of this PC*. Limiting needs an administrator (UAC) and uses a local group, *HASS.Agent Users*, that an administrator can also manage with Windows' own tools; the ticked users get access at once, without logging on again. Someone left out gets a note once, and HASS.Agent does not start for them. On a PC whose users are all administrators the update limits the settings to them by itself, which takes nothing from anyone and keeps out a user added later. On a PC with a user who is not an administrator nothing changes by itself: Home Assistant gets a notification once, and the question comes when someone opens the HASS.Agent window, never at logon.
