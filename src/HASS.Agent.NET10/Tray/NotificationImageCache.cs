@@ -205,8 +205,20 @@ internal sealed class NotificationImageCache
         return (bytes, hasAlpha ? "png" : "jpg");
     }
 
+    // Once an hour is plenty for files kept for days, and a run of notifications with
+    // pictures does not list the whole folder again for each one.
+    private static readonly TimeSpan CleanUpEvery = TimeSpan.FromHours(1);
+    private static long _lastCleanUpTicks;
+
     private void RemoveOldFiles()
     {
+        var now = DateTime.UtcNow.Ticks;
+        var last = Interlocked.Read(ref _lastCleanUpTicks);
+        if (now - last < CleanUpEvery.Ticks || Interlocked.CompareExchange(ref _lastCleanUpTicks, now, last) != last)
+        {
+            return;
+        }
+
         try
         {
             var limit = DateTime.UtcNow - KeepFor;
