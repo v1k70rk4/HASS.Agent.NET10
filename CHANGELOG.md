@@ -2,6 +2,10 @@
 
 Every release of HASS.Agent .NET10, newest first. The downloads are on the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases).
 
+## Unreleased
+
+- **The HA API no longer needs an administrator's token.** The connection used Home Assistant's `fire_event` and `subscribe_events`, which only an administrator may use, so the token on the PC was one that can change everything in Home Assistant, and a PC that was broken into gave it away. With the integration 10.9.1 or newer the app uses the integration's own commands instead, which work with a token of a Home Assistant user who is not an administrator; an administrator approves such a PC once in Home Assistant. The app also only gets the commands meant for itself now, not those of every PC. An administrator's token keeps working, and with an older integration the app connects as before. How to set up a user for the PC: [A Home Assistant user for the PC](docs/connection.md#a-home-assistant-user-for-the-pc).
+
 ## 10.9.1-beta.3
 
 > **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered it, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.9.0**, below.

@@ -36,6 +36,12 @@ internal sealed class HaWebSocketService : IDisposable
     private int _messageId;
     private int? _commandSubscriptionId;
 
+    // The integration's own commands (10.9.1+): hass_agent/fire and hass_agent/subscribe,
+    // which a token of a user who is not an administrator may use. Without them, Home
+    // Assistant's fire_event and subscribe_events, which take an administrator's token.
+    private bool _ownCommands;
+    private bool _approvalNoticeLogged;
+
     /// <summary>Fired when a notification is received from HA via the event bus.</summary>
     public event Action<NotificationPayload>? NotificationReceived;
 
@@ -79,6 +85,8 @@ internal sealed class HaWebSocketService : IDisposable
         _ws = new ClientWebSocket();
         _messageId = 0;
         _commandSubscriptionId = null;
+        _ownCommands = false;
+        _approvalNoticeLogged = false;
 
         var wsUrl = BuildWebSocketUrl();
         _log.Info($"HA WebSocket connecting to {wsUrl}");
@@ -180,6 +188,18 @@ internal sealed class HaWebSocketService : IDisposable
     {
         if (!IsConnected)
         {
+            return;
+        }
+
+        if (_ownCommands)
+        {
+            await SendWithIdAsync(id => new
+            {
+                id,
+                type = "hass_agent/fire",
+                event_type = eventType,
+                event_data = eventData
+            }, cancellationToken);
             return;
         }
 
@@ -405,6 +425,29 @@ internal sealed class HaWebSocketService : IDisposable
 
     private async Task SubscribeToCommandEventsAsync(CancellationToken cancellationToken)
     {
+        // The integration's own subscription first: it only carries this PC's commands, and
+        // works with a token of a user who is not an administrator.
+        var ownId = await SendWithIdAsync(id => new
+        {
+            id,
+            type = "hass_agent/subscribe",
+            serial_number = _settings.SerialNumber
+        }, cancellationToken);
+        var (ok, code, message) = await ReadResultAsync(ownId, cancellationToken);
+        if (ok)
+        {
+            _commandSubscriptionId = ownId;
+            _ownCommands = true;
+            _log.Info("HA WebSocket subscribed to this PC's commands (the token's user need not be an administrator).");
+            return;
+        }
+
+        if (code != "unknown_command")
+        {
+            throw new InvalidOperationException($"HA WebSocket hass_agent/subscribe failed: {code} {message}");
+        }
+
+        // An integration older than 10.9.1, or one that is not set up yet.
         var subscriptionId = await SendWithIdAsync(id => new
         {
             id,
@@ -413,8 +456,50 @@ internal sealed class HaWebSocketService : IDisposable
         }, cancellationToken);
         _commandSubscriptionId = subscriptionId;
 
-        await WaitForResultAsync(subscriptionId, "subscribe_events", cancellationToken);
+        (ok, code, message) = await ReadResultAsync(subscriptionId, cancellationToken);
+        if (!ok)
+        {
+            throw new InvalidOperationException(code == "unauthorized"
+                ? "HA WebSocket: Home Assistant refused the subscription. The token's user is not an administrator, " +
+                  "which needs the HASS.Agent integration 10.9.1 or newer, set up with at least one device; " +
+                  "or add this PC with the integration's \"HA API\" option, which waits for it."
+                : $"HA WebSocket subscribe_events failed: {code} {message}");
+        }
+
         _log.Info("HA WebSocket subscribed to hass_agent_command events.");
+    }
+
+    /// <summary>The result of one command: success, or the error code and message Home Assistant gave.</summary>
+    private async Task<(bool Success, string? Code, string? Message)> ReadResultAsync(int id, CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            using var message = await ReceiveMessageAsync(cancellationToken);
+            if (!message.RootElement.TryGetProperty("type", out var typeElement) ||
+                typeElement.GetString() != "result" ||
+                !message.RootElement.TryGetProperty("id", out var idElement) ||
+                idElement.GetInt32() != id)
+            {
+                HandleMessage(message);
+                continue;
+            }
+
+            if (message.RootElement.TryGetProperty("success", out var successElement) && successElement.GetBoolean())
+            {
+                return (true, null, null);
+            }
+
+            string? code = null, text = null;
+            if (message.RootElement.TryGetProperty("error", out var error))
+            {
+                code = error.TryGetProperty("code", out var codeElement) ? codeElement.GetString() : null;
+                text = error.TryGetProperty("message", out var messageElement) ? messageElement.GetString() : null;
+            }
+
+            return (false, code, text);
+        }
+
+        throw new OperationCanceledException(cancellationToken);
     }
 
     private async Task LogIntegrationVersionCompatibilityAsync(CancellationToken cancellationToken)
@@ -446,39 +531,6 @@ internal sealed class HaWebSocketService : IDisposable
         catch (Exception ex)
         {
             _log.Warning($"Unable to check HASS.Agent integration version: {ex.Message}");
-        }
-    }
-
-    private async Task WaitForResultAsync(int id, string operation, CancellationToken cancellationToken)
-    {
-        while (!cancellationToken.IsCancellationRequested)
-        {
-            using var message = await ReceiveMessageAsync(cancellationToken);
-            if (!message.RootElement.TryGetProperty("type", out var typeElement) ||
-                typeElement.GetString() != "result")
-            {
-                HandleMessage(message);
-                continue;
-            }
-
-            if (!message.RootElement.TryGetProperty("id", out var idElement) ||
-                idElement.GetInt32() != id)
-            {
-                HandleMessage(message);
-                continue;
-            }
-
-            var success = message.RootElement.TryGetProperty("success", out var successElement) &&
-                successElement.GetBoolean();
-            if (success)
-            {
-                return;
-            }
-
-            var error = message.RootElement.TryGetProperty("error", out var errorElement)
-                ? errorElement.ToString()
-                : "unknown";
-            throw new InvalidOperationException($"HA WebSocket {operation} failed: {error}");
         }
     }
 
@@ -571,8 +623,23 @@ internal sealed class HaWebSocketService : IDisposable
             // fire_event / subscribe_events result — check for errors.
             if (message.RootElement.TryGetProperty("success", out var success) && !success.GetBoolean())
             {
-                var error = message.RootElement.TryGetProperty("error", out var err) ? err.ToString() : "unknown";
-                _log.Warning($"HA WebSocket command error: {error}");
+                var unauthorized = message.RootElement.TryGetProperty("error", out var err)
+                    && err.TryGetProperty("code", out var code) && code.GetString() == "unauthorized";
+                if (_ownCommands && unauthorized)
+                {
+                    // Every message is refused until an administrator approves this PC for the
+                    // token's user; one line per connection says so.
+                    if (!_approvalNoticeLogged)
+                    {
+                        _approvalNoticeLogged = true;
+                        _log.Warning("Home Assistant has not approved this PC for the token's user yet. An administrator " +
+                            "confirms it in Home Assistant under Settings > Devices & services (Discovered).");
+                    }
+
+                    return;
+                }
+
+                _log.Warning($"HA WebSocket command error: {(message.RootElement.TryGetProperty("error", out var error) ? error.ToString() : "unknown")}");
             }
         }
     }

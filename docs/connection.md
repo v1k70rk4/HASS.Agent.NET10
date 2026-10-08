@@ -26,6 +26,20 @@ The agent supports three connection modes. You can use MQTT and HA API together 
 
 **HA API (WebSocket)** — The agent connects directly to Home Assistant's WebSocket API using a long-lived access token. Works remotely (e.g. via Nabu Casa) without an MQTT broker. Almost all features work, with some trade-offs: no retained state (sensor values are lost until the agent reconnects after a restart), no MQTT Last Will (no automatic offline detection), and media thumbnails are ~33% larger (base64 encoding). HTTPS is required for remote access.
 
+### A Home Assistant user for the PC
+
+> From 10.9.1, with the integration 10.9.1 or newer.
+
+The token in the **HA API** settings belongs to a Home Assistant user, and works with that user's rights. Give the PC a user of its own who is **not an administrator**: if the PC is ever broken into, its token then cannot install add-ons, read `secrets`, change users or the configuration. (Any Home Assistant user can still see states and call actions; Home Assistant has no finer permissions than that.)
+
+1. In Home Assistant, **Settings → People → Add person**: a name such as *hass-agent-office-pc*, **Allow login** on, **Administrator** off.
+2. Log in as that user once, open its profile, **Security** tab, and create a **long-lived access token** at the bottom.
+3. Put the token in the **HA API** page of the app.
+
+Home Assistant then asks an administrator once: a new PC shows up under **Settings → Devices & services → Discovered**; a PC already set up that now uses another user asks for that user to be allowed. Until then the PC's messages are refused, and the log says why. An administrator's token keeps working as before, without the question.
+
+The very first PC of a Home Assistant that has no HASS.Agent device yet: add it with **Add integration → HASS.Agent → HA API (WebSocket)** and keep that dialog open while the app connects.
+
 **Local HTTP API** — A minimal fallback. The agent runs a small HTTP server that Home Assistant connects to. Only notifications are supported. Requires manual setup (IP address, port, API key). Use MQTT or HA API instead for full functionality.
 
 <p align="center"><img src="images/ui-mqtt.png" width="700" alt="MQTT settings page"></p>
@@ -58,6 +72,8 @@ hass.agent/system/{serialNumber}/cmd                # service-routed commands
 ## HA API WebSocket Events
 
 When using HA API mode, the agent communicates through Home Assistant's event bus instead of MQTT topics.
+
+With the integration 10.9.1 or newer the agent sends its events with the integration's `hass_agent/fire` command and receives its commands with `hass_agent/subscribe`, which only carries the commands for its own serial number. Both work with a token of a user who is not an administrator (see [A Home Assistant user for the PC](#a-home-assistant-user-for-the-pc)). With an older integration it falls back to `fire_event` and `subscribe_events`, which need an administrator's token.
 
 Events fired by the agent:
 
