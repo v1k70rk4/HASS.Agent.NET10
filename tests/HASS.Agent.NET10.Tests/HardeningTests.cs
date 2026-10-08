@@ -203,6 +203,44 @@ public class AddressWithoutSchemeTests
 public class LibreHardwareMonitorLimitTests
 {
     [Fact]
+    public async Task A_server_that_stalls_after_the_headers_is_given_up_on()
+    {
+        // Headers, one byte of the promised body, then nothing.
+        using var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+        listener.Start();
+        var port = ((System.Net.IPEndPoint)listener.LocalEndpoint).Port;
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        var server = Task.Run(async () =>
+        {
+            using var client = await listener.AcceptTcpClientAsync(stop.Token);
+            var stream = client.GetStream();
+            await stream.ReadAtLeastAsync(new byte[4096], 1, throwOnEndOfStream: false, stop.Token);
+            var answer = System.Text.Encoding.ASCII.GetBytes("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 1000\r\n\r\n{");
+            await stream.WriteAsync(answer, stop.Token);
+            await Task.Delay(Timeout.Infinite, stop.Token);
+        }, stop.Token);
+
+        var previous = LibreHardwareMonitorClient.RequestDeadline;
+        LibreHardwareMonitorClient.RequestDeadline = TimeSpan.FromMilliseconds(500);
+        LibreHardwareMonitorClient.Configure($"http://127.0.0.1:{port}", "", "");
+        try
+        {
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            var error = Assert.Throws<InvalidOperationException>(() => LibreHardwareMonitorClient.ReadAll());
+
+            Assert.Contains("no complete answer", error.Message);
+            Assert.True(watch.Elapsed < TimeSpan.FromSeconds(5), $"took {watch.Elapsed}");
+        }
+        finally
+        {
+            LibreHardwareMonitorClient.RequestDeadline = previous;
+            LibreHardwareMonitorClient.Configure(LibreHardwareMonitorClient.DefaultUrl, "", "");
+            stop.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => server);
+        }
+    }
+
+    [Fact]
     public void Long_names_are_cut()
     {
         var name = new string('x', 10_000);

@@ -28,6 +28,10 @@ internal static class LibreHardwareMonitorClient
     // real one ever reaches ("/lpc/nct6798d/0/temperature/1" is the usual length).
     internal const int MaxIdLength = 1000;
     private const int MaxDepth = 32;
+
+    // The whole request, the body included: once the headers are in, the client's own
+    // timeout no longer applies, and every sensor waits at the gate meanwhile.
+    internal static TimeSpan RequestDeadline { get; set; } = TimeSpan.FromSeconds(3);
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(2) };
     private static readonly object Gate = new();
     private static IReadOnlyList<Reading> _cache = [];
@@ -82,7 +86,8 @@ internal static class LibreHardwareMonitorClient
                 }
 
                 // Headers first: the body is read only up to the limit, never buffered whole.
-                using var response = Http.Send(request, HttpCompletionOption.ResponseHeadersRead);
+                using var deadline = new CancellationTokenSource(RequestDeadline);
+                using var response = Http.Send(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token);
                 if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
                 {
                     throw new InvalidOperationException(_user.Length > 0
@@ -96,14 +101,17 @@ internal static class LibreHardwareMonitorClient
                     throw new InvalidOperationException($"its answer is larger than {MaxResponseBytes / (1024 * 1024)} MB");
                 }
 
-                _cache = Parse(ReadLimited(response.Content.ReadAsStream()));
+                _cache = Parse(ReadLimited(response.Content.ReadAsStream(deadline.Token), deadline.Token));
                 _cacheError = null;
                 return _cache;
             }
             catch (Exception ex)
             {
+                var why = ex is OperationCanceledException
+                    ? $"no complete answer within {RequestDeadline.TotalSeconds:0} seconds"
+                    : ex.Message;
                 _cache = [];
-                _cacheError = $"LibreHardwareMonitor ({url}): {ex.Message}";
+                _cacheError = $"LibreHardwareMonitor ({url}): {why}";
                 throw new InvalidOperationException(_cacheError);
             }
         }
@@ -142,12 +150,13 @@ internal static class LibreHardwareMonitorClient
             : trimmed.TrimEnd('/') + "/data.json";
     }
 
-    private static string ReadLimited(Stream stream)
+    private static string ReadLimited(Stream stream, CancellationToken cancellationToken)
     {
         using var buffer = new MemoryStream();
         var chunk = new byte[81920];
         int read;
-        while ((read = stream.Read(chunk, 0, chunk.Length)) > 0)
+        // The synchronous Read cannot be cancelled; this one ends at the deadline.
+        while ((read = stream.ReadAsync(chunk, cancellationToken).AsTask().GetAwaiter().GetResult()) > 0)
         {
             if (buffer.Length + read > MaxResponseBytes)
             {
