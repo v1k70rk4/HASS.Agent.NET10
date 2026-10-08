@@ -232,6 +232,19 @@ internal sealed class MqttCompanionService : IDisposable
             retain: false);
     }
 
+    /// <summary>
+    /// Whether this PC's HA API token belongs to a Home Assistant administrator, as far as the
+    /// connection knows; null when it does not (no HA API connection, an older integration).
+    /// </summary>
+    public bool? HaTokenUserIsAdmin => _haWs is { IsConnected: true, HasOwnCommands: true } ws ? ws.TokenUserIsAdmin : null;
+
+    /// <summary>Asks the integration for a Home Assistant user of this PC's own and a token for it.</summary>
+    public Task<(string Token, string User)> ProvisionHaUserAsync()
+    {
+        var ws = _haWs ?? throw new InvalidOperationException("no HA API connection");
+        return ws.ProvisionUserAsync(_cts?.Token ?? CancellationToken.None);
+    }
+
     /// <summary>Re-sends the device discovery on the active transport. Returns false when not connected.</summary>
     public async Task<bool> RepublishDiscoveryAsync()
     {

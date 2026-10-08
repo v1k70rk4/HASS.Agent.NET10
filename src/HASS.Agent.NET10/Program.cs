@@ -192,6 +192,8 @@ internal static class Program
             _ = Task.Run(() => mqttService.RestartAsync());
         };
         trayContext.DiscoveryRepublishHandler = mqttService.RepublishDiscoveryAsync;
+        trayContext.HaTokenAdminProbe = () => mqttService.HaTokenUserIsAdmin;
+        trayContext.HaUserProvisioner = mqttService.ProvisionHaUserAsync;
         trayContext.UpdateStateHandler = mqttService.ReportUpdateStateAsync;
 
         try

@@ -124,6 +124,16 @@ internal sealed class MainForm : Form
     [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
     public Func<AppUpdateState, Task>? UpdateStateHandler { get; set; }
 
+    /// <summary>Wired by TrayApplicationContext: whether the HA API token is an administrator's.</summary>
+    [System.ComponentModel.Browsable(false)]
+    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+    public Func<bool?>? HaTokenAdminProbe { get; set; }
+
+    /// <summary>Wired by TrayApplicationContext: a Home Assistant user of this PC's own and its token.</summary>
+    [System.ComponentModel.Browsable(false)]
+    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+    public Func<Task<(string Token, string User)>>? HaUserProvisioner { get; set; }
+
     public MainForm(CompanionSettings settings, AppPaths paths, FileLog log, int initialPage = 0)
     {
         _settings = settings;
@@ -161,7 +171,11 @@ internal sealed class MainForm : Form
 
         // A PC whose settings every user may still use, with a user who is not an administrator:
         // asked when someone opens this window, never by itself at logon.
-        Shown += (_, _) => BeginInvoke(() => SettingsAccessForm.AskOnceIfOpen(this, _paths, _settings, _log));
+        Shown += (_, _) => BeginInvoke(async () =>
+        {
+            SettingsAccessForm.AskOnceIfOpen(this, _paths, _settings, _log);
+            await OfferOwnHaUserAsync();
+        });
 
         LoadSettings();
         SelectPage(initialPage);
@@ -2243,6 +2257,74 @@ internal sealed class MainForm : Form
         catch (Exception ex)
         {
             MessageBox.Show(string.Format(S("Danger.Error"), ex.Message), AppIdentity.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    /// <summary>
+    /// A PC connected with an administrator's token: offers, once the window opens, to swap it
+    /// for a Home Assistant user of the PC's own (not an administrator), made by the integration.
+    /// "Not now" asks again the next time; "Don't ask again" is kept in the settings.
+    /// </summary>
+    private async Task OfferOwnHaUserAsync()
+    {
+        if (_settings.HaApiOwnUserDeclined || HaUserProvisioner is null || HaTokenAdminProbe?.Invoke() != true || IsDisposed)
+        {
+            return;
+        }
+
+        var create = new TaskDialogButton(S("HaUser.Create"));
+        var later = new TaskDialogButton(S("HaUser.Later"));
+        var never = new TaskDialogButton(S("HaUser.Never"));
+        var page = new TaskDialogPage
+        {
+            Caption = AppIdentity.DisplayName,
+            Heading = S("HaUser.Heading"),
+            Text = S("HaUser.Text"),
+            Icon = TaskDialogIcon.ShieldWarningYellowBar,
+            Buttons = { create, later, never },
+            DefaultButton = create,
+        };
+
+        var answer = TaskDialog.ShowDialog(this, page);
+        if (answer == never)
+        {
+            _settings.HaApiOwnUserDeclined = true;
+            SettingsStore.Save(_paths, _settings);
+            return;
+        }
+
+        if (answer != create)
+        {
+            return;
+        }
+
+        try
+        {
+            var (token, user) = await HaUserProvisioner();
+            _settings.SetHaApiToken(token);
+            // The field is what a later Save writes: it must hold the new token as well.
+            _haApiToken.Text = token;
+            SettingsStore.Save(_paths, _settings);
+            _log.Info($"The HA API now uses the Home Assistant user {user}, made for this PC.");
+            SettingsSaved?.Invoke(this, EventArgs.Empty);
+            TaskDialog.ShowDialog(this, new TaskDialogPage
+            {
+                Caption = AppIdentity.DisplayName,
+                Heading = S("HaUser.DoneHeading"),
+                Text = string.Format(S("HaUser.DoneText"), user),
+                Icon = TaskDialogIcon.ShieldSuccessGreenBar,
+            });
+        }
+        catch (Exception ex)
+        {
+            _log.Warning($"Creating a Home Assistant user for this PC failed: {ex.Message}");
+            TaskDialog.ShowDialog(this, new TaskDialogPage
+            {
+                Caption = AppIdentity.DisplayName,
+                Heading = S("HaUser.FailedHeading"),
+                Text = string.Format(S("HaUser.FailedText"), ex.Message),
+                Icon = TaskDialogIcon.Error,
+            });
         }
     }
 

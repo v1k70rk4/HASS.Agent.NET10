@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Collections.Concurrent;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
@@ -41,6 +42,18 @@ internal sealed class HaWebSocketService : IDisposable
     // Assistant's fire_event and subscribe_events, which take an administrator's token.
     private bool _ownCommands;
     private bool _approvalNoticeLogged;
+
+    // Requests made while the receive loop runs: their result comes in through HandleMessage.
+    private readonly ConcurrentDictionary<int, TaskCompletionSource<JsonElement>> _pending = new();
+
+    /// <summary>
+    /// Whether the token's user is a Home Assistant administrator; null when not known (an
+    /// integration older than 10.9.1, or not connected).
+    /// </summary>
+    public bool? TokenUserIsAdmin { get; private set; }
+
+    /// <summary>The integration offers its own commands (10.9.1+), provisioning among them.</summary>
+    public bool HasOwnCommands => _ownCommands;
 
     /// <summary>Fired when a notification is received from HA via the event bus.</summary>
     public event Action<NotificationPayload>? NotificationReceived;
@@ -87,6 +100,7 @@ internal sealed class HaWebSocketService : IDisposable
         _commandSubscriptionId = null;
         _ownCommands = false;
         _approvalNoticeLogged = false;
+        TokenUserIsAdmin = null;
 
         var wsUrl = BuildWebSocketUrl();
         _log.Info($"HA WebSocket connecting to {wsUrl}");
@@ -127,6 +141,55 @@ internal sealed class HaWebSocketService : IDisposable
 
         // Step 5: Subscribe to hass_agent_command events.
         await SubscribeToCommandEventsAsync(cancellationToken);
+
+        // Step 6: whose token this is. An administrator's token can be swapped for a user
+        // of the PC's own (the app offers it), which only the integration's commands allow.
+        if (_ownCommands)
+        {
+            var id = await SendWithIdAsync(i => new { id = i, type = "auth/current_user" }, cancellationToken);
+            var (ok, _, _, result) = await ReadResultAsync(id, cancellationToken);
+            TokenUserIsAdmin = ok && result is { } user && user.TryGetProperty("is_admin", out var admin)
+                ? admin.GetBoolean()
+                : null;
+        }
+    }
+
+    /// <summary>
+    /// Asks the integration for a Home Assistant user of this PC's own, not an administrator,
+    /// and a token for it (an administrator's token only). Returns the token and the user's name.
+    /// </summary>
+    public async Task<(string Token, string User)> ProvisionUserAsync(CancellationToken cancellationToken)
+    {
+        if (!IsConnected || !_ownCommands)
+        {
+            throw new InvalidOperationException("not connected to a HASS.Agent integration 10.9.1 or newer");
+        }
+
+        var completion = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
+        int requestId = 0;
+        await SendWithIdAsync(id =>
+        {
+            requestId = id;
+            _pending[id] = completion;
+            return new { id, type = "hass_agent/provision", serial_number = _settings.SerialNumber };
+        }, cancellationToken);
+
+        try
+        {
+            var result = await completion.Task.WaitAsync(TimeSpan.FromSeconds(20), cancellationToken);
+            var token = result.GetProperty("access_token").GetString();
+            var user = result.TryGetProperty("user", out var name) ? name.GetString() : null;
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                throw new InvalidOperationException("Home Assistant returned no token");
+            }
+
+            return (token, user ?? string.Empty);
+        }
+        finally
+        {
+            _pending.TryRemove(requestId, out _);
+        }
     }
 
     /// <summary>
@@ -433,7 +496,7 @@ internal sealed class HaWebSocketService : IDisposable
             type = "hass_agent/subscribe",
             serial_number = _settings.SerialNumber
         }, cancellationToken);
-        var (ok, code, message) = await ReadResultAsync(ownId, cancellationToken);
+        var (ok, code, message, _) = await ReadResultAsync(ownId, cancellationToken);
         if (ok)
         {
             _commandSubscriptionId = ownId;
@@ -456,7 +519,7 @@ internal sealed class HaWebSocketService : IDisposable
         }, cancellationToken);
         _commandSubscriptionId = subscriptionId;
 
-        (ok, code, message) = await ReadResultAsync(subscriptionId, cancellationToken);
+        (ok, code, message, _) = await ReadResultAsync(subscriptionId, cancellationToken);
         if (!ok)
         {
             throw new InvalidOperationException(code == "unauthorized"
@@ -469,8 +532,8 @@ internal sealed class HaWebSocketService : IDisposable
         _log.Info("HA WebSocket subscribed to hass_agent_command events.");
     }
 
-    /// <summary>The result of one command: success, or the error code and message Home Assistant gave.</summary>
-    private async Task<(bool Success, string? Code, string? Message)> ReadResultAsync(int id, CancellationToken cancellationToken)
+    /// <summary>The result of one command: success with its result, or the error code and message Home Assistant gave.</summary>
+    private async Task<(bool Success, string? Code, string? Message, JsonElement? Result)> ReadResultAsync(int id, CancellationToken cancellationToken)
     {
         while (!cancellationToken.IsCancellationRequested)
         {
@@ -486,7 +549,8 @@ internal sealed class HaWebSocketService : IDisposable
 
             if (message.RootElement.TryGetProperty("success", out var successElement) && successElement.GetBoolean())
             {
-                return (true, null, null);
+                return (true, null, null,
+                    message.RootElement.TryGetProperty("result", out var resultElement) ? resultElement.Clone() : null);
             }
 
             string? code = null, text = null;
@@ -496,7 +560,7 @@ internal sealed class HaWebSocketService : IDisposable
                 text = error.TryGetProperty("message", out var messageElement) ? messageElement.GetString() : null;
             }
 
-            return (false, code, text);
+            return (false, code, text, null);
         }
 
         throw new OperationCanceledException(cancellationToken);
@@ -615,6 +679,26 @@ internal sealed class HaWebSocketService : IDisposable
         if (type == "pong")
         {
             // Heartbeat response — connection is alive.
+            return;
+        }
+
+        if (type == "result"
+            && message.RootElement.TryGetProperty("id", out var resultId)
+            && _pending.TryRemove(resultId.GetInt32(), out var waiting))
+        {
+            // The answer to a request made while the loop runs (ProvisionUserAsync).
+            if (message.RootElement.TryGetProperty("success", out var answered) && answered.GetBoolean())
+            {
+                waiting.TrySetResult(message.RootElement.TryGetProperty("result", out var answer) ? answer.Clone() : default);
+            }
+            else
+            {
+                var reason = message.RootElement.TryGetProperty("error", out var failure) && failure.TryGetProperty("message", out var text)
+                    ? text.GetString()
+                    : "refused";
+                waiting.TrySetException(new InvalidOperationException(reason));
+            }
+
             return;
         }
 

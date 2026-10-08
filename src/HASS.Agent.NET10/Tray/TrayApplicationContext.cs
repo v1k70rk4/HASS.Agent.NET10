@@ -41,6 +41,12 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
     /// <summary>Set by Program to the MQTT service: reports a manual update check to Home Assistant.</summary>
     public Func<AppUpdateState, Task>? UpdateStateHandler { get; set; }
 
+    /// <summary>Set by Program: whether the HA API token is an administrator's (null: not known).</summary>
+    public Func<bool?>? HaTokenAdminProbe { get; set; }
+
+    /// <summary>Set by Program: asks Home Assistant for a user of this PC's own and its token.</summary>
+    public Func<Task<(string Token, string User)>>? HaUserProvisioner { get; set; }
+
     public TrayApplicationContext(CompanionSettings settings, AppPaths paths, FileLog log)
     {
         _settings = settings;
@@ -228,6 +234,8 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
         _mainForm.DiscoveryRepublishHandler = () => DiscoveryRepublishHandler?.Invoke() ?? Task.FromResult(false);
         _mainForm.UpdateStateHandler = state => UpdateStateHandler?.Invoke(state) ?? Task.CompletedTask;
         _mainForm.DashboardPreviewHandler = ShowDashboard;
+        _mainForm.HaTokenAdminProbe = () => HaTokenAdminProbe?.Invoke();
+        _mainForm.HaUserProvisioner = HaUserProvisioner;
         _mainForm.SettingsSaved += (_, _) =>
         {
             _hotkeys.Apply(_settings.Hotkeys);
