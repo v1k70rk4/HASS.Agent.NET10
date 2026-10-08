@@ -410,6 +410,108 @@ internal sealed class HaWebSocketService : IDisposable
             tokenUser);
     }
 
+    /// <summary>
+    /// Whose a token is, and whether the integration has its own commands, over a short
+    /// connection of its own: for a PC on MQTT, whose HA API connection only comes up when
+    /// MQTT fails.
+    /// </summary>
+    public static async Task<(HaTokenUser? User, bool CanProvision)> ProbeTokenAsync(
+        string url, string token, string serialNumber, CancellationToken cancellationToken)
+    {
+        using var ws = await OpenAuthenticatedAsync(url, token, cancellationToken);
+        var messageId = 0;
+        var user = await TryGetCurrentUserAsync(ws, NextTestId(ref messageId), cancellationToken);
+        var subscribeId = NextTestId(ref messageId);
+        var (ownCommands, _, _) = await RequestAsync(
+            ws, subscribeId, new { id = subscribeId, type = "hass_agent/subscribe", serial_number = serialNumber }, cancellationToken);
+        await CloseQuietlyAsync(ws, cancellationToken);
+        return (user, ownCommands);
+    }
+
+    /// <summary>
+    /// Asks the integration for a Home Assistant user of the PC's own over a short connection
+    /// of its own (an administrator's token only), for a PC whose HA API connection is not up.
+    /// </summary>
+    public static async Task<(string Token, string User)> ProvisionOnceAsync(
+        string url, string token, string serialNumber, CancellationToken cancellationToken)
+    {
+        using var ws = await OpenAuthenticatedAsync(url, token, cancellationToken);
+        var (ok, result, error) = await RequestAsync(
+            ws, 1, new { id = 1, type = "hass_agent/provision", serial_number = serialNumber }, cancellationToken);
+        await CloseQuietlyAsync(ws, cancellationToken);
+        if (!ok || result is not { } answer || answer.GetProperty("access_token").GetString() is not { Length: > 0 } newToken)
+        {
+            throw new InvalidOperationException(error ?? "Home Assistant returned no token");
+        }
+
+        return (newToken, answer.TryGetProperty("user", out var name) ? name.GetString() ?? string.Empty : string.Empty);
+    }
+
+    private static async Task<ClientWebSocket> OpenAuthenticatedAsync(string url, string token, CancellationToken cancellationToken)
+    {
+        var ws = new ClientWebSocket();
+        try
+        {
+            await ws.ConnectAsync(new Uri(BuildWebSocketUrl(url)), cancellationToken);
+            using (await ReceiveMessageAsync(ws, cancellationToken))
+            {
+                // auth_required
+            }
+
+            await SendAsync(ws, new { type = "auth", access_token = token }, cancellationToken);
+            using var authResult = await ReceiveMessageAsync(ws, cancellationToken);
+            if (authResult.RootElement.GetProperty("type").GetString() != "auth_ok")
+            {
+                throw new InvalidOperationException("Home Assistant did not accept the token");
+            }
+
+            return ws;
+        }
+        catch
+        {
+            ws.Dispose();
+            throw;
+        }
+    }
+
+    /// <summary>One request and its result, on a connection nothing else reads.</summary>
+    private static async Task<(bool Ok, JsonElement? Result, string? Error)> RequestAsync(
+        ClientWebSocket ws, int id, object message, CancellationToken cancellationToken)
+    {
+        await SendAsync(ws, message, cancellationToken);
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            using var reply = await ReceiveMessageAsync(ws, cancellationToken);
+            if (!reply.RootElement.TryGetProperty("type", out var type) || type.GetString() != "result"
+                || !reply.RootElement.TryGetProperty("id", out var idElement) || idElement.GetInt32() != id)
+            {
+                continue;
+            }
+
+            if (reply.RootElement.TryGetProperty("success", out var success) && success.GetBoolean())
+            {
+                return (true, reply.RootElement.TryGetProperty("result", out var result) ? result.Clone() : null, null);
+            }
+
+            return (false, null, reply.RootElement.TryGetProperty("error", out var error)
+                && error.TryGetProperty("message", out var text) ? text.GetString() : "refused");
+        }
+
+        throw new OperationCanceledException(cancellationToken);
+    }
+
+    private static async Task CloseQuietlyAsync(ClientWebSocket ws, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "done", cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Closing a connection that is done with anyway.
+        }
+    }
+
     private static async Task<HaTokenUser?> TryGetCurrentUserAsync(ClientWebSocket ws, int id, CancellationToken cancellationToken)
     {
         try

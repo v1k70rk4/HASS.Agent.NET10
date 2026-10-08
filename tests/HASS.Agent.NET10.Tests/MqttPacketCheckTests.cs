@@ -74,6 +74,27 @@ public class MqttPacketCheckTests
     }
 
     [Fact]
+    public void The_login_of_a_connect_is_never_kept()
+    {
+        var connect = new MQTTnet.Packets.MqttConnectPacket
+        {
+            ClientId = "hass-agent",
+            Username = "rviktor",
+            Password = Encoding.UTF8.GetBytes("secret-password"),
+        };
+        var formatter = new MQTTnet.Formatter.MqttPacketFormatterAdapter(
+            MQTTnet.Formatter.MqttProtocolVersion.V500, new MQTTnet.Formatter.MqttBufferWriter(4096, 65535));
+        var bytes = formatter.Encode(connect).Join().ToArray();
+
+        var kept = OutgoingPacketCheck.WithoutLogin(bytes);
+
+        Assert.Equal(0x10, kept[0]);
+        Assert.True(kept.Length <= 5);
+        Assert.DoesNotContain("secret-password", Encoding.UTF8.GetString(kept));
+        Assert.DoesNotContain("rviktor", Encoding.UTF8.GetString(kept));
+    }
+
+    [Fact]
     public void What_mqttnet_encodes_passes()
     {
         // The bytes MQTTnet itself puts on the wire for a PUBLISH like ours.

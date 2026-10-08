@@ -44,6 +44,7 @@ internal sealed class OutgoingPacketCheck
     {
         var bytes = args.Buffer ?? [];
         var problem = args.Direction == MqttPacketFlowDirection.Outbound ? Check(bytes) : null;
+        bytes = WithoutLogin(bytes);
         lock (_gate)
         {
             _recent.Enqueue((DateTime.Now, args.Direction, bytes, problem));
@@ -60,6 +61,21 @@ internal sealed class OutgoingPacketCheck
         }
 
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// A CONNECT carries the broker's user name and password: only its fixed header is kept, so
+    /// the packet file (which people attach to bug reports) never holds them.
+    /// </summary>
+    internal static byte[] WithoutLogin(byte[] packet)
+    {
+        if (packet.Length == 0 || packet[0] >> 4 != 1)
+        {
+            return packet;
+        }
+
+        var position = 1;
+        return TryReadVariableInteger(packet, ref position, out _) ? packet[..position] : packet[..1];
     }
 
     /// <summary>
