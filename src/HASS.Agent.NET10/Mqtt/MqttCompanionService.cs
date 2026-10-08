@@ -62,6 +62,7 @@ internal sealed class MqttCompanionService : IDisposable
     private readonly CompanionSettings _settings;
     private readonly INotificationSink _notificationSink;
     private readonly Queue<string> _recentPublishes = new();
+    private OutgoingPacketCheck? _packetCheck;
     private readonly MediaSessionService? _mediaSessionService;
     private readonly SystemMetricsService? _systemMetricsService;
     private readonly SystemCommandService _systemCommandService;
@@ -890,6 +891,9 @@ internal sealed class MqttCompanionService : IDisposable
                 _client = _factory.CreateMqttClient();
                 _client.ApplicationMessageReceivedAsync += HandleMessageAsync;
                 _client.DisconnectedAsync += LogDisconnectAsync;
+                // Before connecting: MQTTnet only inspects packets when a handler is there then.
+                _packetCheck ??= new OutgoingPacketCheck(_log);
+                _client.InspectPacketAsync += _packetCheck.InspectAsync;
 
                 var options = BuildOptions();
                 _log.Info($"Connecting MQTT to {_settings.MqttHost}:{_settings.MqttPort}.");
@@ -1121,6 +1125,8 @@ internal sealed class MqttCompanionService : IDisposable
             {
                 _log.Warning($"Last packets sent before that: {string.Join(" | ", recent)}");
             }
+
+            _packetCheck?.Dump("session-closed");
         }
 
         return Task.CompletedTask;
@@ -2490,6 +2496,7 @@ internal sealed class MqttCompanionService : IDisposable
                 _ = publishTask.ContinueWith(static t => { _ = t.Exception; }, TaskScheduler.Default);
                 NoteSent(message, "stuck");
                 _log.Warning($"MQTT publish to {topic} stuck >{PublishTimeout.TotalSeconds:0}s; forcing reconnect.");
+                _packetCheck?.Dump("publish-stuck");
                 _forceReconnect = true;
                 return false;
             }
@@ -2503,7 +2510,8 @@ internal sealed class MqttCompanionService : IDisposable
             catch (Exception ex)
             {
                 NoteSent(message, "failed");
-                _log.Warning($"MQTT publish to {topic} failed ({ex.GetType().Name}); forcing reconnect.");
+                _log.Warning($"MQTT publish to {topic} failed ({ex.GetType().Name}: {ex.Message}); forcing reconnect.");
+                _packetCheck?.Dump("publish-failed");
                 _forceReconnect = true;
                 return false;
             }
