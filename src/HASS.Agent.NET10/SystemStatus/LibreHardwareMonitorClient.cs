@@ -24,6 +24,9 @@ internal static class LibreHardwareMonitorClient
     internal const int MaxResponseBytes = 4 * 1024 * 1024;
     internal const int MaxReadings = 5000;
     internal const int MaxNameLength = 200;
+    // Ids are compared with the one stored in the settings, so they are only cut where no
+    // real one ever reaches ("/lpc/nct6798d/0/temperature/1" is the usual length).
+    internal const int MaxIdLength = 1000;
     private const int MaxDepth = 32;
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(2) };
     private static readonly object Gate = new();
@@ -78,7 +81,8 @@ internal static class LibreHardwareMonitorClient
                         Convert.ToBase64String(Encoding.UTF8.GetBytes($"{_user}:{_password}")));
                 }
 
-                using var response = Http.Send(request);
+                // Headers first: the body is read only up to the limit, never buffered whole.
+                using var response = Http.Send(request, HttpCompletionOption.ResponseHeadersRead);
                 if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
                 {
                     throw new InvalidOperationException(_user.Length > 0
@@ -181,17 +185,17 @@ internal static class LibreHardwareMonitorClient
         if (!hasChildren)
         {
             var value = Shorten(GetString(node, "Value"));
-            var sensorId = Shorten(GetString(node, "SensorId"));
+            var sensorId = Shorten(GetString(node, "SensorId"), MaxIdLength);
             if (value.Length == 0 && sensorId.Length == 0)
             {
                 return;
             }
 
             // path: [root, computer, hardware..., group]
-            var hardware = path.Count > 3 ? string.Join(" / ", path.Skip(2).Take(path.Count - 3)) : string.Empty;
+            var hardware = path.Count > 3 ? Shorten(string.Join(" / ", path.Skip(2).Take(path.Count - 3))) : string.Empty;
             var (number, unit) = SplitValue(value);
             readings.Add(new Reading(
-                sensorId.Length > 0 ? sensorId : string.Join("/", path.Skip(2).Append(text)),
+                sensorId.Length > 0 ? sensorId : Shorten(string.Join("/", path.Skip(2).Append(text)), MaxIdLength),
                 hardware,
                 text,
                 number,
@@ -231,7 +235,7 @@ internal static class LibreHardwareMonitorClient
             : (null, unit);
     }
 
-    private static string Shorten(string text) => text.Length > MaxNameLength ? text[..MaxNameLength] : text;
+    private static string Shorten(string text, int max = MaxNameLength) => text.Length > max ? text[..max] : text;
 
     private static string GetString(JsonElement node, string name)
     {

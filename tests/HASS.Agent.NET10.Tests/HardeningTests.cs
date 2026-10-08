@@ -173,7 +173,9 @@ public class AddressWithoutSchemeTests
     [InlineData("10.0.0.5", "http://10.0.0.5")]
     [InlineData("homeassistant:8123", "http://homeassistant:8123")]
     [InlineData("[fd00::5]:8123", "http://[fd00::5]:8123")]
-    [InlineData("100.101.1.2:8123", "http://100.101.1.2:8123")]
+    [InlineData("100.101.1.2:8123", "https://100.101.1.2:8123")]   // CGNAT: an ISP's as well as Tailscale's
+    [InlineData("user:pass@ha.example.com", "https://user:pass@ha.example.com")]
+    [InlineData("user@192.168.1.10:8123", "http://user@192.168.1.10:8123")]
     [InlineData("abcdef.ui.nabu.casa", "https://abcdef.ui.nabu.casa")]
     [InlineData("ha.example.com:8443/", "https://ha.example.com:8443")]
     [InlineData("8.8.8.8", "https://8.8.8.8")]
@@ -209,8 +211,26 @@ public class LibreHardwareMonitorLimitTests
         var reading = Assert.Single(LibreHardwareMonitorClient.Parse(json));
 
         Assert.Equal(LibreHardwareMonitorClient.MaxNameLength, reading.Name.Length);
-        Assert.Equal(LibreHardwareMonitorClient.MaxNameLength, reading.Id.Length);
+        Assert.Equal(LibreHardwareMonitorClient.MaxIdLength, reading.Id.Length);
         Assert.Equal(LibreHardwareMonitorClient.MaxNameLength, reading.Hardware.Length);
+    }
+
+    [Fact]
+    public void An_id_a_real_monitor_sends_is_kept_whole()
+    {
+        var id = "/lpc/nct6798d/0/" + new string('t', 300);
+        var json = $$"""{"Text":"root","Children":[{"Text":"pc","Children":[{"Text":"board","Children":[{"Text":"Temperatures","Children":[{"Text":"CPU","Value":"45 °C","SensorId":"{{id}}"}]}]}]}]}""";
+
+        Assert.Equal(id, Assert.Single(LibreHardwareMonitorClient.Parse(json)).Id);
+    }
+
+    [Fact]
+    public void A_hardware_path_of_many_names_is_cut_too()
+    {
+        var levels = string.Concat(Enumerable.Range(0, 5).Select(i => $$"""{"Text":"{{new string('h', 150)}}","Children":["""));
+        var json = $$"""{"Text":"root","Children":[{"Text":"pc","Children":[{{levels}}{"Text":"Temperatures","Children":[{"Text":"CPU","Value":"45 °C","SensorId":"/x"}]}{{string.Concat(Enumerable.Repeat("]}", 5))}}]}]}""";
+
+        Assert.Equal(LibreHardwareMonitorClient.MaxNameLength, Assert.Single(LibreHardwareMonitorClient.Parse(json)).Hardware.Length);
     }
 
     [Fact]

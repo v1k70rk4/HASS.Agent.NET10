@@ -10,8 +10,8 @@ The second beta of 10.9.1, still about security: the last three findings of the 
 
 **New since beta.1**
 
-- **A Home Assistant address typed without `http://` or `https://` gets https unless it points into the home network.** It always got plain http before, so an address on the internet (a Nabu Casa one, your own domain) sent the token unencrypted, or did not work at all. A `.local` name, a name without a dot, a private or Tailscale IP address and `localhost` still get http, as Home Assistant answers there by default.
-- **Limits on what LibreHardwareMonitor sends.** The answer is read up to 4 MB, at most 5000 values are kept, and names are cut at 200 characters, so a broken or hostile server cannot make the app hold an unbounded amount of memory. A real one sends a few hundred values in tens of kilobytes.
+- **A Home Assistant address typed without `http://` or `https://` gets https unless it points into the home network.** It always got plain http before, so an address on the internet (a Nabu Casa one, your own domain) sent the token unencrypted, or did not work at all. A `.local` name, a name without a dot, a private IP address and `localhost` still get http, as Home Assistant answers there by default; for anything else, plain http has to be typed.
+- **Limits on what LibreHardwareMonitor sends.** The answer is read up to 4 MB as it arrives, at most 5000 values are kept, and names are cut at 200 characters, so a broken or hostile server cannot make the app hold an unbounded amount of memory. A real one sends a few hundred values in tens of kilobytes.
 - Old notification pictures are cleaned up once an hour instead of on every notification with a picture.
 
 ## 10.9.1-beta.1

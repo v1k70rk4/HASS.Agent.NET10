@@ -330,10 +330,17 @@ internal sealed class CompanionSettings
     internal static bool IsLocalAddress(string address)
     {
         var host = address.Trim();
-        var slash = host.IndexOf('/');
+        var slash = host.IndexOfAny(['/', '?', '#']);
         if (slash >= 0)
         {
             host = host[..slash];
+        }
+
+        // "user:password@host": the host is what follows the last '@'.
+        var at = host.LastIndexOf('@');
+        if (at >= 0)
+        {
+            host = host[(at + 1)..];
         }
 
         if (host.StartsWith('['))
@@ -362,8 +369,9 @@ internal sealed class CompanionSettings
             return bytes[0] == 10
                 || (bytes[0] == 172 && bytes[1] is >= 16 and <= 31)
                 || (bytes[0] == 192 && bytes[1] == 168)
-                || (bytes[0] == 169 && bytes[1] == 254)
-                || (bytes[0] == 100 && bytes[1] is >= 64 and <= 127); // CGNAT, Tailscale
+                || (bytes[0] == 169 && bytes[1] == 254);
+            // Not 100.64.0.0/10: a Tailscale address is one, but so is an ISP's shared
+            // network. Plain http there takes an http:// typed by the user.
         }
 
         host = host.TrimEnd('.').ToLowerInvariant();
