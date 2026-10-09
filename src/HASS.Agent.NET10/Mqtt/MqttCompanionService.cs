@@ -1107,6 +1107,11 @@ internal sealed class MqttCompanionService : IDisposable
                         ? " Sessions that keep dying right after connecting usually mean the broker is closing them: another client using the same client ID, a user or ACL that was removed, or a broker restart loop."
                         : string.Empty;
                     _log.Warning($"MQTT connection lost after {lifetime.TotalSeconds:0}s; reconnecting in {seconds}s.{hint}");
+
+                    // Mosquitto drops a client over a malformed packet by closing the socket,
+                    // which MQTTnet reports as a normal disconnection: LogDisconnectAsync
+                    // does not see a problem there, so the packets are kept from here.
+                    _packetCheck?.Dump("connection-lost");
                 }
             }
             catch (OperationCanceledException)
