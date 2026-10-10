@@ -95,6 +95,23 @@ public class MqttPacketCheckTests
     }
 
     [Fact]
+    public void A_notification_and_its_answer_are_left_out_of_the_packet_file()
+    {
+        var notification = Publish("hass.agent/notifications/abc", Encoding.UTF8.GetBytes("""{"message":"Your code is 1234"}"""));
+        var answer = Publish("hass.agent/notifications/abc/actions", Encoding.UTF8.GetBytes("""{"reply":"my password"}"""));
+        var sensors = Publish("hass.agent/sensors/abc/state", Encoding.UTF8.GetBytes("""{"cpu":1}"""));
+
+        var keptNotification = OutgoingPacketCheck.WithoutPrivateText(notification);
+        var keptAnswer = OutgoingPacketCheck.WithoutPrivateText(answer);
+
+        Assert.Equal(notification.Length, keptNotification.Length);
+        Assert.DoesNotContain("1234", Encoding.UTF8.GetString(keptNotification));
+        Assert.Contains("hass.agent/notifications/abc", Encoding.UTF8.GetString(keptNotification));
+        Assert.DoesNotContain("password", Encoding.UTF8.GetString(keptAnswer));
+        Assert.Equal(sensors, OutgoingPacketCheck.WithoutPrivateText(sensors));
+    }
+
+    [Fact]
     public void What_mqttnet_encodes_passes()
     {
         // The bytes MQTTnet itself puts on the wire for a PUBLISH like ours.

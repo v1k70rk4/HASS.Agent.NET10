@@ -61,6 +61,7 @@ english.StatusFirewall=Configuring firewall...
 english.TaskGroupAccess=Who will use HASS.Agent on this PC? (its settings hold the Home Assistant token)
 english.TaskAccessMe=Only me
 english.TaskAccessAll=Every user of this PC
+english.UninstallSettings=Remove the settings too?%n%nThey hold the Home Assistant token, the MQTT password and the API key. Keep them only if you will install HASS.Agent .NET10 again.
 
 hungarian.TaskAutostart=Automatikus indítás bejelentkezéskor
 hungarian.TaskGroupStartup=Indítás:
@@ -72,6 +73,7 @@ hungarian.StatusFirewall=Tűzfal beállítása...
 hungarian.TaskGroupAccess=Ki fogja használni a HASS.Agentet ezen a gépen? (a beállításai a Home Assistant tokent is tartalmazzák)
 hungarian.TaskAccessMe=Csak én
 hungarian.TaskAccessAll=A gép minden felhasználója
+hungarian.UninstallSettings=A beállításokat is törlöd?%n%nBennük van a Home Assistant token, az MQTT jelszó és az API kulcs. Csak akkor tartsd meg őket, ha újra telepíted a HASS.Agent .NET10-et.
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
@@ -283,14 +285,28 @@ begin
     if (PreviousVersion <> '') and (PreviousVersion <> '{#MyAppVersion}') then
       SaveStringToFile(ExpandConstant('{commonappdata}\HASS.Agent.NET10\updated-from'), PreviousVersion, False);
 
-    { Installing the service also approves what the current settings ask it to run
-      (service-policy.json next to the program): an update keeps everything working. }
+    { Installing the service keeps what an administrator approved for it before
+      (service-policy.json next to the program), so an update keeps everything working.
+      Anything new in the settings waits for the approval prompt in the app. }
     if ExistingServiceInstalled or WizardIsTaskSelected('installservice') then
     begin
       RunHidden(ExpandConstant('{app}\{#MyAppExeName}'), '--install-service --quiet');
     end;
 
+    { As the user who started the setup, not with its administrator rights: the app runs
+      the commands in the settings, which other users may be able to write. }
     if not IsSilentUpdate() then
-      Exec(ExpandConstant('{app}\{#MyAppExeName}'), '', '', SW_SHOWNORMAL, ewNoWait, ResultCode);
+      ExecAsOriginalUser(ExpandConstant('{app}\{#MyAppExeName}'), '', '', SW_SHOWNORMAL, ewNoWait, ResultCode);
+  end;
+end;
+
+{ The settings stay after an uninstall unless the person asks otherwise: a reinstall finds
+  them again. Asked, not assumed, since they hold the tokens; never in a silent uninstall. }
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+begin
+  if (CurUninstallStep = usPostUninstall) and (not UninstallSilent()) then
+  begin
+    if MsgBox(CustomMessage('UninstallSettings'), mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES then
+      DelTree(ExpandConstant('{commonappdata}\HASS.Agent.NET10'), True, True, True);
   end;
 end;

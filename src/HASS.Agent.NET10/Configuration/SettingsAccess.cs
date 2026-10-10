@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using System.Security.AccessControl;
 using System.Security.Principal;
 using HASS.Agent.Companion.Runtime;
+using HASS.Agent.Companion.Security;
 
 namespace HASS.Agent.Companion.Configuration;
 
@@ -218,11 +219,28 @@ internal static class SettingsAccess
     /// </summary>
     public static void KeepAsIs(string configDirectory)
     {
-        var state = RestrictionState(configDirectory);
-        if (state is not false)
+        if (Directory.Exists(configDirectory))
         {
-            // Limited, or the rule could not be read: an update never opens a folder it is not
-            // sure about.
+            MakeSafe(configDirectory);
+        }
+
+        var state = RestrictionState(configDirectory);
+        if (state is true)
+        {
+            // Limited: the same users, in the rule's current shape (one from before 10.9.1-beta.5
+            // also let them delete or replace the folder itself).
+            var limitedTo = ExplicitUsers(configDirectory);
+            if (limitedTo.Count > 0)
+            {
+                SetFolderRule(configDirectory, limitedTo);
+            }
+
+            return;
+        }
+
+        if (state is null)
+        {
+            // The rule could not be read: an update never opens a folder it is not sure about.
             return;
         }
 
@@ -257,12 +275,14 @@ internal static class SettingsAccess
         : users > 0 && nonAdministrators == 0 ? UpdateAction.LimitToTheUsers
         : UpdateAction.OpenToEveryone;
 
-    // Exactly this on the folder: SYSTEM and administrators full control, the given users
-    // Modify, nothing inherited from ProgramData (which lets every user read). Then the files
-    // under it lose any rule of their own and inherit only that.
+    // Exactly this on the folder: SYSTEM and administrators full control, nothing inherited
+    // from ProgramData (which lets every user read), and the given users Modify on what is in
+    // it, but on the folder itself only list, read and create: they cannot delete, rename or
+    // replace the folder the service writes into. Then the files under it lose any rule of
+    // their own and inherit only that.
     internal static void SetFolderRule(string configDirectory, IEnumerable<SecurityIdentifier> users)
     {
-        Directory.CreateDirectory(configDirectory);
+        MakeSafe(configDirectory);
         const InheritanceFlags inherit = InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit;
         var security = new DirectorySecurity();
         security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
@@ -270,17 +290,101 @@ internal static class SettingsAccess
         security.AddAccessRule(new FileSystemAccessRule(Administrators, FileSystemRights.FullControl, inherit, PropagationFlags.None, AccessControlType.Allow));
         foreach (var user in users.Distinct())
         {
-            security.AddAccessRule(new FileSystemAccessRule(user, FileSystemRights.Modify | FileSystemRights.Synchronize, inherit, PropagationFlags.None, AccessControlType.Allow));
+            security.AddAccessRule(new FileSystemAccessRule(user, UsersOnTheFolder, InheritanceFlags.None, PropagationFlags.None, AccessControlType.Allow));
+            security.AddAccessRule(new FileSystemAccessRule(user, FileSystemRights.Modify | FileSystemRights.Synchronize, inherit, PropagationFlags.InheritOnly, AccessControlType.Allow));
         }
 
         new DirectoryInfo(configDirectory).SetAccessControl(security);
         if (Directory.EnumerateFileSystemEntries(configDirectory).Any())
         {
             // A file another process holds open still takes the new rule; one that cannot is
-            // reported but does not undo what the folder already has.
-            Icacls($"\"{Path.Combine(configDirectory, "*")}\" /reset /T /C", mustSucceed: false);
+            // reported but does not undo what the folder already has. /L: a link made since
+            // MakeSafe is changed itself, never what it points to.
+            Icacls($"\"{Path.Combine(configDirectory, "*")}\" /reset /T /C /L", mustSucceed: false);
         }
     }
+
+    /// <summary>What the users get on the settings folder itself: list, read, create files and folders.</summary>
+    internal const FileSystemRights UsersOnTheFolder =
+        FileSystemRights.ReadAndExecute | FileSystemRights.CreateFiles | FileSystemRights.CreateDirectories | FileSystemRights.Synchronize;
+
+    /// <summary>
+    /// Before an administrator sets the folder's rule: it must be a real folder, owned by
+    /// SYSTEM, the administrators or whoever is setting the rule, with no links in it.
+    /// ProgramData lets every user create a folder, and the creator owns it, so another user
+    /// could have made this one before the first install (and kept the right to change its rule
+    /// later), or made it a junction to a folder of their choosing, whose rule the administrator
+    /// would then set. A link, here or under it, is removed (the link only, not where it
+    /// points); what someone else owns is taken over by the administrators.
+    /// </summary>
+    internal static void MakeSafe(string configDirectory)
+    {
+        var folder = new DirectoryInfo(configDirectory);
+        if (folder.Exists && folder.Attributes.HasFlag(FileAttributes.ReparsePoint))
+        {
+            folder.Delete();
+        }
+
+        Directory.CreateDirectory(configDirectory);
+        using (TokenPrivileges.Enable(TokenPrivileges.TakeOwnership, TokenPrivileges.Restore))
+        {
+            TakeOver(new DirectoryInfo(configDirectory));
+            TakeOverContents(configDirectory);
+        }
+    }
+
+    private static void TakeOverContents(string directory)
+    {
+        foreach (var entry in new DirectoryInfo(directory).EnumerateFileSystemInfos())
+        {
+            if (entry.Attributes.HasFlag(FileAttributes.ReparsePoint))
+            {
+                entry.Delete();
+                continue;
+            }
+
+            TakeOver(entry);
+            if (entry is DirectoryInfo subdirectory)
+            {
+                TakeOverContents(subdirectory.FullName);
+            }
+        }
+    }
+
+    // Owner only: the rule itself is set afterwards, for the folder and (inherited) for the rest.
+    private static void TakeOver(FileSystemInfo entry)
+    {
+        switch (entry)
+        {
+            case DirectoryInfo directory when !OwnerIsTrusted(directory.GetAccessControl(AccessControlSections.Owner)):
+                var directorySecurity = new DirectorySecurity();
+                directorySecurity.SetOwner(Administrators);
+                directory.SetAccessControl(directorySecurity);
+                break;
+            case FileInfo file when !OwnerIsTrusted(file.GetAccessControl(AccessControlSections.Owner)):
+                var fileSecurity = new FileSecurity();
+                fileSecurity.SetOwner(Administrators);
+                file.SetAccessControl(fileSecurity);
+                break;
+        }
+    }
+
+    private static bool OwnerIsTrusted(FileSystemSecurity security) =>
+        security.GetOwner(typeof(SecurityIdentifier)) is SecurityIdentifier owner
+        && (owner == LocalSystem || owner == Administrators || owner == CurrentUser.Value);
+
+    private static readonly Lazy<SecurityIdentifier?> CurrentUser = new(() => WindowsIdentity.GetCurrent().User);
+
+    /// <summary>The users an explicit rule on the folder lets in, besides SYSTEM and the administrators.</summary>
+    private static IReadOnlyList<SecurityIdentifier> ExplicitUsers(string configDirectory) =>
+        new DirectoryInfo(configDirectory).GetAccessControl()
+            .GetAccessRules(includeExplicit: true, includeInherited: false, typeof(SecurityIdentifier))
+            .Cast<FileSystemAccessRule>()
+            .Where(rule => rule.AccessControlType == AccessControlType.Allow)
+            .Select(rule => rule.IdentityReference).OfType<SecurityIdentifier>()
+            .Where(sid => sid != LocalSystem && sid != Administrators)
+            .Distinct()
+            .ToList();
 
     private static void Icacls(string arguments, bool mustSucceed = true)
     {

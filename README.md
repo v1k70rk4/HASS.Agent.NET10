@@ -62,7 +62,7 @@ If you download a published self-contained build, you do **not** need to install
    Or download the signed installer from [Releases](https://github.com/v1k70rk4/HASS.Agent.NET10/releases) (see [Code Signing](#code-signing)), or [build from source](docs/development.md#build-from-source).
 3. Run the installer or start `HASS.Agent.NET10.exe` directly.
 4. Open the tray icon and go to settings.
-5. On the **MQTT** page, enable MQTT and enter your broker address and credentials.
+5. On the **MQTT** page, enable MQTT and enter your broker address and credentials. Whoever can log in to the broker can send this PC commands, so keep that login to yourself ([more](docs/connection.md#mqtt-topics)).
    Alternatively, on the **HA API** page, enable the WebSocket connection to Home Assistant (useful for remote access via Nabu Casa or when no MQTT broker is available).
 6. On the **Capabilities** page, choose which features are handled by the tray app vs. the service.
 7. On the **Sensors** page, enable built-in sensors and add custom sensors.
@@ -85,7 +85,7 @@ The setup package is built with [Inno Setup](https://jrsoftware.org/isinfo.php).
 
 The installer automatically configures a **Windows Firewall** rule (Private profile, TCP port 5115) for the Local HTTP API, so manual firewall setup is not needed.
 
-During upgrades the installer stops the running tray app, stops the system service if installed, replaces the files, reinstalls/starts the service, and restarts the tray app. On uninstall the firewall rule is removed automatically.
+During upgrades the installer stops the running tray app, stops the system service if installed, replaces the files, reinstalls/starts the service, and restarts the tray app. On uninstall the firewall rule is removed automatically, and you are asked whether the settings (with the tokens and passwords in them) should go too.
 
 ---
 

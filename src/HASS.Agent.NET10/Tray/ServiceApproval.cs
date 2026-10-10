@@ -32,14 +32,17 @@ internal static class ServiceApproval
         }
 
         var names = string.Join(", ", pending);
-        if (MessageBox.Show(owner, string.Format(Strings.Get("SvcMgr.ApprovalNeeded"), names), AppIdentity.DisplayName,
+        // What each one runs, not only its name: the settings can be written by others, and
+        // the administrator approves what is shown here.
+        var shown = Environment.NewLine + string.Join(Environment.NewLine, PendingDescriptions(settings, current));
+        if (MessageBox.Show(owner, string.Format(Strings.Get("SvcMgr.ApprovalNeeded"), shown), AppIdentity.DisplayName,
                 MessageBoxButtons.OKCancel, MessageBoxIcon.Information) != DialogResult.OK)
         {
             log.Info($"Service approval skipped by the user: {names}.");
             return;
         }
 
-        var (outcome, error) = await ElevatedRun.StartAsync("--approve-service-commands --quiet");
+        var (outcome, error) = await ElevatedRun.StartAsync($"--approve-service-commands --quiet --expect {current.PendingKey(settings)}");
         if (error is not null)
         {
             log.Warning($"Unable to start the service approval: {error}");
@@ -64,6 +67,21 @@ internal static class ServiceApproval
         log.Warning($"Not approved for the service: {names}.");
         MessageBox.Show(owner, string.Format(Strings.Get("SvcMgr.ApprovalDeclined"), names), AppIdentity.DisplayName,
             MessageBoxButtons.OK, MessageBoxIcon.Warning);
+    }
+
+    /// <summary>"Name: what it runs" for each entry <see cref="PendingNames"/> lists, cut to one short line.</summary>
+    internal static IReadOnlyList<string> PendingDescriptions(CompanionSettings settings, ServicePolicy policy) =>
+        settings.CustomCommands.Where(command => ServicePolicy.NeedsApproval(command) && !policy.Allows(command))
+            .Select(command => Describe(command.Name, $"{command.Command} {command.Arguments}"))
+            .Concat(settings.CustomSensors.Where(sensor => ServicePolicy.NeedsApproval(sensor) && !policy.Allows(sensor))
+                .Select(sensor => Describe(sensor.Name, sensor.Parameter)))
+            .ToList();
+
+    private static string Describe(string name, string? runs)
+    {
+        const int Longest = 120;
+        var line = string.Join(' ', (runs ?? string.Empty).Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        return $"• {name}: {(line.Length > Longest ? line[..Longest] + "…" : line)}";
     }
 
     /// <summary>The names of what the settings ask the service to run and the policy does not approve.</summary>

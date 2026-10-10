@@ -114,3 +114,27 @@ public class NotificationStyleTests
         Assert.Equal("window", NotificationStyles.Normalize("whatever", fallback: NotificationStyles.Window));
     }
 }
+
+public class NotificationPictureAddressTests
+{
+    [Theory]
+    [InlineData("192.168.1.10", true)]      // Home Assistant, a camera on the LAN
+    [InlineData("10.0.0.5", true)]
+    [InlineData("2001:db8::1", true)]
+    [InlineData("fe80::1", true)]           // a .local name can resolve to one
+    [InlineData("127.0.0.1", false)]        // this PC
+    [InlineData("::1", false)]
+    [InlineData("::ffff:127.0.0.1", false)]
+    [InlineData("0.0.0.0", false)]
+    [InlineData("169.254.169.254", false)]  // link-local
+    public void Pictures_are_not_fetched_from_this_pc(string address, bool allowed)
+    {
+        Assert.Equal(allowed, HASS.Agent.Companion.Tray.NotificationImageCache.IsAllowedTarget(System.Net.IPAddress.Parse(address)));
+    }
+
+    [Fact]
+    public void Home_assistant_on_this_pc_is_allowed()
+    {
+        Assert.True(HASS.Agent.Companion.Tray.NotificationImageCache.IsAllowedTarget(System.Net.IPAddress.Loopback, allowThisPc: true));
+    }
+}
