@@ -2,7 +2,7 @@
 
 ![Windows](https://img.shields.io/badge/Windows-10%202004%2B%20%7C%2011-0078D4?logo=windows&logoColor=white)
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet&logoColor=white)
-![Version](https://img.shields.io/badge/version-10.9.1--beta.4-orange)
+![Version](https://img.shields.io/badge/version-10.9.1--beta.5-orange)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-MQTT%20%7C%20WebSocket%20API-41BDF5?logo=homeassistant&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/15316/badge)](https://www.bestpractices.dev/projects/15316)
@@ -26,7 +26,7 @@ It is designed for Windows PCs you want to observe and control from Home Assista
 
 The .NET10 line starts at **version 10.0.0**. The classic client is a separate program: if you want to stay with it, it is still available from its own project, and the integration keeps a [`legacy` branch](https://github.com/v1k70rk4/HASS.Agent.NET10-Integration/tree/legacy) for it. Thinking about switching? See [Coming from HASS.Agent](docs/migrating.md).
 
-> **Stable:** [10.9.0](https://github.com/v1k70rk4/HASS.Agent.NET10/releases/latest) &nbsp;·&nbsp; **Beta:** [10.9.1-beta.4](https://github.com/v1k70rk4/HASS.Agent.NET10/releases/tag/v10.9.1-beta.4) &nbsp;·&nbsp; [What changed](#what-changed) &nbsp;·&nbsp; [Full changelog](CHANGELOG.md)
+> **Stable:** [10.9.0](https://github.com/v1k70rk4/HASS.Agent.NET10/releases/latest) &nbsp;·&nbsp; **Beta:** [10.9.1-beta.5](https://github.com/v1k70rk4/HASS.Agent.NET10/releases/tag/v10.9.1-beta.5) &nbsp;·&nbsp; [What changed](#what-changed) &nbsp;·&nbsp; [Full changelog](CHANGELOG.md)
 
 ---
 
@@ -169,13 +169,27 @@ No telemetry, analytics, or usage data is collected or transmitted.
 
 ## What Changed
 
-### 10.9.1-beta.4
+### 10.9.1-beta.5
 
 > **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered it, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.9.0**, below.
 
-The fourth beta of 10.9.1: the HA API no longer needs an administrator's token. With the integration's [10.9.1-beta.4](https://github.com/v1k70rk4/HASS.Agent.NET10-Integration/releases/tag/v10.9.1-beta.4) (in HACS: **Redownload**, **Show beta versions**) the app offers to create a Home Assistant user of the PC's own, and switches to it. Works with the integration **10.6.7** or newer; with one older than 10.9.1-beta.4 the HA API connects as before. Signed release.
+The fifth beta of 10.9.1: fixes from a security review of the app, its installer and the release flow, most of them about other users of the same PC. Nothing changes in how the app is used. Works with the integration **10.6.7** or newer; there is no new integration with this one. Signed release.
 
-**New since beta.3**
+**New since beta.4**
+
+- **An update no longer approves new commands for the service.** Updating the app or installing the service approved whatever the settings asked the service to run at that moment. On a PC where every user may use the settings, any of them could put a command there and have it run as SYSTEM after the next update. Now an update keeps only what an administrator approved before, unchanged. Something new is approved only from the prompt after the settings are saved, and only exactly what that prompt showed; the prompt now lists what each command runs. An update from 10.9.0 or older, which had no approvals yet, still approves the current settings once.
+- **The settings folder can no longer be taken over.** Every user may create a folder in ProgramData, so another user could have made HASS.Agent's folder before the first install, or made it a link to a folder of their choosing, whose access rule the installer would then have set. Before setting the rule the app now removes such links and takes over what another user owns. Users may change what is in the folder, but no longer delete or replace the folder itself.
+- The Windows service downloads an update into a new folder that only administrators can use. On older Windows 10 its temp folder let other users get at the installer between the signature check and the start.
+- Setup starts the app as the user who ran it, not with administrator rights.
+- An update installer whose signing certificate has been revoked is not run.
+- Notification pictures: at most two downloads at a time, none from this PC itself or from 169.254.x.x, redirects checked one by one, nothing over 50 megapixels.
+- MQTT messages over 1 MB are ignored.
+- A command sensor's command goes to Home Assistant as a hash instead of its text: the device message stays on the broker, where any client can read it.
+- The **Test** button of the editor says when only the service is ticked: the test runs as you, the service runs it as SYSTEM.
+- Uninstalling asks whether to remove the settings, with the tokens in them.
+- [Connecting to Home Assistant](docs/connection.md#mqtt-topics) says why the MQTT login is worth keeping to yourself: whoever can log in to the broker can send the PC commands.
+
+**From beta.4**
 
 - **The HA API no longer needs an administrator's token.** The connection used Home Assistant's `fire_event` and `subscribe_events`, which only an administrator may use, so the token on the PC was one that can change everything in Home Assistant, and a PC that was broken into gave it away. With the integration 10.9.1 or newer the app uses the integration's own commands instead, which work with a token of a Home Assistant user who is not an administrator; an administrator approves such a PC once in Home Assistant. The app also only gets the commands meant for itself now, not those of every PC. An administrator's token keeps working, and with an older integration the app connects as before. **The easy way there:** when the app connects with an administrator's token, its window offers to create a Home Assistant user for this PC (not an administrator, without a password) and switches to its token; the HA API page shows whose the token is and has the same button. How it works, and the way by hand: [A Home Assistant user for the PC](docs/connection.md#a-home-assistant-user-for-the-pc).
 - **The offer comes right after an administrator's token is saved**, not only the next time the window opens: a new install, where the token is put in for the first time, is where it helps most.
