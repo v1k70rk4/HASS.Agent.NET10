@@ -407,7 +407,7 @@ internal static partial class Strings
             ["SvcMgr.ApprovalNeedsAdmin"] = "A szolgáltatás parancsainak jóváhagyásához rendszergazda kell.",
             ["SvcMgr.Approved"] = "A szolgáltatás mostantól futtathatja a neki beállított parancsokat és parancs-szenzorokat.",
             ["SvcMgr.ApprovalFailed"] = "A szolgáltatás parancsait nem sikerült jóváhagyni: {0}",
-            ["SvcMgr.ApprovalNeeded"] = "A szolgáltatás SYSTEM-ként fut, ezért az általa futtatott parancsokhoz és parancs-szenzorokhoz rendszergazdai jóváhagyás kell. Ezt a Windows most kéri. Nézd meg, melyik mit futtat:\n{0}\n\nJóváhagyás nélkül a szolgáltatás ezeket kihagyja, és amit tud, a tray app futtatja.",
+            ["SvcMgr.ApprovalNeeded"] = "A szolgáltatás SYSTEM-ként fut, ezért az általa futtatott parancsokhoz és parancs-szenzorokhoz rendszergazdai jóváhagyás kell; az OK után a Windows kéri. Nézd meg lent, melyik mit futtat, az egészet: pontosan ez lesz jóváhagyva. Jóváhagyás nélkül a szolgáltatás ezeket kihagyja, és amit tud, a tray app futtatja.",
             ["SvcMgr.ApprovalChanged"] = "Nincs jóváhagyva: a beállítások megváltoztak, miután a jóváhagyást kérted. Mentsd el őket újra, és újra megkérdezi.",
             ["SvcMgr.ApprovalDeclined"] = "Nincs jóváhagyva. A szolgáltatás kihagyja ezeket, amíg a beállításokat újra nem mented és a kérést jóvá nem hagyod: {0}",
             ["HaApi.TokenNotSaved"] = "(még nincs mentve)",

@@ -231,8 +231,23 @@ public class ServicePolicyTests : IDisposable
         var shown = ServiceApproval.PendingDescriptions(settings, new ServicePolicy());
 
         Assert.Equal(2, shown.Count);
-        Assert.Contains(@"Backup: C:\Tools\backup.exe --full", shown[0]);
+        Assert.StartsWith("Backup:", shown[0]);
+        Assert.Contains(@"C:\Tools\backup.exe --full", shown[0]);
         Assert.Contains("(Get-Date).Hour", shown[1]);
+    }
+
+    [Fact]
+    public void The_prompt_shows_a_script_whole_and_line_by_line()
+    {
+        // A comment sign on one line hides nothing that is on the next one.
+        var script = "Write-Output OK #" + new string(' ', 200) + "\nStart-Process evil.exe";
+        var settings = Settings(sensors: [Sensor(CustomSensorTypes.CommandPowerShell, script)]);
+
+        var shown = ServiceApproval.PendingDescriptions(settings, new ServicePolicy()).Single();
+        var lines = shown.Split(Environment.NewLine);
+
+        Assert.Contains(lines, line => line.Trim() == "Start-Process evil.exe");
+        Assert.Contains(lines, line => line.TrimStart().StartsWith("Write-Output OK #"));
     }
 
     [Fact]

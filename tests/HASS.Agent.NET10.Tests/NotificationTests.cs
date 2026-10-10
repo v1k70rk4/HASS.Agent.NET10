@@ -133,6 +133,23 @@ public class NotificationPictureAddressTests
     }
 
     [Fact]
+    public void This_pcs_own_lan_address_counts_as_this_pc()
+    {
+        var own = System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces()
+            .Where(adapter => adapter.OperationalStatus == System.Net.NetworkInformation.OperationalStatus.Up)
+            .SelectMany(adapter => adapter.GetIPProperties().UnicastAddresses)
+            .Select(unicast => unicast.Address)
+            .FirstOrDefault(address => address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork && !System.Net.IPAddress.IsLoopback(address) && !address.ToString().StartsWith("169.254."));
+        if (own is null)
+        {
+            return;
+        }
+
+        Assert.False(HASS.Agent.Companion.Tray.NotificationImageCache.IsAllowedTarget(own));
+        Assert.True(HASS.Agent.Companion.Tray.NotificationImageCache.IsAllowedTarget(own, allowThisPc: true));
+    }
+
+    [Fact]
     public void Home_assistant_on_this_pc_is_allowed()
     {
         Assert.True(HASS.Agent.Companion.Tray.NotificationImageCache.IsAllowedTarget(System.Net.IPAddress.Loopback, allowThisPc: true));

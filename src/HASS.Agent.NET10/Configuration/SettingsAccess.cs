@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Security.AccessControl;
@@ -294,13 +295,60 @@ internal static class SettingsAccess
             security.AddAccessRule(new FileSystemAccessRule(user, FileSystemRights.Modify | FileSystemRights.Synchronize, inherit, PropagationFlags.InheritOnly, AccessControlType.Allow));
         }
 
-        new DirectoryInfo(configDirectory).SetAccessControl(security);
+        using var folder = OpenTheFolderItself(configDirectory);
+        if (!SetKernelObjectSecurity(folder, DaclSecurityInformation, security.GetSecurityDescriptorBinaryForm()))
+        {
+            throw new Win32Exception(Marshal.GetLastWin32Error());
+        }
+
         if (Directory.EnumerateFileSystemEntries(configDirectory).Any())
         {
             // A file another process holds open still takes the new rule; one that cannot is
             // reported but does not undo what the folder already has. /L: a link made since
             // MakeSafe is changed itself, never what it points to.
             Icacls($"\"{Path.Combine(configDirectory, "*")}\" /reset /T /C /L", mustSucceed: false);
+        }
+    }
+
+    /// <summary>
+    /// The folder itself, opened so that what is checked is what gets the rule. Opened as it
+    /// is, not followed if it is a link (and refused if it became one since MakeSafe), and
+    /// without letting anyone delete or rename it while the handle is open: under the rule of
+    /// an earlier version its users could do both, and swap in a link to a folder of their
+    /// choosing between the check and the write, which would then get the rule.
+    /// </summary>
+    private static Microsoft.Win32.SafeHandles.SafeFileHandle OpenTheFolderItself(string configDirectory)
+    {
+        for (var attempt = 0; ; attempt++)
+        {
+            var handle = CreateFile(configDirectory, ReadControl | WriteDac, FileShareRead | FileShareWrite, IntPtr.Zero,
+                OpenExisting, FileFlagBackupSemantics | FileFlagOpenReparsePoint, IntPtr.Zero);
+            if (handle.IsInvalid)
+            {
+                var error = Marshal.GetLastWin32Error();
+                handle.Dispose();
+                throw new Win32Exception(error, $"{configDirectory} could not be opened");
+            }
+
+            if (!GetFileInformationByHandle(handle, out var information))
+            {
+                var error = Marshal.GetLastWin32Error();
+                handle.Dispose();
+                throw new Win32Exception(error);
+            }
+
+            if ((information.FileAttributes & (uint)FileAttributes.ReparsePoint) == 0)
+            {
+                return handle;
+            }
+
+            handle.Dispose();
+            if (attempt == 2)
+            {
+                throw new IOException($"{configDirectory} keeps being replaced with a link; its rule was not set.");
+            }
+
+            MakeSafe(configDirectory);
         }
     }
 
@@ -481,6 +529,42 @@ internal static class SettingsAccess
 
     [DllImport("netapi32.dll")]
     private static extern int NetApiBufferFree(IntPtr buffer);
+
+    private const uint ReadControl = 0x00020000;
+    private const uint WriteDac = 0x00040000;
+    private const uint FileShareRead = 0x1;
+    private const uint FileShareWrite = 0x2;
+    private const uint OpenExisting = 3;
+    private const uint FileFlagBackupSemantics = 0x02000000;
+    private const uint FileFlagOpenReparsePoint = 0x00200000;
+    private const uint DaclSecurityInformation = 0x4;
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern Microsoft.Win32.SafeHandles.SafeFileHandle CreateFile(
+        string name, uint access, uint share, IntPtr security, uint disposition, uint flags, IntPtr template);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool GetFileInformationByHandle(Microsoft.Win32.SafeHandles.SafeFileHandle file, out ByHandleFileInformation information);
+
+    // The descriptor carries the "protected" flag set by SetAccessRuleProtection; nothing is
+    // propagated to what is in the folder here, icacls does that afterwards.
+    [DllImport("advapi32.dll", SetLastError = true)]
+    private static extern bool SetKernelObjectSecurity(Microsoft.Win32.SafeHandles.SafeFileHandle handle, uint information, byte[] descriptor);
+
+    [StructLayout(LayoutKind.Sequential, Pack = 4)]
+    private struct ByHandleFileInformation
+    {
+        public uint FileAttributes;
+        public long CreationTime;
+        public long LastAccessTime;
+        public long LastWriteTime;
+        public uint VolumeSerialNumber;
+        public uint FileSizeHigh;
+        public uint FileSizeLow;
+        public uint NumberOfLinks;
+        public uint FileIndexHigh;
+        public uint FileIndexLow;
+    }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     private struct UserInfo1

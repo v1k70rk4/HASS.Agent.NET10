@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Runtime.InteropServices.WindowsRuntime;
 using HASS.Agent.Companion.Configuration;
@@ -175,8 +176,9 @@ internal sealed class NotificationImageCache
     private static volatile string? _ownHaHost;
 
     // The picture may be on the LAN (Home Assistant, a camera), so the LAN stays allowed. Not
-    // allowed: this PC itself, where local services trust a request from the same machine
-    // (unless Home Assistant is set up there), and link-local IPv4 (169.254.x.x). Checked on
+    // allowed: this PC itself, by any of its addresses, where local services trust a request
+    // from the same machine (unless Home Assistant is set up there), and link-local IPv4
+    // (169.254.x.x). Checked on
     // the address actually connected to, so neither a name that resolves there nor a redirect
     // gets round it.
     private static async ValueTask<Stream> ConnectAsync(SocketsHttpConnectionContext context, CancellationToken cancellationToken)
@@ -202,6 +204,23 @@ internal sealed class NotificationImageCache
         }
     }
 
+    // This PC's own LAN addresses count as this PC: a service listening on every interface
+    // may trust a request that comes from one of the machine's own addresses.
+    private static bool IsThisPcsAddress(IPAddress address)
+    {
+        try
+        {
+            return NetworkInterface.GetAllNetworkInterfaces()
+                .SelectMany(adapter => adapter.GetIPProperties().UnicastAddresses)
+                .Any(unicast => unicast.Address.Equals(address)
+                    || (unicast.Address.IsIPv4MappedToIPv6 && unicast.Address.MapToIPv4().Equals(address)));
+        }
+        catch (NetworkInformationException)
+        {
+            return false;
+        }
+    }
+
     internal static bool IsAllowedTarget(IPAddress address, bool allowThisPc = false)
     {
         if (address.IsIPv4MappedToIPv6)
@@ -209,7 +228,8 @@ internal sealed class NotificationImageCache
             address = address.MapToIPv4();
         }
 
-        if (!allowThisPc && (IPAddress.IsLoopback(address) || address.Equals(IPAddress.Any) || address.Equals(IPAddress.IPv6Any)))
+        if (!allowThisPc && (IPAddress.IsLoopback(address) || address.Equals(IPAddress.Any) || address.Equals(IPAddress.IPv6Any)
+            || IsThisPcsAddress(address)))
         {
             return false;
         }
