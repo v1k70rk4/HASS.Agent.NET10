@@ -183,6 +183,90 @@ public class ServicePolicyTests : IDisposable
     }
 
     [Fact]
+    public void An_update_keeps_what_was_approved_and_adds_nothing()
+    {
+        var approved = Command(CustomCommandTypes.Process, "backup.exe", id: "a");
+        var changed = Command(CustomCommandTypes.Process, "report.exe", id: "b");
+        var removed = Command(CustomCommandTypes.Process, "old.exe", id: "c");
+        var before = ServicePolicy.FromSettings(Settings([approved, changed, removed]));
+
+        // Meanwhile someone who can write the settings adds one and changes another.
+        changed.Arguments = "--upload-everything";
+        var planted = Command(CustomCommandTypes.PowerShell, "net localgroup administrators me /add", id: "d");
+        var settings = Settings([approved, changed, planted]);
+
+        var kept = before.KeepOnly(settings);
+
+        Assert.True(kept.Allows(approved));
+        Assert.False(kept.Allows(changed));
+        Assert.False(kept.Allows(planted));
+        Assert.Equal(["a"], kept.Commands.Select(entry => entry.Id));
+    }
+
+    [Fact]
+    public void The_approval_is_for_exactly_what_was_shown()
+    {
+        var policy = ServicePolicy.FromSettings(Settings([Command(CustomCommandTypes.Process, "a.exe", id: "1")]));
+        var shown = Settings([Command(CustomCommandTypes.Process, "a.exe", id: "1"), Command(CustomCommandTypes.Process, "b.exe", id: "2")]);
+        var key = policy.PendingKey(shown);
+
+        // The same settings, read again by the elevated process: the same key.
+        var same = Settings([Command(CustomCommandTypes.Process, "a.exe", id: "1"), Command(CustomCommandTypes.Process, "b.exe", id: "2")]);
+        Assert.Equal(key, policy.PendingKey(same));
+
+        // Changed while Windows asked for the administrator: another key, so nothing is approved.
+        var swapped = Settings([Command(CustomCommandTypes.Process, "a.exe", id: "1"), Command(CustomCommandTypes.Process, "evil.exe", id: "2")]);
+        Assert.NotEqual(key, policy.PendingKey(swapped));
+        var added = Settings([.. same.CustomCommands, Command(CustomCommandTypes.Process, "c.exe", id: "3")]);
+        Assert.NotEqual(key, policy.PendingKey(added));
+    }
+
+    [Fact]
+    public void The_prompt_shows_what_each_one_runs()
+    {
+        var settings = Settings(
+            [new CustomCommandDefinition { Id = "1", Name = "Backup", Type = CustomCommandTypes.Process, Command = @"C:\Tools\backup.exe", Arguments = "--full", Service = true }],
+            [Sensor(CustomSensorTypes.CommandPowerShell, "(Get-Date).Hour", id: "2")]);
+
+        var shown = ServiceApproval.PendingDescriptions(settings, new ServicePolicy());
+
+        Assert.Equal(2, shown.Count);
+        Assert.StartsWith("Backup:", shown[0]);
+        Assert.Contains(@"C:\Tools\backup.exe --full", shown[0]);
+        Assert.Contains("(Get-Date).Hour", shown[1]);
+    }
+
+    [Fact]
+    public void The_prompt_shows_a_script_whole_and_line_by_line()
+    {
+        // A comment sign on one line hides nothing that is on the next one.
+        var script = "Write-Output OK #" + new string(' ', 200) + "\nStart-Process evil.exe";
+        var settings = Settings(sensors: [Sensor(CustomSensorTypes.CommandPowerShell, script)]);
+
+        var shown = ServiceApproval.PendingDescriptions(settings, new ServicePolicy()).Single();
+        var lines = shown.Split(Environment.NewLine);
+
+        Assert.Contains(lines, line => line.Trim() == "Start-Process evil.exe");
+        Assert.Contains(lines, line => line.TrimStart().StartsWith("Write-Output OK #"));
+    }
+
+    [Fact]
+    public void A_command_sensor_goes_to_home_assistant_as_a_hash()
+    {
+        var command = Sensor(CustomSensorTypes.CommandPowerShell, "Invoke-RestMethod -Headers @{Authorization='Bearer secret'}");
+        var disk = Sensor(CustomSensorTypes.DiskFree, "C:");
+
+        var published = Mqtt.MqttCompanionService.PublishedParameter(command);
+
+        Assert.StartsWith("sha256:", published);
+        Assert.DoesNotContain("secret", published);
+        Assert.Equal("C:", Mqtt.MqttCompanionService.PublishedParameter(disk));
+
+        command.Parameter += " ";
+        Assert.NotEqual(published, Mqtt.MqttCompanionService.PublishedParameter(command));
+    }
+
+    [Fact]
     public void Pending_names_are_what_the_app_asks_to_approve()
     {
         var approved = Command(CustomCommandTypes.Process, "a.exe", id: "1");

@@ -155,7 +155,7 @@ Use the **Capabilities** page to choose which role handles each feature.
 
 > From 10.9.1.
 
-The service runs as SYSTEM, so it runs a custom command or a command sensor set for the service only when an administrator has approved it. The approvals are kept in `service-policy.json` next to the program, which only administrators can change, each by its id and what it runs. Installing or updating the app approves what the settings already ask the service to run. A command or command sensor added or changed for the service later asks for administrator approval (UAC) when the settings are saved; until it is approved the service leaves it to the tray app, and the log says which ones. The built-in sensors and the harmless custom sensor types (process, service, drive) need no approval.
+The service runs as SYSTEM, so it runs a custom command or a command sensor set for the service only when an administrator has approved it. The approvals are kept in `service-policy.json` next to the program, which only administrators can change, each by its id and what it runs. Updating the app or installing the service keeps what was approved before, as long as it is unchanged, and approves nothing new: anyone who can write the settings could have put it there. A command or command sensor added or changed for the service asks for administrator approval (UAC) when the settings are saved, and the prompt lists what each one runs; until it is approved the service leaves it to the tray app, and the log says which ones. If the settings change while Windows asks for the administrator, nothing is approved. The **Test** button in the editor always runs it in the tray app, as you, never as SYSTEM. (An update from 10.9.0 or older, which had no approvals yet, approves the current settings once.) The built-in sensors and the harmless custom sensor types (process, service, drive) need no approval.
 
 <p align="center"><img src="images/ui-services.png" width="700" alt="Service page"></p>
 
@@ -188,7 +188,7 @@ The settings are shared by every Windows user of the PC, and they hold the Home 
   - If there is a user who is not an administrator, nothing changes. Home Assistant gets a notification once, and the question comes when someone opens the HASS.Agent window, never at logon. Until a choice is made everything keeps working as before.
 - It can be changed any time under **Danger Zone → Users of this PC**.
 
-Limiting needs an administrator (UAC). It uses a local group, **HASS.Agent Users**, that an administrator can also manage with Windows' own tools; the ticked users are also given access by name, so they can go on without logging on again. Administrators and the service keep their access. Someone left out gets a note once, and HASS.Agent does not start for them.
+Limiting needs an administrator (UAC). It uses a local group, **HASS.Agent Users**, that an administrator can also manage with Windows' own tools; the ticked users are also given access by name, so they can go on without logging on again. Administrators and the service keep their access. Someone left out gets a note once, and HASS.Agent does not start for them. Either way the users may change what is in the folder but not delete or replace the folder itself, and before an administrator sets its rule, the app removes any link someone put there and takes over what another user owns.
 
 From the command line (as administrator): `HASS.Agent.NET10.exe --settings-access only USER [USER ...]`, `--settings-access everyone`.
 

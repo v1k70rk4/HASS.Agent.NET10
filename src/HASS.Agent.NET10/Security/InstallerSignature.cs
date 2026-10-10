@@ -11,7 +11,8 @@ namespace HASS.Agent.Companion.Security;
 /// signed must never get that far: not a corrupted download, not a release asset replaced by
 /// someone with access to the GitHub account. Windows checks the Authenticode signature (the
 /// file is unchanged since it was signed, by a certificate chaining to a trusted root, with a
-/// valid timestamp), and the signer must be the publisher of the releases. The publisher is
+/// valid timestamp), the signer must be the publisher of the releases, and its certificate
+/// must not have been revoked (as it would be if the signing key were stolen). The publisher is
 /// checked by name and issuing CA, not by thumbprint, so that a renewed certificate of the same
 /// publisher keeps updates working for every installed version.
 /// </summary>
@@ -76,10 +77,41 @@ internal static class InstallerSignature
                 reason = $"it is signed by \"{subject}\" ({issuer}), not by the publisher of HASS.Agent .NET10";
                 return false;
             }
+
+            if (IsRevoked(signer))
+            {
+                reason = "the certificate it is signed with has been revoked";
+                return false;
+            }
         }
 
         reason = string.Empty;
         return true;
+    }
+
+    /// <summary>
+    /// Whether the certificate authority says the signing certificate is revoked, as it would
+    /// be if the publisher's signing key were stolen. Asked online, briefly; an answer that
+    /// does not come (no network, the authority unreachable) does not stop an update: only a
+    /// definite "revoked" does.
+    /// </summary>
+    private static bool IsRevoked(X509Certificate2 signer)
+    {
+        try
+        {
+            using var chain = new X509Chain();
+            chain.ChainPolicy.RevocationMode = X509RevocationMode.Online;
+            chain.ChainPolicy.RevocationFlag = X509RevocationFlag.EndCertificateOnly;
+            chain.ChainPolicy.UrlRetrievalTimeout = TimeSpan.FromSeconds(10);
+            // An expired certificate is fine: the timestamp says it was valid at signing.
+            chain.ChainPolicy.VerificationFlags = X509VerificationFlags.IgnoreNotTimeValid;
+            _ = chain.Build(signer);
+            return chain.ChainStatus.Any(status => status.Status.HasFlag(X509ChainStatusFlags.Revoked));
+        }
+        catch (CryptographicException)
+        {
+            return false;
+        }
     }
 
     // RFC 3161 timestamp (what signtool /tr adds) and the older Authenticode countersignature.

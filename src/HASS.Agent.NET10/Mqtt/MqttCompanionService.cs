@@ -1,5 +1,7 @@
 using System.Buffers;
 using System.Diagnostics;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -89,6 +91,9 @@ internal sealed class MqttCompanionService : IDisposable
     // save can leave the TCP connection half-open and the socket write hangs. Cap it
     // and drop the connection so the run loop reconnects.
     private static readonly TimeSpan PublishTimeout = TimeSpan.FromSeconds(10);
+
+    /// <summary>The largest MQTT message the app takes in: 1 MB.</summary>
+    internal const int MaxIncomingPayload = 1024 * 1024;
     private static readonly TimeSpan PushDebounce = TimeSpan.FromMilliseconds(600);
     private static readonly IReadOnlySet<SensorPollingProfile> PushProfiles =
         new HashSet<SensorPollingProfile> { SensorPollingProfile.Fast, SensorPollingProfile.Normal };
@@ -698,7 +703,11 @@ internal sealed class MqttCompanionService : IDisposable
                 return;
             }
 
-            var installerPath = await AppUpdateService.DownloadAsync(update, GetUpdateDownloadDirectory());
+            // A folder of its own that only SYSTEM and the administrators can use, made with that
+            // rule: the installer checked here is run later by a task, and nobody else may swap
+            // it (or the batch) in between.
+            var directory = CreatePrivateUpdateDirectory();
+            var installerPath = await AppUpdateService.DownloadAsync(update, directory);
             _log.Info($"Downloaded installer: {installerPath}");
 
             // Run via Task Scheduler, NOT as a child process: the installer stops
@@ -707,11 +716,11 @@ internal sealed class MqttCompanionService : IDisposable
             // The batch removes the installer and itself once setup has finished, and
             // the task is deleted the next time one is created (it cannot delete itself
             // while it runs).
-            var batch = WriteBatch("run-update.cmd",
+            var batch = WriteBatch(directory, "run-update.cmd",
                 $"@echo off{Environment.NewLine}" +
                 $"\"{installerPath}\" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SILENTUPDATE{Environment.NewLine}" +
                 $"del /q \"{installerPath}\"{Environment.NewLine}" +
-                $"(goto) 2>nul & del /q \"%~f0\"{Environment.NewLine}");
+                $"(goto) 2>nul & del /q \"%~f0\" & rd /q \"%~dp0\"{Environment.NewLine}");
             RunDetachedTask("HASSAgentNet10Update", batch, asSystem: true);
             scheduled = true;
             _log.Info("Silent installer scheduled via Task Scheduler.");
@@ -744,12 +753,39 @@ internal sealed class MqttCompanionService : IDisposable
         }
     }
 
-    private string WriteBatch(string fileName, string content)
+    private static string WriteBatch(string fileName, string content) =>
+        WriteBatch(GetUpdateDownloadDirectory(), fileName, content);
+
+    private static string WriteBatch(string directory, string fileName, string content)
     {
-        var directory = GetUpdateDownloadDirectory();
         Directory.CreateDirectory(directory);
         var path = Path.Combine(directory, fileName);
         File.WriteAllText(path, content);
+        return path;
+    }
+
+    /// <summary>
+    /// For the service: a new folder under its temp folder, with a name nobody can guess and,
+    /// from the moment it exists, a rule that lets only SYSTEM and the administrators in. The
+    /// temp folder of SYSTEM is C:\Windows\SystemTemp on current Windows, but C:\Windows\Temp
+    /// on older Windows 10, where every user may create folders, so a fixed name there could be
+    /// made first by someone else.
+    /// </summary>
+    private static string CreatePrivateUpdateDirectory()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"HASS.Agent.NET10-update-{Guid.NewGuid():N}");
+        var security = new DirectorySecurity();
+        security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
+        const InheritanceFlags inherit = InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit;
+        foreach (var sid in new[] { WellKnownSidType.LocalSystemSid, WellKnownSidType.BuiltinAdministratorsSid })
+        {
+            security.AddAccessRule(new FileSystemAccessRule(
+                new SecurityIdentifier(sid, null), FileSystemRights.FullControl, inherit, PropagationFlags.None, AccessControlType.Allow));
+        }
+
+        // The rule comes with the folder as it is made; the fresh name means it is not one
+        // someone else made first.
+        new DirectoryInfo(path).Create(security);
         return path;
     }
 
@@ -1107,6 +1143,11 @@ internal sealed class MqttCompanionService : IDisposable
                         ? " Sessions that keep dying right after connecting usually mean the broker is closing them: another client using the same client ID, a user or ACL that was removed, or a broker restart loop."
                         : string.Empty;
                     _log.Warning($"MQTT connection lost after {lifetime.TotalSeconds:0}s; reconnecting in {seconds}s.{hint}");
+
+                    // Mosquitto drops a client over a malformed packet by closing the socket,
+                    // which MQTTnet reports as a normal disconnection: LogDisconnectAsync
+                    // does not see a problem there, so the packets are kept from here.
+                    _packetCheck?.Dump("connection-lost");
                 }
             }
             catch (OperationCanceledException)
@@ -1593,6 +1634,10 @@ internal sealed class MqttCompanionService : IDisposable
 
         var options = builder.Build();
 
+        // Nothing meant for this app comes near this; the broker (MQTT 5) drops a bigger one
+        // instead of sending it, and HandleMessageAsync ignores one that arrives anyway.
+        options.MaximumPacketSize = MaxIncomingPayload;
+
         if (_role == CompanionRuntimeRole.Service)
         {
             options.WillTopic = ServiceStateTopic;
@@ -1670,6 +1715,14 @@ internal sealed class MqttCompanionService : IDisposable
     private async Task HandleMessageAsync(MqttApplicationMessageReceivedEventArgs args)
     {
         var topic = args.ApplicationMessage.Topic;
+        if (args.ApplicationMessage.Payload.Length > MaxIncomingPayload)
+        {
+            // Read whole and decoded for every topic, so a huge one from any client on the
+            // broker would cost its size several times over in memory.
+            _log.Warning($"MQTT message on {topic} ignored: {args.ApplicationMessage.Payload.Length} bytes is more than {MaxIncomingPayload}.");
+            return;
+        }
+
         var payload = ReadPayload(args.ApplicationMessage);
         _log.Debug($"MQTT ← {topic} ({payload.Length} B)");
 
@@ -2187,6 +2240,17 @@ internal sealed class MqttCompanionService : IDisposable
             .ToList();
     }
 
+    /// <summary>
+    /// What Home Assistant gets as a custom sensor's parameter. It only notices a change by
+    /// it, and the discovery message is retained on the broker, where every client may read
+    /// it: a command or script someone wrote (with a token or password typed into it, maybe)
+    /// goes out as a short hash of it instead, which changes when it does.
+    /// </summary>
+    internal static string PublishedParameter(CustomSensorDefinition sensor) =>
+        ServicePolicy.RunsSomething(sensor.Type)
+            ? "sha256:" + Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(sensor.Parameter ?? string.Empty)))[..16]
+            : sensor.Parameter;
+
     private IReadOnlyList<CustomSensorDescriptor> BuildCustomSensorDescriptors(bool serviceRole)
     {
         return _settings.CustomSensors
@@ -2203,7 +2267,7 @@ internal sealed class MqttCompanionService : IDisposable
                 sensor.Id,
                 sensor.Type,
                 sensor.Name,
-                sensor.Parameter,
+                PublishedParameter(sensor),
                 SensorPollingProfiles.NormalizeKey(sensor.PollingProfile, SensorPollingProfile.Normal),
                 unit,
                 null,

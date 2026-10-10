@@ -44,7 +44,7 @@ internal sealed class OutgoingPacketCheck
     {
         var bytes = args.Buffer ?? [];
         var problem = args.Direction == MqttPacketFlowDirection.Outbound ? Check(bytes) : null;
-        bytes = WithoutLogin(bytes);
+        bytes = WithoutPrivateText(WithoutLogin(bytes));
         lock (_gate)
         {
             _recent.Enqueue((DateTime.Now, args.Direction, bytes, problem));
@@ -76,6 +76,44 @@ internal sealed class OutgoingPacketCheck
 
         var position = 1;
         return TryReadVariableInteger(packet, ref position, out _) ? packet[..position] : packet[..1];
+    }
+
+    /// <summary>
+    /// A notification and the answer to it (what was typed into it) are a person's text, not
+    /// something a bug report needs: their payload is kept as zeros of the same length, the
+    /// topic and the rest of the packet as they are.
+    /// </summary>
+    internal static byte[] WithoutPrivateText(byte[] packet)
+    {
+        var span = (ReadOnlySpan<byte>)packet;
+        var position = 1;
+        if (packet.Length < 2 || packet[0] >> 4 != 3 || !TryReadVariableInteger(span, ref position, out _) || position + 2 > packet.Length)
+        {
+            return packet;
+        }
+
+        var topicLength = (packet[position] << 8) | packet[position + 1];
+        position += 2;
+        if (position + topicLength > packet.Length)
+        {
+            return packet;
+        }
+
+        var topic = Encoding.UTF8.GetString(packet, position, topicLength);
+        if (!topic.Contains("/notifications/", StringComparison.Ordinal) && !topic.EndsWith("/actions", StringComparison.Ordinal))
+        {
+            return packet;
+        }
+
+        position += topicLength + (((packet[0] >> 1) & 3) > 0 ? 2 : 0);
+        if (!TryReadVariableInteger(span, ref position, out var propertiesLength) || position + propertiesLength > packet.Length)
+        {
+            return packet[..1];
+        }
+
+        var copy = (byte[])packet.Clone();
+        Array.Clear(copy, position + propertiesLength, copy.Length - position - propertiesLength);
+        return copy;
     }
 
     /// <summary>

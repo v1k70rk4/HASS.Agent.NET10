@@ -58,6 +58,78 @@ public class SettingsAccessTests : IDisposable
     }
 
     [Fact]
+    public void Users_cannot_delete_or_replace_the_folder_itself()
+    {
+        SettingsAccess.SetFolderRule(_folder, [Me]);
+
+        var mine = new DirectoryInfo(_folder).GetAccessControl()
+            .GetAccessRules(includeExplicit: true, includeInherited: false, typeof(SecurityIdentifier))
+            .Cast<FileSystemAccessRule>()
+            .Where(rule => (SecurityIdentifier)rule.IdentityReference == Me)
+            .ToList();
+
+        // On the folder itself: list, read and create, no delete.
+        Assert.All(mine.Where(rule => !rule.PropagationFlags.HasFlag(PropagationFlags.InheritOnly)), rule =>
+        {
+            Assert.False(rule.FileSystemRights.HasFlag(FileSystemRights.Delete));
+            Assert.True(rule.FileSystemRights.HasFlag(FileSystemRights.CreateFiles));
+        });
+        // On what is in it: change, replace and delete, as the app does with its files.
+        Assert.Contains(mine, rule => rule.PropagationFlags.HasFlag(PropagationFlags.InheritOnly)
+            && rule.FileSystemRights.HasFlag(FileSystemRights.Modify));
+    }
+
+    [Fact]
+    public void The_app_can_still_save_its_settings_in_the_folder()
+    {
+        SettingsAccess.SetFolderRule(_folder, [Me]);
+        var file = Path.Combine(_folder, "settings.json");
+        File.WriteAllText(file, "{}");
+
+        // What SettingsStore does: a new file next to it, then replaced with a backup.
+        var temporary = file + ".tmp";
+        File.WriteAllText(temporary, """{"a":1}""");
+        File.Replace(temporary, file, file + ".bak");
+
+        Assert.Equal("""{"a":1}""", File.ReadAllText(file));
+    }
+
+    [Fact]
+    public void A_link_in_the_folder_is_removed_not_followed()
+    {
+        var outside = Directory.CreateTempSubdirectory("hass-agent-outside-").FullName;
+        try
+        {
+            File.WriteAllText(Path.Combine(outside, "keep.txt"), "x");
+            var link = Path.Combine(_folder, "link");
+            Directory.CreateSymbolicLink(link, outside);
+        }
+        catch (IOException)
+        {
+            // Creating a symbolic link needs Developer Mode or an administrator.
+            Directory.Delete(outside, recursive: true);
+            return;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            Directory.Delete(outside, recursive: true);
+            return;
+        }
+
+        try
+        {
+            SettingsAccess.SetFolderRule(_folder, [Me]);
+
+            Assert.False(Directory.Exists(Path.Combine(_folder, "link")));
+            Assert.True(File.Exists(Path.Combine(outside, "keep.txt")));
+        }
+        finally
+        {
+            Directory.Delete(outside, recursive: true);
+        }
+    }
+
+    [Fact]
     public void Files_already_there_take_the_folder_rule()
     {
         var file = Path.Combine(_folder, "settings.json");

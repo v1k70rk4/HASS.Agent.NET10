@@ -75,6 +75,8 @@ hass.agent/buttons/{serialNumber}/cmd               # system command buttons
 hass.agent/system/{serialNumber}/cmd                # service-routed commands
 ```
 
+**Keep the broker login to yourself.** MQTT has no idea who sent a message: anything that can log in to the broker can publish to these topics, so it can send this PC notifications, shut it down, or run the commands you set up for it, and read what is typed into a notification. With the Mosquitto add-on that is every login it accepts: Home Assistant users included, and the one a Zigbee bridge or an ESP device uses. Use a login of its own for HASS.Agent, don't put it on devices you don't trust, and change it if it got out. To go further, Mosquitto's ACLs can limit who may write `hass.agent/+/{serialNumber}/cmd` and `hass.agent/notifications/{serialNumber}`. The HA API does not have this problem: there, every PC has its own Home Assistant user and gets only its own commands.
+
 ## HA API WebSocket Events
 
 When using HA API mode, the agent communicates through Home Assistant's event bus instead of MQTT topics.

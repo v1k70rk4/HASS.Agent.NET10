@@ -173,6 +173,10 @@ internal abstract class CustomEditorForm : Form
         return hint;
     }
 
+    /// <summary>Whether only the service is to run it, so the test here says how that differs.</summary>
+    protected static bool ForTheServiceOnly(CheckBox trayApp, CheckBox service) =>
+        service.Enabled && service.Checked && !trayApp.Checked;
+
     protected (CheckBox Enabled, CheckBox TrayApp, CheckBox Service) AddRoleBoxes(int y)
     {
         var enabled = new CheckBox { Text = S("Sensors.Active"), Location = Pt(FieldX, y), Size = Sz(110, 24), ForeColor = TextBody };
@@ -438,7 +442,15 @@ internal sealed class CustomCommandEditorForm : CustomEditorForm
         }
 
         var result = await SystemCommandService.ExecuteCustomCommandAsync(command);
-        ShowResult(DescribeOutcome(result), result.Ok ? OkGreen : ErrorRed);
+        var message = DescribeOutcome(result);
+        if (ForTheServiceOnly(_trayApp, _service))
+        {
+            // A test never runs as SYSTEM: that would be a button anyone at this desktop could
+            // use to run any text as SYSTEM, which is what the service approval is there to stop.
+            message = (result.Outcome == CustomCommandOutcome.Done ? S("Editor.TestDoneShort") : message) + " " + S("Editor.TestServiceNote");
+        }
+
+        ShowResult(message, result.Ok ? OkGreen : ErrorRed);
     }
 
     private static string DescribeOutcome(CustomCommandResult result)
@@ -795,9 +807,13 @@ internal sealed class CustomSensorEditorForm : CustomEditorForm
         try
         {
             var value = await Task.Run(() => SystemMetricsService.TestCustomSensorValue(sensor, _log));
-            ShowResult(
-                string.Format(S("Editor.TestValue"), MainForm.FormatSensorValue(value), sensor.Unit).TrimEnd(),
-                value is null ? ErrorRed : OkGreen);
+            var message = string.Format(S("Editor.TestValue"), MainForm.FormatSensorValue(value), sensor.Unit).TrimEnd();
+            if (ForTheServiceOnly(_trayApp, _service))
+            {
+                message += " " + S("Editor.TestServiceNote");
+            }
+
+            ShowResult(message, value is null ? ErrorRed : OkGreen);
         }
         catch (Exception ex)
         {

@@ -1671,9 +1671,16 @@ internal sealed class MainForm : Form
 
         var installBtn = MakePrimaryButton(S("Service.Install"), 170, 36);
         installBtn.Location = Pt(20, 48);
-        installBtn.Click += (_, _) =>
+        installBtn.Click += async (_, _) =>
         {
-            CompanionServiceManager.RunElevated("--install-service", _log);
+            // Installing keeps only what was approved before; what the settings ask the
+            // service to run beyond that is shown and approved separately, right after.
+            var (outcome, _) = await ElevatedRun.StartAsync("--install-service");
+            if (outcome == ElevatedOutcome.Finished)
+            {
+                await ServiceApproval.RequestIfNeededAsync(this, _settings, _log);
+            }
+
             statusLabel.Text = CompanionServiceManager.GetStatusText();
             UpdateGeneralStatusMessages();
             UpdateServiceStatusMessage();

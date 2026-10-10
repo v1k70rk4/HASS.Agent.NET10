@@ -32,7 +32,7 @@ internal static class CompanionServiceManager
 
         var result = command == "--settings-access"
             ? ChangeSettingsAccess(args.Skip(1).Where(arg => !string.Equals(arg, "--quiet", StringComparison.OrdinalIgnoreCase)).ToList())
-            : ExecuteControlCommand(command);
+            : ExecuteControlCommand(command, args);
         if (!args.Any(arg => string.Equals(arg, "--quiet", StringComparison.OrdinalIgnoreCase)))
         {
             MessageBox.Show(
@@ -82,7 +82,7 @@ internal static class CompanionServiceManager
         }
     }
 
-    private static ControlCommandResult ExecuteControlCommand(string command)
+    private static ControlCommandResult ExecuteControlCommand(string command, string[] args)
     {
         if (command == "--install-service" && !OperatingSystem.IsWindowsVersionAtLeast(10, 0, 19041))
         {
@@ -95,7 +95,7 @@ internal static class CompanionServiceManager
             "--uninstall-service" => Uninstall(),
             "--start-service" => RunSc("start", Quote(ServiceName)),
             "--stop-service" => RunSc("stop", Quote(ServiceName)),
-            "--approve-service-commands" => ApproveServiceCommands(),
+            "--approve-service-commands" => ApproveServiceCommands(ValueAfter(args, "--expect"), migrate: false),
             _ => new ControlCommandResult(false, string.Format(S("SvcMgr.UnknownCommand"), command))
         };
     }
@@ -105,7 +105,8 @@ internal static class CompanionServiceManager
         var executable = Environment.ProcessPath ?? Application.ExecutablePath;
         var binaryPath = $"{Quote(executable)} --service";
 
-        if (IsInstalled())
+        var update = IsInstalled();
+        if (update)
         {
             TryStopExistingService();
 
@@ -133,8 +134,8 @@ internal static class CompanionServiceManager
         _ = RunSc("description", $"{Quote(ServiceName)} {Quote(Description)}");
         _ = RunSc("failure", $"{Quote(ServiceName)} reset= 86400 actions= restart/60000/restart/60000/none/0");
 
-        // Whoever installs the service approves what the settings already ask it to run.
-        _ = ApproveServiceCommands();
+        // Keeps what was approved; something new waits for the prompt in the app.
+        _ = ApproveServiceCommands(expectedPending: null, migrate: update);
 
         var start = RunSc("start", Quote(ServiceName));
         if (!start.Success)
@@ -146,12 +147,15 @@ internal static class CompanionServiceManager
     }
 
     /// <summary>
-    /// Writes the service policy from the current settings: what they ask the service to run
-    /// is approved. Only as administrator, and only into a folder only administrators can
-    /// write; run by the installer, by the service installation and after the user approves
-    /// the prompt the app shows when a new command for the service is saved.
+    /// Writes the service policy. What it approved and the settings still ask for, unchanged,
+    /// stays. Something new is added only by the prompt the app shows after the settings are
+    /// saved, which passes <paramref name="expectedPending"/>: it is added only when the
+    /// settings read here still ask for exactly what the user was shown. The installer and
+    /// the service installation pass none, so an update approves nothing new, except once:
+    /// <paramref name="migrate"/> on an update from a version without a policy (10.9.0 and
+    /// older), where the service ran everything and should keep doing so.
     /// </summary>
-    private static ControlCommandResult ApproveServiceCommands()
+    private static ControlCommandResult ApproveServiceCommands(string? expectedPending, bool migrate)
     {
         if (!IsAdministrator())
         {
@@ -163,7 +167,28 @@ internal static class CompanionServiceManager
             var paths = AppPaths.Create();
             using var log = new FileLog(paths.LogFile);
             var settings = SettingsStore.LoadOrCreate(paths, log);
-            var policy = ServicePolicy.FromSettings(settings);
+            var current = ServicePolicy.Load(ServicePolicy.DefaultPath);
+            ServicePolicy policy;
+            if (expectedPending is not null)
+            {
+                if (!string.Equals(current.PendingKey(settings), expectedPending, StringComparison.Ordinal))
+                {
+                    log.Warning("Service approval refused: the settings changed after the approval was asked for.");
+                    return new ControlCommandResult(false, S("SvcMgr.ApprovalChanged"));
+                }
+
+                policy = ServicePolicy.FromSettings(settings);
+            }
+            else if (migrate && !File.Exists(ServicePolicy.DefaultPath))
+            {
+                log.Info("Service policy created from the settings of a version without one.");
+                policy = ServicePolicy.FromSettings(settings);
+            }
+            else
+            {
+                policy = current.KeepOnly(settings);
+            }
+
             if (!ServicePolicyFolderIsProtected(Path.GetDirectoryName(ServicePolicy.DefaultPath)!))
             {
                 log.Warning($"The service policy is written next to {Environment.ProcessPath}, a folder users can write to; it protects nothing there.");
@@ -237,6 +262,12 @@ internal static class CompanionServiceManager
             settings.SettingsAccessDecided = true;
             SettingsStore.Save(paths, settings);
         }
+    }
+
+    private static string? ValueAfter(string[] args, string name)
+    {
+        var index = Array.FindIndex(args, arg => string.Equals(arg, name, StringComparison.OrdinalIgnoreCase));
+        return index >= 0 && index + 1 < args.Length ? args[index + 1] : null;
     }
 
     internal static bool IsAdministrator()

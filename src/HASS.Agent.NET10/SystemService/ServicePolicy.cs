@@ -14,9 +14,10 @@ namespace HASS.Agent.Companion.SystemService;
 /// there would have it run as SYSTEM. So the service runs a custom command or a command
 /// sensor only when this policy approves it, by its id and a fingerprint of what it runs.
 /// The policy sits next to the program, in a folder only administrators can write, and is
-/// written by the app run as administrator: by the installer, by the service installation,
-/// and after the user approves (UAC) a change in the settings. A command that is not
-/// approved, or changed since, stays with the tray app.
+/// written by the app run as administrator. Only the prompt the user approves (UAC) after
+/// saving the settings adds to it; the installer and the service installation keep what was
+/// approved and drop what is gone, so nothing put into the settings meanwhile is approved by
+/// an update. A command that is not approved, or changed since, stays with the tray app.
 /// </summary>
 internal sealed class ServicePolicy
 {
@@ -53,7 +54,10 @@ internal sealed class ServicePolicy
         command.Enabled && command.Service && !command.NeedsUserSession;
 
     public static bool NeedsApproval(CustomSensorDefinition sensor) =>
-        sensor.Enabled && sensor.Service && !HarmlessSensorTypes.Contains(sensor.Type);
+        sensor.Enabled && sensor.Service && RunsSomething(sensor.Type);
+
+    /// <summary>Whether a custom sensor of this type runs something (a command, a script).</summary>
+    public static bool RunsSomething(string sensorType) => !HarmlessSensorTypes.Contains(sensorType);
 
     public static string Fingerprint(CustomCommandDefinition command) =>
         Hash(command.Type.Trim().ToLowerInvariant(), command.Command, command.Arguments);
@@ -69,6 +73,35 @@ internal sealed class ServicePolicy
         Sensors = settings.CustomSensors.Where(NeedsApproval)
             .Select(sensor => new Entry(sensor.Id, Fingerprint(sensor))).ToList(),
     };
+
+    /// <summary>
+    /// What stays approved when the settings change without anyone being asked (an update,
+    /// installing the service): what this policy approves and the settings still ask for,
+    /// unchanged. Nothing new: whoever can write the settings could have put it there.
+    /// </summary>
+    public ServicePolicy KeepOnly(CompanionSettings settings) => new()
+    {
+        Commands = Commands.Where(entry => settings.CustomCommands.Any(command =>
+            NeedsApproval(command) && entry == new Entry(command.Id, Fingerprint(command)))).ToList(),
+        Sensors = Sensors.Where(entry => settings.CustomSensors.Any(sensor =>
+            NeedsApproval(sensor) && entry == new Entry(sensor.Id, Fingerprint(sensor)))).ToList(),
+    };
+
+    /// <summary>
+    /// A short key of what the settings ask the service to run and this policy does not
+    /// approve yet. The app passes it to the elevated approval, which approves only when the
+    /// settings it reads still give the same key: what the user was shown and nothing else,
+    /// even when someone changes the settings while Windows asks for the administrator.
+    /// </summary>
+    public string PendingKey(CompanionSettings settings)
+    {
+        var pending = settings.CustomCommands.Where(command => NeedsApproval(command) && !Allows(command))
+            .Select(command => $"c\0{command.Id}\0{Fingerprint(command)}")
+            .Concat(settings.CustomSensors.Where(sensor => NeedsApproval(sensor) && !Allows(sensor))
+                .Select(sensor => $"s\0{sensor.Id}\0{Fingerprint(sensor)}"))
+            .Order(StringComparer.Ordinal);
+        return Hash(string.Join('\n', pending));
+    }
 
     /// <summary>The policy in the file; none (nothing approved) when it is missing or unreadable.</summary>
     public static ServicePolicy Load(string path)

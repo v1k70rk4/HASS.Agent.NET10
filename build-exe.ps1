@@ -424,10 +424,24 @@ if ($Tag) {
                 if ($LASTEXITCODE -ne 0) { throw "gh release upload failed (exit code $LASTEXITCODE)." }
                 Write-Host "Release assets replaced on $tagName" -ForegroundColor Green
 
+                # What is on the release must be what was just signed here, by hash.
+                function Assert-SignedAssets([string] $when) {
+                    $published = gh release view $tagName -R $repo --json assets --jq '.assets[] | "\(.name) \(.digest)"' 2>$null
+                    foreach ($file in $releaseFiles) {
+                        $name = Split-Path $file -Leaf
+                        $expected = "sha256:" + (Get-FileHash $file -Algorithm SHA256).Hash.ToLowerInvariant()
+                        if (-not ($published | Where-Object { $_ -eq "$name $expected" })) {
+                            throw "Release $tagName does not carry the signed $name $when (expected $expected). Check the release before anyone downloads it."
+                        }
+                    }
+                }
+
                 # CI creates the release as a draft, so that nothing unsigned is ever public.
-                # With the signed files in place it goes live; a stable tag becomes "latest".
+                # With the signed files in place, and only then (an upload by CI still running could
+                # have put its own files back), it goes live; a stable tag becomes "latest".
                 $isDraft = (gh release view $tagName -R $repo --json isDraft --jq '.isDraft' 2>$null) -eq 'true'
                 if ($isDraft) {
+                    Assert-SignedAssets "before publishing; it is still a draft"
                     $publishArgs = @('release', 'edit', $tagName, '--draft=false', '-R', $repo)
                     if ($tagName -notmatch '-') { $publishArgs += '--latest' }
                     gh @publishArgs
@@ -435,16 +449,8 @@ if ($Tag) {
                     Write-Host "Release $tagName published" -ForegroundColor Green
                 }
 
-                # What is on the release now must be what was just signed here. Checked by size
-                # and hash, after publishing, because that is the state people download.
-                $published = gh release view $tagName -R $repo --json assets --jq '.assets[] | "\(.name) \(.digest)"' 2>$null
-                foreach ($file in $releaseFiles) {
-                    $name = Split-Path $file -Leaf
-                    $expected = "sha256:" + (Get-FileHash $file -Algorithm SHA256).Hash.ToLowerInvariant()
-                    if (-not ($published | Where-Object { $_ -eq "$name $expected" })) {
-                        throw "Release $tagName does not carry the signed $name (expected $expected). Check the release before anyone downloads it."
-                    }
-                }
+                # Again after publishing, because that is the state people download.
+                Assert-SignedAssets "after publishing"
                 Write-Host "Release assets verified against the signed files" -ForegroundColor Green
             }
             else {
