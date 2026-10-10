@@ -230,6 +230,8 @@ internal static partial class Strings
             ["Editor.NotStarted"] = "A programot nem sikerült elindítani.",
             ["Editor.KeyTestCountdown"] = "A billentyűk {0} másodperc múlva mennek. Válts arra az ablakra, amelyiknek szánod.",
             ["Editor.TestDone"] = "Kész. Itt futott, a tálcaalkalmazásban, a te nevedben.",
+            ["Editor.TestDoneShort"] = "Kész.",
+            ["Editor.TestServiceNote"] = "A próba itt futott, a te nevedben: próba sosem fut SYSTEM-ként. A szolgáltatás SYSTEM-ként futtatja, asztal nélkül és saját felhasználói mappával, ezért nézd meg, hogy nincs-e ezekre szüksége.",
             ["Editor.TestValue"] = "Érték: {0} {1}",
             ["CmdField.process"] = "Program",
             ["CmdField.powershell"] = "Parancs vagy szkript",

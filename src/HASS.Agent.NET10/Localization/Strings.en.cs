@@ -230,6 +230,8 @@ internal static partial class Strings
             ["Editor.NotStarted"] = "The program could not be started.",
             ["Editor.KeyTestCountdown"] = "The keys are sent in {0} seconds. Switch to the window that should get them.",
             ["Editor.TestDone"] = "Done. It ran here, in the tray app, as you.",
+            ["Editor.TestDoneShort"] = "Done.",
+            ["Editor.TestServiceNote"] = "The test ran here, as you: a test never runs as SYSTEM. The service runs it as SYSTEM, with no desktop and its own user folder, so check that it does not need those.",
             ["Editor.TestValue"] = "Value: {0} {1}",
             ["CmdField.process"] = "Program",
             ["CmdField.powershell"] = "Command or script",
