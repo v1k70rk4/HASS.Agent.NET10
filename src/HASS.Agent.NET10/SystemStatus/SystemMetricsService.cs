@@ -1568,7 +1568,15 @@ internal sealed class SystemMetricsService : IDisposable
             _gpuAdaptersReadAtTicks = Environment.TickCount64;
         }
 
-        return _gpuAdapterIdentities.Select(adapter =>
+        return BuildGpuAdapters(_gpuAdapterIdentities, engineLoads, memoryByLuid);
+    }
+
+    internal static IReadOnlyList<GpuAdapterInfo> BuildGpuAdapters(
+        IReadOnlyList<GpuAdapterIdentity> identities,
+        IReadOnlyDictionary<string, Dictionary<string, double>> engineLoads,
+        IReadOnlyDictionary<string, (long? DedicatedMb, long? SharedMb)> memoryByLuid)
+    {
+        return identities.Select(adapter =>
         {
             if (adapter.Luid is null)
             {

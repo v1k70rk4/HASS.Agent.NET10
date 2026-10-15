@@ -17,22 +17,38 @@ internal static class GpuAdapterList
     private const uint DxgiAdapterFlagSoftware = 2;
     private const int DxgiErrorNotFound = unchecked((int)0x887A0002);
 
-    public static IReadOnlyList<GpuAdapterIdentity> Read(Func<string, string> limit)
+    public static IReadOnlyList<GpuAdapterIdentity> Read(Func<string, string> limit) =>
+        Match(ReadRegistryAdapters(), ReadDxgiAdapters(), limit);
+
+    /// <summary>
+    /// The registry's adapters in their order, each given the LUID of the DXGI adapter of the
+    /// same name; two cards of the same model take those DXGI adapters in turn.
+    /// </summary>
+    internal static IReadOnlyList<GpuAdapterIdentity> Match(
+        IReadOnlyList<(string Name, long? MemoryMb)> registry,
+        IReadOnlyList<(string Name, string Luid, long? MemoryMb)> dxgi,
+        Func<string, string> limit)
     {
-        var dxgi = ReadDxgiAdapters();
         var used = new HashSet<int>();
         var adapters = new List<GpuAdapterIdentity>();
-        foreach (var (name, memoryMb) in ReadRegistryAdapters())
+        foreach (var (name, memoryMb) in registry)
         {
-            // Two cards of the same model take the DXGI adapters of that name in turn.
-            var match = dxgi.FindIndex(adapter =>
-                !used.Contains(adapter.Index) &&
-                string.Equals(adapter.Name.Trim(), name.Trim(), StringComparison.OrdinalIgnoreCase));
+            var match = -1;
+            for (var index = 0; index < dxgi.Count; index++)
+            {
+                if (!used.Contains(index) &&
+                    string.Equals(dxgi[index].Name.Trim(), name.Trim(), StringComparison.OrdinalIgnoreCase))
+                {
+                    match = index;
+                    break;
+                }
+            }
+
             string? luid = null;
             long? dxgiMemoryMb = null;
             if (match >= 0)
             {
-                used.Add(dxgi[match].Index);
+                used.Add(match);
                 luid = dxgi[match].Luid;
                 dxgiMemoryMb = dxgi[match].MemoryMb;
             }
@@ -74,9 +90,9 @@ internal static class GpuAdapterList
         return adapters;
     }
 
-    private static List<(int Index, string Name, string Luid, long? MemoryMb)> ReadDxgiAdapters()
+    private static List<(string Name, string Luid, long? MemoryMb)> ReadDxgiAdapters()
     {
-        var adapters = new List<(int, string, string, long?)>();
+        var adapters = new List<(string, string, long?)>();
         var factoryId = typeof(IDXGIFactory1).GUID;
         if (CreateDXGIFactory1(ref factoryId, out var factoryPointer) < 0 || factoryPointer == IntPtr.Zero)
         {
@@ -103,7 +119,7 @@ internal static class GpuAdapterList
                     }
 
                     var memoryMb = desc.DedicatedVideoMemory > 0 ? (long)(desc.DedicatedVideoMemory / (1024 * 1024)) : (long?)null;
-                    adapters.Add(((int)index, desc.Description ?? string.Empty, LuidKey(desc.LuidHighPart, desc.LuidLowPart), memoryMb));
+                    adapters.Add((desc.Description ?? string.Empty, LuidKey(desc.LuidHighPart, desc.LuidLowPart), memoryMb));
                 }
                 finally
                 {
