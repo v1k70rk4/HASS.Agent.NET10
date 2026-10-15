@@ -78,6 +78,8 @@ Sensors with attributes:
 
 **GPU usage with more than one GPU** (an integrated one and a graphics card, for example): the sensor's value and the top-level `engines`, `memory_dedicated_mb` and `memory_shared_mb` follow the busiest GPU at each reading, so they can move from one GPU to the other. For one GPU of your choice use its own values under `adapters[N]` (10.9.3+): `adapters[1].usage`, `adapters[1].engines.3d`, `adapters[1].memory_dedicated_mb`. `adapters[N].name` tells which is which; the order is the one Windows lists the display adapters in, and does not change between readings.
 
+**LAN IP** is the address of the adapter Windows routes through, the one with the default route (10.9.3+). `addresses[N]` lists every connected adapter, that one first, then the ones with a gateway, then virtual adapters such as VirtualBox, Hyper-V, WSL or Docker. Before 10.9.3 it was simply the first adapter Windows listed, often a virtual one.
+
 ## Sensor Polling Profiles
 
 Sensors are refreshed by profile instead of one global interval. Each profile interval is configurable in the app:

@@ -527,9 +527,12 @@ internal sealed class SystemMetricsService : IDisposable
         };
     }
 
+    // The LAN IP is the first address. Windows lists the adapters in no useful order, and a
+    // virtual one (VirtualBox, Hyper-V, WSL, Docker, a VPN) often comes before the real one,
+    // so the adapter Windows routes through comes first, then those with a gateway.
     private static IReadOnlyList<NetworkAddressInfo> ReadNetworkAddresses()
     {
-        var result = new List<NetworkAddressInfo>();
+        var result = new List<(NetworkAddressInfo Address, int InterfaceIndex, bool HasGateway)>();
         try
         {
             foreach (var adapter in NetworkInterface.GetAllNetworkInterfaces())
@@ -545,16 +548,21 @@ internal sealed class SystemMetricsService : IDisposable
                         continue;
                     }
 
-                    foreach (var address in adapter.GetIPProperties().UnicastAddresses)
+                    var properties = adapter.GetIPProperties();
+                    var interfaceIndex = properties.GetIPv4Properties()?.Index ?? -1;
+                    var hasGateway = properties.GatewayAddresses.Any(gateway =>
+                        gateway.Address.AddressFamily == AddressFamily.InterNetwork &&
+                        !gateway.Address.Equals(IPAddress.Any));
+                    foreach (var address in properties.UnicastAddresses)
                     {
                         if (address.Address.AddressFamily == AddressFamily.InterNetwork &&
                             !IPAddress.IsLoopback(address.Address) &&
                             !address.Address.ToString().StartsWith("169.254.", StringComparison.Ordinal))
                         {
-                            result.Add(new NetworkAddressInfo(
+                            result.Add((new NetworkAddressInfo(
                                 adapter.Name ?? string.Empty,
                                 adapter.Description ?? string.Empty,
-                                address.Address.ToString()));
+                                address.Address.ToString()), interfaceIndex, hasGateway));
                         }
                     }
                 }
@@ -569,7 +577,31 @@ internal sealed class SystemMetricsService : IDisposable
             // Enumerating interfaces failed entirely — return whatever was collected.
         }
 
-        return result;
+        return OrderNetworkAddresses(result, ReadRoutedInterfaceIndex());
+    }
+
+    /// <summary>
+    /// The adapter Windows routes through first, then adapters with a gateway, then the rest,
+    /// each group in Windows' own order.
+    /// </summary>
+    internal static IReadOnlyList<NetworkAddressInfo> OrderNetworkAddresses(
+        IReadOnlyList<(NetworkAddressInfo Address, int InterfaceIndex, bool HasGateway)> addresses,
+        int? routedInterfaceIndex)
+    {
+        return addresses
+            .Select((entry, order) => (entry, order))
+            .OrderBy(item => item.entry.InterfaceIndex == routedInterfaceIndex ? 0 : item.entry.HasGateway ? 1 : 2)
+            .ThenBy(item => item.order)
+            .Select(item => item.entry.Address)
+            .ToList();
+    }
+
+    // The interface Windows would send to a public address through (the default route);
+    // only the routing table is asked, nothing is sent. Null without a route out.
+    private static int? ReadRoutedInterfaceIndex()
+    {
+        var destination = BitConverter.ToUInt32(IPAddress.Parse("1.1.1.1").GetAddressBytes(), 0);
+        return GetBestInterface(destination, out var index) == 0 ? (int)index : null;
     }
 
     /// <summary>
@@ -2282,6 +2314,10 @@ internal sealed class SystemMetricsService : IDisposable
 
     [DllImport("kernel32.dll")]
     private static extern uint WTSGetActiveConsoleSessionId();
+
+    // destAddr is an IPv4 address in network byte order.
+    [DllImport("iphlpapi.dll")]
+    private static extern int GetBestInterface(uint destAddr, out uint bestIfIndex);
 
     private const uint ProcessQueryLimitedInformation = 0x1000;
 

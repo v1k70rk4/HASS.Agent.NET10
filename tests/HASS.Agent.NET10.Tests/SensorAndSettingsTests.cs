@@ -146,6 +146,29 @@ public class GpuAdapterTests
 
         Assert.Null(adapters[0].Usage);
         Assert.Null(adapters[0].Engines);
+
+public class LanIpTests
+{
+    // Windows' own order on a laptop with VirtualBox: the host-only adapter comes first.
+    private static readonly (NetworkAddressInfo, int, bool)[] Adapters =
+    [
+        (new NetworkAddressInfo("Ethernet", "VirtualBox Host-Only Ethernet Adapter", "192.168.56.1"), 7, false),
+        (new NetworkAddressInfo("vEthernet (WSL)", "Hyper-V Virtual Ethernet Adapter", "172.25.16.1"), 41, false),
+        (new NetworkAddressInfo("Wi-Fi", "Intel(R) Wi-Fi 7 BE201", "192.168.1.129"), 16, true),
+    ];
+
+    [Fact]
+    public void The_routed_adapter_comes_first()
+    {
+        var ordered = SystemMetricsService.OrderNetworkAddresses(Adapters, routedInterfaceIndex: 16);
+        Assert.Equal(["192.168.1.129", "192.168.56.1", "172.25.16.1"], ordered.Select(address => address.Address));
+    }
+
+    [Fact]
+    public void Without_a_route_out_an_adapter_with_a_gateway_comes_first()
+    {
+        var ordered = SystemMetricsService.OrderNetworkAddresses(Adapters, routedInterfaceIndex: null);
+        Assert.Equal("192.168.1.129", ordered[0].Address);
     }
 }
 
