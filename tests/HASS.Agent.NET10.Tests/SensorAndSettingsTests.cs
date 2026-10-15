@@ -72,6 +72,18 @@ public class LibreHardwareMonitorTests
     }
 }
 
+public class GpuAdapterTests
+{
+    [Theory]
+    [InlineData(0, 0x13893u, "0x00000000_0x00013893")]
+    [InlineData(-1, 1u, "0xFFFFFFFF_0x00000001")]
+    public void Adapter_luid_is_written_like_the_gpu_counters(int high, uint low, string expected)
+    {
+        // The counters name an adapter luid_0x{high}_0x{low}_phys_N.
+        Assert.Equal(expected, GpuAdapterList.LuidKey(high, low));
+    }
+}
+
 public class SessionLockedTests
 {
     [Theory]

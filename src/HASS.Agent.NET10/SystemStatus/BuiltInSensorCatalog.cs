@@ -71,7 +71,10 @@ internal static class BuiltInSensorCatalog
             "gpu_usage.memory_dedicated_mb",
             "gpu_usage.memory_shared_mb",
             "gpu_usage.adapters[0].name",
-            "gpu_usage.adapters[0].memory_mb"
+            "gpu_usage.adapters[0].memory_mb",
+            "gpu_usage.adapters[0].usage",
+            "gpu_usage.adapters[0].engines.3d",
+            "gpu_usage.adapters[0].memory_dedicated_mb"
         ], EnabledByDefault: false),
         new("sleep_blocked", SupportsService: true, SupportsTrayApp: false, SensorPollingProfile.Fast,
         [

@@ -73,8 +73,10 @@ Sensors with attributes:
 | **Last shutdown reason** | `reason`, `event_id`, `created_at`, `message` |
 | **Last wake reason** | `source`, `kind` (`modern_standby`, `sleep`, `hibernate`, `fast_startup`), `created_at`, `duration_seconds`, `sleep_entered`, `detail` |
 | **Sleep blocked** | `system_required`, `display_required`, `away_mode_required`, `primary_blocker`, `blockers[N].category`, `blockers[N].type`, `blockers[N].name`, `blockers[N].reason`, `blockers[N].blocking` |
-| **GPU usage** | `engines.<type>` (e.g. `engines.3d`, `engines.videodecode`), `npu_usage`, `memory_dedicated_mb`, `memory_shared_mb`, `adapters[N].name`, `adapters[N].memory_mb` |
+| **GPU usage** | `engines.<type>` (e.g. `engines.3d`, `engines.videodecode`), `npu_usage`, `memory_dedicated_mb`, `memory_shared_mb`, `adapters[N].name`, `adapters[N].memory_mb`, `adapters[N].usage`, `adapters[N].engines.<type>`, `adapters[N].memory_dedicated_mb`, `adapters[N].memory_shared_mb` |
 | **Camera in use** / **Microphone in use** | `apps[N]` |
+
+**GPU usage with more than one GPU** (an integrated one and a graphics card, for example): the sensor's value and the top-level `engines`, `memory_dedicated_mb` and `memory_shared_mb` follow the busiest GPU at each reading, so they can move from one GPU to the other. For one GPU of your choice use its own values under `adapters[N]` (10.9.3+): `adapters[1].usage`, `adapters[1].engines.3d`, `adapters[1].memory_dedicated_mb`. `adapters[N].name` tells which is which; the order is the one Windows lists the display adapters in, and does not change between readings.
 
 ## Sensor Polling Profiles
 
@@ -227,6 +229,9 @@ sensor_key.array[0].nested[1].value
 | GPU usage | `gpu_usage.memory_shared_mb` | Shared GPU memory in use |
 | GPU usage | `gpu_usage.adapters[0].name` | Adapter name |
 | GPU usage | `gpu_usage.adapters[0].memory_mb` | Adapter memory size |
+| GPU usage | `gpu_usage.adapters[0].usage` | This adapter's load (%) |
+| GPU usage | `gpu_usage.adapters[0].engines.3d` | This adapter's 3D engine load (%) |
+| GPU usage | `gpu_usage.adapters[0].memory_dedicated_mb` | This adapter's dedicated memory in use |
 | Camera in use | `camera_in_use.apps[0]` | App using the camera |
 | Microphone in use | `microphone_in_use.apps[0]` | App using the microphone |
 

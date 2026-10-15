@@ -49,10 +49,13 @@ internal sealed class SystemMetricsService : IDisposable
     private const string GpuEngineUtilizationCounter = "Utilization Percentage";
     private const string GpuAdapterMemoryCategoryName = "GPU Adapter Memory";
     private const string GpuNeuralEngineType = "neural";
-    private const string DisplayAdapterClassPath = @"SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}";
     private const int GpuFirstSampleDelayMs = 250;
+    private const long GpuAdapterRefreshMs = 5 * 60 * 1000;
     private static readonly Regex GpuEngineInstancePattern = new(
         @"luid_(0x[0-9a-f]+_0x[0-9a-f]+)_phys_\d+_eng_\d+_engtype_(.+)$",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex GpuMemoryInstancePattern = new(
+        @"^luid_(0x[0-9a-f]+_0x[0-9a-f]+)_phys_\d+$",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     private static readonly JsonSerializerOptions AttributeJsonOptions = new()
@@ -83,7 +86,8 @@ internal sealed class SystemMetricsService : IDisposable
     private bool _wakeInitialized;
     private PerformanceCounterCategory? _gpuEngineCategory;
     private InstanceDataCollection? _lastGpuEngineSamples;
-    private IReadOnlyList<GpuAdapterInfo>? _gpuAdapters;
+    private IReadOnlyList<GpuAdapterIdentity>? _gpuAdapterIdentities;
+    private long _gpuAdaptersReadAtTicks;
     private GpuInfo? _lastGpu;
     private uint? _lastExecutionState;
     private IReadOnlyList<PowerRequestInfo> _lastPowerRequests = [];
@@ -1526,82 +1530,96 @@ internal sealed class SystemMetricsService : IDisposable
             return null;
         }
 
-        var memory = ReadGpuMemory(gpu.Key);
-        _gpuAdapters ??= ReadGpuAdapters();
+        var memoryByLuid = ReadGpuMemory();
+        var memory = memoryByLuid.GetValueOrDefault(gpu.Key);
         return new GpuInfo(
             Percent(gpu.Value.Values.Max()),
-            gpu.Value
-                .Where(engine => !engine.Key.StartsWith(GpuNeuralEngineType, StringComparison.Ordinal))
-                .OrderBy(engine => engine.Key, StringComparer.Ordinal)
-                .ToDictionary(engine => engine.Key, engine => Percent(engine.Value)),
+            GraphicsEngines(gpu.Value),
             npu is { } npuLoad ? Percent(npuLoad) : null,
             memory.DedicatedMb,
             memory.SharedMb,
-            _gpuAdapters);
-
-        static double Percent(double value) => Math.Round(Math.Clamp(value, 0, 100), 1);
+            GpuAdapters(adapters, memoryByLuid));
     }
 
-    private static (long? DedicatedMb, long? SharedMb) ReadGpuMemory(string luid)
+    private static double Percent(double value) => Math.Round(Math.Clamp(value, 0, 100), 1);
+
+    private static Dictionary<string, double> GraphicsEngines(IReadOnlyDictionary<string, double> engines) =>
+        engines
+            .Where(engine => !engine.Key.StartsWith(GpuNeuralEngineType, StringComparison.Ordinal))
+            .OrderBy(engine => engine.Key, StringComparer.Ordinal)
+            .ToDictionary(engine => engine.Key, engine => Percent(engine.Value));
+
+    /// <summary>
+    /// Every installed adapter with its own load and memory use. The top-level values follow
+    /// the busiest adapter, which on a PC with two GPUs can be either; these stay with one.
+    /// </summary>
+    private IReadOnlyList<GpuAdapterInfo> GpuAdapters(
+        IReadOnlyDictionary<string, Dictionary<string, double>> engineLoads,
+        IReadOnlyDictionary<string, (long? DedicatedMb, long? SharedMb)> memoryByLuid)
     {
+        // An adapter's LUID changes when its driver restarts (an update, a TDR): an unknown
+        // one in the counters reads the list again, at most every few minutes.
+        var known = _gpuAdapterIdentities?.Select(adapter => adapter.Luid).OfType<string>().ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var unknownLuid = known is not null && engineLoads.Keys.Concat(memoryByLuid.Keys).Any(luid => !known.Contains(luid));
+        if (_gpuAdapterIdentities is null ||
+            (unknownLuid && Environment.TickCount64 - _gpuAdaptersReadAtTicks > GpuAdapterRefreshMs))
+        {
+            _gpuAdapterIdentities = GpuAdapterList.Read(LimitState);
+            _gpuAdaptersReadAtTicks = Environment.TickCount64;
+        }
+
+        return _gpuAdapterIdentities.Select(adapter =>
+        {
+            if (adapter.Luid is null)
+            {
+                return new GpuAdapterInfo(adapter.Name, adapter.MemoryMb, null, null, null, null);
+            }
+
+            // No counter for an adapter no process uses: idle.
+            var engines = engineLoads.TryGetValue(adapter.Luid, out var loads) ? GraphicsEngines(loads) : [];
+            var memory = memoryByLuid.GetValueOrDefault(adapter.Luid);
+            return new GpuAdapterInfo(
+                adapter.Name,
+                adapter.MemoryMb,
+                engines.Count > 0 ? engines.Values.Max() : 0,
+                engines,
+                memory.DedicatedMb,
+                memory.SharedMb);
+        }).ToList();
+    }
+
+    /// <summary>Dedicated and shared GPU memory in use, per adapter LUID.</summary>
+    private static Dictionary<string, (long? DedicatedMb, long? SharedMb)> ReadGpuMemory()
+    {
+        var memory = new Dictionary<string, (long? DedicatedMb, long? SharedMb)>(StringComparer.OrdinalIgnoreCase);
         if (!PerformanceCounterCategory.Exists(GpuAdapterMemoryCategoryName))
         {
-            return (null, null);
+            return memory;
         }
 
         var data = new PerformanceCounterCategory(GpuAdapterMemoryCategoryName).ReadCategory();
-        return (Read("Dedicated Usage"), Read("Shared Usage"));
+        Read("Dedicated Usage", (current, mb) => (mb, current.SharedMb));
+        Read("Shared Usage", (current, mb) => (current.DedicatedMb, mb));
+        return memory;
 
-        long? Read(string counter)
+        void Read(string counter, Func<(long? DedicatedMb, long? SharedMb), long, (long?, long?)> set)
         {
             if (data[counter] is not { } instances)
             {
-                return null;
+                return;
             }
 
             foreach (DictionaryEntry entry in instances)
             {
                 // luid_0x00000000_0x0000E9FD_phys_0
                 if (entry.Value is InstanceData instance &&
-                    instance.InstanceName.StartsWith($"luid_{luid}_", StringComparison.OrdinalIgnoreCase))
+                    GpuMemoryInstancePattern.Match(instance.InstanceName) is { Success: true } match)
                 {
-                    return instance.RawValue / (1024 * 1024);
+                    var luid = match.Groups[1].Value;
+                    memory[luid] = set(memory.GetValueOrDefault(luid), instance.RawValue / (1024 * 1024));
                 }
             }
-
-            return null;
         }
-    }
-
-    /// <summary>
-    /// The installed display adapters with their real memory size: WMI's AdapterRAM is a
-    /// 32-bit field and stops at 4 GB.
-    /// </summary>
-    private static IReadOnlyList<GpuAdapterInfo> ReadGpuAdapters()
-    {
-        var adapters = new List<GpuAdapterInfo>();
-        using var displayClass = Registry.LocalMachine.OpenSubKey(DisplayAdapterClassPath);
-        foreach (var keyName in displayClass?.GetSubKeyNames() ?? [])
-        {
-            // 0000, 0001, ... are the adapters; the rest ("Properties") is not readable anyway.
-            if (keyName.Length != 4 || !keyName.All(char.IsAsciiDigit))
-            {
-                continue;
-            }
-
-            using var adapter = displayClass!.OpenSubKey(keyName);
-            if (adapter?.GetValue("DriverDesc") is not string { Length: > 0 } name)
-            {
-                continue;
-            }
-
-            var memoryMb = adapter.GetValue("HardwareInformation.qwMemorySize") is long bytes and > 0
-                ? bytes / (1024 * 1024)
-                : (long?)null;
-            adapters.Add(new GpuAdapterInfo(LimitState(name), memoryMb));
-        }
-
-        return adapters;
     }
 
     private static WakeInfo ReadLastWakeInfo()
@@ -2461,7 +2479,12 @@ internal sealed record GpuInfo(
 
 internal sealed record GpuAdapterInfo(
     [property: JsonPropertyName("name")] string Name,
-    [property: JsonPropertyName("memory_mb")] long? MemoryMb);
+    [property: JsonPropertyName("memory_mb")] long? MemoryMb,
+    // Null when the adapter could not be matched to its performance counters.
+    [property: JsonPropertyName("usage")] double? Usage,
+    [property: JsonPropertyName("engines")] IReadOnlyDictionary<string, double>? Engines,
+    [property: JsonPropertyName("memory_dedicated_mb")] long? MemoryDedicatedMb,
+    [property: JsonPropertyName("memory_shared_mb")] long? MemorySharedMb);
 
 internal sealed record WakeInfo(
     string Summary,
