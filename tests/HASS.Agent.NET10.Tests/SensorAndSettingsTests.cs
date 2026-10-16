@@ -146,6 +146,8 @@ public class GpuAdapterTests
 
         Assert.Null(adapters[0].Usage);
         Assert.Null(adapters[0].Engines);
+    }
+}
 
 public class LanIpTests
 {

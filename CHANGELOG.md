@@ -2,6 +2,18 @@
 
 Every release of HASS.Agent .NET10, newest first. The downloads are on the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases).
 
+## 10.9.3-beta.2
+
+> **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered it, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.9.2**, below.
+
+The second beta of 10.9.3: a sensor value per GPU, the right LAN IP and a name of your own above the notifications. Works with the integration **10.6.7** or newer; there is no new integration with this one. Signed release.
+
+**New since beta.1**
+
+- **GPU usage per GPU.** On a PC with two GPUs (an integrated one and a graphics card) the sensor's value and its top-level `engines` and memory follow whichever GPU is busiest at each reading, so they could move from one to the other. Each entry of `adapters[N]` now has its own `usage`, `engines` (3D, video and the rest) and `memory_dedicated_mb` / `memory_shared_mb`, so `gpu_usage.adapters[1].engines.3d` follows one card. `adapters[N]` keeps its order and names. Requested in [#99](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/99). See [GPU usage with more than one GPU](https://github.com/v1k70rk4/HASS.Agent.NET10/blob/main/docs/sensors.md).
+- **Fixed: LAN IP could show the address of a virtual adapter.** It took the first adapter Windows listed, often a VirtualBox, Hyper-V, WSL, Docker or VPN one. It now takes the adapter Windows routes through, and `network_address.addresses[N]` lists that one first, then those with a gateway, then the rest. A custom sensor on `addresses[0]` may therefore show another adapter than before: the real one. Reported in [#100](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/100).
+- **A name of your own above the notifications.** Under the notification style on the Capabilities page, tick **Custom name** and write the name the Windows notifications should show instead of *HASS.Agent .NET10*, for example to tell several PCs apart. One name for all notifications of the PC, from the next one on. Asked for in [#101](https://github.com/v1k70rk4/HASS.Agent.NET10/discussions/101).
+
 ## 10.9.3-beta.1
 
 > **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered it, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.9.2**, below.
