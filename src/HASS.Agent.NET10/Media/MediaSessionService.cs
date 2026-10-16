@@ -161,6 +161,13 @@ internal sealed class MediaSessionService : IDisposable
                 }
                 break;
             case "pause":
+                // The card in Home Assistant offers pause, not stop, while a player can pause:
+                // during a sound of ours the pause is the way to cut it from there.
+                if (await TryStopLocalPlaybackAsync())
+                {
+                    break;
+                }
+
                 if (session is not null)
                 {
                     await session.TryPauseAsync();
