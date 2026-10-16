@@ -2,7 +2,11 @@
 
 Every release of HASS.Agent .NET10, newest first. The downloads are on the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases).
 
-## Unreleased
+## 10.9.3-beta.4
+
+> **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered it, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.9.2**, below.
+
+The fourth beta of 10.9.3: the Media player page. Works with the integration **10.6.7** or newer; the announcements need the integration **10.9.2-beta.2**, out at the same time. Signed release.
 
 - **A Media player page in the app.** The media player's switch moved there from Capabilities, with two things that were not there before: **Send the cover art to Home Assistant** (off, the entity shows no picture) and **Announcements**: a `play_media` action sent with `announce: true` (TTS, a doorbell sound) unmutes the PC and sets the announcement volume for it, pauses what was playing when you want that, and puts the volume, the mute and the playback back afterwards. On by default, because an announcement is meant to be heard; needs the integration 10.9.2 or newer, an older one plays it at the current volume as before. A pause or a stop from Home Assistant while the sound plays cuts it and puts everything back. The idea comes from a fork by @VorlonCD, thank you. The page also tells where turning the PC on and off from the media player is set up (the integration's options) and which of sleep, hibernate and shutdown this PC allows for it.
 
