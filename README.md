@@ -173,7 +173,7 @@ No telemetry, analytics, or usage data is collected or transmitted.
 
 > **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered it, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.9.2**, below.
 
-Works with the integration **10.6.7** or newer; the announcements need the integration **10.9.2-beta.2**. Signed release.
+Works with the integration **10.6.7** or newer; the announcements need the integration **10.9.2-beta.2** or newer. Signed release.
 
 - **A Media player page, with announcements that are heard:** a `play_media` sent with `announce: true` (TTS, a doorbell) unmutes the PC, sets the announcement volume and pauses what was playing, then puts everything back; a cover art switch; where turning the PC on and off is set up. The idea comes from a fork by @VorlonCD.
 - **Fixed: Session locked went back to off a few seconds after locking.** Reported and detailed in [#96](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/96).
