@@ -756,6 +756,14 @@ internal sealed class SystemMetricsService : IDisposable
     {
         var consoleId = WTSGetActiveConsoleSessionId();
         var sessions = ReadUserSessions();
+        if (sessions is null)
+        {
+            // The list could not be read: the console's session alone, as before.
+            return consoleId == uint.MaxValue
+                ? ("none", string.Empty)
+                : (QuerySessionConnectState(consoleId), LimitState(QuerySessionUser(consoleId)));
+        }
+
         var chosen = ChooseUserSession(sessions.Select(session => (session.Id, session.State)).ToList(), consoleId);
         if (chosen >= 0)
         {
@@ -763,6 +771,18 @@ internal sealed class SystemMetricsService : IDisposable
         }
 
         return consoleId == uint.MaxValue ? ("none", string.Empty) : (QuerySessionConnectState(consoleId), string.Empty);
+    }
+
+    private static string QuerySessionUser(uint sessionId)
+    {
+        var userName = QuerySessionString(sessionId, WtsInfoClass.UserName);
+        if (string.IsNullOrWhiteSpace(userName))
+        {
+            return string.Empty;
+        }
+
+        var domain = QuerySessionString(sessionId, WtsInfoClass.DomainName);
+        return string.IsNullOrWhiteSpace(domain) ? userName : $"{domain}\\{userName}";
     }
 
     /// <summary>
@@ -790,13 +810,14 @@ internal sealed class SystemMetricsService : IDisposable
         return sessions.Count > 0 ? 0 : -1;
     }
 
-    // The sessions with a signed-in user, in Windows' order.
-    private static List<(uint Id, string State, string User)> ReadUserSessions()
+    // The sessions with a signed-in user, in Windows' order; null when they cannot be listed
+    // (as opposed to a list with nobody signed in).
+    private static List<(uint Id, string State, string User)>? ReadUserSessions()
     {
         var sessions = new List<(uint, string, string)>();
         if (!WTSEnumerateSessions(IntPtr.Zero, 0, 1, out var sessionsPointer, out var sessionCount))
         {
-            return sessions;
+            return null;
         }
 
         try
@@ -805,15 +826,11 @@ internal sealed class SystemMetricsService : IDisposable
             for (var index = 0; index < sessionCount; index++)
             {
                 var session = Marshal.PtrToStructure<WtsSessionInfo>(IntPtr.Add(sessionsPointer, index * itemSize));
-                var userName = QuerySessionString(session.SessionId, WtsInfoClass.UserName);
-                if (string.IsNullOrWhiteSpace(userName))
+                var user = QuerySessionUser(session.SessionId);
+                if (user.Length > 0)
                 {
-                    continue;
+                    sessions.Add((session.SessionId, QuerySessionConnectState(session.SessionId), user));
                 }
-
-                var domain = QuerySessionString(session.SessionId, WtsInfoClass.DomainName);
-                var user = string.IsNullOrWhiteSpace(domain) ? userName : $"{domain}\\{userName}";
-                sessions.Add((session.SessionId, QuerySessionConnectState(session.SessionId), user));
             }
         }
         finally
