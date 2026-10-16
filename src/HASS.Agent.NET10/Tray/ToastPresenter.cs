@@ -100,14 +100,40 @@ internal sealed class ToastPresenter
             }
 
             using var server = Registry.CurrentUser.OpenSubKey($@"Software\Classes\CLSID\{{{activator}}}\LocalServer32");
-            if (server?.GetValue(null) is string command &&
-                command.Contains(exe, StringComparison.OrdinalIgnoreCase))
+            if (server?.GetValue(null) is string command && CommandStarts(command, exe))
             {
                 return aumids.OpenSubKey(aumid, writable: true);
             }
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Whether a LocalServer32 command starts this exe: the quoted program path, or the
+    /// whole command when it has no arguments. Not a substring match, which another install
+    /// whose path contains this one would pass.
+    /// </summary>
+    internal static bool CommandStarts(string command, string exe)
+    {
+        var trimmed = command.Trim();
+        string program;
+        if (trimmed.StartsWith('"'))
+        {
+            var end = trimmed.IndexOf('"', 1);
+            if (end < 0)
+            {
+                return false;
+            }
+
+            program = trimmed[1..end];
+        }
+        else
+        {
+            program = trimmed;
+        }
+
+        return string.Equals(program, exe, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>

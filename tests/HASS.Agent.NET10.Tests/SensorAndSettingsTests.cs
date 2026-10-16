@@ -186,6 +186,23 @@ public class SessionLockedTests
     }
 }
 
+public class NotificationRegistrationTests
+{
+    private const string Exe = @"C:\Program Files\HASS.Agent .NET10\HASS.Agent.NET10.exe";
+
+    [Theory]
+    [InlineData("\"C:\\Program Files\\HASS.Agent .NET10\\HASS.Agent.NET10.exe\" -ToastActivated", true)]
+    [InlineData("\"c:\\program files\\hass.agent .net10\\hass.agent.net10.exe\"", true)]
+    [InlineData("C:\\Program Files\\HASS.Agent .NET10\\HASS.Agent.NET10.exe", true)]
+    [InlineData("\"D:\\Copy\\C:\\Program Files\\HASS.Agent .NET10\\HASS.Agent.NET10.exe\" -ToastActivated", false)]
+    [InlineData("\"C:\\Program Files\\HASS.Agent .NET10\\HASS.Agent.NET10.exe.old\" -ToastActivated", false)]
+    [InlineData("\"C:\\Program Files\\HASS.Agent .NET10\\HASS.Agent.NET10.exe", false)]
+    public void Only_a_command_that_starts_this_exe_matches(string command, bool matches)
+    {
+        Assert.Equal(matches, HASS.Agent.Companion.Tray.ToastPresenter.CommandStarts(command, Exe));
+    }
+}
+
 public class SettingsTests
 {
     [Fact]
