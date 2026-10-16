@@ -2,7 +2,7 @@
 
 ![Windows](https://img.shields.io/badge/Windows-10%202004%2B%20%7C%2011-0078D4?logo=windows&logoColor=white)
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet&logoColor=white)
-![Version](https://img.shields.io/badge/version-10.9.3--beta.2-orange)
+![Version](https://img.shields.io/badge/version-10.9.3--beta.3-orange)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-MQTT%20%7C%20WebSocket%20API-41BDF5?logo=homeassistant&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/15316/badge)](https://www.bestpractices.dev/projects/15316)
@@ -26,7 +26,7 @@ It is designed for Windows PCs you want to observe and control from Home Assista
 
 The .NET10 line starts at **version 10.0.0**. The classic client is a separate program: if you want to stay with it, it is still available from its own project, and the integration keeps a [`legacy` branch](https://github.com/v1k70rk4/HASS.Agent.NET10-Integration/tree/legacy) for it. Thinking about switching? See [Coming from HASS.Agent](docs/migrating.md).
 
-> **Stable:** [10.9.2](https://github.com/v1k70rk4/HASS.Agent.NET10/releases/latest) &nbsp;·&nbsp; **Beta:** [10.9.3-beta.2](https://github.com/v1k70rk4/HASS.Agent.NET10/releases/tag/v10.9.3-beta.2) &nbsp;·&nbsp; [What changed](#what-changed) &nbsp;·&nbsp; [Full changelog](CHANGELOG.md)
+> **Stable:** [10.9.2](https://github.com/v1k70rk4/HASS.Agent.NET10/releases/latest) &nbsp;·&nbsp; **Beta:** [10.9.3-beta.3](https://github.com/v1k70rk4/HASS.Agent.NET10/releases/tag/v10.9.3-beta.3) &nbsp;·&nbsp; [What changed](#what-changed) &nbsp;·&nbsp; [Full changelog](CHANGELOG.md)
 
 ---
 
@@ -169,7 +169,7 @@ No telemetry, analytics, or usage data is collected or transmitted.
 
 ## What Changed
 
-### 10.9.3-beta.1-2
+### 10.9.3-beta.1-3
 
 > **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered it, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.9.2**, below.
 
@@ -179,6 +179,7 @@ Works with the integration **10.6.7** or newer; there is no new integration with
 - **GPU usage per GPU:** each `gpu_usage.adapters[N]` has its own load, engines and memory. Requested in [#99](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/99).
 - **Fixed: LAN IP could show a virtual adapter's address.** The adapter Windows routes through comes first now. Reported in [#100](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/100).
 - **A name of your own above the notifications** (Capabilities, *Custom name*). Asked for in [#101](https://github.com/v1k70rk4/HASS.Agent.NET10/discussions/101).
+- **Fixed: Logged in user was empty on a PC used only over Remote Desktop.** The Remote Desktop session counts when nobody is signed in at the screen.
 
 ### 10.9.2 — hotfix
 

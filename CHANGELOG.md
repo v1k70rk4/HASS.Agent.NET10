@@ -2,6 +2,14 @@
 
 Every release of HASS.Agent .NET10, newest first. The downloads are on the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases).
 
+## 10.9.3-beta.3
+
+> **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered it, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.9.2**, below.
+
+The third beta of 10.9.3: one fix. Works with the integration **10.6.7** or newer; there is no new integration with this one. Signed release.
+
+- **Fixed: Logged in user was empty and Session state said *connected* on a PC used only over Remote Desktop.** Both read the console session, the PC's own screen, which shows the sign-in screen with nobody in it while you work over Remote Desktop. Now the console's session counts when someone is signed in there, otherwise the active Remote Desktop session, otherwise one that was disconnected without signing out.
+
 ## 10.9.3-beta.2
 
 > **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered it, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.9.2**, below.
