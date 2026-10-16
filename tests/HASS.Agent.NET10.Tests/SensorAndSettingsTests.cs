@@ -314,7 +314,7 @@ public class MediaPlayerTests
         Assert.True(announced.Announce);
         Assert.Equal("http://ha.local:8123/tts.mp3", announced.Data?.ToString());
 
-        // The integration before 10.10.0 sends no flag at all.
+        // The integration before 10.9.2 sends no flag at all.
         var plain = JsonSerializer.Deserialize<MediaCommand>("""{"command":"playmedia","data":"http://ha.local:8123/song.mp3"}""", options);
         Assert.NotNull(plain);
         Assert.False(plain.Announce);

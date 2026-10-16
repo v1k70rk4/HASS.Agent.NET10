@@ -11,7 +11,7 @@ internal sealed class MediaCommand
     public object? Data { get; init; }
 
     /// <summary>
-    /// A playmedia sent with Home Assistant's announce flag (integration 10.10.0+): it is meant to
+    /// A playmedia sent with Home Assistant's announce flag (integration 10.9.2+): it is meant to
     /// be heard, so the PC is unmuted and turned up for it when the user allows that.
     /// </summary>
     [JsonPropertyName("announce")]
