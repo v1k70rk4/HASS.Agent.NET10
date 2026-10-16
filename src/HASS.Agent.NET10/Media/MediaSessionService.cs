@@ -498,8 +498,8 @@ internal sealed class MediaSessionService : IDisposable
 
         player.Pause();
         player.Source = null;
-        await EndAnnouncementAsync();
         _log.Info("Sound from Home Assistant stopped.");
+        await EndAnnouncementAsync();
         return true;
     }
 
