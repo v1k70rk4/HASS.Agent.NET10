@@ -1883,36 +1883,45 @@ internal sealed class MainForm : Form
         });
 
         var githubBtn = MakeSecondaryButton("GitHub", 110, 32);
-        githubBtn.Location = Pt(28, 174);
         githubBtn.Click += (_, _) => OpenUrl(AppIdentity.GitHubRepositoryUrl);
-        card.Controls.Add(githubBtn);
 
         var issueBtn = MakeSecondaryButton(S("About.ReportIssue"), 150, 32);
-        issueBtn.Location = new Point(githubBtn.Right + D(8), D(174));
         issueBtn.Click += (_, _) => OpenUrl($"{AppIdentity.GitHubRepositoryUrl}/issues/new");
-        card.Controls.Add(issueBtn);
 
         // Release tags carry a "v" prefix and keep any pre-release suffix (v10.6.2-beta.1).
         var notesBtn = MakeSecondaryButton(S("About.ReleaseNotes"), 140, 32);
-        notesBtn.Location = new Point(issueBtn.Right + D(8), D(174));
         notesBtn.Click += (_, _) => OpenUrl($"{AppIdentity.GitHubRepositoryUrl}/releases/tag/v{_settings.SoftwareVersion}");
-        card.Controls.Add(notesBtn);
 
         var supportBtn = MakeSecondaryButton(S("About.Support"), 190, 32);
-        supportBtn.Location = Pt(28, 214);
         supportBtn.Click += (_, _) => OpenUrl(AppIdentity.SupportUrl);
-        card.Controls.Add(supportBtn);
 
         // The star is the one thing the project asks for, here and nowhere else in the app.
         var starBtn = MakeSecondaryButton(S("About.Star"), 170, 32);
-        starBtn.Location = new Point(supportBtn.Right + D(8), D(214));
         starBtn.Click += (_, _) => OpenUrl(AppIdentity.GitHubRepositoryUrl);
-        card.Controls.Add(starBtn);
 
         var updateBtn = MakePrimaryButton(S("About.CheckUpdates"), 160, 32);
-        updateBtn.Location = new Point(starBtn.Right + D(8), D(214));
         updateBtn.Click += async (_, _) => await CheckForUpdatesAsync(updateBtn);
-        card.Controls.Add(updateBtn);
+
+        // The buttons flow and wrap with the card: in a narrow window or a language with
+        // longer words the last one ran past the card's edge when each had a fixed place.
+        var buttons = new FlowLayoutPanel
+        {
+            Location = Pt(28, 174), Size = Sz(544, 72),
+            FlowDirection = FlowDirection.LeftToRight, WrapContents = true, BackColor = Color.Transparent
+        };
+        foreach (var button in new[] { githubBtn, issueBtn, notesBtn, supportBtn, starBtn, updateBtn })
+        {
+            button.Margin = new Padding(0, 0, D(8), D(8));
+            buttons.Controls.Add(button);
+        }
+        card.Controls.Add(buttons);
+        card.Layout += (_, _) =>
+        {
+            var width = Math.Max(D(200), card.ClientSize.Width - buttons.Left - D(20));
+            buttons.Width = width;
+            buttons.Height = buttons.GetPreferredSize(new Size(width, 0)).Height;
+            card.Height = buttons.Bottom + D(20);
+        };
 
         return page;
     }
