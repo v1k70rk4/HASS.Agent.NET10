@@ -164,6 +164,22 @@ internal sealed class CompanionSettings
 
     public bool MqttMediaPlayerEnabled { get; set; } = true;
 
+    /// <summary>The cover of what is playing goes to Home Assistant along with the media player's state.</summary>
+    public bool MediaPlayerCoverArtEnabled { get; set; } = true;
+
+    /// <summary>
+    /// An announcement from Home Assistant (play_media with announce) is heard: the PC is unmuted and set
+    /// to <see cref="AnnouncementVolume"/> while it plays, then the volume and the mute go back to what they were.
+    /// </summary>
+    public bool AnnouncementVolumeEnabled { get; set; } = true;
+
+    public int AnnouncementVolume { get; set; } = DefaultAnnouncementVolume;
+
+    public const int DefaultAnnouncementVolume = 70;
+
+    /// <summary>What was playing pauses for the announcement and goes on afterwards.</summary>
+    public bool AnnouncementPausesMedia { get; set; } = true;
+
     public bool MqttButtonsEnabled { get; set; } = true;
 
     public bool MqttSystemSensorsEnabled { get; set; } = true;
@@ -306,6 +322,11 @@ internal sealed class CompanionSettings
         if (MqttPort is < 1 or > 65535)
         {
             MqttPort = MqttUseTls ? 8883 : 1883;
+        }
+
+        if (AnnouncementVolume is < 1 or > 100)
+        {
+            AnnouncementVolume = DefaultAnnouncementVolume;
         }
 
         FastSensorIntervalSeconds = NormalizeInterval(FastSensorIntervalSeconds, 10, max: 3600);

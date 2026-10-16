@@ -1,6 +1,8 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices.WindowsRuntime;
 using System.Security.Cryptography;
 using System.Text.Json;
+using HASS.Agent.Companion.Configuration;
 using HASS.Agent.Companion.Logging;
 using Windows.Foundation;
 using Windows.Graphics.Imaging;
@@ -14,6 +16,7 @@ internal sealed class MediaSessionService : IDisposable
 {
     private readonly FileLog _log;
     private readonly AudioEndpointService _audioEndpoint;
+    private readonly CompanionSettings _settings;
     private GlobalSystemMediaTransportControlsSessionManager? _sessionManager;
     private MediaPlayer? _localPlayer;
     private CancellationTokenSource? _cts;
@@ -27,13 +30,19 @@ internal sealed class MediaSessionService : IDisposable
     // unwinding at the same moment), so each transition runs to its end before the next.
     private readonly SemaphoreSlim _lifecycle = new(1, 1);
 
+    // What an announcement changed on the PC, kept until the announcement is over so that
+    // it can be undone: the user's own volume and mute, and the session it paused.
+    private sealed record AnnouncementRestore(int Volume, bool Muted, GlobalSystemMediaTransportControlsSession? PausedSession);
+    private AnnouncementRestore? _announcementRestore;
+
     // The audio endpoint is shared with SystemMetricsService: two instances would
     // each create their own WASAPI COM objects and deadlock against each other
     // during an audio device change (e.g. monitor power-off dropping HDMI audio).
-    public MediaSessionService(FileLog log, AudioEndpointService audioEndpoint)
+    public MediaSessionService(FileLog log, AudioEndpointService audioEndpoint, CompanionSettings settings)
     {
         _log = log;
         _audioEndpoint = audioEndpoint;
+        _settings = settings;
     }
 
     public async Task StartAsync(Func<MediaStateMessage, Task> publishState, Func<byte[]?, Task>? publishThumbnail, CancellationToken cancellationToken)
@@ -49,11 +58,7 @@ internal sealed class MediaSessionService : IDisposable
             _publishState = publishState;
             _publishThumbnail = publishThumbnail;
             _sessionManager = await GlobalSystemMediaTransportControlsSessionManager.RequestAsync();
-            _localPlayer = new MediaPlayer
-            {
-                AutoPlay = false,
-                IsLoopingEnabled = false
-            };
+            _localPlayer = CreateLocalPlayer();
 
             _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             // The token, not the field: the worker must not depend on what _cts holds by the
@@ -99,6 +104,8 @@ internal sealed class MediaSessionService : IDisposable
                 }
             }
 
+            // An announcement cut short by the stop must not leave the PC loud.
+            await EndAnnouncementAsync().ConfigureAwait(false);
             _localPlayer?.Dispose();
             _localPlayer = null;
             _sessionManager = null;
@@ -202,7 +209,7 @@ internal sealed class MediaSessionService : IDisposable
             case "playmedia":
                 if (command.Data is not null)
                 {
-                    PlayMedia(command.Data.ToString());
+                    await PlayMediaAsync(command.Data.ToString(), command.Announce);
                 }
                 break;
             default:
@@ -233,7 +240,9 @@ internal sealed class MediaSessionService : IDisposable
                 if (_publishThumbnail is not null)
                 {
                     var session = GetCurrentSession();
-                    var thumbnail = session is not null ? await ReadThumbnailAsync(session) : null;
+                    // With the cover switched off "no artwork" goes out once, which takes the
+                    // last cover off the card in Home Assistant.
+                    var thumbnail = session is not null && _settings.MediaPlayerCoverArtEnabled ? await ReadThumbnailAsync(session) : null;
                     var hash = thumbnail is not null
                         ? Convert.ToHexString(SHA256.HashData(thumbnail))
                         : null;
@@ -411,23 +420,126 @@ internal sealed class MediaSessionService : IDisposable
             session.GetPlaybackInfo().PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing) ?? sessions[0];
     }
 
-    private void PlayMedia(string? mediaUri)
+    private MediaPlayer CreateLocalPlayer()
+    {
+        var player = new MediaPlayer
+        {
+            AutoPlay = false,
+            IsLoopingEnabled = false
+        };
+        // Both run on a media thread; the undoing goes to the pool so that neither holds it.
+        player.MediaEnded += (_, _) => _ = Task.Run(EndAnnouncementAsync);
+        player.MediaFailed += (sender, args) =>
+        {
+            _log.Warning($"Media playback failed: {args.ErrorMessage}");
+            _ = Task.Run(EndAnnouncementAsync);
+        };
+        return player;
+    }
+
+    private async Task PlayMediaAsync(string? mediaUri, bool announce)
     {
         if (string.IsNullOrWhiteSpace(mediaUri))
         {
             return;
         }
 
-        if (!Uri.TryCreate(mediaUri, UriKind.Absolute, out var uri)
-            || uri.Scheme is not "http" and not "https")
+        if (!TryParseMediaUri(mediaUri, out var uri))
         {
             _log.Warning($"Rejected invalid playmedia URI: {mediaUri}");
             return;
         }
 
-        _localPlayer ??= new MediaPlayer();
+        if (announce && _settings.AnnouncementVolumeEnabled)
+        {
+            await BeginAnnouncementAsync();
+        }
+        else
+        {
+            // Ordinary playback while an announcement is still up: the raised volume must
+            // not stay on for it.
+            await EndAnnouncementAsync();
+        }
+
+        _localPlayer ??= CreateLocalPlayer();
         _localPlayer.Source = MediaSource.CreateFromUri(uri);
         _localPlayer.Play();
+    }
+
+    /// <summary>Only an absolute http(s) address is played; anything else from the network is refused.</summary>
+    internal static bool TryParseMediaUri(string? mediaUri, [NotNullWhen(true)] out Uri? uri)
+    {
+        uri = null;
+        if (string.IsNullOrWhiteSpace(mediaUri)
+            || !Uri.TryCreate(mediaUri, UriKind.Absolute, out var parsed)
+            || parsed.Scheme is not ("http" or "https"))
+        {
+            return false;
+        }
+
+        uri = parsed;
+        return true;
+    }
+
+    // An announcement is meant to be heard: the PC is unmuted and set to the announcement
+    // volume, and what was playing is paused when the user wants that. The first announcement
+    // remembers the user's own volume and mute; one that follows before the first is over
+    // keeps that memory, so the user's own setting comes back and not the raised one.
+    private async Task BeginAnnouncementAsync()
+    {
+        if (_announcementRestore is null)
+        {
+            GlobalSystemMediaTransportControlsSession? paused = null;
+            if (_settings.AnnouncementPausesMedia)
+            {
+                var session = GetCurrentSession();
+                if (session?.GetPlaybackInfo().PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing)
+                {
+                    try
+                    {
+                        if (await session.TryPauseAsync())
+                        {
+                            paused = session;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _log.Debug($"Unable to pause the playing media for the announcement: {ex.Message}");
+                    }
+                }
+            }
+
+            _announcementRestore = new AnnouncementRestore(_audioEndpoint.GetVolume(), _audioEndpoint.GetMuted(), paused);
+        }
+
+        _audioEndpoint.SetMuted(false);
+        _audioEndpoint.SetVolume(_settings.AnnouncementVolume);
+        _log.Info($"Announcement: volume set to {_settings.AnnouncementVolume}%" + (_announcementRestore.PausedSession is not null ? ", playing media paused." : "."));
+    }
+
+    private async Task EndAnnouncementAsync()
+    {
+        var restore = Interlocked.Exchange(ref _announcementRestore, null);
+        if (restore is null)
+        {
+            return;
+        }
+
+        try
+        {
+            _audioEndpoint.SetVolume(restore.Volume);
+            _audioEndpoint.SetMuted(restore.Muted);
+            if (restore.PausedSession is not null)
+            {
+                await restore.PausedSession.TryPlayAsync();
+            }
+
+            _log.Info("Announcement over: volume, mute and playback are back to what they were.");
+        }
+        catch (Exception ex)
+        {
+            _log.Warning($"Unable to undo the announcement's changes: {ex.Message}");
+        }
     }
 
     private static string ConvertState(GlobalSystemMediaTransportControlsSessionPlaybackStatus? status)

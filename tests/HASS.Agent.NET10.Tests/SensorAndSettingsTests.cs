@@ -1,4 +1,6 @@
 using HASS.Agent.Companion.Configuration;
+using HASS.Agent.Companion.Media;
+using System.Text.Json;
 using HASS.Agent.Companion.SystemStatus;
 
 namespace HASS.Agent.Companion.Tests;
@@ -297,5 +299,58 @@ public class SettingsTests
         settings.Normalize();
 
         Assert.Equal("0.0.0.0", settings.BindHost);
+    }
+}
+
+public class MediaPlayerTests
+{
+    [Fact]
+    public void Playmedia_announce_flag_is_read_and_defaults_to_off()
+    {
+        var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+
+        var announced = JsonSerializer.Deserialize<MediaCommand>("""{"command":"playmedia","data":"http://ha.local:8123/tts.mp3","announce":true}""", options);
+        Assert.NotNull(announced);
+        Assert.True(announced.Announce);
+        Assert.Equal("http://ha.local:8123/tts.mp3", announced.Data?.ToString());
+
+        // The integration before 10.10.0 sends no flag at all.
+        var plain = JsonSerializer.Deserialize<MediaCommand>("""{"command":"playmedia","data":"http://ha.local:8123/song.mp3"}""", options);
+        Assert.NotNull(plain);
+        Assert.False(plain.Announce);
+    }
+
+    [Theory]
+    [InlineData("http://ha.local:8123/api/tts_proxy/x.mp3", true)]
+    [InlineData("https://example.org/a.mp3", true)]
+    [InlineData("file:///C:/Windows/Media/chimes.wav", false)]
+    [InlineData("/local/a.mp3", false)]
+    [InlineData("  ", false)]
+    [InlineData(null, false)]
+    public void Only_http_addresses_are_played(string? address, bool played)
+    {
+        Assert.Equal(played, MediaSessionService.TryParseMediaUri(address, out var uri));
+        Assert.Equal(played, uri is not null);
+    }
+
+    [Fact]
+    public void Announcement_settings_have_sensible_defaults_and_a_volume_within_range()
+    {
+        var settings = new CompanionSettings();
+        Assert.True(settings.MediaPlayerCoverArtEnabled);
+        Assert.True(settings.AnnouncementVolumeEnabled);
+        Assert.True(settings.AnnouncementPausesMedia);
+        Assert.Equal(CompanionSettings.DefaultAnnouncementVolume, settings.AnnouncementVolume);
+
+        foreach (var outOfRange in new[] { 0, -5, 101, 1000 })
+        {
+            var broken = new CompanionSettings { AnnouncementVolume = outOfRange };
+            broken.Normalize();
+            Assert.Equal(CompanionSettings.DefaultAnnouncementVolume, broken.AnnouncementVolume);
+        }
+
+        var kept = new CompanionSettings { AnnouncementVolume = 35 };
+        kept.Normalize();
+        Assert.Equal(35, kept.AnnouncementVolume);
     }
 }

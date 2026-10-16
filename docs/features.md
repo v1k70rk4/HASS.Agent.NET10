@@ -88,14 +88,19 @@ A single notification can choose with `style`, so the doorbell can use the windo
 
 Expose the active Windows media session to Home Assistant as a `media_player` entity:
 
-- current title, artist, album
+- current title, artist, album and the cover art
 - play / pause / stop
 - next / previous track
 - seek
 - volume and mute control
 - TTS playback (Home Assistant TTS engine generates audio URL, agent plays it)
 
-The media player uses Windows global media transport sessions for playback control and the default Windows audio endpoint for volume/mute.
+The media player uses Windows global media transport sessions for playback control and the default Windows audio endpoint for volume/mute. Its settings are on the **Media player** page of the app (10.10.0+):
+
+- **Media player (tray app)**: the switch for the whole entity.
+- **Send the cover art to Home Assistant**: off, the entity keeps the title and the controls but shows no picture.
+- **Announcements**: a `media_player.play_media` action sent with `announce: true` (a TTS message, a doorbell sound) is meant to be heard. With the setting on, the PC is unmuted and set to the **announcement volume** for it, what was playing is paused when you want that, and afterwards the volume, the mute and the playback go back to what they were. This needs the integration **10.10.0** or newer; an older integration plays the sound at the current volume, as before. Without the flag, `play_media` plays at the current volume.
+- **Turning the PC on and off from Home Assistant**: nothing to set on the PC. The media player's *turn on* and *turn off* live in the integration's options in Home Assistant (Settings › Devices & services › HASS.Agent › Configure) and are off until you turn them on there; the page tells which of sleep, hibernate and shutdown this PC allows, as ticked under Capabilities › System commands.
 
 ## Dashboard Popup
 
