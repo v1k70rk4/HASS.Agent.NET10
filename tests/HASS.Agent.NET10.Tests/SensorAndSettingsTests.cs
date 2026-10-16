@@ -102,14 +102,26 @@ public class GpuAdapterTests
     }
 
     [Fact]
-    public void Two_cards_of_one_model_take_the_dxgi_adapters_in_turn()
+    public void Two_cards_of_one_model_get_no_luid()
+    {
+        // Only the name links the two lists, so which card is which can't be told.
+        var adapters = GpuAdapterList.Match(
+            [("RTX 4090", 24564), ("RTX 4090", 24564)],
+            [("RTX 4090", "0x00000000_0x00000002", 24000L), ("RTX 4090", "0x00000000_0x00000001", 24000L)],
+            name => name);
+        Assert.All(adapters, adapter => Assert.Null(adapter.Luid));
+        Assert.Equal(24564, adapters[0].MemoryMb);  // the registry's size stays
+    }
+
+    [Fact]
+    public void Dxgi_size_is_used_when_the_registry_has_none()
     {
         var adapters = GpuAdapterList.Match(
-            [("RTX 4090", null), ("RTX 4090", null)],
-            [("RTX 4090", "0x00000000_0x00000001", 24000L), ("RTX 4090", "0x00000000_0x00000002", 24000L)],
+            [("Radeon RX 7800 XT", null)],
+            [("Radeon RX 7800 XT", "0x00000000_0x00000003", 16368L)],
             name => name);
-        Assert.Equal(["0x00000000_0x00000001", "0x00000000_0x00000002"], adapters.Select(adapter => adapter.Luid));
-        Assert.Equal(24000, adapters[0].MemoryMb);  // DXGI's size when the registry has none
+        Assert.Equal(16368, adapters[0].MemoryMb);
+        Assert.Equal("0x00000000_0x00000003", adapters[0].Luid);
     }
 
     [Fact]

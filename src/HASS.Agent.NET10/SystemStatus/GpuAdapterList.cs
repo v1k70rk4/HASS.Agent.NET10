@@ -22,38 +22,29 @@ internal static class GpuAdapterList
 
     /// <summary>
     /// The registry's adapters in their order, each given the LUID of the DXGI adapter of the
-    /// same name; two cards of the same model take those DXGI adapters in turn.
+    /// same name. The name is all the two lists share, so cards of the same model (a name
+    /// that is not unique in either list) are left without a LUID: no values for them
+    /// rather than one card's values under the other's entry.
     /// </summary>
     internal static IReadOnlyList<GpuAdapterIdentity> Match(
         IReadOnlyList<(string Name, long? MemoryMb)> registry,
         IReadOnlyList<(string Name, string Luid, long? MemoryMb)> dxgi,
         Func<string, string> limit)
     {
-        var used = new HashSet<int>();
+        static string Key(string name) => name.Trim().ToUpperInvariant();
+        var registryCounts = registry.GroupBy(adapter => Key(adapter.Name)).ToDictionary(group => group.Key, group => group.Count());
+        var dxgiByName = dxgi.GroupBy(adapter => Key(adapter.Name)).ToDictionary(group => group.Key, group => group.ToList());
+
         var adapters = new List<GpuAdapterIdentity>();
         foreach (var (name, memoryMb) in registry)
         {
-            var match = -1;
-            for (var index = 0; index < dxgi.Count; index++)
-            {
-                if (!used.Contains(index) &&
-                    string.Equals(dxgi[index].Name.Trim(), name.Trim(), StringComparison.OrdinalIgnoreCase))
-                {
-                    match = index;
-                    break;
-                }
-            }
-
-            string? luid = null;
-            long? dxgiMemoryMb = null;
-            if (match >= 0)
-            {
-                used.Add(match);
-                luid = dxgi[match].Luid;
-                dxgiMemoryMb = dxgi[match].MemoryMb;
-            }
-
-            adapters.Add(new GpuAdapterIdentity(limit(name), memoryMb ?? dxgiMemoryMb, luid));
+            var key = Key(name);
+            var unique = registryCounts[key] == 1 && dxgiByName.TryGetValue(key, out var matches) && matches.Count == 1;
+            var match = unique ? dxgiByName[key][0] : default;
+            adapters.Add(new GpuAdapterIdentity(
+                limit(name),
+                memoryMb ?? (unique ? match.MemoryMb : null),
+                unique ? match.Luid : null));
         }
 
         return adapters;
