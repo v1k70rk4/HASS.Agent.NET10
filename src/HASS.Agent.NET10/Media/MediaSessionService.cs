@@ -171,6 +171,11 @@ internal sealed class MediaSessionService : IDisposable
                 }
                 break;
             case "stop":
+                if (await TryStopLocalPlaybackAsync())
+                {
+                    break;
+                }
+
                 if (session is not null)
                 {
                     await session.TryStopAsync();
@@ -464,6 +469,31 @@ internal sealed class MediaSessionService : IDisposable
         _localPlayer ??= CreateLocalPlayer();
         _localPlayer.Source = MediaSource.CreateFromUri(uri);
         _localPlayer.Play();
+    }
+
+    // A stop from Home Assistant while a sound of ours is playing (an announcement, a
+    // play_media) cuts that sound and puts the volume, the mute and the paused media back.
+    // Otherwise the stop goes to the followed session, as before.
+    private async Task<bool> TryStopLocalPlaybackAsync()
+    {
+        var player = _localPlayer;
+        if (player is null || player.Source is null)
+        {
+            return false;
+        }
+
+        // Only while it plays: a sound that has ended leaves the player paused with its
+        // source still set, and a stop then is meant for the followed session.
+        if (player.PlaybackSession.PlaybackState is not (MediaPlaybackState.Playing or MediaPlaybackState.Opening or MediaPlaybackState.Buffering))
+        {
+            return false;
+        }
+
+        player.Pause();
+        player.Source = null;
+        await EndAnnouncementAsync();
+        _log.Info("Sound from Home Assistant stopped.");
+        return true;
     }
 
     /// <summary>Only an absolute http(s) address is played; anything else from the network is refused.</summary>
