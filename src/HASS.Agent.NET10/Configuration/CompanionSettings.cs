@@ -150,6 +150,18 @@ internal sealed class CompanionSettings
     /// <summary>How a notification is shown: <see cref="NotificationStyles"/>.</summary>
     public string NotificationStyle { get; set; } = NotificationStyles.Toast;
 
+    /// <summary>A name of the user's own above the app's Windows notifications instead of the app's.</summary>
+    public bool CustomNotificationNameEnabled { get; set; }
+
+    public string CustomNotificationName { get; set; } = string.Empty;
+
+    public const int MaxNotificationNameLength = 64;
+
+    /// <summary>The name to show, or null for the app's own.</summary>
+    [JsonIgnore]
+    public string? EffectiveNotificationName =>
+        CustomNotificationNameEnabled && !string.IsNullOrWhiteSpace(CustomNotificationName) ? CustomNotificationName.Trim() : null;
+
     public bool MqttMediaPlayerEnabled { get; set; } = true;
 
     public bool MqttButtonsEnabled { get; set; } = true;
@@ -268,6 +280,11 @@ internal sealed class CompanionSettings
         if (Language is not "hu" and not "en") Language = "en";
         if (HaLanguage is not "hu" and not "en") HaLanguage = "en";
         NotificationStyle = NotificationStyles.Normalize(NotificationStyle);
+        CustomNotificationName = CustomNotificationName.Trim();
+        if (CustomNotificationName.Length > MaxNotificationNameLength)
+        {
+            CustomNotificationName = CustomNotificationName[..MaxNotificationNameLength];
+        }
 
         if (string.IsNullOrWhiteSpace(SerialNumber))
         {

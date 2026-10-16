@@ -153,6 +153,8 @@ internal static partial class Strings
             ["Cap.NotificationStyle"] = "Notification style",
             ["Cap.NotificationStyleToast"] = "Windows notification",
             ["Cap.NotificationStyleWindow"] = "Own window (always visible)",
+            ["Cap.CustomNotificationName"] = "Custom name",
+            ["Cap.CustomNotificationNameHint"] = "The name above this PC's Windows notifications, instead of \"HASS.Agent .NET10\". Handy to tell several PCs apart. It is one name for every notification; it applies to the next one shown.",
             ["Cap.MediaPlayer"] = "Media player (tray app)",
             ["Cap.SensorsService"] = "System sensors — service",
             ["Cap.SensorsApp"] = "System sensors — tray app",

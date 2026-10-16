@@ -1,7 +1,9 @@
 using HASS.Agent.Companion.Http;
 using HASS.Agent.Companion.Localization;
 using HASS.Agent.Companion.Logging;
+using HASS.Agent.Companion.Runtime;
 using Microsoft.Toolkit.Uwp.Notifications;
+using Microsoft.Win32;
 using Windows.UI.Notifications;
 
 namespace HASS.Agent.Companion.Tray;
@@ -47,6 +49,65 @@ internal sealed class ToastPresenter
         {
             _log.Warning($"Windows notifications are not available: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// The name above the app's notifications: the given text, or the app's own name for
+    /// null/empty. Windows takes it from the app's registration, which the toolkit writes
+    /// again at each start (after <see cref="Listen"/>), so this runs after that and after
+    /// every save of the settings. It applies to new notifications at once.
+    /// </summary>
+    public void ApplyName(string? name)
+    {
+        var displayName = string.IsNullOrWhiteSpace(name) ? AppIdentity.DisplayName : name.Trim();
+        try
+        {
+            using var key = FindRegistration();
+            if (key is null)
+            {
+                _log.Warning("The app's notification registration was not found; the notification name stays as it is.");
+                return;
+            }
+
+            if (!string.Equals(key.GetValue("DisplayName") as string, displayName, StringComparison.Ordinal))
+            {
+                key.SetValue("DisplayName", displayName);
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.Warning($"Unable to set the notification name: {ex.Message}");
+        }
+    }
+
+    // HKCU\Software\Classes\AppUserModelId\<AUMID>: the one whose COM activator (registered
+    // by the toolkit) starts this exe. Other installs and other apps are left alone.
+    private static RegistryKey? FindRegistration()
+    {
+        var exe = Environment.ProcessPath;
+        if (string.IsNullOrEmpty(exe))
+        {
+            return null;
+        }
+
+        using var aumids = Registry.CurrentUser.OpenSubKey(@"Software\Classes\AppUserModelId");
+        foreach (var aumid in aumids?.GetSubKeyNames() ?? [])
+        {
+            using var candidate = aumids!.OpenSubKey(aumid);
+            if (candidate?.GetValue("CustomActivator") is not string clsid || !Guid.TryParse(clsid, out var activator))
+            {
+                continue;
+            }
+
+            using var server = Registry.CurrentUser.OpenSubKey($@"Software\Classes\CLSID\{{{activator}}}\LocalServer32");
+            if (server?.GetValue(null) is string command &&
+                command.Contains(exe, StringComparison.OrdinalIgnoreCase))
+            {
+                return aumids.OpenSubKey(aumid, writable: true);
+            }
+        }
+
+        return null;
     }
 
     /// <summary>

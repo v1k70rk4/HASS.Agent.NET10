@@ -187,6 +187,18 @@ public class SessionLockedTests
 public class SettingsTests
 {
     [Fact]
+    public void Custom_notification_name_counts_only_when_ticked_and_not_empty()
+    {
+        Assert.Null(new CompanionSettings { CustomNotificationName = "Garage PC" }.EffectiveNotificationName);
+        Assert.Null(new CompanionSettings { CustomNotificationNameEnabled = true, CustomNotificationName = "  " }.EffectiveNotificationName);
+        Assert.Equal("Garage PC", new CompanionSettings { CustomNotificationNameEnabled = true, CustomNotificationName = " Garage PC " }.EffectiveNotificationName);
+
+        var tooLong = new CompanionSettings { CustomNotificationNameEnabled = true, CustomNotificationName = new string('x', 100) };
+        tooLong.Normalize();
+        Assert.Equal(CompanionSettings.MaxNotificationNameLength, tooLong.CustomNotificationName.Length);
+    }
+
+    [Fact]
     public void Custom_sensor_ids_are_clean_and_unique()
     {
         var used = new HashSet<string>();

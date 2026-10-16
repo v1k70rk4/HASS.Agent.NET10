@@ -80,6 +80,8 @@ The **Notification style** on the Capabilities page decides how a notification i
 
 A single notification can choose with `style`, so the doorbell can use the window while everything else stays a Windows notification.
 
+**Custom name** (10.9.3+), right below: the name above the Windows notifications, *HASS.Agent .NET10* unless you tick it and write your own, for example to tell several PCs apart. Windows keeps that name in the app's registration, which the app writes again at every start, so the app puts your name back each time. It is one name for all notifications of the PC and applies from the next one shown.
+
 <p align="center"><img src="images/notify-center.png" width="360" alt="A notification in the Windows notification centre, with its text field and buttons"></p>
 
 ## Media Player

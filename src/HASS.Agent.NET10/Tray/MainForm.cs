@@ -83,6 +83,8 @@ internal sealed class MainForm : Form
 
     private readonly CheckBox _capNotify = new();
     private readonly ComboBox _notificationStyle = new() { DropDownStyle = ComboBoxStyle.DropDownList };
+    private readonly CheckBox _customNotificationName = new();
+    private readonly TextBox _notificationName = new();
     private readonly TextBox _webViewUrl = new();
     private readonly NumericUpDown _webViewWidth = new() { Minimum = WebViewOptions.MinimumEdge, Maximum = WebViewOptions.MaximumEdge, Increment = 20 };
     private readonly NumericUpDown _webViewHeight = new() { Minimum = WebViewOptions.MinimumEdge, Maximum = WebViewOptions.MaximumEdge, Increment = 20 };
@@ -944,13 +946,31 @@ internal sealed class MainForm : Form
 
         AddPageTitle(page, S("Cap.Title"));
 
-        var card1 = MakeCard(page, 28, 56, 600, 336, S("Cap.Functions"));
+        var card1 = MakeCard(page, 28, 56, 600, 370, S("Cap.Functions"));
         var y = 44;
         y = AddCheck(card1, _capNotify, S("Cap.Notifications"), y);
         // Same order as NotificationStyleValues.
         _notificationStyle.Items.Add(S("Cap.NotificationStyleToast"));
         _notificationStyle.Items.Add(S("Cap.NotificationStyleWindow"));
         y = AddField(card1, S("Cap.NotificationStyle"), _notificationStyle, y + 2, inputWidth: 260) + 2;
+
+        // The tick box takes the place of the field's label.
+        _customNotificationName.Text = S("Cap.CustomNotificationName");
+        _customNotificationName.Location = Pt(20, y + 2);
+        _customNotificationName.Size = Sz(160, 26);
+        _customNotificationName.ForeColor = TextBody;
+        _customNotificationName.CheckedChanged += (_, _) => _notificationName.Enabled = _customNotificationName.Checked;
+        card1.Controls.Add(_customNotificationName);
+        _notificationName.MaxLength = CompanionSettings.MaxNotificationNameLength;
+        _notificationName.PlaceholderText = AppIdentity.DisplayName;
+        var nameTip = new ToolTip { AutomaticDelay = 150, AutoPopDelay = 10000, InitialDelay = 150, ReshowDelay = 100, ShowAlways = true };
+        nameTip.SetToolTip(_customNotificationName, S("Cap.CustomNotificationNameHint"));
+        nameTip.SetToolTip(_notificationName, S("Cap.CustomNotificationNameHint"));
+        // Where AddField puts its input, without the label under the tick box.
+        _notificationName.Location = Pt(188, y);
+        _notificationName.Size = Sz(260, 28);
+        card1.Controls.Add(_notificationName);
+        y += 36;
         y = AddCheck(card1, _capMedia, S("Cap.MediaPlayer"), y);
         y = AddCheck(card1, _capSensorsService, S("Cap.SensorsService"), y);
         y = AddCheck(card1, _capSensorsApp, S("Cap.SensorsApp"), y);
@@ -971,7 +991,7 @@ internal sealed class MainForm : Form
             Text = S("Cap.Seconds"), Location = Pt(296, y - 30), AutoSize = true, ForeColor = TextMuted
         });
 
-        var cmdY = 404;
+        var cmdY = 438;
         var card2 = MakeCard(page, 28, cmdY, 600, 50 + SystemCommandCatalog.Commands.Count * 30 + 16, S("Cap.Commands"));
         y = 44;
         card2.Controls.Add(new Label { Text = "Tray", Font = new Font("Segoe UI", 8.5F, FontStyle.Bold), ForeColor = TextMuted, Location = Pt(320, y), AutoSize = true });
@@ -2612,6 +2632,9 @@ internal sealed class MainForm : Form
 
         _capNotify.Checked = _settings.MqttNotificationsEnabled;
         _notificationStyle.SelectedIndex = Math.Max(0, Array.IndexOf(NotificationStyleValues, _settings.NotificationStyle));
+        _customNotificationName.Checked = _settings.CustomNotificationNameEnabled;
+        _notificationName.Text = _settings.CustomNotificationName;
+        _notificationName.Enabled = _settings.CustomNotificationNameEnabled;
         _capMedia.Checked = _settings.MqttMediaPlayerEnabled;
         _capSensorsService.Checked = _settings.MqttServiceSystemSensorsEnabled;
         _capSensorsApp.Checked = _settings.MqttSystemSensorsEnabled;
@@ -2888,6 +2911,8 @@ internal sealed class MainForm : Form
 
         _settings.MqttNotificationsEnabled = _capNotify.Checked;
         _settings.NotificationStyle = NotificationStyleValues[Math.Max(0, _notificationStyle.SelectedIndex)];
+        _settings.CustomNotificationNameEnabled = _customNotificationName.Checked;
+        _settings.CustomNotificationName = _notificationName.Text.Trim();
         _settings.MqttMediaPlayerEnabled = _capMedia.Checked;
         _settings.MqttServiceSystemSensorsEnabled = _capSensorsService.Checked;
         _settings.MqttSystemSensorsEnabled = _capSensorsApp.Checked;

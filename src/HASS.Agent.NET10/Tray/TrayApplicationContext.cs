@@ -60,6 +60,7 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
         _toasts = new ToastPresenter(log);
         _toasts.ActionSelected += RaiseNotificationAction;
         _toasts.Listen();
+        _toasts.ApplyName(settings.EffectiveNotificationName);
 
         _hotkeys = new HotkeyService(log);
         _hotkeys.Pressed += (_, hotkey) => HotkeyPressed?.Invoke(this, hotkey);
@@ -240,6 +241,7 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
         _mainForm.SettingsSaved += (_, _) =>
         {
             _hotkeys.Apply(_settings.Hotkeys);
+            _toasts.ApplyName(_settings.EffectiveNotificationName);
             SettingsSaved?.Invoke(this, EventArgs.Empty);
         };
         _mainForm.FormClosed += (_, _) => _mainForm = null;
