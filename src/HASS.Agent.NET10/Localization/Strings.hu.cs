@@ -154,7 +154,7 @@ internal static partial class Strings
             ["Cap.NotificationStyleToast"] = "Windows-értesítés",
             ["Cap.NotificationStyleWindow"] = "Saját ablak (mindig látszik)",
             ["Cap.CustomNotificationName"] = "Egyedi név",
-            ["Cap.CustomNotificationNameHint"] = "Ez a név áll a gép Windows-értesítései fölött a „HASS.Agent .NET10” helyett. Több gépnél így könnyű megkülönböztetni őket. Minden értesítésnek ugyanez lesz a neve; a következő értesítéstől érvényes.",
+            ["Cap.CustomNotificationNameHint"] = "Ez a név áll a gép Windows-értesítései fölött a „HASS.Agent .NET10” helyett. Több gépnél így könnyű megkülönböztetni őket. Minden értesítésnek ugyanez lesz a neve. Ha a nevet megváltoztatva mented, az app törli a saját értesítéseit az értesítési központból: a Windows csak akkor olvassa újra a nevet, ha már nincs ott egy sem.",
             ["Cap.MediaPlayer"] = "Médialejátszó (tray app)",
             ["Cap.SensorsService"] = "Rendszerszenzorok (szolgáltatás)",
             ["Cap.SensorsApp"] = "Rendszerszenzorok (tray app)",

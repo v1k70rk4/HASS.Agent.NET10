@@ -80,6 +80,23 @@ internal sealed class ToastPresenter
         }
     }
 
+    /// <summary>
+    /// Removes the app's notifications from the notification centre. Windows keeps showing
+    /// the name it read for the app while the app has notifications there, so a changed name
+    /// shows only once they are gone.
+    /// </summary>
+    public void ClearNotificationCentre()
+    {
+        try
+        {
+            ToastNotificationManagerCompat.History.Clear();
+        }
+        catch (Exception ex)
+        {
+            _log.Warning($"Unable to clear the app's notifications: {ex.Message}");
+        }
+    }
+
     // HKCU\Software\Classes\AppUserModelId\<AUMID>: the one whose COM activator (registered
     // by the toolkit) starts this exe. Other installs and other apps are left alone.
     private static RegistryKey? FindRegistration()

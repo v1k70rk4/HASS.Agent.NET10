@@ -24,6 +24,7 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
     private readonly NotificationImageCache _notificationImages;
     private readonly ToastPresenter _toasts;
     private string? _toastRefusal;
+    private string? _notificationName;
     private Action? _pendingBalloonAction;
     private MainForm? _mainForm;
     private WebViewForm? _dashboardPopup;
@@ -48,6 +49,20 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
     /// <summary>Set by Program: asks Home Assistant for a user of this PC's own and its token.</summary>
     public Func<Task<(string Token, string User)>>? HaUserProvisioner { get; set; }
 
+    // Windows reads the app's name again only once the app has no notifications left in the
+    // notification centre, so a changed name clears them and shows from the next one. Only
+    // when the name changes: a start, or a save that keeps it, leaves the centre alone.
+    private void ApplyNotificationName()
+    {
+        var name = _settings.EffectiveNotificationName;
+        _toasts.ApplyName(name);
+        if (!string.Equals(name, _notificationName, StringComparison.Ordinal))
+        {
+            _notificationName = name;
+            _toasts.ClearNotificationCentre();
+        }
+    }
+
     public TrayApplicationContext(CompanionSettings settings, AppPaths paths, FileLog log)
     {
         _settings = settings;
@@ -60,7 +75,8 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
         _toasts = new ToastPresenter(log);
         _toasts.ActionSelected += RaiseNotificationAction;
         _toasts.Listen();
-        _toasts.ApplyName(settings.EffectiveNotificationName);
+        _notificationName = settings.EffectiveNotificationName;
+        _toasts.ApplyName(_notificationName);
 
         _hotkeys = new HotkeyService(log);
         _hotkeys.Pressed += (_, hotkey) => HotkeyPressed?.Invoke(this, hotkey);
@@ -241,7 +257,7 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
         _mainForm.SettingsSaved += (_, _) =>
         {
             _hotkeys.Apply(_settings.Hotkeys);
-            _toasts.ApplyName(_settings.EffectiveNotificationName);
+            ApplyNotificationName();
             SettingsSaved?.Invoke(this, EventArgs.Empty);
         };
         _mainForm.FormClosed += (_, _) => _mainForm = null;
