@@ -55,9 +55,9 @@ internal sealed class ToastPresenter
     /// The name above the app's notifications: the given text, or the app's own name for
     /// null/empty. Windows takes it from the app's registration, which the toolkit writes
     /// again at each start (after <see cref="Listen"/>), so this runs after that and after
-    /// every save of the settings. It applies to new notifications at once.
+    /// every save of the settings. False when the registration could not be written.
     /// </summary>
-    public void ApplyName(string? name)
+    public bool ApplyName(string? name)
     {
         var displayName = string.IsNullOrWhiteSpace(name) ? AppIdentity.DisplayName : name.Trim();
         try
@@ -66,34 +66,39 @@ internal sealed class ToastPresenter
             if (key is null)
             {
                 _log.Warning("The app's notification registration was not found; the notification name stays as it is.");
-                return;
+                return false;
             }
 
             if (!string.Equals(key.GetValue("DisplayName") as string, displayName, StringComparison.Ordinal))
             {
                 key.SetValue("DisplayName", displayName);
             }
+
+            return true;
         }
         catch (Exception ex)
         {
             _log.Warning($"Unable to set the notification name: {ex.Message}");
+            return false;
         }
     }
 
     /// <summary>
     /// Removes the app's notifications from the notification centre. Windows keeps showing
     /// the name it read for the app while the app has notifications there, so a changed name
-    /// shows only once they are gone.
+    /// shows only once they are gone. False when that failed.
     /// </summary>
-    public void ClearNotificationCentre()
+    public bool ClearNotificationCentre()
     {
         try
         {
             ToastNotificationManagerCompat.History.Clear();
+            return true;
         }
         catch (Exception ex)
         {
             _log.Warning($"Unable to clear the app's notifications: {ex.Message}");
+            return false;
         }
     }
 

@@ -55,11 +55,13 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
     private void ApplyNotificationName()
     {
         var name = _settings.EffectiveNotificationName;
-        _toasts.ApplyName(name);
-        if (!string.Equals(name, _notificationName, StringComparison.Ordinal))
+        // Nothing is cleared when the name could not be written, and the name counts as
+        // applied only once both worked, so the next save tries again.
+        if (_toasts.ApplyName(name) &&
+            !string.Equals(name, _notificationName, StringComparison.Ordinal) &&
+            _toasts.ClearNotificationCentre())
         {
             _notificationName = name;
-            _toasts.ClearNotificationCentre();
         }
     }
 

@@ -963,13 +963,26 @@ internal sealed class MainForm : Form
         card1.Controls.Add(_customNotificationName);
         _notificationName.MaxLength = CompanionSettings.MaxNotificationNameLength;
         _notificationName.PlaceholderText = AppIdentity.DisplayName;
-        var nameTip = new ToolTip { AutomaticDelay = 150, AutoPopDelay = 10000, InitialDelay = 150, ReshowDelay = 100, ShowAlways = true };
-        nameTip.SetToolTip(_customNotificationName, S("Cap.CustomNotificationNameHint"));
-        nameTip.SetToolTip(_notificationName, S("Cap.CustomNotificationNameHint"));
         // Where AddField puts its input, without the label under the tick box.
         _notificationName.Location = Pt(188, y);
         _notificationName.Size = Sz(260, 28);
         card1.Controls.Add(_notificationName);
+
+        // The explanation sits behind a small info sign, like the HA API's http warning.
+        var nameInfo = new Label
+        {
+            Text = "ⓘ",
+            Font = new Font("Segoe UI", 12F, FontStyle.Bold),
+            ForeColor = BtnBlue,
+            AutoSize = false,
+            Size = Sz(28, 28),
+            Location = Pt(456, y),
+            TextAlign = ContentAlignment.MiddleCenter,
+            Cursor = Cursors.Help
+        };
+        var nameTip = new ToolTip { AutomaticDelay = 150, AutoPopDelay = 15000, InitialDelay = 150, ReshowDelay = 100, ShowAlways = true };
+        nameTip.SetToolTip(nameInfo, S("Cap.CustomNotificationNameHint"));
+        card1.Controls.Add(nameInfo);
         y += 36;
         y = AddCheck(card1, _capMedia, S("Cap.MediaPlayer"), y);
         y = AddCheck(card1, _capSensorsService, S("Cap.SensorsService"), y);
