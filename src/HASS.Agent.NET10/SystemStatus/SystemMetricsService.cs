@@ -748,23 +748,80 @@ internal sealed class SystemMetricsService : IDisposable
         return Math.Max(0, idleMilliseconds / 1000);
     }
 
+    // The user's session: the console's when someone is signed in at the screen. On a PC used
+    // only over Remote Desktop the console shows the sign-in screen with nobody in it
+    // ("connected", no user), so then the active session with a user is taken, and failing
+    // that one that was disconnected without signing out.
     private static (string State, string User) ReadSessionStatus()
     {
-        var sessionId = WTSGetActiveConsoleSessionId();
-        if (sessionId == uint.MaxValue)
+        var consoleId = WTSGetActiveConsoleSessionId();
+        var sessions = ReadUserSessions();
+        var chosen = ChooseUserSession(sessions.Select(session => (session.Id, session.State)).ToList(), consoleId);
+        if (chosen >= 0)
         {
-            return ("none", string.Empty);
+            return (sessions[chosen].State, LimitState(sessions[chosen].User));
         }
 
-        var state = QuerySessionConnectState(sessionId);
-        var userName = QuerySessionString(sessionId, WtsInfoClass.UserName);
-        var domain = QuerySessionString(sessionId, WtsInfoClass.DomainName);
+        return consoleId == uint.MaxValue ? ("none", string.Empty) : (QuerySessionConnectState(consoleId), string.Empty);
+    }
 
-        var user = string.IsNullOrWhiteSpace(userName)
-            ? string.Empty
-            : string.IsNullOrWhiteSpace(domain) ? userName : $"{domain}\\{userName}";
+    /// <summary>
+    /// Index of the session to report among the sessions with a user: the console's, else
+    /// the first active one, else the first one at all (disconnected). -1 without any.
+    /// </summary>
+    internal static int ChooseUserSession(IReadOnlyList<(uint Id, string State)> sessions, uint consoleId)
+    {
+        for (var index = 0; index < sessions.Count; index++)
+        {
+            if (sessions[index].Id == consoleId)
+            {
+                return index;
+            }
+        }
 
-        return (state, LimitState(user));
+        for (var index = 0; index < sessions.Count; index++)
+        {
+            if (sessions[index].State == "active")
+            {
+                return index;
+            }
+        }
+
+        return sessions.Count > 0 ? 0 : -1;
+    }
+
+    // The sessions with a signed-in user, in Windows' order.
+    private static List<(uint Id, string State, string User)> ReadUserSessions()
+    {
+        var sessions = new List<(uint, string, string)>();
+        if (!WTSEnumerateSessions(IntPtr.Zero, 0, 1, out var sessionsPointer, out var sessionCount))
+        {
+            return sessions;
+        }
+
+        try
+        {
+            var itemSize = Marshal.SizeOf<WtsSessionInfo>();
+            for (var index = 0; index < sessionCount; index++)
+            {
+                var session = Marshal.PtrToStructure<WtsSessionInfo>(IntPtr.Add(sessionsPointer, index * itemSize));
+                var userName = QuerySessionString(session.SessionId, WtsInfoClass.UserName);
+                if (string.IsNullOrWhiteSpace(userName))
+                {
+                    continue;
+                }
+
+                var domain = QuerySessionString(session.SessionId, WtsInfoClass.DomainName);
+                var user = string.IsNullOrWhiteSpace(domain) ? userName : $"{domain}\\{userName}";
+                sessions.Add((session.SessionId, QuerySessionConnectState(session.SessionId), user));
+            }
+        }
+        finally
+        {
+            WTSFreeMemory(sessionsPointer);
+        }
+
+        return sessions;
     }
 
     private static bool? ReadClipboardTextAvailable()

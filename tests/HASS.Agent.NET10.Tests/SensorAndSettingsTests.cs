@@ -186,6 +186,30 @@ public class LanIpTests
     }
 }
 
+public class UserSessionTests
+{
+    [Fact]
+    public void The_console_user_comes_first()
+    {
+        // Signed in at the screen (session 1) and over Remote Desktop (session 3).
+        Assert.Equal(1, SystemMetricsService.ChooseUserSession([(3, "active"), (1, "active")], consoleId: 1));
+    }
+
+    [Fact]
+    public void Over_remote_desktop_only_the_active_session_is_taken()
+    {
+        // The console (1) shows the sign-in screen with nobody in it, so it is not in the list.
+        Assert.Equal(1, SystemMetricsService.ChooseUserSession([(2, "disconnected"), (4, "active")], consoleId: 1));
+    }
+
+    [Fact]
+    public void A_disconnected_session_is_the_last_resort()
+    {
+        Assert.Equal(0, SystemMetricsService.ChooseUserSession([(2, "disconnected")], consoleId: 1));
+        Assert.Equal(-1, SystemMetricsService.ChooseUserSession([], consoleId: 1));
+    }
+}
+
 public class SessionLockedTests
 {
     [Theory]
