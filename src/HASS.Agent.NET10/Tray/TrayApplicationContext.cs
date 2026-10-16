@@ -406,7 +406,7 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
 
     private void ShowWindowNotification(NotificationPayload notification, string? imageFile)
     {
-        var form = new ActionNotificationForm(notification, imageFile, RaiseNotificationAction);
+        var form = new ActionNotificationForm(notification, imageFile, RaiseNotificationAction, _settings.EffectiveNotificationName);
 
         _actionNotifications.Add(form);
         form.FormClosed += (_, _) =>

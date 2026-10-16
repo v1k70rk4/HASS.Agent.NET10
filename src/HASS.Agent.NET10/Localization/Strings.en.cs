@@ -154,7 +154,7 @@ internal static partial class Strings
             ["Cap.NotificationStyleToast"] = "Windows notification",
             ["Cap.NotificationStyleWindow"] = "Own window (always visible)",
             ["Cap.CustomNotificationName"] = "Custom name",
-            ["Cap.CustomNotificationNameHint"] = "The name above this PC's Windows notifications,\ninstead of \"HASS.Agent .NET10\". Handy with several PCs.\n\nSaving a changed name clears the app's notifications\nfrom the notification centre: Windows reads the name\nagain only when there are none left.",
+            ["Cap.CustomNotificationNameHint"] = "The name above this PC's Windows notifications and the\ntitle of its own window, instead of \"HASS.Agent .NET10\".\nHandy with several PCs.\n\nSaving a changed name clears the app's notifications\nfrom the notification centre: Windows reads the name\nagain only when there are none left.",
             ["Cap.MediaPlayer"] = "Media player (tray app)",
             ["Cap.SensorsService"] = "System sensors — service",
             ["Cap.SensorsApp"] = "System sensors — tray app",

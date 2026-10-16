@@ -35,12 +35,14 @@ internal sealed class ActionNotificationForm : Form
     public ActionNotificationForm(
         NotificationPayload notification,
         string? imageFile,
-        Action<string, IReadOnlyDictionary<string, string>> actionSelected)
+        Action<string, IReadOnlyDictionary<string, string>> actionSelected,
+        string? title = null)
     {
         _actionSelected = actionSelected;
         _image = LoadImage(imageFile);
 
-        Text = AppIdentity.DisplayName;
+        // The custom notification name, when one is set, as on the Windows notifications.
+        Text = string.IsNullOrWhiteSpace(title) ? AppIdentity.DisplayName : title;
         if (LoadAppIcon() is { } icon)
         {
             Icon = icon;
