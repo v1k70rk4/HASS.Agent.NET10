@@ -35,6 +35,10 @@ internal sealed class MediaSessionService : IDisposable
     private sealed record AnnouncementRestore(int Volume, bool Muted, GlobalSystemMediaTransportControlsSession? PausedSession);
     private AnnouncementRestore? _announcementRestore;
 
+    // Counts the sounds we start; a player event only undoes the announcement of the sound
+    // it belongs to.
+    private int _playbackGeneration;
+
     // The audio endpoint is shared with SystemMetricsService: two instances would
     // each create their own WASAPI COM objects and deadlock against each other
     // during an audio device change (e.g. monitor power-off dropping HDMI audio).
@@ -440,13 +444,30 @@ internal sealed class MediaSessionService : IDisposable
             IsLoopingEnabled = false
         };
         // Both run on a media thread; the undoing goes to the pool so that neither holds it.
-        player.MediaEnded += (_, _) => _ = Task.Run(EndAnnouncementAsync);
+        // Each takes the generation of the sound it is about, so that the end of one sound
+        // does not undo an announcement that started right after it.
+        player.MediaEnded += (_, _) =>
+        {
+            var generation = Volatile.Read(ref _playbackGeneration);
+            _ = Task.Run(() => EndAnnouncementIfCurrentAsync(generation));
+        };
         player.MediaFailed += (sender, args) =>
         {
             _log.Warning($"Media playback failed: {args.ErrorMessage}");
-            _ = Task.Run(EndAnnouncementAsync);
+            var generation = Volatile.Read(ref _playbackGeneration);
+            _ = Task.Run(() => EndAnnouncementIfCurrentAsync(generation));
         };
         return player;
+    }
+
+    private async Task EndAnnouncementIfCurrentAsync(int generation)
+    {
+        if (generation != Volatile.Read(ref _playbackGeneration))
+        {
+            return;
+        }
+
+        await EndAnnouncementAsync();
     }
 
     private async Task PlayMediaAsync(string? mediaUri, bool announce)
@@ -473,9 +494,19 @@ internal sealed class MediaSessionService : IDisposable
             await EndAnnouncementAsync();
         }
 
-        _localPlayer ??= CreateLocalPlayer();
-        _localPlayer.Source = MediaSource.CreateFromUri(uri);
-        _localPlayer.Play();
+        Interlocked.Increment(ref _playbackGeneration);
+        try
+        {
+            _localPlayer ??= CreateLocalPlayer();
+            _localPlayer.Source = MediaSource.CreateFromUri(uri);
+            _localPlayer.Play();
+        }
+        catch
+        {
+            // No sound, so no MediaEnded to undo the announcement: undo it here.
+            await EndAnnouncementAsync();
+            throw;
+        }
     }
 
     // A stop from Home Assistant while a sound of ours is playing (an announcement, a
