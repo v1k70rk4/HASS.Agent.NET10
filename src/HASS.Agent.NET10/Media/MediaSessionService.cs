@@ -35,9 +35,10 @@ internal sealed class MediaSessionService : IDisposable
     private sealed record AnnouncementRestore(int Volume, bool Muted, GlobalSystemMediaTransportControlsSession? PausedSession);
     private AnnouncementRestore? _announcementRestore;
 
-    // Counts the sounds we start; a player event only undoes the announcement of the sound
-    // it belongs to.
-    private int _playbackGeneration;
+    // Starting a sound, its end and a stop each change the current player and the saved
+    // state together; one at a time, so that the end of an earlier sound cannot undo the
+    // announcement of the one that replaced it.
+    private readonly SemaphoreSlim _soundGate = new(1, 1);
 
     // The audio endpoint is shared with SystemMetricsService: two instances would
     // each create their own WASAPI COM objects and deadlock against each other
@@ -62,7 +63,6 @@ internal sealed class MediaSessionService : IDisposable
             _publishState = publishState;
             _publishThumbnail = publishThumbnail;
             _sessionManager = await GlobalSystemMediaTransportControlsSessionManager.RequestAsync();
-            _localPlayer = CreateLocalPlayer();
 
             _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             // The token, not the field: the worker must not depend on what _cts holds by the
@@ -109,9 +109,17 @@ internal sealed class MediaSessionService : IDisposable
             }
 
             // An announcement cut short by the stop must not leave the PC loud.
-            await EndAnnouncementAsync().ConfigureAwait(false);
-            _localPlayer?.Dispose();
-            _localPlayer = null;
+            await _soundGate.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                await EndAnnouncementCoreAsync().ConfigureAwait(false);
+                _localPlayer?.Dispose();
+                _localPlayer = null;
+            }
+            finally
+            {
+                _soundGate.Release();
+            }
             _sessionManager = null;
             cts.Dispose();
             _worker = null;
@@ -444,30 +452,33 @@ internal sealed class MediaSessionService : IDisposable
             IsLoopingEnabled = false
         };
         // Both run on a media thread; the undoing goes to the pool so that neither holds it.
-        // Each takes the generation of the sound it is about, so that the end of one sound
-        // does not undo an announcement that started right after it.
-        player.MediaEnded += (_, _) =>
-        {
-            var generation = Volatile.Read(ref _playbackGeneration);
-            _ = Task.Run(() => EndAnnouncementIfCurrentAsync(generation));
-        };
+        // Every sound has a player of its own, and the handlers hold that player: an event
+        // undoes the announcement only while its player is still the current one.
+        player.MediaEnded += (_, _) => _ = Task.Run(() => EndAnnouncementForAsync(player));
         player.MediaFailed += (sender, args) =>
         {
             _log.Warning($"Media playback failed: {args.ErrorMessage}");
-            var generation = Volatile.Read(ref _playbackGeneration);
-            _ = Task.Run(() => EndAnnouncementIfCurrentAsync(generation));
+            _ = Task.Run(() => EndAnnouncementForAsync(player));
         };
         return player;
     }
 
-    private async Task EndAnnouncementIfCurrentAsync(int generation)
+    private async Task EndAnnouncementForAsync(MediaPlayer player)
     {
-        if (generation != Volatile.Read(ref _playbackGeneration))
+        await _soundGate.WaitAsync();
+        try
         {
-            return;
-        }
+            if (!ReferenceEquals(player, _localPlayer))
+            {
+                return;
+            }
 
-        await EndAnnouncementAsync();
+            await EndAnnouncementCoreAsync();
+        }
+        finally
+        {
+            _soundGate.Release();
+        }
     }
 
     private async Task PlayMediaAsync(string? mediaUri, bool announce)
@@ -483,29 +494,40 @@ internal sealed class MediaSessionService : IDisposable
             return;
         }
 
-        if (announce && _settings.AnnouncementVolumeEnabled)
-        {
-            await BeginAnnouncementAsync();
-        }
-        else
-        {
-            // Ordinary playback while an announcement is still up: the raised volume must
-            // not stay on for it.
-            await EndAnnouncementAsync();
-        }
-
-        Interlocked.Increment(ref _playbackGeneration);
+        await _soundGate.WaitAsync();
         try
         {
-            _localPlayer ??= CreateLocalPlayer();
-            _localPlayer.Source = MediaSource.CreateFromUri(uri);
-            _localPlayer.Play();
+            // A player per sound: the one before is let go, which also silences it.
+            var previous = _localPlayer;
+            _localPlayer = CreateLocalPlayer();
+            previous?.Dispose();
+
+            if (announce && _settings.AnnouncementVolumeEnabled)
+            {
+                await BeginAnnouncementAsync();
+            }
+            else
+            {
+                // Ordinary playback while an announcement is still up: the raised volume must
+                // not stay on for it.
+                await EndAnnouncementCoreAsync();
+            }
+
+            try
+            {
+                _localPlayer.Source = MediaSource.CreateFromUri(uri);
+                _localPlayer.Play();
+            }
+            catch
+            {
+                // No sound, so no MediaEnded to undo the announcement: undo it here.
+                await EndAnnouncementCoreAsync();
+                throw;
+            }
         }
-        catch
+        finally
         {
-            // No sound, so no MediaEnded to undo the announcement: undo it here.
-            await EndAnnouncementAsync();
-            throw;
+            _soundGate.Release();
         }
     }
 
@@ -514,24 +536,32 @@ internal sealed class MediaSessionService : IDisposable
     // Otherwise the stop goes to the followed session, as before.
     private async Task<bool> TryStopLocalPlaybackAsync()
     {
-        var player = _localPlayer;
-        if (player is null || player.Source is null)
+        await _soundGate.WaitAsync();
+        try
         {
-            return false;
-        }
+            var player = _localPlayer;
+            if (player is null || player.Source is null)
+            {
+                return false;
+            }
 
-        // Only while it plays: a sound that has ended leaves the player paused with its
-        // source still set, and a stop then is meant for the followed session.
-        if (player.PlaybackSession.PlaybackState is not (MediaPlaybackState.Playing or MediaPlaybackState.Opening or MediaPlaybackState.Buffering))
+            // Only while it plays: a sound that has ended leaves the player paused with its
+            // source still set, and a stop then is meant for the followed session.
+            if (player.PlaybackSession.PlaybackState is not (MediaPlaybackState.Playing or MediaPlaybackState.Opening or MediaPlaybackState.Buffering))
+            {
+                return false;
+            }
+
+            player.Pause();
+            player.Source = null;
+            _log.Info("Sound from Home Assistant stopped.");
+            await EndAnnouncementCoreAsync();
+            return true;
+        }
+        finally
         {
-            return false;
+            _soundGate.Release();
         }
-
-        player.Pause();
-        player.Source = null;
-        _log.Info("Sound from Home Assistant stopped.");
-        await EndAnnouncementAsync();
-        return true;
     }
 
     /// <summary>Only an absolute http(s) address is played; anything else from the network is refused.</summary>
@@ -585,9 +615,11 @@ internal sealed class MediaSessionService : IDisposable
         _log.Info($"Announcement: volume set to {_settings.AnnouncementVolume}%" + (_announcementRestore.PausedSession is not null ? ", playing media paused." : "."));
     }
 
-    private async Task EndAnnouncementAsync()
+    // Callers hold _soundGate.
+    private async Task EndAnnouncementCoreAsync()
     {
-        var restore = Interlocked.Exchange(ref _announcementRestore, null);
+        var restore = _announcementRestore;
+        _announcementRestore = null;
         if (restore is null)
         {
             return;
