@@ -56,12 +56,44 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
     {
         var name = _settings.EffectiveNotificationName;
         // Nothing is cleared when the name could not be written, and the name counts as
-        // applied only once both worked, so the next save tries again.
+        // applied only once both worked, so the next save, or the next start, tries again.
         if (_toasts.ApplyName(name) &&
             !string.Equals(name, _notificationName, StringComparison.Ordinal) &&
             _toasts.ClearNotificationCentre())
         {
             _notificationName = name;
+            StoreAppliedNotificationName(name);
+        }
+    }
+
+    // The name the notification centre was last cleared for, kept for the user (the
+    // registration is the user's too) so that a clear that failed is retried after a restart.
+    private const string UserKeyPath = @"Software\HASS.Agent.NET10";
+    private const string AppliedNotificationNameValue = "AppliedNotificationName";
+
+    private static string? ReadAppliedNotificationName()
+    {
+        try
+        {
+            using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(UserKeyPath);
+            return key?.GetValue(AppliedNotificationNameValue) is string { Length: > 0 } name ? name : null;
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    private void StoreAppliedNotificationName(string? name)
+    {
+        try
+        {
+            using var key = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(UserKeyPath);
+            key.SetValue(AppliedNotificationNameValue, name ?? string.Empty);
+        }
+        catch (Exception ex)
+        {
+            _log.Warning($"Unable to remember the notification name: {ex.Message}");
         }
     }
 
@@ -77,8 +109,10 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
         _toasts = new ToastPresenter(log);
         _toasts.ActionSelected += RaiseNotificationAction;
         _toasts.Listen();
-        _notificationName = settings.EffectiveNotificationName;
-        _toasts.ApplyName(_notificationName);
+        // The toolkit has just written the app's own name: put the chosen one back, and clear
+        // the centre if a change of name has not reached it yet.
+        _notificationName = ReadAppliedNotificationName();
+        ApplyNotificationName();
 
         _hotkeys = new HotkeyService(log);
         _hotkeys.Pressed += (_, hotkey) => HotkeyPressed?.Invoke(this, hotkey);
