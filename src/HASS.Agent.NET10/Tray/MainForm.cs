@@ -1282,20 +1282,22 @@ internal sealed class MainForm : Form
 
         // Nothing to set here: turning the PC on and off from the media player lives in the
         // integration's options, and the PC's part is the commands it allows on Capabilities.
-        var card3 = MakeCard(page, 28, 436, 600, 200, S("Mp.Power"));
+        var card3 = MakeCard(page, 28, 436, 600, 266, S("Mp.Power"));
+        // Six lines of 8.5 pt text in Hungarian at the design width.
         var powerHelp = new Label
         {
-            Text = S("Mp.PowerHelp"), Location = Pt(20, 40), Size = Sz(560, 84),
+            Text = S("Mp.PowerHelp"), Location = Pt(20, 40), Size = Sz(560, 110),
             ForeColor = TextMuted, Font = new Font("Segoe UI", 8.5F)
         };
         card3.Controls.Add(powerHelp);
         FollowCardWidth(card3, powerHelp);
         card3.Controls.Add(new Label
         {
-            Text = S("Mp.PowerCommands"), Location = Pt(20, 130), Size = Sz(560, 22), ForeColor = TextBody
+            Text = S("Mp.PowerCommands"), Location = Pt(20, 158), Size = Sz(560, 22), ForeColor = TextBody
         });
-        _powerCommandsState.Location = Pt(20, 154);
-        _powerCommandsState.Size = Sz(560, 22);
+        // One command per line: the three together do not fit a line in Hungarian.
+        _powerCommandsState.Location = Pt(20, 182);
+        _powerCommandsState.Size = Sz(560, 64);
         _powerCommandsState.ForeColor = TextBody;
         _powerCommandsState.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
         card3.Controls.Add(_powerCommandsState);
@@ -1321,7 +1323,7 @@ internal sealed class MainForm : Form
             parts.Add($"{S($"Cmd.{row.Def.Name}")}: {(by.Count == 0 ? S("Mp.PowerOff") : string.Join(", ", by))}");
         }
 
-        _powerCommandsState.Text = string.Join("   ·   ", parts);
+        _powerCommandsState.Text = string.Join(Environment.NewLine, parts);
     }
 
     private Panel BuildSensorsPage()
