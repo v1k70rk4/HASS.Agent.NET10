@@ -738,6 +738,18 @@ internal sealed class CustomSensorEditorForm : CustomEditorForm
     // Picking a hardware sensor from the list brings its unit, and a name when there is none yet.
     private void FillFromHardwareSensor(string? listItem)
     {
+        // A built-in attribute picked from the list brings its unit too (°C, GB, %), when
+        // the unit box is still empty.
+        if (listItem is not null && SelectedKey(_type) == CustomSensorTypes.BuiltInAttribute)
+        {
+            if (string.IsNullOrWhiteSpace(_unit.Text))
+            {
+                _unit.Text = BuiltInSensorCatalog.AttributeUnit(listItem);
+            }
+
+            return;
+        }
+
         if (listItem is null || SelectedKey(_type) != CustomSensorTypes.LibreHardwareMonitor)
         {
             return;

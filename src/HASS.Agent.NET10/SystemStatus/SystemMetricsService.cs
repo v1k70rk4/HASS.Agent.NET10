@@ -171,7 +171,7 @@ internal sealed class SystemMetricsService : IDisposable
 
         // Drive health comes from Windows' storage provider, which only an administrator may
         // ask: the service reads it, the tray app leaves the sensor out.
-        if (!serviceRole || !Wanted("drive_temperature"))
+        if (!serviceRole || !Wanted("drive_health"))
         {
             _lastDrives = null;
         }
@@ -345,12 +345,8 @@ internal sealed class SystemMetricsService : IDisposable
             DisplayBrightness: _lastDisplayBrightness,
             DisplayBrightnessSupported: _displayBrightnessSupported,
             GpuUsage: _lastGpu?.Usage,
-            // The system drive's temperature; the first drive that reports one when the
-            // system drive does not (a SATA drive behind a controller that keeps it).
-            DriveTemperature: _lastDrives is null
-                ? null
-                : (_lastDrives.FirstOrDefault(drive => drive.System && drive.Temperature is not null)
-                   ?? _lastDrives.FirstOrDefault(drive => drive.Temperature is not null))?.Temperature,
+            // Windows' verdict on the drives, the worst of them; the temperatures are attributes.
+            DriveHealth: _lastDrives is null ? null : DriveHealth.WorstHealth(_lastDrives),
             SessionState: session.State,
             LoggedInUser: session.User,
             LoggedInUsers: sessions.LoggedInUsers,
@@ -2059,8 +2055,12 @@ internal sealed class SystemMetricsService : IDisposable
 
         if (drives is not null)
         {
-            attributes["drive_temperature"] = new Dictionary<string, object?>
+            attributes["drive_health"] = new Dictionary<string, object?>
             {
+                // The system drive's temperature, or the first drive's that reports one: one
+                // attribute sensor away from a °C entity.
+                ["temperature"] = (drives.FirstOrDefault(drive => drive.System && drive.Temperature is not null)
+                                   ?? drives.FirstOrDefault(drive => drive.Temperature is not null))?.Temperature,
                 ["drives"] = drives
             };
         }
@@ -2069,7 +2069,7 @@ internal sealed class SystemMetricsService : IDisposable
         return attributes;
     }
 
-    // Lists one level down (gpu_usage.adapters, active_display.displays, drive_temperature.drives).
+    // Lists one level down (gpu_usage.adapters, active_display.displays, drive_health.drives).
     private static void RememberListCounts(IReadOnlyDictionary<string, IReadOnlyDictionary<string, object?>> attributes)
     {
         foreach (var (sensor, values) in attributes)
@@ -2641,7 +2641,7 @@ internal sealed record SystemMetricsMessage(
     [property: JsonPropertyName("display_brightness")] int? DisplayBrightness,
     [property: JsonPropertyName("display_brightness_supported")] bool? DisplayBrightnessSupported,
     [property: JsonPropertyName("gpu_usage")] double? GpuUsage,
-    [property: JsonPropertyName("drive_temperature")] int? DriveTemperature,
+    [property: JsonPropertyName("drive_health")] string? DriveHealth,
     [property: JsonPropertyName("session_state")] string SessionState,
     [property: JsonPropertyName("logged_in_user")] string LoggedInUser,
     [property: JsonPropertyName("logged_in_users")] int LoggedInUsers,

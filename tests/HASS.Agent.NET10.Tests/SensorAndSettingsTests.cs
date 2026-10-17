@@ -381,8 +381,8 @@ public class SystemHealthTests
         var disks = new[]
         {
             new PhysicalDiskRow("2", "Kingston DataTraveler 3.0", 7, 0),
-            new PhysicalDiskRow("0", "WDC WD30EFRX-68EUZN0", 11, 3),
-            new PhysicalDiskRow("1", "KINGSTON SFYRD2000G", 17, 4)
+            new PhysicalDiskRow("0", "WDC WD30EFRX-68EUZN0", 11, 3, HealthStatus: 1),
+            new PhysicalDiskRow("1", "KINGSTON SFYRD2000G", 17, 4, HealthStatus: 0)
         };
         var counters = new[]
         {
@@ -407,6 +407,29 @@ public class SystemHealthTests
         Assert.Equal("USB", usb.Bus);
         Assert.Null(usb.Temperature);
         Assert.Null(usb.Wear);
+
+        // Windows' verdict per drive, and the worst of them as the sensor's value.
+        Assert.Equal(["healthy", "unknown", "warning"], drives.Select(drive => drive.Health));
+        Assert.Equal("warning", DriveHealth.WorstHealth(drives));
+        Assert.Equal("unknown", DriveHealth.WorstHealth([]));
+        Assert.Equal("unhealthy", DriveHealth.WorstHealth([nvme with { Health = "unhealthy" }, sata]));
+    }
+
+    [Theory]
+    [InlineData("drive_health.temperature", "°C")]
+    [InlineData("drive_health.drives[1].temperature_max", "°C")]
+    [InlineData("drive_health.drives[0].power_on_hours", "h")]
+    [InlineData("drive_health.drives[0].name", "")]
+    [InlineData("gpu_usage.adapters[0].memory_gb", "GB")]
+    [InlineData("gpu_usage.memory_shared_mb", "MB")]
+    [InlineData("gpu_usage.adapters[1].engines.3d", "%")]
+    [InlineData("gpu_usage.npu_usage", "%")]
+    [InlineData("memory_usage.used_gb", "GB")]
+    [InlineData("active_display.displays[0].width", "px")]
+    [InlineData("sleep_blocked.primary_blocker", "")]
+    public void Attribute_sensors_made_from_the_list_get_their_unit(string path, string unit)
+    {
+        Assert.Equal(unit, BuiltInSensorCatalog.AttributeUnit(path));
     }
 
     [Fact]

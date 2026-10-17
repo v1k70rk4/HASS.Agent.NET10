@@ -12,6 +12,8 @@ namespace HASS.Agent.Companion.SystemStatus;
 /// </summary>
 internal sealed record DriveHealthInfo(
     [property: JsonPropertyName("name")] string Name,
+    // Windows' own verdict from the drive's SMART data: healthy, warning, unhealthy, unknown.
+    [property: JsonPropertyName("health")] string Health,
     [property: JsonPropertyName("bus")] string Bus,
     [property: JsonPropertyName("media")] string Media,
     [property: JsonPropertyName("temperature")] int? Temperature,
@@ -22,7 +24,7 @@ internal sealed record DriveHealthInfo(
     [property: JsonPropertyName("system")] bool System);
 
 /// <summary>What Windows knows about a physical disk, before it is matched to its counters.</summary>
-internal sealed record PhysicalDiskRow(string DeviceId, string Name, int BusType, int MediaType);
+internal sealed record PhysicalDiskRow(string DeviceId, string Name, int BusType, int MediaType, int HealthStatus = 5);
 
 /// <summary>One drive's reliability counters; a zero from Windows means the drive does not report it.</summary>
 internal sealed record ReliabilityRow(string DeviceId, long Temperature, long TemperatureMax, long PowerOnHours, long Wear);
@@ -47,7 +49,7 @@ internal static class DriveHealth
             foreach (var disk in Query("SELECT * FROM MSFT_PhysicalDisk"))
             {
                 var deviceId = Text(disk["DeviceId"]);
-                disks.Add(new PhysicalDiskRow(deviceId, Text(disk["FriendlyName"]), (int)Number(disk["BusType"]), (int)Number(disk["MediaType"])));
+                disks.Add(new PhysicalDiskRow(deviceId, Text(disk["FriendlyName"]), (int)Number(disk["BusType"]), (int)Number(disk["MediaType"]), (int)Number(disk["HealthStatus"])));
 
                 // The counters exist only through their disk (the association Get-PhysicalDisk |
                 // Get-StorageReliabilityCounter walks): listed on their own the class is empty.
@@ -104,6 +106,7 @@ internal static class DriveHealth
                 var counter = byDisk.GetValueOrDefault(disk.DeviceId);
                 return new DriveHealthInfo(
                     disk.Name,
+                    HealthName(disk.HealthStatus),
                     BusName(disk.BusType),
                     MediaName(disk.MediaType),
                     Reported(counter?.Temperature),
@@ -116,6 +119,34 @@ internal static class DriveHealth
             .ThenBy(drive => drive.Name, StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
+
+    /// <summary>The sensor's value: the worst verdict among the drives, unknown when there is none.</summary>
+    internal static string WorstHealth(IReadOnlyList<DriveHealthInfo> drives)
+    {
+        if (drives.Count == 0)
+        {
+            return "unknown";
+        }
+
+        return drives.Select(drive => drive.Health).MaxBy(Severity) ?? "unknown";
+
+        static int Severity(string health) => health switch
+        {
+            "unhealthy" => 3,
+            "warning" => 2,
+            "healthy" => 1,
+            _ => 0
+        };
+    }
+
+    // MSFT_PhysicalDisk.HealthStatus.
+    internal static string HealthName(int healthStatus) => healthStatus switch
+    {
+        0 => "healthy",
+        1 => "warning",
+        2 => "unhealthy",
+        _ => "unknown"
+    };
 
     // Wear is 0 on a healthy drive, so it counts as reported when the same counter row gave
     // a temperature; a row that gave nothing at all reports no wear either.

@@ -63,13 +63,15 @@ internal static class BuiltInSensorCatalog
         // Windows' own drive health data (what Get-StorageReliabilityCounter shows) needs
         // administrator rights, which the service has. NVMe drives report it; a SATA drive
         // when its controller passes it on; USB enclosures not at all.
-        new("drive_temperature", SupportsService: true, SupportsTrayApp: false, SensorPollingProfile.Normal,
+        new("drive_health", SupportsService: true, SupportsTrayApp: false, SensorPollingProfile.Normal,
         [
-            "drive_temperature.drives[0].name",
-            "drive_temperature.drives[0].temperature",
-            "drive_temperature.drives[0].temperature_max",
-            "drive_temperature.drives[0].power_on_hours"
-        ]),
+            "drive_health.temperature",
+            "drive_health.drives[0].name",
+            "drive_health.drives[0].health",
+            "drive_health.drives[0].temperature",
+            "drive_health.drives[0].temperature_max",
+            "drive_health.drives[0].power_on_hours"
+        ], DeviceClass: "enum", Options: ["healthy", "warning", "unhealthy", "unknown"]),
         new("uptime_seconds", SupportsService: true, SupportsTrayApp: true, SensorPollingProfile.Fast),
         new("battery_level", SupportsService: true, SupportsTrayApp: true, SensorPollingProfile.Normal),
         new("power_status", SupportsService: true, SupportsTrayApp: true, SensorPollingProfile.Normal,
@@ -223,6 +225,27 @@ internal static class BuiltInSensorCatalog
                 .Where(path => path.EndsWith("_gb", StringComparison.Ordinal) && !path.Contains("total_gb") && !path.Contains("used_gb") && !path.Contains("free_gb") && !path.Contains("available_gb"))
                 .Select(path => path[..^3] + "_mb"))
             .ToList();
+    }
+
+    /// <summary>
+    /// The unit an attribute sensor gets when it is made from the list, by the attribute's
+    /// name: temperatures in °C, hours, percentages, memory in GB or MB. Empty when the
+    /// attribute is not a measurement (a name, a flag).
+    /// </summary>
+    public static string AttributeUnit(string attributePath)
+    {
+        var lastDot = attributePath.LastIndexOf('.');
+        var name = lastDot >= 0 ? attributePath[(lastDot + 1)..] : attributePath;
+        var parent = lastDot >= 0 ? attributePath[..lastDot] : string.Empty;
+        if (name.EndsWith("_gb", StringComparison.Ordinal)) return "GB";
+        if (name.EndsWith("_mb", StringComparison.Ordinal)) return "MB";
+        if (name.StartsWith("temperature", StringComparison.Ordinal)) return "°C";
+        if (name.EndsWith("_hours", StringComparison.Ordinal)) return "h";
+        if (name.EndsWith("_seconds", StringComparison.Ordinal)) return "s";
+        if (name.EndsWith("_minutes", StringComparison.Ordinal)) return "min";
+        if (name is "usage" or "npu_usage" or "wear" || parent.EndsWith(".engines", StringComparison.Ordinal)) return "%";
+        if (name is "width" or "height" or "x" or "y") return "px";
+        return string.Empty;
     }
 
     private static readonly System.Text.RegularExpressions.Regex FirstItem = new(@"\[0\]", System.Text.RegularExpressions.RegexOptions.Compiled);

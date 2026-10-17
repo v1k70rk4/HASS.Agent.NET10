@@ -1447,6 +1447,7 @@ internal sealed class MainForm : Form
                     // like the built-in sensor names do.
                     Name = string.Format(Strings.GetHa("Sensors.AttributeSensorName"), Strings.GetHa($"Sensor.{definition.Key}"), GetAttributeDisplayName(attributePath)),
                     Parameter = attributePath,
+                    Unit = BuiltInSensorCatalog.AttributeUnit(attributePath),
                     PollingProfile = SensorPollingProfiles.ToKey(definition.PollingProfile)
                 }));
             }
