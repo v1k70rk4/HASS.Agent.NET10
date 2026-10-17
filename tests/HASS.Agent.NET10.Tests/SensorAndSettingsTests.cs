@@ -552,6 +552,9 @@ public class SensorProfileTests
         Assert.Null(Profile("memory_usage"));
         Assert.Equal(SensorPollingProfile.Fast, BuiltInSensorCatalog.EffectiveProfile("gpu_usage", settings.BuiltInSensors));
         Assert.Equal(SensorPollingProfile.Fast, BuiltInSensorCatalog.EffectiveProfile("cpu_usage", settings.BuiltInSensors));
+    }
+}
+
 public class CustomSensorUnitTests
 {
     [Theory]
