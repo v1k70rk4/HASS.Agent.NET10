@@ -162,7 +162,8 @@ internal sealed class SystemMetricsService : IDisposable
             profiles = SensorPollingProfiles.All;
         }
 
-        var updateNormal = profiles.Contains(SensorPollingProfile.Normal);
+        // The normal cycle proper; a push read is not one, whatever profiles it carries.
+        var updateNormal = !pushOnly && profiles.Contains(SensorPollingProfile.Normal);
         var updateStartup = profiles.Contains(SensorPollingProfile.Startup);
 
         // A sensor is read when it is wanted and its profile is due: the catalog's profile, or
@@ -2203,9 +2204,11 @@ internal sealed class SystemMetricsService : IDisposable
             .Where(sensor => sensor.Enabled && (serviceRole ? sensor.Service : sensor.TrayApp))
             .ToList();
 
+        // On a push read a sensor on a push-driven source is due whatever its profile (it
+        // reports on change); on a timed read the profile decides.
         bool IsDue(CustomSensorDefinition sensor) =>
             !previousById.ContainsKey(sensor.Id) ||
-            ((!pushOnly || PushDrivenSource(sensor)) && dueProfiles.Contains(sensor.EffectivePollingProfile));
+            (pushOnly ? PushDrivenSource(sensor) : dueProfiles.Contains(sensor.EffectivePollingProfile));
 
         // Command sensors can each block up to the command timeout, so run the due ones
         // concurrently — a slow or hung command then delays the snapshot by roughly one
