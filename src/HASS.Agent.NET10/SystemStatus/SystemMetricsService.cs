@@ -164,7 +164,19 @@ internal sealed class SystemMetricsService : IDisposable
         // has a value to carry forward.
         bool Due(params string[] keys) =>
             previous is null ||
-            keys.Any(key => Wanted(key) && profiles.Contains(BuiltInSensorCatalog.EffectiveProfile(key, builtInSensors)));
+            keys.Any(key =>
+                (Wanted(key) && profiles.Contains(BuiltInSensorCatalog.EffectiveProfile(key, builtInSensors))) ||
+                CustomSensorDue(key));
+
+        // A custom sensor built on one of the sensor's attributes refreshes the source on its
+        // own profile too: GPU usage on hourly with an adapter's load wanted every minute.
+        bool CustomSensorDue(string key) =>
+            customSensors?.Any(sensor =>
+                sensor.Enabled &&
+                sensor.IsBuiltInAttribute &&
+                (serviceRole ? sensor.Service : sensor.TrayApp) &&
+                sensor.Parameter.StartsWith($"{key}.", StringComparison.OrdinalIgnoreCase) &&
+                profiles.Contains(SensorPollingProfiles.FromKey(sensor.PollingProfile, SensorPollingProfile.Normal))) ?? false;
         var activeWindowDue = Due("active_window", "active_process", "foreground_app_title") && _includeInteractiveMetrics;
         var sessionLockedDue = Due("session_locked", "user_present") && _includeInteractiveMetrics;
 
