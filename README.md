@@ -2,7 +2,7 @@
 
 ![Windows](https://img.shields.io/badge/Windows-10%202004%2B%20%7C%2011-0078D4?logo=windows&logoColor=white)
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet&logoColor=white)
-![Version](https://img.shields.io/badge/version-10.9.3--beta.4-orange)
+![Version](https://img.shields.io/badge/version-10.9.3--beta.5-orange)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-MQTT%20%7C%20WebSocket%20API-41BDF5?logo=homeassistant&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/15316/badge)](https://www.bestpractices.dev/projects/15316)
@@ -26,7 +26,7 @@ It is designed for Windows PCs you want to observe and control from Home Assista
 
 The .NET10 line starts at **version 10.0.0**. The classic client is a separate program: if you want to stay with it, it is still available from its own project, and the integration keeps a [`legacy` branch](https://github.com/v1k70rk4/HASS.Agent.NET10-Integration/tree/legacy) for it. Thinking about switching? See [Coming from HASS.Agent](docs/migrating.md).
 
-> **Stable:** [10.9.2](https://github.com/v1k70rk4/HASS.Agent.NET10/releases/latest) &nbsp;·&nbsp; **Beta:** [10.9.3-beta.4](https://github.com/v1k70rk4/HASS.Agent.NET10/releases/tag/v10.9.3-beta.4) &nbsp;·&nbsp; [What changed](#what-changed) &nbsp;·&nbsp; [Full changelog](CHANGELOG.md)
+> **Stable:** [10.9.2](https://github.com/v1k70rk4/HASS.Agent.NET10/releases/latest) &nbsp;·&nbsp; **Beta:** [10.9.3-beta.5](https://github.com/v1k70rk4/HASS.Agent.NET10/releases/tag/v10.9.3-beta.5) &nbsp;·&nbsp; [What changed](#what-changed) &nbsp;·&nbsp; [Full changelog](CHANGELOG.md)
 
 ---
 
@@ -169,12 +169,15 @@ No telemetry, analytics, or usage data is collected or transmitted.
 
 ## What Changed
 
-### 10.9.3-beta.1-4
+### 10.9.3-beta.1-5
 
 > **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered it, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.9.2**, below.
 
-Works with the integration **10.6.7** or newer; the announcements need the integration **10.9.2-beta.2** or newer. Signed release.
+Works with the integration **10.6.7** or newer; the announcements need the integration **10.9.2-beta.2** or newer, the Drive health sensor **10.9.2-beta.3** or newer. Signed release.
 
+- **Drive health sensor, `gpu_usage.name`, GB attributes, memory and system drive totals, every adapter / display / drive in the attribute list with its unit.** Requested in [#107](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/107).
+- **Fast sensors down to 1 second and the polling profile per sensor:** 5 s on Capabilities, 1–4 s behind a Danger Zone switch; fast, normal or hourly is your choice per built-in sensor. Requested in [#108](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/108).
+- **Sensors page:** several rows at once for Remove and Test; a device class from the unit, so a °C sensor shows as °F where that is the custom; a push event refreshes the push-driven sensors only.
 - **A Media player page, with announcements that are heard:** a `play_media` sent with `announce: true` (TTS, a doorbell) unmutes the PC, sets the announcement volume and pauses what was playing, then puts everything back; a cover art switch; where turning the PC on and off is set up. The idea comes from a fork by @VorlonCD.
 - **Fixed: Session locked went back to off a few seconds after locking.** Reported and detailed in [#96](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/96).
 - **GPU usage per GPU:** each `gpu_usage.adapters[N]` has its own load, engines and memory. Requested in [#99](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/99).
