@@ -627,16 +627,24 @@ public class PushReadTests
             new() { Key = "volume", TrayApp = true, Service = false }
         };
         var pushProfiles = new HashSet<SensorPollingProfile> { SensorPollingProfile.Fast, SensorPollingProfile.Normal };
+        // A fast custom sensor on a clock-driven source: a push event must not run it either.
+        var custom = new List<CustomSensorDefinition>
+        {
+            new() { Id = "mem", Type = CustomSensorTypes.BuiltInAttribute, Parameter = "memory_usage.used_gb", PollingProfile = "fast", TrayApp = true, Service = true }
+        };
 
-        service.Read([], serviceRole: false, dueProfiles: SensorPollingProfiles.All, builtInSensors: builtIn);
+        var first = service.Read(custom, serviceRole: false, dueProfiles: SensorPollingProfiles.All, builtInSensors: builtIn);
         Assert.Equal(1, service.MemoryReads);
 
-        // A push event: the fast memory usage is not push-driven, so it is left alone...
-        service.Read([], serviceRole: false, dueProfiles: pushProfiles, builtInSensors: builtIn, pushOnly: true);
+        // A push event: the fast memory usage is not push-driven, so it is left alone, and
+        // the custom sensor keeps its earlier state...
+        var pushed = service.Read(custom, serviceRole: false, dueProfiles: pushProfiles, builtInSensors: builtIn, pushOnly: true);
         Assert.Equal(1, service.MemoryReads);
+        Assert.Same(first.CustomSensors.Single(), pushed.CustomSensors.Single());
 
-        // ...and a timed fast cycle reads it as before.
-        service.Read([], serviceRole: false, dueProfiles: pushProfiles, builtInSensors: builtIn);
+        // ...and a timed fast cycle reads both as before.
+        var timed = service.Read(custom, serviceRole: false, dueProfiles: pushProfiles, builtInSensors: builtIn);
         Assert.Equal(2, service.MemoryReads);
+        Assert.NotSame(first.CustomSensors.Single(), timed.CustomSensors.Single());
     }
 }

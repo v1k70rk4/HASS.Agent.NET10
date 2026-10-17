@@ -421,7 +421,7 @@ internal sealed class SystemMetricsService : IDisposable
             LastShutdownReason: Shown("last_shutdown_reason") ? (_lastShutdown.Summary) : previous!.LastShutdownReason,
             LastWakeReason: Shown("last_wake_reason") ? (lastWake?.Summary) : previous!.LastWakeReason,
             BootTime: Shown("boot_time") ? (updateStartup ? Safe(ReadBootTime, previous?.BootTime ?? ReadBootTimeFromTicks()) : previous!.BootTime) : previous!.BootTime,
-            CustomSensors: Safe(() => ReadCustomSensors(customSensors ?? [], serviceRole, attributes, profiles, previous?.CustomSensors ?? []), previous?.CustomSensors ?? []),
+            CustomSensors: Safe(() => ReadCustomSensors(customSensors ?? [], serviceRole, attributes, profiles, previous?.CustomSensors ?? [], pushOnly), previous?.CustomSensors ?? []),
             Attributes: shownAttributes,
             UpdatedAt: DateTimeOffset.UtcNow);
 
@@ -2185,16 +2185,23 @@ internal sealed class SystemMetricsService : IDisposable
         bool serviceRole,
         IReadOnlyDictionary<string, IReadOnlyDictionary<string, object?>> attributes,
         IReadOnlySet<SensorPollingProfile> dueProfiles,
-        IReadOnlyList<CustomSensorState> previousStates)
+        IReadOnlyList<CustomSensorState> previousStates,
+        bool pushOnly = false)
     {
         var previousById = previousStates.ToDictionary(state => state.Id, StringComparer.OrdinalIgnoreCase);
+
+        // On a push read only a sensor built on a push-driven source is due: a command or a
+        // process check must not run because the volume changed.
+        static bool PushDrivenSource(CustomSensorDefinition sensor) =>
+            sensor.IsBuiltInAttribute && BuiltInSensorCatalog.ForAttributePath(sensor.Parameter) is { PushDriven: true };
 
         var active = sensors
             .Where(sensor => sensor.Enabled && (serviceRole ? sensor.Service : sensor.TrayApp))
             .ToList();
 
         bool IsDue(CustomSensorDefinition sensor) =>
-            dueProfiles.Contains(sensor.EffectivePollingProfile) || !previousById.ContainsKey(sensor.Id);
+            !previousById.ContainsKey(sensor.Id) ||
+            ((!pushOnly || PushDrivenSource(sensor)) && dueProfiles.Contains(sensor.EffectivePollingProfile));
 
         // Command sensors can each block up to the command timeout, so run the due ones
         // concurrently — a slow or hung command then delays the snapshot by roughly one
