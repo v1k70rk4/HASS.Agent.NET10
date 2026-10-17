@@ -227,6 +227,18 @@ internal static class BuiltInSensorCatalog
             .ToList();
     }
 
+    /// <summary>The built-in sensor an attribute path (gpu_usage.adapters[0].name) belongs to, if any.</summary>
+    public static BuiltInSensorDefinition? ForAttributePath(string? attributePath)
+    {
+        if (string.IsNullOrWhiteSpace(attributePath))
+        {
+            return null;
+        }
+
+        var dot = attributePath.IndexOf('.');
+        return Find(dot > 0 ? attributePath[..dot] : attributePath);
+    }
+
     /// <summary>
     /// The unit an attribute sensor gets when it is made from the list, by the attribute's
     /// name: temperatures in °C, hours, percentages, memory in GB or MB. Empty when the

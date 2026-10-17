@@ -433,6 +433,26 @@ public class SystemHealthTests
     }
 
     [Fact]
+    public void An_attribute_sensor_keeps_only_the_roles_that_read_its_sensor()
+    {
+        var settings = new CompanionSettings
+        {
+            CustomSensors =
+            [
+                // Drive health is the service's; the active window is the app's; GPU is both.
+                new CustomSensorDefinition { Type = CustomSensorTypes.BuiltInAttribute, Parameter = "drive_health.drives[0].temperature", TrayApp = true, Service = true },
+                new CustomSensorDefinition { Type = CustomSensorTypes.BuiltInAttribute, Parameter = "active_window", TrayApp = true, Service = true },
+                new CustomSensorDefinition { Type = CustomSensorTypes.BuiltInAttribute, Parameter = "gpu_usage.adapters[1].usage", TrayApp = true, Service = true },
+                new CustomSensorDefinition { Type = CustomSensorTypes.ProcessRunning, Parameter = "notepad", TrayApp = true, Service = true }
+            ]
+        };
+
+        settings.Normalize();
+
+        Assert.Equal([(false, true), (true, false), (true, true), (true, true)], settings.CustomSensors.Select(sensor => (sensor.TrayApp, sensor.Service)));
+    }
+
+    [Fact]
     public void Gigabytes_sit_next_to_megabytes()
     {
         Assert.Equal(7.5, SystemMetricsService.MbToGb(7680));

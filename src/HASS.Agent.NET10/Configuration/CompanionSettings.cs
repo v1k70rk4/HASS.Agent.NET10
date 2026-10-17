@@ -479,6 +479,15 @@ internal sealed class CompanionSettings
                 continue;
             }
 
+            // An attribute of a built-in sensor can only come from a role that reads that
+            // sensor: the drive health is the service's alone, the active window the app's.
+            // Ticked for the other role, the sensor would publish nothing and blank the value.
+            if (sensor.IsBuiltInAttribute && BuiltInSensorCatalog.ForAttributePath(sensor.Parameter) is { } source)
+            {
+                sensor.TrayApp &= source.SupportsTrayApp;
+                sensor.Service &= source.SupportsService;
+            }
+
             normalized.Add(sensor);
         }
 

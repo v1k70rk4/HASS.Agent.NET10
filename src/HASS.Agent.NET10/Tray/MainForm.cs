@@ -2844,8 +2844,28 @@ internal sealed class MainForm : Form
             SensorPollingProfiles.NormalizeKey(sensor.PollingProfile, SensorPollingProfile.Normal),
             sensor.Parameter,
             sensor.Unit);
-        _customGrid.Rows[rowIndex].Tag = sensor.Id;
+        var row = _customGrid.Rows[rowIndex];
+        row.Tag = sensor.Id;
+
+        // A role that cannot read the built-in sensor behind an attribute sensor cannot be
+        // ticked for it: the box is greyed, and a save would clear it anyway.
+        if (sensor.IsBuiltInAttribute && BuiltInSensorCatalog.ForAttributePath(sensor.Parameter) is { } source)
+        {
+            LockRoleCell(row.Cells["TrayApp"], !source.SupportsTrayApp);
+            LockRoleCell(row.Cells["Service"], !source.SupportsService);
+        }
+
         return rowIndex;
+    }
+
+    private static void LockRoleCell(DataGridViewCell cell, bool locked)
+    {
+        cell.ReadOnly = locked;
+        if (locked)
+        {
+            cell.Value = false;
+            cell.Style.BackColor = Color.FromArgb(243, 244, 246);
+        }
     }
 
     private async Task UpdateSelectedCustomSensorValueAsync()
