@@ -184,8 +184,12 @@ internal sealed class SystemMetricsService : IDisposable
         // What Home Assistant is shown follows the built-in sensor's own profile: a custom
         // sensor on a faster profile refreshes the shared source, the built-in sensor still
         // publishes its value and attributes at its own pace (the first read shows everything).
+        // A push-driven sensor is always shown: it reports on change, and its profile (the
+        // last wake reason's is "startup") is only a safety net, never a gate.
         bool Shown(string key) =>
-            previous is null || (Pushable(key) && profiles.Contains(BuiltInSensorCatalog.EffectiveProfile(key, builtInSensors)));
+            previous is null ||
+            BuiltInSensorCatalog.Find(key) is { PushDriven: true } ||
+            (!pushOnly && profiles.Contains(BuiltInSensorCatalog.EffectiveProfile(key, builtInSensors)));
 
         // A custom sensor built on one of the sensor's attributes refreshes the source on its
         // own profile too: GPU usage on hourly with an adapter's load wanted every minute.
