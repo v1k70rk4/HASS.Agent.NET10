@@ -453,7 +453,7 @@ public class SystemHealthTests
         Assert.Contains("gpu_usage.memory_dedicated_gb", paths);
         Assert.Contains("gpu_usage.memory_dedicated_mb", paths);
         Assert.Contains("gpu_usage.adapters[0].memory_mb", paths);
-        Assert.True(paths.IndexOf("gpu_usage.memory_dedicated_gb") < paths.IndexOf("gpu_usage.memory_dedicated_mb"));
+        Assert.True(paths.ToList().IndexOf("gpu_usage.memory_dedicated_gb") < paths.ToList().IndexOf("gpu_usage.memory_dedicated_mb"));
 
         // Totals have no megabyte twin.
         var memory = BuiltInSensorCatalog.Find("memory_usage")!;
