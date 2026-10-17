@@ -1289,7 +1289,8 @@ internal sealed class MqttCompanionService : IDisposable
     {
         _isOnWebSocket = true;
         await _haWs!.ConnectAsync(cancellationToken);
-        _log.Info("HA WebSocket connected as failover transport.");
+        // With MQTT off this is the one transport, not a fallback.
+        _log.Info(tryMqttReconnect ? "HA WebSocket connected as failover transport." : "HA WebSocket connected.");
 
         using var wsCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
