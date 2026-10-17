@@ -613,3 +613,30 @@ public class PublishPaceTests
         Assert.Equal(2, service.MemoryReads);
     }
 }
+
+public class PushReadTests
+{
+    [Fact]
+    public void A_push_read_refreshes_the_push_driven_sensors_only()
+    {
+        var log = new HASS.Agent.Companion.Logging.FileLog(Path.Combine(Path.GetTempPath(), "hass-agent-tests.log"));
+        using var service = new SystemMetricsService(log, null);
+        var builtIn = new List<BuiltInSensorSetting>
+        {
+            new() { Key = "memory_usage", TrayApp = true, Service = true },
+            new() { Key = "volume", TrayApp = true, Service = false }
+        };
+        var pushProfiles = new HashSet<SensorPollingProfile> { SensorPollingProfile.Fast, SensorPollingProfile.Normal };
+
+        service.Read([], serviceRole: false, dueProfiles: SensorPollingProfiles.All, builtInSensors: builtIn);
+        Assert.Equal(1, service.MemoryReads);
+
+        // A push event: the fast memory usage is not push-driven, so it is left alone...
+        service.Read([], serviceRole: false, dueProfiles: pushProfiles, builtInSensors: builtIn, pushOnly: true);
+        Assert.Equal(1, service.MemoryReads);
+
+        // ...and a timed fast cycle reads it as before.
+        service.Read([], serviceRole: false, dueProfiles: pushProfiles, builtInSensors: builtIn);
+        Assert.Equal(2, service.MemoryReads);
+    }
+}

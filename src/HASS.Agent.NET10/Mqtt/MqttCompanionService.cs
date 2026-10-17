@@ -1547,7 +1547,7 @@ internal sealed class MqttCompanionService : IDisposable
                 var pushed = await WaitForPushOrDelayAsync(delay, cancellationToken);
                 if (pushed)
                 {
-                    var pushData = ReadSensorPayload(PushProfiles);
+                    var pushData = ReadSensorPayload(PushProfiles, pushOnly: true);
                     if (pushData is not null)
                     {
                         await _haWs!.PublishSensorStateAsync(new
@@ -2099,7 +2099,7 @@ internal sealed class MqttCompanionService : IDisposable
 
     // Reads and publishes the sensor state. A read failure (e.g. a transient COM/WMI
     // hiccup) must not kill the loop, so it is caught and logged with a full stack.
-    private async Task PublishSensorsAsync(IReadOnlySet<SensorPollingProfile> profiles)
+    private async Task PublishSensorsAsync(IReadOnlySet<SensorPollingProfile> profiles, bool pushOnly = false)
     {
         if (_systemMetricsService is null)
         {
@@ -2109,7 +2109,7 @@ internal sealed class MqttCompanionService : IDisposable
         JsonObject? message;
         try
         {
-            message = ReadSensorPayload(profiles);
+            message = ReadSensorPayload(profiles, pushOnly);
         }
         catch (Exception ex)
         {
@@ -2124,10 +2124,11 @@ internal sealed class MqttCompanionService : IDisposable
     }
 
     /// <summary>The sensor values of this role, without the built-in sensors switched off for it.</summary>
-    private JsonObject? ReadSensorPayload(IReadOnlySet<SensorPollingProfile> profiles)
+    // pushOnly: a read for a push event takes the push-driven sensors alone.
+    private JsonObject? ReadSensorPayload(IReadOnlySet<SensorPollingProfile> profiles, bool pushOnly = false)
     {
         var serviceRole = _role == CompanionRuntimeRole.Service;
-        var message = _systemMetricsService?.Read(_settings.CustomSensors, serviceRole, profiles, _settings.BuiltInSensors);
+        var message = _systemMetricsService?.Read(_settings.CustomSensors, serviceRole, profiles, _settings.BuiltInSensors, pushOnly);
         return message is null
             ? null
             : SensorPayloadFilter.WithoutDisabled(message, JsonOptions, _settings.BuiltInSensors, serviceRole);
@@ -2168,7 +2169,7 @@ internal sealed class MqttCompanionService : IDisposable
                 if (pushed)
                 {
                     // Interactive state changed — publish the push profiles immediately.
-                    await PublishSensorsAsync(PushProfiles);
+                    await PublishSensorsAsync(PushProfiles, pushOnly: true);
                 }
 
                 continue;

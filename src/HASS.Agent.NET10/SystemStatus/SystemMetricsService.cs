@@ -133,7 +133,8 @@ internal sealed class SystemMetricsService : IDisposable
         IReadOnlyList<CustomSensorDefinition>? customSensors = null,
         bool serviceRole = false,
         IReadOnlySet<SensorPollingProfile>? dueProfiles = null,
-        IReadOnlyList<BuiltInSensorSetting>? builtInSensors = null)
+        IReadOnlyList<BuiltInSensorSetting>? builtInSensors = null,
+        bool pushOnly = false)
     {
         // The reads that cost something (a process start, performance counters, an event log
         // subscription) are skipped for a sensor nobody uses: not enabled for this role, and
@@ -171,14 +172,20 @@ internal sealed class SystemMetricsService : IDisposable
         bool Due(params string[] keys) =>
             previous is null ||
             keys.Any(key =>
-                (Wanted(key) && profiles.Contains(BuiltInSensorCatalog.EffectiveProfile(key, builtInSensors))) ||
-                CustomSensorDue(key));
+                Pushable(key) &&
+                ((Wanted(key) && profiles.Contains(BuiltInSensorCatalog.EffectiveProfile(key, builtInSensors))) ||
+                 CustomSensorDue(key)));
+
+        // A read for a push event (a volume change, a lock) refreshes the push-driven sensors
+        // only: the clock-driven ones keep their own pace, so an evening of media playing does
+        // not turn the uptime or the GPU into fast sensors.
+        bool Pushable(string key) => !pushOnly || BuiltInSensorCatalog.Find(key) is { PushDriven: true };
 
         // What Home Assistant is shown follows the built-in sensor's own profile: a custom
         // sensor on a faster profile refreshes the shared source, the built-in sensor still
         // publishes its value and attributes at its own pace (the first read shows everything).
         bool Shown(string key) =>
-            previous is null || profiles.Contains(BuiltInSensorCatalog.EffectiveProfile(key, builtInSensors));
+            previous is null || (Pushable(key) && profiles.Contains(BuiltInSensorCatalog.EffectiveProfile(key, builtInSensors)));
 
         // A custom sensor built on one of the sensor's attributes refreshes the source on its
         // own profile too: GPU usage on hourly with an adapter's load wanted every minute.
