@@ -146,7 +146,12 @@ internal sealed class SystemMetricsService : IDisposable
                 sensor.Enabled &&
                 sensor.IsBuiltInAttribute &&
                 (serviceRole ? sensor.Service : sensor.TrayApp) &&
-                sensor.Parameter.StartsWith($"{key}.", StringComparison.OrdinalIgnoreCase)) ?? false);
+                ReadsFrom(sensor, key)) ?? false);
+
+        // The sensor itself (active_window) or one of its attributes (gpu_usage.adapters[0].usage).
+        static bool ReadsFrom(CustomSensorDefinition sensor, string key) =>
+            string.Equals(sensor.Parameter, key, StringComparison.OrdinalIgnoreCase) ||
+            sensor.Parameter.StartsWith($"{key}.", StringComparison.OrdinalIgnoreCase);
 
         var profiles = dueProfiles ?? SensorPollingProfiles.All;
         var previous = _lastMessage;
@@ -175,7 +180,7 @@ internal sealed class SystemMetricsService : IDisposable
                 sensor.Enabled &&
                 sensor.IsBuiltInAttribute &&
                 (serviceRole ? sensor.Service : sensor.TrayApp) &&
-                sensor.Parameter.StartsWith($"{key}.", StringComparison.OrdinalIgnoreCase) &&
+                ReadsFrom(sensor, key) &&
                 profiles.Contains(SensorPollingProfiles.FromKey(sensor.PollingProfile, SensorPollingProfile.Normal))) ?? false;
         var activeWindowDue = Due("active_window", "active_process", "foreground_app_title") && _includeInteractiveMetrics;
         var sessionLockedDue = Due("session_locked", "user_present") && _includeInteractiveMetrics;
@@ -238,7 +243,7 @@ internal sealed class SystemMetricsService : IDisposable
             {
                 _lastPowerRequests = [];
             }
-            else if (updateNormal || _lastExecutionState != previousExecutionState)
+            else if (updateNormal || _lastExecutionState != previousExecutionState || CustomSensorDue("sleep_blocked"))
             {
                 _lastPowerRequests = Safe(ReadPowerRequests, _lastPowerRequests);
             }
