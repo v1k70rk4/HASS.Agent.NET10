@@ -104,7 +104,7 @@ The device publishes its online/offline state to Home Assistant — over MQTT wi
 
 ## Custom Sensors
 
-Custom sensors are parameterized sensors you can add multiple times with different settings. Each custom sensor has:
+Custom sensors are parameterized sensors you can add multiple times with different settings. Shift and Ctrl pick several rows in the list; **Remove** and **Test** then work on all of them (10.9.3+). Each custom sensor has:
 
 - **Type** - what kind of sensor it is
 - **Name** - the entity name in Home Assistant

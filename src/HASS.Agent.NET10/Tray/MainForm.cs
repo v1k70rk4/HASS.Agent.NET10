@@ -1094,11 +1094,7 @@ internal sealed class MainForm : Form
 
         var removeCmdBtn = MakeSecondaryButton(S("Sensors.Remove"), 90, 30);
         removeCmdBtn.Location = new Point(editCmdBtn.Right + D(8), D(212));
-        removeCmdBtn.Click += (_, _) =>
-        {
-            if (_customCommandGrid.CurrentRow is { IsNewRow: false } row)
-                _customCommandGrid.Rows.Remove(row);
-        };
+        removeCmdBtn.Click += (_, _) => RemoveSelectedRows(_customCommandGrid);
         card3.Controls.Add(removeCmdBtn);
 
         var card4 = MakeCard(page, 28, customY + 250 + 20, 600, 232, S("Cap.WebView"));
@@ -1163,11 +1159,7 @@ internal sealed class MainForm : Form
 
         var removeHotkeyBtn = MakeSecondaryButton(S("Sensors.Remove"), 90, 30);
         removeHotkeyBtn.Location = new Point(editHotkeyBtn.Right + D(8), D(212));
-        removeHotkeyBtn.Click += (_, _) =>
-        {
-            if (_hotkeyGrid.CurrentRow is { IsNewRow: false } row)
-                _hotkeyGrid.Rows.Remove(row);
-        };
+        removeHotkeyBtn.Click += (_, _) => RemoveSelectedRows(_hotkeyGrid);
         card5.Controls.Add(removeHotkeyBtn);
 
         return page;
@@ -1197,6 +1189,7 @@ internal sealed class MainForm : Form
     private void SetupHotkeyGrid()
     {
         StyleGrid(_hotkeyGrid);
+        _hotkeyGrid.MultiSelect = true;
         _hotkeyGrid.Columns.Add(new DataGridViewCheckBoxColumn { Name = "Enabled", HeaderText = S("Sensors.Active"), Width = D(50) });
         _hotkeyGrid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Name", HeaderText = S("Sensors.Name"), Width = D(220), ReadOnly = true });
         _hotkeyGrid.Columns.Add(new DataGridViewTextBoxColumn
@@ -1394,11 +1387,7 @@ internal sealed class MainForm : Form
 
         var removeBtn = MakeSecondaryButton(S("Sensors.Remove"), 90, 30);
         removeBtn.Location = new Point(editBtn.Right + D(8), D(6));
-        removeBtn.Click += (_, _) =>
-        {
-            if (_customGrid.CurrentRow is { IsNewRow: false } row)
-                _customGrid.Rows.Remove(row);
-        };
+        removeBtn.Click += (_, _) => RemoveSelectedRows(_customGrid);
         var testBtn = MakeSecondaryButton(S("Sensors.TestValue"), 110, 30);
         testBtn.Location = new Point(removeBtn.Right + D(8), D(6));
         testBtn.Click += async (_, _) => await UpdateSelectedCustomSensorValueAsync();
@@ -1502,6 +1491,8 @@ internal sealed class MainForm : Form
     private void SetupCustomGrid()
     {
         StyleGrid(_customGrid);
+        // Shift and Ctrl pick several rows: Remove and Test then work on all of them.
+        _customGrid.MultiSelect = true;
         _customGrid.Columns.Add(new DataGridViewCheckBoxColumn { Name = "Enabled", HeaderText = S("Sensors.Active"), Width = D(50) });
         _customGrid.Columns.Add(new DataGridViewCheckBoxColumn { Name = "TrayApp", HeaderText = "Tray", Width = D(50) });
         _customGrid.Columns.Add(new DataGridViewCheckBoxColumn { Name = "Service", HeaderText = "Svc", Width = D(50) });
@@ -1552,6 +1543,7 @@ internal sealed class MainForm : Form
     private void SetupCustomCommandGrid()
     {
         StyleGrid(_customCommandGrid);
+        _customCommandGrid.MultiSelect = true;
         _customCommandGrid.Columns.Add(new DataGridViewCheckBoxColumn { Name = "Enabled", HeaderText = S("Sensors.Active"), Width = D(50) });
         _customCommandGrid.Columns.Add(new DataGridViewCheckBoxColumn { Name = "TrayApp", HeaderText = "Tray", Width = D(50) });
         _customCommandGrid.Columns.Add(new DataGridViewCheckBoxColumn { Name = "Service", HeaderText = "Svc", Width = D(50) });
@@ -2871,12 +2863,46 @@ internal sealed class MainForm : Form
         }
     }
 
+    // Every selected row at once (Shift or Ctrl picks several), each reading on its own.
     private async Task UpdateSelectedCustomSensorValueAsync()
     {
         _customGrid.EndEdit();
-        if (_customGrid.CurrentRow is { IsNewRow: false } row)
+        var rows = SelectedRows(_customGrid);
+        if (rows.Count == 0 && _customGrid.CurrentRow is { IsNewRow: false } current)
         {
-            await UpdateCustomSensorRowValueAsync(row);
+            rows = [current];
+        }
+
+        await Task.WhenAll(rows.Select(UpdateCustomSensorRowValueAsync));
+    }
+
+    private static List<DataGridViewRow> SelectedRows(DataGridView grid) =>
+        grid.SelectedRows.Cast<DataGridViewRow>()
+            .Where(row => !row.IsNewRow)
+            .OrderBy(row => row.Index)
+            .ToList();
+
+    // Removes what is selected; more than one row asks first, since a slip with Shift
+    // would otherwise take a whole list with it.
+    private void RemoveSelectedRows(DataGridView grid)
+    {
+        grid.EndEdit();
+        var rows = SelectedRows(grid);
+        if (rows.Count == 0 && grid.CurrentRow is { IsNewRow: false } current)
+        {
+            rows = [current];
+        }
+
+        if (rows.Count > 1 &&
+            MessageBox.Show(this, string.Format(S("Sensors.RemoveConfirm"), rows.Count), AppIdentity.DisplayName,
+                MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
+        {
+            return;
+        }
+
+        foreach (var row in rows)
+        {
+            grid.Rows.Remove(row);
         }
     }
 
