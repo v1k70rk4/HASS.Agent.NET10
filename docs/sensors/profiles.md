@@ -33,4 +33,6 @@ A push event (a volume change, a lock, a media event) refreshes the push-driven 
 
 Every cycle sends the whole sensor state, and Home Assistant's recorder writes a row whenever a value or an attribute changes: a value that changes every second (CPU usage) lands in the recorder every second, on each role that sends it. That is why the fast profile below 5 seconds sits behind the Danger Zone switch, why Uptime is a normal sensor (its value changes with every tick), and why a sensor ticked for both the tray app and the service is worth a thought: both send it.
 
+If you want a sensor every second on the dashboard but not in the history, leave it out of the recorder: `exclude` it by entity in the [recorder's configuration](https://www.home-assistant.io/integrations/recorder/#configure-filter). The state still updates live, only the database stays small.
+
 Command sensors have a timeout of about 10 seconds per run, so they belong on the normal or hourly profile, not on fast.
