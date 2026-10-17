@@ -311,7 +311,7 @@ internal sealed class SystemMetricsService : IDisposable
             MemoryAvailableMb: memory.AvailableMb,
             SystemDriveFreePercent: drive.FreePercent,
             SystemDriveFreeGb: drive.FreeGb,
-            UptimeSeconds: updateFast ? Math.Max(0, Environment.TickCount64 / 1000) : previous!.UptimeSeconds,
+            UptimeSeconds: updateNormal ? Math.Max(0, Environment.TickCount64 / 1000) : previous!.UptimeSeconds,
             // Null, not empty: a role that cannot measure these (the service runs without
             // interactive metrics) must leave them out of the payload entirely. The
             // serializer drops nulls and Home Assistant ignores absent fields, so the

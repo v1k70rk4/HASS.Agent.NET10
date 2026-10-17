@@ -72,7 +72,7 @@ internal static class BuiltInSensorCatalog
             "drive_health.drives[0].temperature_max",
             "drive_health.drives[0].power_on_hours"
         ], DeviceClass: "enum", Options: ["healthy", "warning", "unhealthy", "unknown"]),
-        new("uptime_seconds", SupportsService: true, SupportsTrayApp: true, SensorPollingProfile.Fast),
+        new("uptime_seconds", SupportsService: true, SupportsTrayApp: true, SensorPollingProfile.Normal),
         new("battery_level", SupportsService: true, SupportsTrayApp: true, SensorPollingProfile.Normal),
         new("power_status", SupportsService: true, SupportsTrayApp: true, SensorPollingProfile.Normal,
             DeviceClass: "enum", Options: ["no_battery", "charging", "plugged_in", "battery", "unknown"], PushDriven: true),

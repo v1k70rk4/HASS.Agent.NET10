@@ -19,7 +19,7 @@ The **Default** column shows whether a fresh install starts with the sensor swit
 | System drive free % | normal | yes | yes | on |
 | System drive free (GB) | normal | yes | yes | on |
 | Drive health | normal | yes | — | on |
-| Uptime | fast | yes | yes | on |
+| Uptime | normal | yes | yes | on |
 | Boot time | startup | yes | yes | on |
 | Battery level | normal | yes | yes | on |
 | Battery time remaining | normal | yes | yes | on |
