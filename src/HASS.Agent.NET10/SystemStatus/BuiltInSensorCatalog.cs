@@ -210,6 +210,21 @@ internal static class BuiltInSensorCatalog
     public static IReadOnlyList<string> SuggestedAttributePaths(BuiltInSensorDefinition definition) =>
         ExpandAttributePaths(definition.AttributePaths ?? [], SystemMetricsService.ListCount);
 
+    /// <summary>
+    /// The list the editor offers to type from: the suggested paths, then the _mb twin of every
+    /// _gb one, since those are still published. The Attributes button does not use these, or it
+    /// would make two sensors of every memory value.
+    /// </summary>
+    public static IReadOnlyList<string> EditorAttributePaths(BuiltInSensorDefinition definition)
+    {
+        var suggested = SuggestedAttributePaths(definition);
+        return suggested
+            .Concat(suggested
+                .Where(path => path.EndsWith("_gb", StringComparison.Ordinal) && !path.Contains("total_gb") && !path.Contains("used_gb") && !path.Contains("free_gb") && !path.Contains("available_gb"))
+                .Select(path => path[..^3] + "_mb"))
+            .ToList();
+    }
+
     private static readonly System.Text.RegularExpressions.Regex FirstItem = new(@"\[0\]", System.Text.RegularExpressions.RegexOptions.Compiled);
 
     /// <summary>

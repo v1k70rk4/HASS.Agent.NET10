@@ -443,4 +443,20 @@ public class SystemHealthTests
         broken.Normalize();
         Assert.Equal(10, broken.FastSensorIntervalSeconds);
     }
+
+    [Fact]
+    public void Editor_list_keeps_the_megabyte_twins_after_the_gigabyte_ones()
+    {
+        var gpu = BuiltInSensorCatalog.Find("gpu_usage")!;
+        var paths = BuiltInSensorCatalog.EditorAttributePaths(gpu);
+
+        Assert.Contains("gpu_usage.memory_dedicated_gb", paths);
+        Assert.Contains("gpu_usage.memory_dedicated_mb", paths);
+        Assert.Contains("gpu_usage.adapters[0].memory_mb", paths);
+        Assert.True(paths.IndexOf("gpu_usage.memory_dedicated_gb") < paths.IndexOf("gpu_usage.memory_dedicated_mb"));
+
+        // Totals have no megabyte twin.
+        var memory = BuiltInSensorCatalog.Find("memory_usage")!;
+        Assert.DoesNotContain("memory_usage.total_mb", BuiltInSensorCatalog.EditorAttributePaths(memory));
+    }
 }
