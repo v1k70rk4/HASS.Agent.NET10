@@ -1,0 +1,138 @@
+# The website, https://v1k70rk4.github.io/HASS.Agent.NET10/: MkDocs with the Material theme builds it from the
+# markdown files under docs/ (.github/workflows/docs.yml deploys it). To build it on your PC:
+#   python -m venv .venv ; .venv\Scripts\pip install -r website\requirements.txt ; .venv\Scripts\mkdocs serve
+site_name: HASS.Agent .NET10
+site_url: https://v1k70rk4.github.io/HASS.Agent.NET10/
+site_description: A free Windows companion app for Home Assistant, with notifications, media player, sensors, commands and one-click updates.
+site_author: v1k70rk4
+repo_url: https://github.com/v1k70rk4/HASS.Agent.NET10
+repo_name: v1k70rk4/HASS.Agent.NET10
+edit_uri: edit/main/docs/
+copyright: MIT licensed · Not affiliated with the Home Assistant project.
+
+docs_dir: docs
+site_dir: site
+strict: true
+
+# The pages of the old one-file layout stay on GitHub for the links that point at them; on the site their
+# names belong to the folders (features/, sensors/ and so on).
+exclude_docs: |
+  /features.md
+  /sensors.md
+  /commands.md
+  /connection.md
+  /migrating.md
+
+theme:
+  name: material
+  custom_dir: website/overrides
+  language: en
+  logo: images/hass_agent_companion_modern_icon.png
+  favicon: images/hass_agent_companion_modern_icon.png
+  font: false
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-night
+        name: Dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-sunny
+        name: Light mode
+  features:
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.indexes
+    - navigation.top
+    - navigation.footer
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.tabs.link
+    - toc.follow
+
+extra_css:
+  - stylesheets/extra.css
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/v1k70rk4/HASS.Agent.NET10
+      name: The app on GitHub
+    - icon: simple/homeassistant
+      link: https://github.com/v1k70rk4/HASS.Agent.NET10-Integration
+      name: The Home Assistant integration on GitHub
+    - icon: simple/kofi
+      link: https://ko-fi.com/v1k70rk4
+      name: Ko-fi
+
+hooks:
+  - website/hooks.py
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+      permalink_title: Link to this section
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+
+plugins:
+  - search
+
+nav:
+  - Home: index.md
+  - Get started:
+      - getting-started/index.md
+      - The installer and winget: getting-started/installer.md
+      - Security and privacy: getting-started/security.md
+      - Coming from HASS.Agent: getting-started/migrating.md
+  - Features:
+      - features/index.md
+      - Notifications: features/notifications.md
+      - Media player: features/media-player.md
+      - Dashboard popup: features/dashboard-popup.md
+      - Display and audio: features/display-and-audio.md
+      - Hotkeys: features/hotkeys.md
+      - Windows service: features/windows-service.md
+      - Updates from Home Assistant: features/updates.md
+      - Who may use it on this PC: features/users.md
+      - Danger Zone: features/danger-zone.md
+  - Commands:
+      - commands/index.md
+      - Custom commands: commands/custom.md
+  - Sensors:
+      - sensors/index.md
+      - Attributes: sensors/attributes.md
+      - Polling profiles: sensors/profiles.md
+      - Custom sensors: sensors/custom.md
+  - Connection:
+      - connection/index.md
+      - MQTT: connection/mqtt.md
+      - HA API (WebSocket): connection/ha-api.md
+      - Local HTTP API: connection/local-api.md
+  - Integration:
+      - integration/index.md
+      - Entities: integration/entities.md
+      - Services: integration/services.md
+      - Events and topics: integration/events.md
+  - Changelog: changelog.md
+  - Development: development.md

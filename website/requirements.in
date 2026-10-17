@@ -1,0 +1,2 @@
+# The website's build. website/requirements.txt is made from this with pip-compile --generate-hashes.
+mkdocs-material==9.7.7
