@@ -44,10 +44,32 @@ internal static class BuiltInSensorCatalog
     public static IReadOnlyList<BuiltInSensorDefinition> Sensors { get; } =
     [
         new("cpu_usage", SupportsService: true, SupportsTrayApp: true, SensorPollingProfile.Fast),
-        new("memory_usage", SupportsService: true, SupportsTrayApp: true, SensorPollingProfile.Fast),
+        new("memory_usage", SupportsService: true, SupportsTrayApp: true, SensorPollingProfile.Fast,
+        [
+            "memory_usage.total_gb",
+            "memory_usage.used_gb",
+            "memory_usage.available_gb"
+        ]),
         new("memory_available_mb", SupportsService: true, SupportsTrayApp: true, SensorPollingProfile.Fast),
         new("system_drive_free_percent", SupportsService: true, SupportsTrayApp: true, SensorPollingProfile.Normal),
-        new("system_drive_free_gb", SupportsService: true, SupportsTrayApp: true, SensorPollingProfile.Normal),
+        // The drive's totals hang on both system drive sensors; the list is on one of them
+        // so that the Attributes button does not make the same sensors twice.
+        new("system_drive_free_gb", SupportsService: true, SupportsTrayApp: true, SensorPollingProfile.Normal,
+        [
+            "system_drive_free_gb.drive",
+            "system_drive_free_gb.total_gb",
+            "system_drive_free_gb.used_gb"
+        ]),
+        // Windows' own drive health data (what Get-StorageReliabilityCounter shows) needs
+        // administrator rights, which the service has. NVMe drives report it; a SATA drive
+        // when its controller passes it on; USB enclosures not at all.
+        new("drive_temperature", SupportsService: true, SupportsTrayApp: false, SensorPollingProfile.Normal,
+        [
+            "drive_temperature.drives[0].name",
+            "drive_temperature.drives[0].temperature",
+            "drive_temperature.drives[0].temperature_max",
+            "drive_temperature.drives[0].power_on_hours"
+        ]),
         new("uptime_seconds", SupportsService: true, SupportsTrayApp: true, SensorPollingProfile.Fast),
         new("battery_level", SupportsService: true, SupportsTrayApp: true, SensorPollingProfile.Normal),
         new("power_status", SupportsService: true, SupportsTrayApp: true, SensorPollingProfile.Normal,
@@ -64,17 +86,20 @@ internal static class BuiltInSensorCatalog
         new("pending_reboot", SupportsService: true, SupportsTrayApp: true, SensorPollingProfile.Normal),
         new("gpu_usage", SupportsService: true, SupportsTrayApp: true, SensorPollingProfile.Normal,
         [
+            // The _mb attributes are still published for the sensors people already built;
+            // the list offers the GB ones.
+            "gpu_usage.name",
             "gpu_usage.engines.3d",
             "gpu_usage.engines.videodecode",
             "gpu_usage.engines.videoencode",
             "gpu_usage.npu_usage",
-            "gpu_usage.memory_dedicated_mb",
-            "gpu_usage.memory_shared_mb",
+            "gpu_usage.memory_dedicated_gb",
+            "gpu_usage.memory_shared_gb",
             "gpu_usage.adapters[0].name",
-            "gpu_usage.adapters[0].memory_mb",
+            "gpu_usage.adapters[0].memory_gb",
             "gpu_usage.adapters[0].usage",
             "gpu_usage.adapters[0].engines.3d",
-            "gpu_usage.adapters[0].memory_dedicated_mb"
+            "gpu_usage.adapters[0].memory_dedicated_gb"
         ], EnabledByDefault: false),
         new("sleep_blocked", SupportsService: true, SupportsTrayApp: false, SensorPollingProfile.Fast,
         [
@@ -175,5 +200,41 @@ internal static class BuiltInSensorCatalog
     public static BuiltInSensorDefinition? Find(string key)
     {
         return Sensors.FirstOrDefault(sensor => string.Equals(sensor.Key, key, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// The sensor's attribute paths as this PC has them: a path with [0] is repeated for
+    /// every item the list had the last time the sensor was read (a second GPU, a second
+    /// display), so that nobody has to know to change the index by hand.
+    /// </summary>
+    public static IReadOnlyList<string> SuggestedAttributePaths(BuiltInSensorDefinition definition) =>
+        ExpandAttributePaths(definition.AttributePaths ?? [], SystemMetricsService.ListCount);
+
+    private static readonly System.Text.RegularExpressions.Regex FirstItem = new(@"\[0\]", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>
+    /// <paramref name="countOf"/> gives the item count of a list by its path (gpu_usage.adapters);
+    /// null when the list has not been seen, which keeps the [0] path as it is.
+    /// </summary>
+    internal static IReadOnlyList<string> ExpandAttributePaths(IEnumerable<string> paths, Func<string, int?> countOf)
+    {
+        var result = new List<string>();
+        foreach (var path in paths)
+        {
+            var match = FirstItem.Match(path);
+            if (!match.Success)
+            {
+                result.Add(path);
+                continue;
+            }
+
+            var count = countOf(path[..match.Index]) ?? 1;
+            for (var index = 0; index < Math.Max(1, count); index++)
+            {
+                result.Add($"{path[..match.Index]}[{index}]{path[(match.Index + match.Length)..]}");
+            }
+        }
+
+        return result;
     }
 }

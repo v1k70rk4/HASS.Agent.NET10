@@ -1435,7 +1435,7 @@ internal sealed class MainForm : Form
             }
 
             var rowIndexes = new List<int>();
-            foreach (var attributePath in definition.AttributePaths ?? [])
+            foreach (var attributePath in BuiltInSensorCatalog.SuggestedAttributePaths(definition))
             {
                 rowIndexes.Add(AddCustomSensorRow(new CustomSensorDefinition
                 {
@@ -1703,11 +1703,19 @@ internal sealed class MainForm : Form
     private static string GetAttributeDisplayName(string attributePath)
     {
         var lastDot = attributePath.LastIndexOf('.');
-        var name = (lastDot >= 0 ? attributePath[(lastDot + 1)..] : attributePath).Replace("[0]", string.Empty);
+        var name = AttributeIndex.Replace(lastDot >= 0 ? attributePath[(lastDot + 1)..] : attributePath, string.Empty);
         var key = $"Attribute.{name}";
         var translated = Strings.GetHa(key);
-        return translated == key ? name : translated;
+        var display = translated == key ? name : translated;
+
+        // The second GPU's or display's sensor is told apart from the first one's by a number.
+        var index = AttributeIndex.Match(attributePath);
+        return index.Success && int.TryParse(index.Groups[1].Value, out var position) && position > 0
+            ? $"{display} {position + 1}"
+            : display;
     }
+
+    private static readonly System.Text.RegularExpressions.Regex AttributeIndex = new(@"\[(\d+)\]", System.Text.RegularExpressions.RegexOptions.Compiled);
 
     private KeyValuePair<string, string>[] BuildPollingProfileOptions()
     {
@@ -1945,7 +1953,7 @@ internal sealed class MainForm : Form
         page.Controls.Add(warning);
 
         // Tool picker view — one button per tool, each opening its own sub-view.
-        var toolsCard = MakeCard(page, 28, 116, 720, 344, S("Danger.Tools"));
+        var toolsCard = MakeCard(page, 28, 116, 720, 394, S("Danger.Tools"));
         var subCards = new List<Panel>();
 
         void ShowView(Panel? sub)
@@ -2032,6 +2040,30 @@ internal sealed class MainForm : Form
         };
         toolsCard.Controls.Add(betaCheck);
 
+        // Fast sensors below 5 seconds — persists immediately too. The text wraps in the box.
+        var fastCheck = new CheckBox
+        {
+            Text = S("Danger.FastSensors"), Location = Pt(20, 330),
+            Size = Sz(680, 48), ForeColor = TextBody, Checked = _settings.FastSensorsUnlocked,
+            TextAlign = ContentAlignment.MiddleLeft
+        };
+        fastCheck.CheckedChanged += (_, _) =>
+        {
+            if (_settings.FastSensorsUnlocked == fastCheck.Checked)
+            {
+                return;
+            }
+
+            _settings.FastSensorsUnlocked = fastCheck.Checked;
+            // Switching it off with 1–4 s set brings the interval back up to the floor.
+            _settings.FastSensorIntervalSeconds = Math.Max(_settings.FastSensorIntervalSeconds, _settings.FastSensorIntervalMinimum);
+            _fastSensorInterval.Minimum = _settings.FastSensorIntervalMinimum;
+            _fastSensorInterval.Value = Math.Max(_fastSensorInterval.Value, _fastSensorInterval.Minimum);
+            SettingsStore.Save(_paths, _settings);
+            _log.Info($"Fast sensors below 5 seconds {(fastCheck.Checked ? "unlocked" : "locked")}.");
+        };
+        toolsCard.Controls.Add(fastCheck);
+
         toolsCard.Layout += (_, _) =>
         {
             var hintWidth = Math.Max(D(200), toolsCard.ClientSize.Width - D(262) - D(20));
@@ -2041,6 +2073,7 @@ internal sealed class MainForm : Form
             }
 
             betaCheck.Width = Math.Max(D(420), toolsCard.ClientSize.Width - D(40));
+            fastCheck.Width = betaCheck.Width;
         };
 
         page.Layout += (_, _) =>
@@ -2747,7 +2780,9 @@ internal sealed class MainForm : Form
         _announcePausesMedia.Enabled = _settings.AnnouncementVolumeEnabled;
         _capSensorsService.Checked = _settings.MqttServiceSystemSensorsEnabled;
         _capSensorsApp.Checked = _settings.MqttSystemSensorsEnabled;
-        _fastSensorInterval.Value = _settings.FastSensorIntervalSeconds;
+        // 5 s, or 1 s with the Danger Zone switch; the value is already at or above it.
+        _fastSensorInterval.Minimum = _settings.FastSensorIntervalMinimum;
+        _fastSensorInterval.Value = Math.Max(_settings.FastSensorIntervalSeconds, _settings.FastSensorIntervalMinimum);
         _normalSensorInterval.Value = _settings.NormalSensorIntervalSeconds;
         _hourlySensorInterval.Value = _settings.HourlySensorIntervalSeconds;
 

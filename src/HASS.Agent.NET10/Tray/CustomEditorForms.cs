@@ -718,8 +718,9 @@ internal sealed class CustomSensorEditorForm : CustomEditorForm
                         .ToList();
 
                 case CustomSensorTypes.BuiltInAttribute:
+                    // As this PC has them: every GPU adapter, every display, every drive.
                     return BuiltInSensorCatalog.Sensors
-                        .SelectMany(sensor => sensor.AttributePaths ?? [])
+                        .SelectMany(BuiltInSensorCatalog.SuggestedAttributePaths)
                         .ToList();
             }
         }

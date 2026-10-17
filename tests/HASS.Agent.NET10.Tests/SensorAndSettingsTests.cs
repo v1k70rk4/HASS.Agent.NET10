@@ -354,3 +354,93 @@ public class MediaPlayerTests
         Assert.Equal(35, kept.AnnouncementVolume);
     }
 }
+
+public class SystemHealthTests
+{
+    [Fact]
+    public void Attribute_paths_repeat_for_every_item_the_pc_has()
+    {
+        var paths = new[] { "gpu_usage.name", "gpu_usage.adapters[0].usage", "gpu_usage.adapters[0].engines.3d", "active_display.displays[0].name" };
+        int? Count(string list) => list switch { "gpu_usage.adapters" => 2, _ => null };
+
+        var expanded = BuiltInSensorCatalog.ExpandAttributePaths(paths, Count);
+
+        Assert.Equal(
+        [
+            "gpu_usage.name",
+            "gpu_usage.adapters[0].usage", "gpu_usage.adapters[1].usage",
+            "gpu_usage.adapters[0].engines.3d", "gpu_usage.adapters[1].engines.3d",
+            // A list never seen keeps its [0].
+            "active_display.displays[0].name"
+        ], expanded);
+    }
+
+    [Fact]
+    public void Drives_are_joined_to_their_counters_and_zero_means_not_reported()
+    {
+        var disks = new[]
+        {
+            new PhysicalDiskRow("2", "Kingston DataTraveler 3.0", 7, 0),
+            new PhysicalDiskRow("0", "WDC WD30EFRX-68EUZN0", 11, 3),
+            new PhysicalDiskRow("1", "KINGSTON SFYRD2000G", 17, 4)
+        };
+        var counters = new[]
+        {
+            new ReliabilityRow("1", 43, 84, 0, 0),
+            new ReliabilityRow("0", 32, 0, 35908, 0),
+            new ReliabilityRow("2", 0, 0, 0, 0)
+        };
+
+        var drives = DriveHealth.Compose(disks, counters, systemDiskId: "1");
+
+        // The system drive first, then by name.
+        Assert.Equal(["KINGSTON SFYRD2000G", "Kingston DataTraveler 3.0", "WDC WD30EFRX-68EUZN0"], drives.Select(drive => drive.Name));
+        var nvme = drives[0];
+        Assert.True(nvme.System);
+        Assert.Equal(("NVMe", "SSD", 43, 84), (nvme.Bus, nvme.Media, nvme.Temperature, nvme.TemperatureMax));
+        Assert.Null(nvme.PowerOnHours);
+        Assert.Equal(0, nvme.Wear);
+        var sata = drives[2];
+        Assert.Equal(("SATA", "HDD", 32, 35908L), (sata.Bus, sata.Media, sata.Temperature, sata.PowerOnHours));
+        Assert.Null(sata.TemperatureMax);
+        var usb = drives[1];
+        Assert.Equal("USB", usb.Bus);
+        Assert.Null(usb.Temperature);
+        Assert.Null(usb.Wear);
+    }
+
+    [Fact]
+    public void Gigabytes_sit_next_to_megabytes()
+    {
+        Assert.Equal(7.5, SystemMetricsService.MbToGb(7680));
+        Assert.Null(SystemMetricsService.MbToGb(null));
+
+        var adapter = new GpuAdapterInfo("RTX 4060", 8188, 12.5, new Dictionary<string, double>(), 2048, 512);
+        var json = JsonSerializer.Serialize(adapter);
+        Assert.Contains("\"memory_gb\":8", json);
+        Assert.Contains("\"memory_dedicated_gb\":2", json);
+        Assert.Contains("\"memory_shared_gb\":0.5", json);
+        Assert.Contains("\"memory_dedicated_mb\":2048", json);
+    }
+
+    [Fact]
+    public void Fast_interval_floor_is_five_seconds_unless_the_danger_zone_unlocks_it()
+    {
+        var locked = new CompanionSettings { FastSensorIntervalSeconds = 2 };
+        locked.Normalize();
+        Assert.Equal(5, locked.FastSensorIntervalSeconds);
+
+        var unlocked = new CompanionSettings { FastSensorIntervalSeconds = 2, FastSensorsUnlocked = true };
+        unlocked.Normalize();
+        Assert.Equal(2, unlocked.FastSensorIntervalSeconds);
+
+        var seven = new CompanionSettings { FastSensorIntervalSeconds = 7 };
+        seven.Normalize();
+        Assert.Equal(7, seven.FastSensorIntervalSeconds);
+
+        // Nonsense still falls back to the default.
+        var broken = new CompanionSettings { FastSensorIntervalSeconds = 0, FastSensorsUnlocked = true };
+        broken.Normalize();
+        Assert.Equal(10, broken.FastSensorIntervalSeconds);
+    }
+}

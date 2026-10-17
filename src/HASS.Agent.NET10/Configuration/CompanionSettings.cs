@@ -27,6 +27,17 @@ internal sealed class CompanionSettings
 
     public bool BetaUpdatesEnabled { get; set; }
 
+    /// <summary>Danger Zone: the fast sensor interval may go below 5 seconds, down to 1.</summary>
+    public bool FastSensorsUnlocked { get; set; }
+
+    public const int FastSensorIntervalFloor = 5;
+
+    public const int FastSensorIntervalUnlockedFloor = 1;
+
+    /// <summary>The lowest fast interval the settings allow right now.</summary>
+    [JsonIgnore]
+    public int FastSensorIntervalMinimum => FastSensorsUnlocked ? FastSensorIntervalUnlockedFloor : FastSensorIntervalFloor;
+
     // Someone answered "who may use HASS.Agent on this PC" (SettingsAccessForm): not asked again.
     public bool SettingsAccessDecided { get; set; }
 
@@ -329,7 +340,10 @@ internal sealed class CompanionSettings
             AnnouncementVolume = DefaultAnnouncementVolume;
         }
 
-        FastSensorIntervalSeconds = NormalizeInterval(FastSensorIntervalSeconds, 10, max: 3600);
+        // Below the floor that applies now (5 s, or 1 s with the Danger Zone switch) the value
+        // rises to the floor: a 2 s set while unlocked becomes 5 s when the switch goes off.
+        FastSensorIntervalSeconds = NormalizeInterval(FastSensorIntervalSeconds, 10, max: 3600, min: FastSensorIntervalUnlockedFloor);
+        FastSensorIntervalSeconds = Math.Max(FastSensorIntervalSeconds, FastSensorIntervalMinimum);
         NormalSensorIntervalSeconds = NormalizeInterval(NormalSensorIntervalSeconds, 60, max: 86400);
         HourlySensorIntervalSeconds = NormalizeInterval(HourlySensorIntervalSeconds, 3600, max: 86400);
 
@@ -427,9 +441,9 @@ internal sealed class CompanionSettings
             || host.EndsWith(".home.arpa", StringComparison.Ordinal);
     }
 
-    private static int NormalizeInterval(int value, int fallback, int max)
+    private static int NormalizeInterval(int value, int fallback, int max, int min = 10)
     {
-        return value is < 10 || value > max ? fallback : value;
+        return value < min || value > max ? fallback : value;
     }
 
     private static List<string> NormalizeCommandList(List<string>? commands, IReadOnlyList<string> defaults)

@@ -18,6 +18,7 @@ The **Default** column shows whether a fresh install starts with the sensor swit
 | Available memory (MB) | fast | yes | yes | on |
 | System drive free % | normal | yes | yes | on |
 | System drive free (GB) | normal | yes | yes | on |
+| Drive temperature | normal | yes | — | on |
 | Uptime | fast | yes | yes | on |
 | Boot time | startup | yes | yes | on |
 | Battery level | normal | yes | yes | on |
@@ -73,7 +74,10 @@ Sensors with attributes:
 | **Last shutdown reason** | `reason`, `event_id`, `created_at`, `message` |
 | **Last wake reason** | `source`, `kind` (`modern_standby`, `sleep`, `hibernate`, `fast_startup`), `created_at`, `duration_seconds`, `sleep_entered`, `detail` |
 | **Sleep blocked** | `system_required`, `display_required`, `away_mode_required`, `primary_blocker`, `blockers[N].category`, `blockers[N].type`, `blockers[N].name`, `blockers[N].reason`, `blockers[N].blocking` |
-| **GPU usage** | `engines.<type>` (e.g. `engines.3d`, `engines.videodecode`), `npu_usage`, `memory_dedicated_mb`, `memory_shared_mb`, `adapters[N].name`, `adapters[N].memory_mb`, `adapters[N].usage`, `adapters[N].engines.<type>`, `adapters[N].memory_dedicated_mb`, `adapters[N].memory_shared_mb` |
+| **GPU usage** | `name` (the GPU the main value follows), `engines.<type>` (e.g. `engines.3d`, `engines.videodecode`), `npu_usage`, `memory_dedicated_gb`, `memory_shared_gb` (and the same in `_mb`), `adapters[N].name`, `adapters[N].memory_gb`, `adapters[N].usage`, `adapters[N].engines.<type>`, `adapters[N].memory_dedicated_gb`, `adapters[N].memory_shared_gb` (and `_mb`) |
+| **Memory usage** | `total_gb`, `used_gb`, `available_gb` |
+| **System drive free % / (GB)** | `drive`, `total_gb`, `used_gb`, `free_gb` |
+| **Drive temperature** | `drives[N].name`, `drives[N].bus`, `drives[N].media`, `drives[N].temperature`, `drives[N].temperature_max`, `drives[N].power_on_hours`, `drives[N].wear`, `drives[N].system` — what Windows keeps about the drive (the Storage Management API, read by the service): NVMe drives report the temperature and its highest value, a SATA drive the temperature and the power-on hours when its controller passes them on, USB enclosures nothing; a field the drive does not report is left out. The system drive comes first. |
 | **Camera in use** / **Microphone in use** | `apps[N]` |
 
 **GPU usage with more than one GPU** (an integrated one and a graphics card, for example): the sensor's value and the top-level `engines`, `memory_dedicated_mb` and `memory_shared_mb` follow the busiest GPU at each reading, so they can move from one GPU to the other. For one GPU of your choice use its own values under `adapters[N]` (10.9.3+): `adapters[1].usage`, `adapters[1].engines.3d`, `adapters[1].memory_dedicated_mb`. `adapters[N].name` tells which is which; the order is the one Windows lists the display adapters in, and does not change between readings.
@@ -87,12 +91,12 @@ Sensors are refreshed by profile instead of one global interval. Each profile in
 | Profile | Default | Description |
 |---------|---------|-------------|
 | **push** | on change | Event-driven — reports within ~600 ms of a change (monitor power, session lock, power source, volume/mute/audio device). A poll still runs as a safety net. *Last wake reason* follows the event log and is published with the next fast cycle. |
-| **fast** | 10 sec | CPU, memory, active window, etc. |
+| **fast** | 10 sec | CPU, memory, active window, etc. Down to 5 seconds on the Capabilities page; 1–4 seconds after the **Fast sensors below 5 seconds** switch on the Danger Zone page (10.9.3+). |
 | **normal** | 60 sec | Disk, battery, network, Bluetooth, etc. |
 | **hourly** | 3600 sec | Windows Update, Event Log, etc. |
 | **startup** | once | Boot time, last shutdown reason |
 
-Minimum interval is 10 seconds for the timed profiles.
+Minimum interval is 10 seconds for the normal and hourly profiles. Every cycle sends the whole sensor state, and a value that changes every second (CPU usage) lands in Home Assistant's recorder every second: that is why the fast profile below 5 seconds sits behind the Danger Zone switch.
 
 ## Availability
 

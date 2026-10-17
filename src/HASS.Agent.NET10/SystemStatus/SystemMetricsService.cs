@@ -77,6 +77,17 @@ internal sealed class SystemMetricsService : IDisposable
     // -1 until the first search has finished, then 0 / 1.
     private volatile int _windowsUpdatePendingState = -1;
     private SystemMetricsMessage? _lastMessage;
+    private long _memoryTotalMb;
+    private double _driveTotalGb;
+    private string _driveLetter = string.Empty;
+    private IReadOnlyList<DriveHealthInfo>? _lastDrives;
+
+    // How many items each list attribute had the last time it was read (gpu_usage.adapters: 2),
+    // for the attribute list in the settings window to offer every item, not just [0].
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, int> ListCounts = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>The item count of a list attribute by its path, or null when it has not been read yet.</summary>
+    public static int? ListCount(string listPath) => ListCounts.TryGetValue(listPath, out var count) ? count : null;
     private IReadOnlyList<NetworkAddressInfo> _lastNetworkAddresses = [];
     private IReadOnlyList<DisplayInfo> _lastDisplays = [];
     private IReadOnlyList<EventLogErrorInfo> _lastRecentErrors = [];
@@ -149,11 +160,25 @@ internal sealed class SystemMetricsService : IDisposable
         var updateHourly = profiles.Contains(SensorPollingProfile.Hourly);
         var updateStartup = profiles.Contains(SensorPollingProfile.Startup);
 
-        var memory = updateFast ? Safe(ReadMemory, (UsagePercent: previous?.MemoryUsage ?? 0, AvailableMb: previous?.MemoryAvailableMb ?? 0)) : (UsagePercent: previous!.MemoryUsage, AvailableMb: previous.MemoryAvailableMb);
+        var memory = updateFast ? Safe(ReadMemory, (UsagePercent: previous?.MemoryUsage ?? 0, AvailableMb: previous?.MemoryAvailableMb ?? 0, TotalMb: _memoryTotalMb)) : (UsagePercent: previous!.MemoryUsage, AvailableMb: previous.MemoryAvailableMb, TotalMb: _memoryTotalMb);
+        _memoryTotalMb = memory.TotalMb;
         var activeWindow = updateFast && _includeInteractiveMetrics ? Safe(ReadActiveWindow, (Title: previous?.ActiveWindow ?? string.Empty, ProcessName: previous?.ActiveProcess ?? string.Empty)) : (Title: previous?.ActiveWindow ?? string.Empty, ProcessName: previous?.ActiveProcess ?? string.Empty);
         var sessionLocked = updateFast && _includeInteractiveMetrics ? Safe(ReadSessionLocked, previous?.SessionLocked) : previous?.SessionLocked;
 
-        var drive = updateNormal ? Safe(ReadSystemDrive, (FreePercent: previous?.SystemDriveFreePercent ?? 0, FreeGb: previous?.SystemDriveFreeGb ?? 0)) : (FreePercent: previous!.SystemDriveFreePercent, FreeGb: previous.SystemDriveFreeGb);
+        var drive = updateNormal ? Safe(ReadSystemDrive, (FreePercent: previous?.SystemDriveFreePercent ?? 0, FreeGb: previous?.SystemDriveFreeGb ?? 0, TotalGb: _driveTotalGb, Drive: _driveLetter)) : (FreePercent: previous!.SystemDriveFreePercent, FreeGb: previous.SystemDriveFreeGb, TotalGb: _driveTotalGb, Drive: _driveLetter);
+        _driveTotalGb = drive.TotalGb;
+        _driveLetter = drive.Drive;
+
+        // Drive health comes from Windows' storage provider, which only an administrator may
+        // ask: the service reads it, the tray app leaves the sensor out.
+        if (!serviceRole || !Wanted("drive_temperature"))
+        {
+            _lastDrives = null;
+        }
+        else if (updateNormal || _lastDrives is null)
+        {
+            _lastDrives = Safe(() => DriveHealth.Read(_log), _lastDrives ?? []);
+        }
         var power = updateNormal ? Safe(ReadPowerStatus, (BatteryLevel: previous?.BatteryLevel, Status: previous?.PowerStatus ?? "unknown", TimeRemainingSeconds: previous?.BatteryTimeRemaining)) : (BatteryLevel: previous!.BatteryLevel, Status: previous.PowerStatus, TimeRemainingSeconds: previous.BatteryTimeRemaining);
         var session = updateNormal ? Safe(ReadSessionStatus, (State: previous?.SessionState ?? "none", User: previous?.LoggedInUser ?? string.Empty)) : (State: previous!.SessionState, User: previous.LoggedInUser);
         var wifi = updateNormal ? Safe(ReadWifiStatus, (Ssid: previous?.WifiSsid ?? string.Empty, Signal: previous?.WifiSignal)) : (Ssid: previous!.WifiSsid, Signal: previous.WifiSignal);
@@ -278,7 +303,8 @@ internal sealed class SystemMetricsService : IDisposable
         // topic, and an empty value from one would blank out what the other reports.
         var lastWake = Wanted("last_wake_reason") ? _lastWake : null;
         var attributes = BuildAttributes(_lastNetworkAddresses, _lastDisplays, _lastRecentErrors, _lastShutdown,
-            lastWake, _lastExecutionState, _lastPowerRequests, _lastCameraApps, _lastMicrophoneApps, _lastGpu, _audioSessions);
+            lastWake, _lastExecutionState, _lastPowerRequests, _lastCameraApps, _lastMicrophoneApps, _lastGpu, _audioSessions,
+            memory, drive, _lastDrives);
         var message = new SystemMetricsMessage(
             CpuUsage: updateFast ? Safe(ReadCpuUsage, previous?.CpuUsage ?? 0) : previous!.CpuUsage,
             MemoryUsage: memory.UsagePercent,
@@ -319,6 +345,12 @@ internal sealed class SystemMetricsService : IDisposable
             DisplayBrightness: _lastDisplayBrightness,
             DisplayBrightnessSupported: _displayBrightnessSupported,
             GpuUsage: _lastGpu?.Usage,
+            // The system drive's temperature; the first drive that reports one when the
+            // system drive does not (a SATA drive behind a controller that keeps it).
+            DriveTemperature: _lastDrives is null
+                ? null
+                : (_lastDrives.FirstOrDefault(drive => drive.System && drive.Temperature is not null)
+                   ?? _lastDrives.FirstOrDefault(drive => drive.Temperature is not null))?.Temperature,
             SessionState: session.State,
             LoggedInUser: session.User,
             LoggedInUsers: sessions.LoggedInUsers,
@@ -413,7 +445,7 @@ internal sealed class SystemMetricsService : IDisposable
         }
     }
 
-    private static (double UsagePercent, long AvailableMb) ReadMemory()
+    private static (double UsagePercent, long AvailableMb, long TotalMb) ReadMemory()
     {
         var status = new MemoryStatusEx
         {
@@ -422,39 +454,48 @@ internal sealed class SystemMetricsService : IDisposable
 
         if (!GlobalMemoryStatusEx(ref status))
         {
-            return (0, 0);
+            return (0, 0, 0);
         }
 
         return (
             Math.Round((double)status.MemoryLoad, 1),
-            Convert.ToInt64(status.AvailablePhysical / 1024 / 1024));
+            Convert.ToInt64(status.AvailablePhysical / 1024 / 1024),
+            Convert.ToInt64(status.TotalPhysical / 1024 / 1024));
     }
 
-    private static (double FreePercent, double FreeGb) ReadSystemDrive()
+    private static (double FreePercent, double FreeGb, double TotalGb, string Drive) ReadSystemDrive()
     {
         var root = Path.GetPathRoot(Environment.SystemDirectory);
         if (string.IsNullOrWhiteSpace(root))
         {
-            return (0, 0);
+            return (0, 0, 0, string.Empty);
         }
 
+        var letter = root.TrimEnd('\\');
         try
         {
             var drive = new DriveInfo(root);
             if (!drive.IsReady || drive.TotalSize <= 0)
             {
-                return (0, 0);
+                return (0, 0, 0, letter);
             }
 
             return (
                 Math.Round(drive.AvailableFreeSpace * 100d / drive.TotalSize, 1),
-                Math.Round(drive.AvailableFreeSpace / 1024d / 1024d / 1024d, 1));
+                Gb(drive.AvailableFreeSpace),
+                Gb(drive.TotalSize),
+                letter);
         }
         catch
         {
-            return (0, 0);
+            return (0, 0, 0, letter);
         }
     }
+
+    private static double Gb(long bytes) => Math.Round(bytes / 1024d / 1024d / 1024d, 1);
+
+    /// <summary>Megabytes as gigabytes with one decimal, for the _gb attributes next to the _mb ones.</summary>
+    internal static double? MbToGb(long? mb) => mb is null ? null : Math.Round(mb.Value / 1024d, 1);
 
     private static (string Title, string ProcessName) ReadActiveWindow()
     {
@@ -1638,13 +1679,15 @@ internal sealed class SystemMetricsService : IDisposable
 
         var memoryByLuid = ReadGpuMemory();
         var memory = memoryByLuid.GetValueOrDefault(gpu.Key);
+        var adapterList = GpuAdapters(adapters, memoryByLuid);
         return new GpuInfo(
             Percent(gpu.Value.Values.Max()),
             GraphicsEngines(gpu.Value),
             npu is { } npuLoad ? Percent(npuLoad) : null,
             memory.DedicatedMb,
             memory.SharedMb,
-            GpuAdapters(adapters, memoryByLuid));
+            adapterList,
+            _gpuAdapterIdentities?.FirstOrDefault(adapter => string.Equals(adapter.Luid, gpu.Key, StringComparison.OrdinalIgnoreCase))?.Name);
     }
 
     private static double Percent(double value) => Math.Round(Math.Clamp(value, 0, 100), 1);
@@ -1888,7 +1931,10 @@ internal sealed class SystemMetricsService : IDisposable
         IReadOnlyList<string>? cameraApps,
         IReadOnlyList<string>? microphoneApps,
         GpuInfo? gpu,
-        IReadOnlyList<AudioEndpointService.AudioSessionInfo>? audioSessions)
+        IReadOnlyList<AudioEndpointService.AudioSessionInfo>? audioSessions,
+        (double UsagePercent, long AvailableMb, long TotalMb) memory = default,
+        (double FreePercent, double FreeGb, double TotalGb, string Drive) drive = default,
+        IReadOnlyList<DriveHealthInfo>? drives = null)
     {
         var attributes = new Dictionary<string, IReadOnlyDictionary<string, object?>>
         {
@@ -1968,10 +2014,14 @@ internal sealed class SystemMetricsService : IDisposable
         {
             attributes["gpu_usage"] = new Dictionary<string, object?>
             {
+                // Which adapter the main value and these top-level numbers follow.
+                ["name"] = gpu.Name,
                 ["engines"] = gpu.Engines,
                 ["npu_usage"] = gpu.NpuUsage,
                 ["memory_dedicated_mb"] = gpu.MemoryDedicatedMb,
                 ["memory_shared_mb"] = gpu.MemorySharedMb,
+                ["memory_dedicated_gb"] = MbToGb(gpu.MemoryDedicatedMb),
+                ["memory_shared_gb"] = MbToGb(gpu.MemorySharedMb),
                 ["adapters"] = gpu.Adapters
             };
         }
@@ -1984,7 +2034,54 @@ internal sealed class SystemMetricsService : IDisposable
             };
         }
 
+        if (memory.TotalMb > 0)
+        {
+            attributes["memory_usage"] = new Dictionary<string, object?>
+            {
+                ["total_gb"] = MbToGb(memory.TotalMb),
+                ["used_gb"] = MbToGb(memory.TotalMb - memory.AvailableMb),
+                ["available_gb"] = MbToGb(memory.AvailableMb)
+            };
+        }
+
+        if (drive.TotalGb > 0)
+        {
+            var driveTotals = new Dictionary<string, object?>
+            {
+                ["drive"] = drive.Drive,
+                ["total_gb"] = drive.TotalGb,
+                ["used_gb"] = Math.Round(drive.TotalGb - drive.FreeGb, 1),
+                ["free_gb"] = drive.FreeGb
+            };
+            attributes["system_drive_free_percent"] = driveTotals;
+            attributes["system_drive_free_gb"] = driveTotals;
+        }
+
+        if (drives is not null)
+        {
+            attributes["drive_temperature"] = new Dictionary<string, object?>
+            {
+                ["drives"] = drives
+            };
+        }
+
+        RememberListCounts(attributes);
         return attributes;
+    }
+
+    // Lists one level down (gpu_usage.adapters, active_display.displays, drive_temperature.drives).
+    private static void RememberListCounts(IReadOnlyDictionary<string, IReadOnlyDictionary<string, object?>> attributes)
+    {
+        foreach (var (sensor, values) in attributes)
+        {
+            foreach (var (name, value) in values)
+            {
+                if (value is ICollection list && value is not IDictionary)
+                {
+                    ListCounts[$"{sensor}.{name}"] = list.Count;
+                }
+            }
+        }
     }
 
     /// <summary>
@@ -2544,6 +2641,7 @@ internal sealed record SystemMetricsMessage(
     [property: JsonPropertyName("display_brightness")] int? DisplayBrightness,
     [property: JsonPropertyName("display_brightness_supported")] bool? DisplayBrightnessSupported,
     [property: JsonPropertyName("gpu_usage")] double? GpuUsage,
+    [property: JsonPropertyName("drive_temperature")] int? DriveTemperature,
     [property: JsonPropertyName("session_state")] string SessionState,
     [property: JsonPropertyName("logged_in_user")] string LoggedInUser,
     [property: JsonPropertyName("logged_in_users")] int LoggedInUsers,
@@ -2593,7 +2691,9 @@ internal sealed record GpuInfo(
     double? NpuUsage,
     long? MemoryDedicatedMb,
     long? MemorySharedMb,
-    IReadOnlyList<GpuAdapterInfo> Adapters);
+    IReadOnlyList<GpuAdapterInfo> Adapters,
+    // The busiest adapter, the one the top-level values follow; null when it is not known.
+    string? Name = null);
 
 internal sealed record GpuAdapterInfo(
     [property: JsonPropertyName("name")] string Name,
@@ -2602,7 +2702,18 @@ internal sealed record GpuAdapterInfo(
     [property: JsonPropertyName("usage")] double? Usage,
     [property: JsonPropertyName("engines")] IReadOnlyDictionary<string, double>? Engines,
     [property: JsonPropertyName("memory_dedicated_mb")] long? MemoryDedicatedMb,
-    [property: JsonPropertyName("memory_shared_mb")] long? MemorySharedMb);
+    [property: JsonPropertyName("memory_shared_mb")] long? MemorySharedMb)
+{
+    // The same in gigabytes; the _mb ones stay for the sensors people already built on them.
+    [JsonPropertyName("memory_gb")]
+    public double? MemoryGb => SystemMetricsService.MbToGb(MemoryMb);
+
+    [JsonPropertyName("memory_dedicated_gb")]
+    public double? MemoryDedicatedGb => SystemMetricsService.MbToGb(MemoryDedicatedMb);
+
+    [JsonPropertyName("memory_shared_gb")]
+    public double? MemorySharedGb => SystemMetricsService.MbToGb(MemorySharedMb);
+}
 
 internal sealed record WakeInfo(
     string Summary,

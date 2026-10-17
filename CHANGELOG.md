@@ -2,6 +2,15 @@
 
 Every release of HASS.Agent .NET10, newest first. The downloads are on the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases).
 
+## Unreleased
+
+- **Drive temperature**, a new built-in sensor from the Windows service: the system drive's temperature as the value, every drive that reports one in the attributes (`drives[N].name`, `temperature`, `temperature_max`, `power_on_hours`, `bus`, `media`). It is what Windows itself keeps about the drives (the Storage Management API): NVMe drives report it, a SATA drive when its controller passes it on, USB enclosures not at all; a field a drive does not report is left out. Needs the integration 10.9.2-beta.3 or newer for the unit. Service only, since reading it needs administrator rights.
+- **`gpu_usage.name`**: which GPU the main value and the top-level engines and memory follow.
+- **Gigabytes next to megabytes**: `memory_dedicated_gb`, `memory_shared_gb` and `adapters[N].memory_gb`, `memory_dedicated_gb`, `memory_shared_gb` on GPU usage, one decimal; the `_mb` attributes stay, so sensors built on them keep working. The attribute list offers the GB ones.
+- **Memory and system drive totals**: `memory_usage` has `total_gb`, `used_gb`, `available_gb`; both system drive sensors have `drive`, `total_gb`, `used_gb`, `free_gb`.
+- **The attribute list follows this PC**: the Attributes button and the editor's list offer `adapters[1]`, `displays[1]`, `drives[1]` and so on for every item the sensor last reported, instead of `[0]` only; the second one's sensor gets a 2 after its name.
+- **Fast sensors down to 1 second**: the fast interval goes to 5 seconds on the Capabilities page (10 stays the default); the **Fast sensors below 5 seconds** switch on the Danger Zone page unlocks 1–4 seconds, with a note on what that means for traffic and the recorder.
+
 ## 10.9.3-beta.4
 
 > **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered it, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.9.2**, below.
