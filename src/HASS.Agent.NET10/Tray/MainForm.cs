@@ -691,6 +691,7 @@ internal sealed class MainForm : Form
         _haApiCreateUser.Visible = false;
         _haApiCreateUser.Click += async (_, _) => await CreateOwnHaUserAsync();
         card.Controls.Add(_haApiCreateUser);
+        card.Layout += (_, _) => LayoutTokenUserLine();
         y += 36;
 
         // The connection comes up a moment after a save; the line follows it while the page shows.
@@ -841,6 +842,28 @@ internal sealed class MainForm : Form
         if (_haApiCreateUser is not null)
         {
             _haApiCreateUser.Visible = user.IsAdmin && !unsaved && canProvision;
+        }
+
+        LayoutTokenUserLine();
+    }
+
+    /// <summary>
+    /// The line under the token has the room up to the button next to it, or the card's width
+    /// when the button is hidden; with a fixed width a longer user name cut it to "not an".
+    /// </summary>
+    private void LayoutTokenUserLine()
+    {
+        if (_haApiTokenUser.Parent is not { } card)
+        {
+            return;
+        }
+
+        var width = _haApiCreateUser is { Visible: true }
+            ? Math.Max(D(200), _haApiCreateUser.Left - _haApiTokenUser.Left - D(8))
+            : Math.Max(D(330), card.ClientSize.Width - D(40));
+        if (_haApiTokenUser.Width != width)
+        {
+            _haApiTokenUser.Width = width;
         }
     }
 

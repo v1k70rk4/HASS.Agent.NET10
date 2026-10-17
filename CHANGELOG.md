@@ -4,6 +4,7 @@ Every release of HASS.Agent .NET10, newest first. The downloads are on the [rele
 
 ## Unreleased
 
+- **HA API page: the line under the token, "The token is of …, not an administrator", is no longer cut short** with a longer user name; it takes the room up to the button next to it, or the card's width when the button is hidden.
 - **Danger Zone: the note under "Fast sensors below 5 seconds" is shown in full in a narrow window**; the box had a fixed height and cut the sentence off. The note now starts with a warning and says what to do about the history: a sensor you want every second but not in the database goes on the recorder's exclude list. Raised in [#108](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/108).
 
 ## 10.9.3-beta.5
