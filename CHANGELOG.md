@@ -2,6 +2,10 @@
 
 Every release of HASS.Agent .NET10, newest first. The downloads are on the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases).
 
+## Unreleased
+
+- **Danger Zone: the note under "Fast sensors below 5 seconds" is shown in full in a narrow window**; the box had a fixed height and cut the sentence off. The note now starts with a warning and says what to do about the history: a sensor you want every second but not in the database goes on the recorder's exclude list. Raised in [#108](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/108).
+
 ## 10.9.3-beta.5
 
 > **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered it, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.9.2**, below.

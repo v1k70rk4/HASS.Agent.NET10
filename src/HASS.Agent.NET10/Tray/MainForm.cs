@@ -2081,6 +2081,23 @@ internal sealed class MainForm : Form
 
             betaCheck.Width = Math.Max(D(420), toolsCard.ClientSize.Width - D(40));
             fastCheck.Width = betaCheck.Width;
+
+            // The sentence wraps at this width: the box is as tall as the text needs and the
+            // card grows with it, otherwise a narrow window cut the end of the warning off.
+            var fastTextHeight = TextRenderer.MeasureText(
+                fastCheck.Text, fastCheck.Font, new Size(fastCheck.Width - D(24), int.MaxValue),
+                TextFormatFlags.WordBreak | TextFormatFlags.TextBoxControl).Height;
+            var fastHeight = Math.Max(D(26), fastTextHeight + D(8));
+            if (fastCheck.Height != fastHeight)
+            {
+                fastCheck.Height = fastHeight;
+            }
+
+            var cardHeight = fastCheck.Bottom + D(16);
+            if (toolsCard.Height != cardHeight)
+            {
+                toolsCard.Height = cardHeight;
+            }
         };
 
         page.Layout += (_, _) =>

@@ -76,7 +76,7 @@ internal static partial class Strings
             ["Danger.FactoryConfirm1"] = "Ez MINDEN beállítást töröl, beleértve az MQTT/HA API kapcsolatot, az API kulcsot és a serial numbert.\n\nAz eszköz ÚJ eszközként fog megjelenni a Home Assistantban. Folytatod?",
             ["Danger.FactoryConfirm2"] = "Biztosan biztos vagy benne? Ez nem visszavonható.",
             ["Danger.BetaUpdates"] = "Beta frissítések — a frissítéskeresés a pre-release kiadásokat is felajánlja",
-            ["Danger.FastSensors"] = "Gyors szenzorok 5 másodperc alatt — a Képességek oldalon az időköz 1 másodpercig vihető le. Minden ciklus a teljes szenzorállapotot küldi, és ami másodpercenként változik (CPU-használat), az másodpercenként kerül a Home Assistant adatbázisába.",
+            ["Danger.FastSensors"] = "Gyors szenzorok 5 másodperc alatt — a Képességek oldalon az időköz 1 másodpercig vihető le. Figyelem: minden ciklus a teljes szenzorállapotot küldi, és ami másodpercenként változik (CPU-használat), az másodpercenként kerül a Home Assistant adatbázisába; az ilyen entitást a recorder beállításában zárd ki, ha az előzmény maradjon kicsi.",
 
             // HA persistent notifications (HA entitás nyelv)
             ["HaPn.AccessTitle"] = "HASS.Agent: ki használhatja ezen a gépen",

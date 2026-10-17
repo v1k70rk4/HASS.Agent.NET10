@@ -76,7 +76,7 @@ internal static partial class Strings
             ["Danger.FactoryConfirm1"] = "This deletes ALL settings, including the MQTT/HA API connection, the API key, and the serial number.\n\nThe device will appear as a NEW device in Home Assistant. Continue?",
             ["Danger.FactoryConfirm2"] = "Are you absolutely sure? This cannot be undone.",
             ["Danger.BetaUpdates"] = "Beta updates — update checks also offer pre-releases",
-            ["Danger.FastSensors"] = "Fast sensors below 5 seconds — the interval on Capabilities may go down to 1 second. Every cycle sends the whole sensor state, and a value that changes every second (CPU usage) lands in Home Assistant's recorder every second.",
+            ["Danger.FastSensors"] = "Fast sensors below 5 seconds — the interval on Capabilities may go down to 1 second. Warning: every cycle sends the whole sensor state, and a value that changes every second (CPU usage) lands in Home Assistant's recorder every second; exclude such an entity in the recorder's configuration if the history should stay small.",
 
             // HA persistent notifications (HA entity language)
             ["HaPn.AccessTitle"] = "HASS.Agent: who may use it on this PC",
