@@ -2161,6 +2161,18 @@ internal sealed class SystemMetricsService : IDisposable
         return service.Read([sensor], serviceRole: false).CustomSensors.FirstOrDefault()?.Value;
     }
 
+    /// <summary>
+    /// Several built-in-attribute sensors from one snapshot, by sensor id: the "Test value"
+    /// button with several rows selected. One full read instead of one per row.
+    /// </summary>
+    public static IReadOnlyDictionary<string, object?> TestCustomSensorValues(IReadOnlyList<CustomSensorDefinition> sensors, FileLog log)
+    {
+        using var service = new SystemMetricsService(log, null);
+        return service.Read(sensors, serviceRole: false).CustomSensors
+            .GroupBy(sensor => sensor.Id, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First().Value, StringComparer.OrdinalIgnoreCase);
+    }
+
     private static IReadOnlyList<CustomSensorState> ReadCustomSensors(
         IReadOnlyList<CustomSensorDefinition> sensors,
         bool serviceRole,

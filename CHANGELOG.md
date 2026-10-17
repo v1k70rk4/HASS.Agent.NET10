@@ -15,7 +15,7 @@ Every release of HASS.Agent .NET10, newest first. The downloads are on the [rele
 
 - **Several rows at once on the Sensors page**: Shift and Ctrl pick several custom sensors, and **Remove** and **Test** work on all of them (removing more than one asks first). Custom commands and hotkeys get the multi-row **Remove** too.
 - **The polling profile of a built-in sensor is yours to choose**: fast, normal or hourly in the Profile column of the Sensors page (GPU usage on fast, CPU usage on normal, whatever suits the PC); push-driven and startup sensors keep theirs. The three intervals stay global, the choice is which one a sensor follows. A custom attribute sensor on a faster profile refreshes the shared read at its own pace, while the built-in sensor still shows Home Assistant its value and attributes at its own: an hourly GPU usage stays hourly in the recorder even with an adapter's load wanted every second.
-- **Custom sensors tell Home Assistant what they measure**: a unit of °C, GB, MB/s, h, W, V, A, MHz or kWh brings the matching device class (temperature, data size, data rate, duration, power, voltage, current, frequency, energy), so a °C sensor shows as °F where that is the custom, history included, and the unit can be changed on the entity. Also for LibreHardwareMonitor sensors. Per-app volumes from the list get % too.
+- **Custom sensors tell Home Assistant what they measure**: a unit of °C, GB, MB/s, h, W, V, A or MHz brings the matching device class (temperature, data size, data rate, duration, power, voltage, current, frequency), so a °C sensor shows as °F where that is the custom, history included, and the unit can be changed on the entity. Also for LibreHardwareMonitor sensors. Per-app volumes from the list get % too.
 
 ## 10.9.3-beta.4
 

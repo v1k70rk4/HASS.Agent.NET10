@@ -2886,7 +2886,9 @@ internal sealed class MainForm : Form
         }
     }
 
-    // Every selected row at once (Shift or Ctrl picks several), each reading on its own.
+    // Every selected row at once (Shift or Ctrl picks several). The built-in attribute rows
+    // share one metrics read: each would otherwise run a full snapshot of its own, GPU
+    // sampling, event log and Windows Update search included.
     private async Task UpdateSelectedCustomSensorValueAsync()
     {
         _customGrid.EndEdit();
@@ -2896,7 +2898,61 @@ internal sealed class MainForm : Form
             rows = [current];
         }
 
-        await Task.WhenAll(rows.Select(UpdateCustomSensorRowValueAsync));
+        var tasks = new List<Task>();
+        var batch = new List<(DataGridViewRow Row, CustomSensorDefinition Sensor)>();
+        foreach (var row in rows)
+        {
+            var sensor = PrepareCustomSensorRowTest(row);
+            if (sensor is null)
+            {
+                continue;
+            }
+
+            if (sensor.IsBuiltInAttribute)
+            {
+                batch.Add((row, sensor));
+            }
+            else
+            {
+                tasks.Add(ReadCustomSensorRowValueAsync(row, sensor));
+            }
+        }
+
+        if (batch.Count > 0)
+        {
+            tasks.Add(ReadBuiltInAttributeRowsAsync(batch));
+        }
+
+        await Task.WhenAll(tasks);
+    }
+
+    private async Task ReadBuiltInAttributeRowsAsync(List<(DataGridViewRow Row, CustomSensorDefinition Sensor)> batch)
+    {
+        try
+        {
+            var values = await Task.Run(() => SystemMetricsService.TestCustomSensorValues(batch.Select(item => item.Sensor).ToList(), _log));
+            foreach (var (row, sensor) in batch)
+            {
+                if (row.DataGridView is null || row.DataGridView.IsDisposed)
+                {
+                    return;
+                }
+
+                row.Cells["Value"].Value = FormatSensorValue(values.GetValueOrDefault(sensor.Id));
+            }
+        }
+        catch (Exception ex)
+        {
+            foreach (var (row, _) in batch)
+            {
+                if (row.DataGridView is null || row.DataGridView.IsDisposed)
+                {
+                    return;
+                }
+
+                row.Cells["Value"].Value = string.Format(S("Sensors.ValueError"), ex.Message);
+            }
+        }
     }
 
     private static List<DataGridViewRow> SelectedRows(DataGridView grid) =>
@@ -2957,9 +3013,20 @@ internal sealed class MainForm : Form
 
     private async Task UpdateCustomSensorRowValueAsync(DataGridViewRow row)
     {
+        var sensor = PrepareCustomSensorRowTest(row);
+        if (sensor is not null)
+        {
+            await ReadCustomSensorRowValueAsync(row, sensor);
+        }
+    }
+
+    // The row's sensor when there is something to read; otherwise the Value cell already
+    // says why not (no parameter, or an attribute only the service can read).
+    private CustomSensorDefinition? PrepareCustomSensorRowTest(DataGridViewRow row)
+    {
         if (row.IsNewRow || !_customGrid.Columns.Contains("Value"))
         {
-            return;
+            return null;
         }
 
         var valueCell = row.Cells["Value"];
@@ -2967,20 +3034,28 @@ internal sealed class MainForm : Form
         if (string.IsNullOrWhiteSpace(parameter))
         {
             valueCell.Value = S("Sensors.ValueMissingParameter");
-            return;
+            return null;
         }
 
         var sensor = BuildCustomSensorFromRow(row, forceEnabled: true);
+        // The rows' ids tell the results apart when several are read at once.
+        sensor.Id = Convert.ToString(row.Tag) is { Length: > 0 } id ? id : sensor.Id;
 
         // An attribute of a sensor only the service reads (drive health): the tray app would
         // only ever show null for it, so it says why instead.
         if (sensor.IsBuiltInAttribute && BuiltInSensorCatalog.ForAttributePath(sensor.Parameter) is { SupportsTrayApp: false })
         {
             valueCell.Value = S("Sensors.ValueServiceOnly");
-            return;
+            return null;
         }
 
         valueCell.Value = S("Sensors.ValueLoading");
+        return sensor;
+    }
+
+    private async Task ReadCustomSensorRowValueAsync(DataGridViewRow row, CustomSensorDefinition sensor)
+    {
+        var valueCell = row.Cells["Value"];
         try
         {
             var value = await Task.Run(() => SystemMetricsService.TestCustomSensorValue(sensor, _log));
