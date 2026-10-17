@@ -552,5 +552,24 @@ public class SensorProfileTests
         Assert.Null(Profile("memory_usage"));
         Assert.Equal(SensorPollingProfile.Fast, BuiltInSensorCatalog.EffectiveProfile("gpu_usage", settings.BuiltInSensors));
         Assert.Equal(SensorPollingProfile.Fast, BuiltInSensorCatalog.EffectiveProfile("cpu_usage", settings.BuiltInSensors));
+public class CustomSensorUnitTests
+{
+    [Theory]
+    [InlineData("°C", "temperature")]
+    [InlineData(" °F ", "temperature")]
+    [InlineData("GB", "data_size")]
+    [InlineData("GiB", "data_size")]
+    [InlineData("MB/s", "data_rate")]
+    [InlineData("h", "duration")]
+    [InlineData("W", "power")]
+    [InlineData("MHz", "frequency")]
+    [InlineData("kWh", "energy")]
+    [InlineData("%", null)]
+    [InlineData("RPM", null)]
+    [InlineData("", null)]
+    [InlineData(null, null)]
+    public void A_custom_sensor_gets_a_device_class_from_its_unit(string? unit, string? deviceClass)
+    {
+        Assert.Equal(deviceClass, CustomSensorUnits.DeviceClassFor(unit));
     }
 }

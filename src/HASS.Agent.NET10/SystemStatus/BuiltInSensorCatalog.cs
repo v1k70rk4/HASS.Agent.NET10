@@ -303,7 +303,7 @@ internal static class BuiltInSensorCatalog
         if (name.EndsWith("_hours", StringComparison.Ordinal)) return "h";
         if (name.EndsWith("_seconds", StringComparison.Ordinal)) return "s";
         if (name.EndsWith("_minutes", StringComparison.Ordinal)) return "min";
-        if (name is "usage" or "npu_usage" or "wear" || parent.EndsWith(".engines", StringComparison.Ordinal)) return "%";
+        if (name is "usage" or "npu_usage" or "wear" or "volume" || parent.EndsWith(".engines", StringComparison.Ordinal)) return "%";
         if (name is "width" or "height" or "x" or "y") return "px";
         return string.Empty;
     }
