@@ -183,11 +183,43 @@ internal static class DriveHealth
         return null;
     }
 
+    /// <summary>
+    /// How many physical disks Windows lists, which it tells without administrator rights;
+    /// for the attribute list in the settings window, which runs where the health itself
+    /// cannot be read. Null when even that fails. Counted at most once a minute.
+    /// </summary>
+    public static int? DiskCount()
+    {
+        if (Environment.TickCount64 - _diskCountAtTicks < 60_000)
+        {
+            return _diskCount;
+        }
+
+        try
+        {
+            _diskCount = Query("SELECT DeviceId FROM MSFT_PhysicalDisk").Count();
+        }
+        catch
+        {
+            _diskCount = null;
+        }
+
+        _diskCountAtTicks = Environment.TickCount64;
+        return _diskCount;
+    }
+
+    private static int? _diskCount;
+    private static long _diskCountAtTicks = long.MinValue / 2;
+
     private static IEnumerable<ManagementBaseObject> Query(string query) => Query(new ObjectQuery(query));
+
+    // Bounded: the storage provider can hang on a drive that does not answer, and this runs
+    // inside the service's sensor cycle, where a stall would hold every sensor.
+    private static readonly System.Management.EnumerationOptions QueryOptions = new() { Timeout = TimeSpan.FromSeconds(10), ReturnImmediately = false };
 
     private static IEnumerable<ManagementBaseObject> Query(ObjectQuery query)
     {
-        using var searcher = new ManagementObjectSearcher(new ManagementScope(StorageNamespace), query);
+        using var searcher = new ManagementObjectSearcher(new ManagementScope(StorageNamespace), query, QueryOptions);
         using var results = searcher.Get();
         foreach (var item in results)
         {

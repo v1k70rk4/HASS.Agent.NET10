@@ -1663,6 +1663,7 @@ internal sealed class MainForm : Form
             SensorPollingProfiles.NormalizeKey(sensor.PollingProfile, SensorPollingProfile.Normal),
             sensor.Parameter,
             sensor.Unit);
+        ApplyRoleLocks(row, sensor);
         MarkCustomSensorValueNotTested(row);
     }
 
@@ -2846,25 +2847,27 @@ internal sealed class MainForm : Form
             sensor.Unit);
         var row = _customGrid.Rows[rowIndex];
         row.Tag = sensor.Id;
-
-        // A role that cannot read the built-in sensor behind an attribute sensor cannot be
-        // ticked for it: the box is greyed, and a save would clear it anyway.
-        if (sensor.IsBuiltInAttribute && BuiltInSensorCatalog.ForAttributePath(sensor.Parameter) is { } source)
-        {
-            LockRoleCell(row.Cells["TrayApp"], !source.SupportsTrayApp);
-            LockRoleCell(row.Cells["Service"], !source.SupportsService);
-        }
-
+        ApplyRoleLocks(row, sensor);
         return rowIndex;
+    }
+
+    // A role that cannot read the built-in sensor behind an attribute sensor cannot be
+    // ticked for it: the box is greyed, and a save would clear it anyway. Both boxes are
+    // freed first, so that an edit to another path gives the box back.
+    private static void ApplyRoleLocks(DataGridViewRow row, CustomSensorDefinition sensor)
+    {
+        var source = sensor.IsBuiltInAttribute ? BuiltInSensorCatalog.ForAttributePath(sensor.Parameter) : null;
+        LockRoleCell(row.Cells["TrayApp"], source is { SupportsTrayApp: false });
+        LockRoleCell(row.Cells["Service"], source is { SupportsService: false });
     }
 
     private static void LockRoleCell(DataGridViewCell cell, bool locked)
     {
         cell.ReadOnly = locked;
+        cell.Style.BackColor = locked ? Color.FromArgb(243, 244, 246) : Color.Empty;
         if (locked)
         {
             cell.Value = false;
-            cell.Style.BackColor = Color.FromArgb(243, 244, 246);
         }
     }
 

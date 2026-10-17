@@ -9,7 +9,7 @@ Every release of HASS.Agent .NET10, newest first. The downloads are on the [rele
 - **`gpu_usage.name`**: which GPU the main value and the top-level engines and memory follow.
 - **Gigabytes next to megabytes**: `memory_dedicated_gb`, `memory_shared_gb` and `adapters[N].memory_gb`, `memory_dedicated_gb`, `memory_shared_gb` on GPU usage, one decimal; the `_mb` attributes stay, so sensors built on them keep working. The attribute list offers the GB ones.
 - **Memory and system drive totals**: `memory_usage` has `total_gb`, `used_gb`, `available_gb`; both system drive sensors have `drive`, `total_gb`, `used_gb`, `free_gb`.
-- **The attribute list follows this PC**: the Attributes button and the editor's list offer `adapters[1]`, `displays[1]`, `drives[1]` and so on for every item the sensor last reported, instead of `[0]` only; the second one's sensor gets a 2 after its name.
+- **The attribute list follows this PC**: the Attributes button and the editor's list offer `adapters[1]`, `displays[1]`, `drives[1]` and so on for every item the sensor last reported, instead of `[0]` only; the second one's sensor gets a 2 after its name. For the drive health, which the app itself cannot read, it counts the disks Windows lists.
 - **Uptime moved to the normal profile** (every 60 seconds instead of every fast cycle): its value changes with every tick, so on the fast profile it wrote a new row to Home Assistant's recorder at every cycle for nothing.
 - **Fast sensors down to 1 second**: the fast interval goes to 5 seconds on the Capabilities page (10 stays the default); the **Fast sensors below 5 seconds** switch on the Danger Zone page unlocks 1–4 seconds, with a note on what that means for traffic and the recorder.
 

@@ -210,7 +210,14 @@ internal static class BuiltInSensorCatalog
     /// display), so that nobody has to know to change the index by hand.
     /// </summary>
     public static IReadOnlyList<string> SuggestedAttributePaths(BuiltInSensorDefinition definition) =>
-        ExpandAttributePaths(definition.AttributePaths ?? [], SystemMetricsService.ListCount);
+        ExpandAttributePaths(definition.AttributePaths ?? [], ListCount);
+
+    // The counts come from the last read in this process. The settings window lives in the
+    // tray app, which never reads the drive health (that takes administrator rights), so the
+    // number of drives is counted on its own: that much Windows tells anyone.
+    private static int? ListCount(string listPath) =>
+        SystemMetricsService.ListCount(listPath)
+        ?? (string.Equals(listPath, "drive_health.drives", StringComparison.OrdinalIgnoreCase) ? DriveHealth.DiskCount() : null);
 
     /// <summary>
     /// The list the editor offers to type from: the suggested paths, then the _mb twin of every

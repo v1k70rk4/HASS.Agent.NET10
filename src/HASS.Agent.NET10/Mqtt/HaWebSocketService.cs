@@ -669,7 +669,7 @@ internal sealed class HaWebSocketService : IDisposable
         {
             throw new InvalidOperationException(code == "unauthorized"
                 ? "HA WebSocket: Home Assistant refused the subscription. Either Home Assistant is still starting and " +
-                  "the HASS.Agent integration is not loaded yet (the next attempt gets in), or the token's user is not " +
+                  "the HASS.Agent integration is not loaded yet (a later attempt gets in once it has), or the token's user is not " +
                   "an administrator, which needs the integration 10.9.1 or newer, set up with at least one device; " +
                   "or add this PC with the integration's \"HA API\" option, which waits for it."
                 : $"HA WebSocket subscribe_events failed: {code} {message}");
