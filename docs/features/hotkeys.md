@@ -7,7 +7,7 @@ description: Key combinations on a Windows PC that become events in Home Assista
 
 > From 10.9.0. The Home Assistant side needs the integration 10.9.0 or newer.
 
-On the **Capabilities** page you can list key combinations with a name (`ctrl+alt+h` as "Meeting"). Pressing one sends an event to Home Assistant, where the device's *Hotkeys* event entity has one event type per hotkey name, so an automation can trigger on it. The press also fires `hass_agent_hotkey_pressed` on the event bus, with the name in `hotkey`.
+On the **Capabilities** page you can list key combinations with a name (`ctrl+alt+h` as "Meeting"). Pressing one sends an event to Home Assistant, where the device's *Hotkeys* event entity has one event type per hotkey name, so an automation can trigger on it. The integration also fires `hass_agent_hotkey_pressed` on the event bus for every press, on both transports, with the name in `hotkey`; that is the event for automations. (Over the HA API the app carries the press to the integration as a `hass_agent_hotkey` event, which is the transport, not the one to trigger on; over MQTT it goes by topic.)
 
 A hotkey is one combination: at least one of `ctrl`, `alt`, `shift`, `win`, and exactly one other key. The key names are the ones listed under [Custom commands](../commands/custom.md). Only the listed combinations are registered with Windows, nothing else that is typed is seen.
 
