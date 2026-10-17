@@ -74,3 +74,4 @@ build.local.psd1
 ## The website build (mkdocs build)
 site/
 .venv/
+__pycache__/
