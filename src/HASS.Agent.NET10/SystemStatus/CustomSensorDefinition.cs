@@ -84,6 +84,28 @@ internal static class CustomSensorTypes
     }
 }
 
+/// <summary>
+/// What Home Assistant is told a custom sensor measures, from its unit. With a device class
+/// Home Assistant shows the value in the user's own units (°F in the US for a °C sensor,
+/// converting the history too) and offers the unit choices of that class.
+/// </summary>
+internal static class CustomSensorUnits
+{
+    public static string? DeviceClassFor(string? unit) => unit?.Trim() switch
+    {
+        "°C" or "°F" or "K" => "temperature",
+        "B" or "kB" or "MB" or "GB" or "TB" or "KiB" or "MiB" or "GiB" or "TiB" => "data_size",
+        "bit/s" or "kbit/s" or "Mbit/s" or "Gbit/s" or "B/s" or "kB/s" or "MB/s" or "GB/s" or "KiB/s" or "MiB/s" or "GiB/s" => "data_rate",
+        "s" or "min" or "h" or "d" or "ms" => "duration",
+        "W" or "kW" or "mW" => "power",
+        "V" or "mV" => "voltage",
+        "A" or "mA" => "current",
+        "Hz" or "kHz" or "MHz" or "GHz" => "frequency",
+        "Wh" or "kWh" or "MWh" => "energy",
+        _ => null
+    };
+}
+
 internal sealed record CustomSensorDescriptor(
     [property: JsonPropertyName("id")] string Id,
     [property: JsonPropertyName("type")] string Type,
