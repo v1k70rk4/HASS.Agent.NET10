@@ -1475,10 +1475,15 @@ internal sealed class MainForm : Form
             Name = "Name", HeaderText = S("Sensors.Sensor"), AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill,
             MinimumWidth = D(200), ReadOnly = true
         });
-        _builtInGrid.Columns.Add(new DataGridViewTextBoxColumn
+        // Fast, normal or hourly is the user's choice; push-driven and startup sensors keep
+        // theirs (the cell is locked for them).
+        _builtInGrid.Columns.Add(new DataGridViewComboBoxColumn
         {
-            Name = "Profile", HeaderText = S("Sensors.Profile"), Width = D(92), ReadOnly = true,
-            SortMode = DataGridViewColumnSortMode.NotSortable
+            Name = "Profile", HeaderText = S("Sensors.Profile"), Width = D(100),
+            SortMode = DataGridViewColumnSortMode.NotSortable,
+            DataSource = BuildPollingProfileOptions(includePush: true),
+            DisplayMember = "Value", ValueMember = "Key",
+            FlatStyle = FlatStyle.Flat, DisplayStyle = DataGridViewComboBoxDisplayStyle.Nothing
         });
         _builtInGrid.Columns.Add(new DataGridViewTextBoxColumn
         {
@@ -1711,13 +1716,19 @@ internal sealed class MainForm : Form
 
     private static readonly System.Text.RegularExpressions.Regex AttributeIndex = new(@"\[(\d+)\]", System.Text.RegularExpressions.RegexOptions.Compiled);
 
-    private KeyValuePair<string, string>[] BuildPollingProfileOptions()
+    private KeyValuePair<string, string>[] BuildPollingProfileOptions(bool includePush = false)
     {
-        return Enum.GetValues<SensorPollingProfile>()
+        var options = Enum.GetValues<SensorPollingProfile>()
             .Select(profile => new KeyValuePair<string, string>(
                 SensorPollingProfiles.ToKey(profile),
-                GetPollingProfileDisplayName(profile)))
-            .ToArray();
+                GetPollingProfileDisplayName(profile)));
+        if (includePush)
+        {
+            // Not a choice, only what a push-driven sensor's locked cell shows.
+            options = options.Append(new KeyValuePair<string, string>("push", S("PollingProfile.push")));
+        }
+
+        return options.ToArray();
     }
 
     private string GetPollingProfileDisplayName(SensorPollingProfile profile)
@@ -2795,9 +2806,14 @@ internal sealed class MainForm : Form
                 s?.TrayApp ?? def.SupportsTrayApp,
                 s?.Service ?? def.SupportsService,
                 S($"Sensor.{def.Key}"),
-                def.PushDriven ? S("PollingProfile.push") : GetPollingProfileDisplayName(def.PollingProfile),
+                def.PushDriven ? "push" : SensorPollingProfiles.ToKey(BuiltInSensorCatalog.EffectiveProfile(def, s)),
                 def.HasMultipleValues ? "+" : string.Empty);
             _builtInGrid.Rows[ri].Tag = def.Key;
+            if (!BuiltInSensorCatalog.CanChangeProfile(def))
+            {
+                _builtInGrid.Rows[ri].Cells["Profile"].ReadOnly = true;
+                _builtInGrid.Rows[ri].Cells["Profile"].Style.BackColor = SystemColors.Control;
+            }
             if (!def.SupportsTrayApp) { _builtInGrid.Rows[ri].Cells["TrayApp"].ReadOnly = true; _builtInGrid.Rows[ri].Cells["TrayApp"].Style.BackColor = SystemColors.Control; }
             if (!def.SupportsService) { _builtInGrid.Rows[ri].Cells["Service"].ReadOnly = true; _builtInGrid.Rows[ri].Cells["Service"].Style.BackColor = SystemColors.Control; }
             if (def.HasMultipleValues)
@@ -3143,7 +3159,9 @@ internal sealed class MainForm : Form
             {
                 Key = Convert.ToString(r.Tag) ?? string.Empty,
                 Service = Convert.ToBoolean(r.Cells["Service"].Value ?? false),
-                TrayApp = Convert.ToBoolean(r.Cells["TrayApp"].Value ?? false)
+                TrayApp = Convert.ToBoolean(r.Cells["TrayApp"].Value ?? false),
+                // Normalize() drops it again when it is the catalog's own or not allowed.
+                PollingProfile = r.Cells["Profile"].ReadOnly ? null : Convert.ToString(r.Cells["Profile"].Value)
             }).ToList();
 
         _customGrid.EndEdit();

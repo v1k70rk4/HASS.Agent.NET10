@@ -592,6 +592,10 @@ internal sealed class CompanionSettings
                 setting.Key = definition.Key;
                 setting.Service = definition.SupportsService && setting.Service;
                 setting.TrayApp = definition.SupportsTrayApp && setting.TrayApp;
+                // Only a real change is kept: the catalog's own profile, a profile the sensor
+                // cannot take, or nonsense all read as "the default".
+                var effective = BuiltInSensorCatalog.EffectiveProfile(definition, setting);
+                setting.PollingProfile = effective == definition.PollingProfile ? null : SensorPollingProfiles.ToKey(effective);
                 return setting;
             })
             .ToList();
