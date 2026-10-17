@@ -27,6 +27,13 @@ internal sealed class BuiltInSensorSetting
     public bool Service { get; set; }
 
     public bool TrayApp { get; set; }
+
+    /// <summary>
+    /// The user's own polling profile for this sensor (fast, normal, hourly), null for the
+    /// catalog's. Never set for a push-driven or a startup sensor.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? PollingProfile { get; set; }
 }
 
 internal sealed record BuiltInSensorDescriptor(
@@ -232,6 +239,40 @@ internal static class BuiltInSensorCatalog
                 .Where(path => path.EndsWith("_gb", StringComparison.Ordinal) && !path.Contains("total_gb") && !path.Contains("used_gb") && !path.Contains("free_gb") && !path.Contains("available_gb"))
                 .Select(path => path[..^3] + "_mb"))
             .ToList();
+    }
+
+    /// <summary>
+    /// Whether the user may move the sensor to another timed profile. A push-driven sensor
+    /// reports on change and its profile is only a safety net; a startup sensor is read once.
+    /// </summary>
+    public static bool CanChangeProfile(BuiltInSensorDefinition definition) =>
+        !definition.PushDriven && definition.PollingProfile != SensorPollingProfile.Startup;
+
+    /// <summary>The profile the sensor runs on: the user's choice when there is a valid one, else the catalog's.</summary>
+    public static SensorPollingProfile EffectiveProfile(BuiltInSensorDefinition definition, BuiltInSensorSetting? setting)
+    {
+        if (setting?.PollingProfile is { } chosen &&
+            CanChangeProfile(definition) &&
+            Enum.TryParse<SensorPollingProfile>(chosen, ignoreCase: true, out var profile) &&
+            profile != SensorPollingProfile.Startup)
+        {
+            return profile;
+        }
+
+        return definition.PollingProfile;
+    }
+
+    /// <summary>By key, from the settings; the catalog's profile for a key the settings do not have.</summary>
+    public static SensorPollingProfile EffectiveProfile(string key, IReadOnlyList<BuiltInSensorSetting>? settings)
+    {
+        var definition = Find(key);
+        if (definition is null)
+        {
+            return SensorPollingProfile.Normal;
+        }
+
+        var setting = settings?.FirstOrDefault(sensor => string.Equals(sensor.Key, key, StringComparison.OrdinalIgnoreCase));
+        return EffectiveProfile(definition, setting);
     }
 
     /// <summary>The built-in sensor an attribute path (gpu_usage.adapters[0].name) belongs to, if any.</summary>

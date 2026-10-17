@@ -13,6 +13,10 @@ Every release of HASS.Agent .NET10, newest first. The downloads are on the [rele
 - **Uptime moved to the normal profile** (every 60 seconds instead of every fast cycle): its value changes with every tick, so on the fast profile it wrote a new row to Home Assistant's recorder at every cycle for nothing.
 - **Fast sensors down to 1 second**: the fast interval goes to 5 seconds on the Capabilities page (10 stays the default); the **Fast sensors below 5 seconds** switch on the Danger Zone page unlocks 1–4 seconds, with a note on what that means for traffic and the recorder.
 
+## Unreleased
+
+- **The polling profile of a built-in sensor is yours to choose**: fast, normal or hourly in the Profile column of the Sensors page (GPU usage on fast, CPU usage on normal, whatever suits the PC); push-driven and startup sensors keep theirs. The three intervals stay global, the choice is which one a sensor follows.
+
 ## 10.9.3-beta.4
 
 > **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered it, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.9.2**, below.

@@ -2232,7 +2232,7 @@ internal sealed class MqttCompanionService : IDisposable
             .Select(sensor => new BuiltInSensorDescriptor(
                 sensor!.Key,
                 Localization.Strings.GetHa($"Sensor.{sensor.Key}"),
-                SensorPollingProfiles.ToKey(sensor.PollingProfile),
+                SensorPollingProfiles.ToKey(BuiltInSensorCatalog.EffectiveProfile(sensor.Key, _settings.BuiltInSensors)),
                 sensor.HasMultipleValues,
                 sensor.DefaultAttributePath,
                 sensor.AttributePaths,

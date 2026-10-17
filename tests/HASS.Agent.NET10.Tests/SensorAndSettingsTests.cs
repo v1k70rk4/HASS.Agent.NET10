@@ -503,3 +503,54 @@ public class SystemHealthTests
         Assert.DoesNotContain("memory_usage.total_mb", BuiltInSensorCatalog.EditorAttributePaths(memory));
     }
 }
+
+public class SensorProfileTests
+{
+    [Fact]
+    public void A_built_in_sensor_runs_on_the_profile_the_user_picked_when_it_may()
+    {
+        var gpu = BuiltInSensorCatalog.Find("gpu_usage")!;
+        var volume = BuiltInSensorCatalog.Find("volume")!;
+        var bootTime = BuiltInSensorCatalog.Find("boot_time")!;
+
+        Assert.True(BuiltInSensorCatalog.CanChangeProfile(gpu));
+        Assert.False(BuiltInSensorCatalog.CanChangeProfile(volume));
+        Assert.False(BuiltInSensorCatalog.CanChangeProfile(bootTime));
+
+        Assert.Equal(SensorPollingProfile.Fast, BuiltInSensorCatalog.EffectiveProfile(gpu, new BuiltInSensorSetting { Key = "gpu_usage", PollingProfile = "fast" }));
+        Assert.Equal(SensorPollingProfile.Hourly, BuiltInSensorCatalog.EffectiveProfile(gpu, new BuiltInSensorSetting { Key = "gpu_usage", PollingProfile = "HOURLY" }));
+        // The catalog's own when there is no choice, nonsense, startup, or a sensor that cannot move.
+        Assert.Equal(SensorPollingProfile.Normal, BuiltInSensorCatalog.EffectiveProfile(gpu, null));
+        Assert.Equal(SensorPollingProfile.Normal, BuiltInSensorCatalog.EffectiveProfile(gpu, new BuiltInSensorSetting { Key = "gpu_usage", PollingProfile = "weekly" }));
+        Assert.Equal(SensorPollingProfile.Normal, BuiltInSensorCatalog.EffectiveProfile(gpu, new BuiltInSensorSetting { Key = "gpu_usage", PollingProfile = "startup" }));
+        Assert.Equal(SensorPollingProfile.Fast, BuiltInSensorCatalog.EffectiveProfile(volume, new BuiltInSensorSetting { Key = "volume", PollingProfile = "hourly" }));
+        Assert.Equal(SensorPollingProfile.Startup, BuiltInSensorCatalog.EffectiveProfile(bootTime, new BuiltInSensorSetting { Key = "boot_time", PollingProfile = "fast" }));
+    }
+
+    [Fact]
+    public void Settings_keep_a_profile_only_when_it_is_a_real_change()
+    {
+        var settings = new CompanionSettings
+        {
+            BuiltInSensors =
+            [
+                new BuiltInSensorSetting { Key = "gpu_usage", Service = true, PollingProfile = "fast" },
+                new BuiltInSensorSetting { Key = "cpu_usage", Service = true, PollingProfile = "fast" },
+                new BuiltInSensorSetting { Key = "volume", TrayApp = true, PollingProfile = "hourly" },
+                new BuiltInSensorSetting { Key = "boot_time", Service = true, PollingProfile = "normal" },
+                new BuiltInSensorSetting { Key = "memory_usage", Service = true, PollingProfile = "sometimes" }
+            ]
+        };
+
+        settings.Normalize();
+
+        string? Profile(string key) => settings.BuiltInSensors.Single(sensor => sensor.Key == key).PollingProfile;
+        Assert.Equal("fast", Profile("gpu_usage"));
+        Assert.Null(Profile("cpu_usage"));
+        Assert.Null(Profile("volume"));
+        Assert.Null(Profile("boot_time"));
+        Assert.Null(Profile("memory_usage"));
+        Assert.Equal(SensorPollingProfile.Fast, BuiltInSensorCatalog.EffectiveProfile("gpu_usage", settings.BuiltInSensors));
+        Assert.Equal(SensorPollingProfile.Fast, BuiltInSensorCatalog.EffectiveProfile("cpu_usage", settings.BuiltInSensors));
+    }
+}

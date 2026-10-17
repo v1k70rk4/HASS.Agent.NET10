@@ -6,7 +6,7 @@
 
 The **Sensors** page has two tabs: **Built-in sensors** and **Custom sensors**.
 
-Built-in sensors are predefined system metrics. Each one can be enabled/disabled independently and assigned to the tray app, the service, or both.
+Built-in sensors are predefined system metrics. Each one can be enabled/disabled independently and assigned to the tray app, the service, or both. The **Profile** column is a choice too (10.9.3+): move a sensor to fast, normal or hourly as it suits the PC; the table below shows the defaults. Push-driven sensors (they report on change) and startup sensors keep theirs.
 
 The **Default** column shows whether a fresh install starts with the sensor switched on. Sensors that are useful, but not to everyone, start **off** so they do not clutter Home Assistant — enable them on the *Sensors* page. An update never changes a setting you already have: a sensor added by a new version simply arrives switched off.
 
