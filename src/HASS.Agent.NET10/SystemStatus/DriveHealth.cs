@@ -40,31 +40,56 @@ internal static class DriveHealth
     {
         try
         {
-            var disks = Query("SELECT DeviceId, FriendlyName, BusType, MediaType FROM MSFT_PhysicalDisk")
-                .Select(disk => new PhysicalDiskRow(
-                    Text(disk["DeviceId"]),
-                    Text(disk["FriendlyName"]),
-                    (int)Number(disk["BusType"]),
-                    (int)Number(disk["MediaType"])))
-                .ToList();
+            var disks = new List<PhysicalDiskRow>();
+            var counters = new List<ReliabilityRow>();
+            // Whole instances: a SELECT with a column list hands back partial objects without
+            // a __RELPATH, and without the path there is no way to the counters.
+            foreach (var disk in Query("SELECT * FROM MSFT_PhysicalDisk"))
+            {
+                var deviceId = Text(disk["DeviceId"]);
+                disks.Add(new PhysicalDiskRow(deviceId, Text(disk["FriendlyName"]), (int)Number(disk["BusType"]), (int)Number(disk["MediaType"])));
 
-            var counters = Query("SELECT DeviceId, Temperature, TemperatureMax, PowerOnHours, Wear FROM MSFT_StorageReliabilityCounter")
-                .Select(counter => new ReliabilityRow(
-                    Text(counter["DeviceId"]),
-                    Number(counter["Temperature"]),
-                    Number(counter["TemperatureMax"]),
-                    Number(counter["PowerOnHours"]),
-                    Number(counter["Wear"])))
-                .ToList();
+                // The counters exist only through their disk (the association Get-PhysicalDisk |
+                // Get-StorageReliabilityCounter walks): listed on their own the class is empty.
+                // By the relative path: GetRelated and the full __PATH both fail on these
+                // objects under .NET (the provider's paths carry quotes inside quotes).
+                var relativePath = Text(disk["__RELPATH"]);
+                if (relativePath.Length == 0)
+                {
+                    continue;
+                }
+
+                foreach (var counter in Query(new RelatedObjectQuery(relativePath, "MSFT_StorageReliabilityCounter")))
+                {
+                    using (counter)
+                    {
+                        counters.Add(new ReliabilityRow(
+                            deviceId,
+                            Number(counter["Temperature"]),
+                            Number(counter["TemperatureMax"]),
+                            Number(counter["PowerOnHours"]),
+                            Number(counter["Wear"])));
+                    }
+                }
+            }
 
             return Compose(disks, counters, ReadSystemDiskId());
         }
         catch (Exception ex)
         {
-            log.Debug($"Drive health not available: {ex.Message}");
+            // Once per reason: a PC without the storage provider would otherwise say so every minute.
+            var reason = $"{ex.GetType().Name}: {ex.Message}";
+            if (_lastFailure != reason)
+            {
+                _lastFailure = reason;
+                log.Warning($"Drive health is not available from Windows: {reason}");
+            }
+
             return [];
         }
     }
+
+    private static string? _lastFailure;
 
     /// <summary>Pure: joins the disks to their counters by DeviceId; a zero counter is "not reported".</summary>
     internal static IReadOnlyList<DriveHealthInfo> Compose(
@@ -127,9 +152,11 @@ internal static class DriveHealth
         return null;
     }
 
-    private static IEnumerable<ManagementBaseObject> Query(string query)
+    private static IEnumerable<ManagementBaseObject> Query(string query) => Query(new ObjectQuery(query));
+
+    private static IEnumerable<ManagementBaseObject> Query(ObjectQuery query)
     {
-        using var searcher = new ManagementObjectSearcher(new ManagementScope(StorageNamespace), new ObjectQuery(query));
+        using var searcher = new ManagementObjectSearcher(new ManagementScope(StorageNamespace), query);
         using var results = searcher.Get();
         foreach (var item in results)
         {
