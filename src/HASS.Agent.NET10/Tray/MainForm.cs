@@ -2947,10 +2947,19 @@ internal sealed class MainForm : Form
             return;
         }
 
+        var sensor = BuildCustomSensorFromRow(row, forceEnabled: true);
+
+        // An attribute of a sensor only the service reads (drive health): the tray app would
+        // only ever show null for it, so it says why instead.
+        if (sensor.IsBuiltInAttribute && BuiltInSensorCatalog.ForAttributePath(sensor.Parameter) is { SupportsTrayApp: false })
+        {
+            valueCell.Value = S("Sensors.ValueServiceOnly");
+            return;
+        }
+
         valueCell.Value = S("Sensors.ValueLoading");
         try
         {
-            var sensor = BuildCustomSensorFromRow(row, forceEnabled: true);
             var value = await Task.Run(() => SystemMetricsService.TestCustomSensorValue(sensor, _log));
             if (row.DataGridView is null || row.DataGridView.IsDisposed)
             {
