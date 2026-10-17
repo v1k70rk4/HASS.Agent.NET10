@@ -576,3 +576,36 @@ public class CustomSensorUnitTests
         Assert.Equal(deviceClass, CustomSensorUnits.DeviceClassFor(unit));
     }
 }
+
+public class PublishPaceTests
+{
+    [Fact]
+    public async Task A_fast_custom_sensor_refreshes_its_source_while_the_hourly_built_in_keeps_its_pace()
+    {
+        var log = new HASS.Agent.Companion.Logging.FileLog(Path.Combine(Path.GetTempPath(), "hass-agent-tests.log"));
+        using var service = new SystemMetricsService(log, null);
+        var builtIn = BuiltInSensorCatalog.Sensors
+            .Select(definition => new BuiltInSensorSetting { Key = definition.Key, TrayApp = definition.SupportsTrayApp, Service = definition.SupportsService })
+            .ToList();
+        builtIn.Single(sensor => sensor.Key == "memory_usage").PollingProfile = "hourly";
+        var custom = new List<CustomSensorDefinition>
+        {
+            new() { Id = "mem", Type = CustomSensorTypes.BuiltInAttribute, Parameter = "memory_usage.available_gb", PollingProfile = "fast", TrayApp = true, Service = true }
+        };
+
+        // The first read takes everything.
+        var first = service.Read(custom, serviceRole: false, dueProfiles: SensorPollingProfiles.All, builtInSensors: builtIn);
+        await Task.Delay(50, TestContext.Current.CancellationToken);
+        var fast = new HashSet<SensorPollingProfile> { SensorPollingProfile.Fast };
+        var second = service.Read(custom, serviceRole: false, dueProfiles: fast, builtInSensors: builtIn);
+
+        // The built-in sensor is hourly: Home Assistant is shown the very same value and
+        // attributes as before, not a fresh reading.
+        Assert.Equal(first.MemoryUsage, second.MemoryUsage);
+        Assert.Same(first.Attributes["memory_usage"], second.Attributes["memory_usage"]);
+        // The custom sensor is fast: it was read on this cycle from the refreshed source.
+        var value = second.CustomSensors.Single(sensor => sensor.Id == "mem").Value;
+        Assert.NotNull(value);
+        Assert.True(Convert.ToDouble(value) > 0);
+    }
+}

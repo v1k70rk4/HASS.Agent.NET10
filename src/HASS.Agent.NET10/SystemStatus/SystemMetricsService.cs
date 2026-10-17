@@ -81,6 +81,7 @@ internal sealed class SystemMetricsService : IDisposable
     private double _driveTotalGb;
     private string _driveLetter = string.Empty;
     private IReadOnlyList<DriveHealthInfo>? _lastDrives;
+    private Dictionary<string, IReadOnlyDictionary<string, object?>>? _lastShownAttributes;
 
     // How many items each list attribute had the last time it was read (gpu_usage.adapters: 2),
     // for the attribute list in the settings window to offer every item, not just [0].
@@ -172,6 +173,12 @@ internal sealed class SystemMetricsService : IDisposable
             keys.Any(key =>
                 (Wanted(key) && profiles.Contains(BuiltInSensorCatalog.EffectiveProfile(key, builtInSensors))) ||
                 CustomSensorDue(key));
+
+        // What Home Assistant is shown follows the built-in sensor's own profile: a custom
+        // sensor on a faster profile refreshes the shared source, the built-in sensor still
+        // publishes its value and attributes at its own pace (the first read shows everything).
+        bool Shown(string key) =>
+            previous is null || profiles.Contains(BuiltInSensorCatalog.EffectiveProfile(key, builtInSensors));
 
         // A custom sensor built on one of the sensor's attributes refreshes the source on its
         // own profile too: GPU usage on hourly with an adapter's load wanted every minute.
@@ -343,67 +350,72 @@ internal sealed class SystemMetricsService : IDisposable
         var attributes = BuildAttributes(_lastNetworkAddresses, _lastDisplays, _lastRecentErrors, _lastShutdown,
             lastWake, _lastExecutionState, _lastPowerRequests, _lastCameraApps, _lastMicrophoneApps, _lastGpu, _audioSessions,
             memory, drive, _lastDrives);
+        var shownAttributes = new Dictionary<string, IReadOnlyDictionary<string, object?>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (key, values) in attributes)
+        {
+            shownAttributes[key] = Shown(key) || _lastShownAttributes is null || !_lastShownAttributes.TryGetValue(key, out var kept) ? values : kept;
+        }
+        _lastShownAttributes = shownAttributes;
+
         var message = new SystemMetricsMessage(
-            CpuUsage: Due("cpu_usage") ? Safe(ReadCpuUsage, previous?.CpuUsage ?? 0) : previous!.CpuUsage,
-            MemoryUsage: memory.UsagePercent,
-            MemoryAvailableMb: memory.AvailableMb,
-            SystemDriveFreePercent: drive.FreePercent,
-            SystemDriveFreeGb: drive.FreeGb,
-            UptimeSeconds: Due("uptime_seconds") ? Math.Max(0, Environment.TickCount64 / 1000) : previous!.UptimeSeconds,
+            CpuUsage: Shown("cpu_usage") ? (Due("cpu_usage") ? Safe(ReadCpuUsage, previous?.CpuUsage ?? 0) : previous!.CpuUsage) : previous!.CpuUsage,
+            MemoryUsage: Shown("memory_usage") ? (memory.UsagePercent) : previous!.MemoryUsage,
+            MemoryAvailableMb: Shown("memory_available_mb") ? (memory.AvailableMb) : previous!.MemoryAvailableMb,
+            SystemDriveFreePercent: Shown("system_drive_free_percent") ? (drive.FreePercent) : previous!.SystemDriveFreePercent,
+            SystemDriveFreeGb: Shown("system_drive_free_gb") ? (drive.FreeGb) : previous!.SystemDriveFreeGb,
+            UptimeSeconds: Shown("uptime_seconds") ? (Due("uptime_seconds") ? Math.Max(0, Environment.TickCount64 / 1000) : previous!.UptimeSeconds) : previous!.UptimeSeconds,
             // Null, not empty: a role that cannot measure these (the service runs without
             // interactive metrics) must leave them out of the payload entirely. The
             // serializer drops nulls and Home Assistant ignores absent fields, so the
             // service no longer overwrites the tray app's values with blanks.
-            ActiveWindow: activeWindowDue ? LimitState(activeWindow.Title) : previous?.ActiveWindow,
-            ActiveProcess: activeWindowDue ? LimitState(activeWindow.ProcessName) : previous?.ActiveProcess,
-            ForegroundAppTitle: activeWindowDue ? BuildForegroundAppTitle(activeWindow) : previous?.ForegroundAppTitle,
-            Volume: Due("volume") ? Safe(() => _audioEndpointService?.GetVolume(), previous?.Volume) : previous!.Volume,
-            Muted: Due("muted") ? Safe(() => _audioEndpointService?.GetMuted(), previous?.Muted) : previous!.Muted,
-            AudioOutputDevice: Due("audio_output_device") && _includeInteractiveMetrics ? Safe<string?>(() => LimitState(_audioEndpointService?.GetOutputDeviceName() ?? string.Empty), previous?.AudioOutputDevice) : previous?.AudioOutputDevice,
-            MicrophoneMuted: Due("microphone_muted") && _includeInteractiveMetrics ? Safe(() => _audioEndpointService?.GetMicrophoneMuted(), previous?.MicrophoneMuted) : previous?.MicrophoneMuted,
-            BatteryLevel: power.BatteryLevel,
-            PowerStatus: power.Status,
-            BatteryTimeRemaining: power.TimeRemainingSeconds,
-            MonitorPowerState: Due("monitor_power_state") ? Safe(() => _monitorPowerStateService?.State, previous?.MonitorPowerState) : previous!.MonitorPowerState,
-            ActiveDisplay: Due("active_display") && _includeInteractiveMetrics ? Safe<string?>(() => FormatDisplayState(_lastDisplays), previous?.ActiveDisplay) : previous?.ActiveDisplay,
-            NetworkAddress: Due("network_address") ? _lastNetworkAddresses.FirstOrDefault()?.Address ?? string.Empty : previous!.NetworkAddress,
-            VpnConnected: Due("vpn_connected") ? Safe(ReadVpnConnected, previous?.VpnConnected ?? false) : previous!.VpnConnected,
-            WifiSsid: wifi.Ssid,
-            WifiSignal: wifi.Signal,
-            IdleTimeSeconds: Due("idle_time_seconds") && _includeInteractiveMetrics ? Safe(ReadIdleTimeSeconds, previous?.IdleTimeSeconds) : previous?.IdleTimeSeconds,
-            SessionLocked: sessionLocked,
-            UserPresent: sessionLockedDue ? session.State == "active" && sessionLocked is false && !string.IsNullOrWhiteSpace(session.User) : previous?.UserPresent,
-            ClipboardTextAvailable: Due("clipboard_text_available") && _includeInteractiveMetrics ? Safe(ReadClipboardTextAvailable, previous?.ClipboardTextAvailable) : previous?.ClipboardTextAvailable,
-            CameraInUse: _lastCameraApps is { } cameraApps ? cameraApps.Count > 0 : null,
-            MicrophoneInUse: _lastMicrophoneApps is { } microphoneApps ? microphoneApps.Count > 0 : null,
-            AudioSessions: _audioSessions is { } audioSessions ? audioSessions.Count(session => session.Active) : null,
-            AudioOutputDevices: _audioOutputDevices,
-            AudioInputDevice: _audioInputDevice,
-            AudioInputDevices: _audioInputDevices,
-            DisplayBrightness: _lastDisplayBrightness,
-            DisplayBrightnessSupported: _displayBrightnessSupported,
-            GpuUsage: _lastGpu?.Usage,
+            ActiveWindow: Shown("active_window") ? (activeWindowDue ? LimitState(activeWindow.Title) : previous?.ActiveWindow) : previous!.ActiveWindow,
+            ActiveProcess: Shown("active_process") ? (activeWindowDue ? LimitState(activeWindow.ProcessName) : previous?.ActiveProcess) : previous!.ActiveProcess,
+            ForegroundAppTitle: Shown("foreground_app_title") ? (activeWindowDue ? BuildForegroundAppTitle(activeWindow) : previous?.ForegroundAppTitle) : previous!.ForegroundAppTitle,
+            Volume: Shown("volume") ? (Due("volume") ? Safe(() => _audioEndpointService?.GetVolume(), previous?.Volume) : previous!.Volume) : previous!.Volume,
+            Muted: Shown("muted") ? (Due("muted") ? Safe(() => _audioEndpointService?.GetMuted(), previous?.Muted) : previous!.Muted) : previous!.Muted,
+            AudioOutputDevice: Shown("audio_output_device") ? (Due("audio_output_device") && _includeInteractiveMetrics ? Safe<string?>(() => LimitState(_audioEndpointService?.GetOutputDeviceName() ?? string.Empty), previous?.AudioOutputDevice) : previous?.AudioOutputDevice) : previous!.AudioOutputDevice,
+            MicrophoneMuted: Shown("microphone_muted") ? (Due("microphone_muted") && _includeInteractiveMetrics ? Safe(() => _audioEndpointService?.GetMicrophoneMuted(), previous?.MicrophoneMuted) : previous?.MicrophoneMuted) : previous!.MicrophoneMuted,
+            BatteryLevel: Shown("battery_level") ? (power.BatteryLevel) : previous!.BatteryLevel,
+            PowerStatus: Shown("power_status") ? (power.Status) : previous!.PowerStatus,
+            BatteryTimeRemaining: Shown("battery_time_remaining") ? (power.TimeRemainingSeconds) : previous!.BatteryTimeRemaining,
+            MonitorPowerState: Shown("monitor_power_state") ? (Due("monitor_power_state") ? Safe(() => _monitorPowerStateService?.State, previous?.MonitorPowerState) : previous!.MonitorPowerState) : previous!.MonitorPowerState,
+            ActiveDisplay: Shown("active_display") ? (Due("active_display") && _includeInteractiveMetrics ? Safe<string?>(() => FormatDisplayState(_lastDisplays), previous?.ActiveDisplay) : previous?.ActiveDisplay) : previous!.ActiveDisplay,
+            NetworkAddress: Shown("network_address") ? (Due("network_address") ? _lastNetworkAddresses.FirstOrDefault()?.Address ?? string.Empty : previous!.NetworkAddress) : previous!.NetworkAddress,
+            VpnConnected: Shown("vpn_connected") ? (Due("vpn_connected") ? Safe(ReadVpnConnected, previous?.VpnConnected ?? false) : previous!.VpnConnected) : previous!.VpnConnected,
+            WifiSsid: Shown("wifi_ssid") ? (wifi.Ssid) : previous!.WifiSsid,
+            WifiSignal: Shown("wifi_signal") ? (wifi.Signal) : previous!.WifiSignal,
+            IdleTimeSeconds: Shown("idle_time_seconds") ? (Due("idle_time_seconds") && _includeInteractiveMetrics ? Safe(ReadIdleTimeSeconds, previous?.IdleTimeSeconds) : previous?.IdleTimeSeconds) : previous!.IdleTimeSeconds,
+            SessionLocked: Shown("session_locked") ? (sessionLocked) : previous!.SessionLocked,
+            UserPresent: Shown("user_present") ? (sessionLockedDue ? session.State == "active" && sessionLocked is false && !string.IsNullOrWhiteSpace(session.User) : previous?.UserPresent) : previous!.UserPresent,
+            ClipboardTextAvailable: Shown("clipboard_text_available") ? (Due("clipboard_text_available") && _includeInteractiveMetrics ? Safe(ReadClipboardTextAvailable, previous?.ClipboardTextAvailable) : previous?.ClipboardTextAvailable) : previous!.ClipboardTextAvailable,
+            CameraInUse: Shown("camera_in_use") ? (_lastCameraApps is { } cameraApps ? cameraApps.Count > 0 : null) : previous!.CameraInUse,
+            MicrophoneInUse: Shown("microphone_in_use") ? (_lastMicrophoneApps is { } microphoneApps ? microphoneApps.Count > 0 : null) : previous!.MicrophoneInUse,
+            AudioSessions: Shown("audio_sessions") ? (_audioSessions is { } audioSessions ? audioSessions.Count(session => session.Active) : null) : previous!.AudioSessions,
+            AudioOutputDevices: Shown("audio_output_device") ? (_audioOutputDevices) : previous!.AudioOutputDevices,
+            AudioInputDevice: Shown("audio_input_device") ? (_audioInputDevice) : previous!.AudioInputDevice,
+            AudioInputDevices: Shown("audio_input_device") ? (_audioInputDevices) : previous!.AudioInputDevices,
+            DisplayBrightness: Shown("display_brightness") ? (_lastDisplayBrightness) : previous!.DisplayBrightness,
+            DisplayBrightnessSupported: Shown("display_brightness") ? (_displayBrightnessSupported) : previous!.DisplayBrightnessSupported,
+            GpuUsage: Shown("gpu_usage") ? (_lastGpu?.Usage) : previous!.GpuUsage,
             // Windows' verdict on the drives, the worst of them; the temperatures are attributes.
-            DriveHealth: _lastDrives is null ? null : DriveHealth.WorstHealth(_lastDrives),
-            SessionState: session.State,
-            LoggedInUser: session.User,
-            LoggedInUsers: sessions.LoggedInUsers,
-            RdpSessions: sessions.RdpSessions,
-            PendingReboot: Due("pending_reboot") ? Safe(ReadPendingReboot, previous?.PendingReboot ?? false) : previous!.PendingReboot,
+            DriveHealth: Shown("drive_health") ? (_lastDrives is null ? null : DriveHealth.WorstHealth(_lastDrives)) : previous!.DriveHealth,
+            SessionState: Shown("session_state") ? (session.State) : previous!.SessionState,
+            LoggedInUser: Shown("logged_in_user") ? (session.User) : previous!.LoggedInUser,
+            LoggedInUsers: Shown("logged_in_users") ? (sessions.LoggedInUsers) : previous!.LoggedInUsers,
+            RdpSessions: Shown("rdp_sessions") ? (sessions.RdpSessions) : previous!.RdpSessions,
+            PendingReboot: Shown("pending_reboot") ? (Due("pending_reboot") ? Safe(ReadPendingReboot, previous?.PendingReboot ?? false) : previous!.PendingReboot) : previous!.PendingReboot,
             // A display request counts too: a browser playing video raises only that one on
             // many machines (whether audio adds a system request depends on the audio driver),
             // and the machine still does not go to sleep while it is held.
-            SleepBlocked: _lastExecutionState is { } executionState
-                ? (executionState & (EsSystemRequired | EsDisplayRequired | EsAwayModeRequired)) != 0
-                : null,
-            WindowsUpdatePending: _windowsUpdatePendingState switch { 0 => false, 1 => true, _ => null },
-            BluetoothEnabled: Due("bluetooth_enabled") ? Safe(ReadBluetoothEnabled, previous?.BluetoothEnabled ?? false) : previous!.BluetoothEnabled,
-            EventLogErrorsRecent: _lastRecentErrors.Count,
-            LastShutdownReason: _lastShutdown.Summary,
-            LastWakeReason: lastWake?.Summary,
-            BootTime: updateStartup ? Safe(ReadBootTime, previous?.BootTime ?? ReadBootTimeFromTicks()) : previous!.BootTime,
+            SleepBlocked: Shown("sleep_blocked") ? (_lastExecutionState is { } executionState ? (executionState & (EsSystemRequired | EsDisplayRequired | EsAwayModeRequired)) != 0 : null) : previous!.SleepBlocked,
+            WindowsUpdatePending: Shown("windows_update_pending") ? (_windowsUpdatePendingState switch { 0 => false, 1 => true, _ => null }) : previous!.WindowsUpdatePending,
+            BluetoothEnabled: Shown("bluetooth_enabled") ? (Due("bluetooth_enabled") ? Safe(ReadBluetoothEnabled, previous?.BluetoothEnabled ?? false) : previous!.BluetoothEnabled) : previous!.BluetoothEnabled,
+            EventLogErrorsRecent: Shown("event_log_errors_recent") ? (_lastRecentErrors.Count) : previous!.EventLogErrorsRecent,
+            LastShutdownReason: Shown("last_shutdown_reason") ? (_lastShutdown.Summary) : previous!.LastShutdownReason,
+            LastWakeReason: Shown("last_wake_reason") ? (lastWake?.Summary) : previous!.LastWakeReason,
+            BootTime: Shown("boot_time") ? (updateStartup ? Safe(ReadBootTime, previous?.BootTime ?? ReadBootTimeFromTicks()) : previous!.BootTime) : previous!.BootTime,
             CustomSensors: Safe(() => ReadCustomSensors(customSensors ?? [], serviceRole, attributes, profiles, previous?.CustomSensors ?? []), previous?.CustomSensors ?? []),
-            Attributes: attributes,
+            Attributes: shownAttributes,
             UpdatedAt: DateTimeOffset.UtcNow);
 
         _lastMessage = message;
