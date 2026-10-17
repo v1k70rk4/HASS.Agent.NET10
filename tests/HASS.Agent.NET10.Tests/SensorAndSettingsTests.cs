@@ -584,28 +584,32 @@ public class PublishPaceTests
     {
         var log = new HASS.Agent.Companion.Logging.FileLog(Path.Combine(Path.GetTempPath(), "hass-agent-tests.log"));
         using var service = new SystemMetricsService(log, null);
-        var builtIn = BuiltInSensorCatalog.Sensors
-            .Select(definition => new BuiltInSensorSetting { Key = definition.Key, TrayApp = definition.SupportsTrayApp, Service = definition.SupportsService })
-            .ToList();
-        builtIn.Single(sensor => sensor.Key == "memory_usage").PollingProfile = "hourly";
+        // Only the memory usage, on hourly: nothing else may touch the memory read.
+        var builtIn = new List<BuiltInSensorSetting>
+        {
+            new() { Key = "memory_usage", TrayApp = true, Service = true, PollingProfile = "hourly" }
+        };
         var custom = new List<CustomSensorDefinition>
         {
             new() { Id = "mem", Type = CustomSensorTypes.BuiltInAttribute, Parameter = "memory_usage.available_gb", PollingProfile = "fast", TrayApp = true, Service = true }
         };
+        var fast = new HashSet<SensorPollingProfile> { SensorPollingProfile.Fast };
 
         // The first read takes everything.
         var first = service.Read(custom, serviceRole: false, dueProfiles: SensorPollingProfiles.All, builtInSensors: builtIn);
+        Assert.Equal(1, service.MemoryReads);
         await Task.Delay(50, TestContext.Current.CancellationToken);
-        var fast = new HashSet<SensorPollingProfile> { SensorPollingProfile.Fast };
-        var second = service.Read(custom, serviceRole: false, dueProfiles: fast, builtInSensors: builtIn);
 
-        // The built-in sensor is hourly: Home Assistant is shown the very same value and
-        // attributes as before, not a fresh reading.
+        // A fast cycle: the custom sensor is fast, so the memory is read again for it...
+        var second = service.Read(custom, serviceRole: false, dueProfiles: fast, builtInSensors: builtIn);
+        Assert.Equal(2, service.MemoryReads);
+        Assert.NotNull(second.CustomSensors.Single(sensor => sensor.Id == "mem").Value);
+        // ...while Home Assistant is shown the hourly sensor's earlier value and attributes.
         Assert.Equal(first.MemoryUsage, second.MemoryUsage);
         Assert.Same(first.Attributes["memory_usage"], second.Attributes["memory_usage"]);
-        // The custom sensor is fast: it was read on this cycle from the refreshed source.
-        var value = second.CustomSensors.Single(sensor => sensor.Id == "mem").Value;
-        Assert.NotNull(value);
-        Assert.True(Convert.ToDouble(value) > 0);
+
+        // Without the custom sensor a fast cycle leaves the hourly memory read alone.
+        service.Read([], serviceRole: false, dueProfiles: fast, builtInSensors: builtIn);
+        Assert.Equal(2, service.MemoryReads);
     }
 }

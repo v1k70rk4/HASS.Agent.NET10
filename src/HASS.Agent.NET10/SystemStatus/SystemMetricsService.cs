@@ -192,7 +192,7 @@ internal sealed class SystemMetricsService : IDisposable
         var activeWindowDue = Due("active_window", "active_process", "foreground_app_title") && _includeInteractiveMetrics;
         var sessionLockedDue = Due("session_locked", "user_present") && _includeInteractiveMetrics;
 
-        var memory = Due("memory_usage", "memory_available_mb") ? Safe(ReadMemory, (UsagePercent: previous?.MemoryUsage ?? 0, AvailableMb: previous?.MemoryAvailableMb ?? 0, TotalMb: _memoryTotalMb)) : (UsagePercent: previous!.MemoryUsage, AvailableMb: previous.MemoryAvailableMb, TotalMb: _memoryTotalMb);
+        var memory = Due("memory_usage", "memory_available_mb") ? Safe(ReadMemoryCounted, (UsagePercent: previous?.MemoryUsage ?? 0, AvailableMb: previous?.MemoryAvailableMb ?? 0, TotalMb: _memoryTotalMb)) : (UsagePercent: previous!.MemoryUsage, AvailableMb: previous.MemoryAvailableMb, TotalMb: _memoryTotalMb);
         _memoryTotalMb = memory.TotalMb;
         var activeWindow = activeWindowDue ? Safe(ReadActiveWindow, (Title: previous?.ActiveWindow ?? string.Empty, ProcessName: previous?.ActiveProcess ?? string.Empty)) : (Title: previous?.ActiveWindow ?? string.Empty, ProcessName: previous?.ActiveProcess ?? string.Empty);
         var sessionLocked = sessionLockedDue ? Safe(ReadSessionLocked, previous?.SessionLocked) : previous?.SessionLocked;
@@ -489,6 +489,15 @@ internal sealed class SystemMetricsService : IDisposable
             var usage = (totalDelta - idleDelta) * 100d / totalDelta;
             return Math.Round(Math.Clamp(usage, 0, 100), 1);
         }
+    }
+
+    /// <summary>How many times the memory was read; a seam for the tests of the read scheduling.</summary>
+    internal int MemoryReads { get; private set; }
+
+    private (double UsagePercent, long AvailableMb, long TotalMb) ReadMemoryCounted()
+    {
+        MemoryReads++;
+        return ReadMemory();
     }
 
     private static (double UsagePercent, long AvailableMb, long TotalMb) ReadMemory()
