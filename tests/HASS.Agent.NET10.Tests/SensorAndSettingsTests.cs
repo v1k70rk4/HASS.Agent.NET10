@@ -566,7 +566,7 @@ public class CustomSensorUnitTests
     [InlineData("h", "duration")]
     [InlineData("W", "power")]
     [InlineData("MHz", "frequency")]
-    [InlineData("kWh", "energy")]
+    [InlineData("kWh", null)]
     [InlineData("%", null)]
     [InlineData("RPM", null)]
     [InlineData("", null)]

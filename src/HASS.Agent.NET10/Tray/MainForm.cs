@@ -1481,7 +1481,7 @@ internal sealed class MainForm : Form
         {
             Name = "Profile", HeaderText = S("Sensors.Profile"), Width = D(100),
             SortMode = DataGridViewColumnSortMode.NotSortable,
-            DataSource = BuildPollingProfileOptions(includePush: true),
+            DataSource = BuildPollingProfileOptions(editableOnly: true),
             DisplayMember = "Value", ValueMember = "Key",
             FlatStyle = FlatStyle.Flat, DisplayStyle = DataGridViewComboBoxDisplayStyle.Nothing
         });
@@ -1716,9 +1716,11 @@ internal sealed class MainForm : Form
 
     private static readonly System.Text.RegularExpressions.Regex AttributeIndex = new(@"\[(\d+)\]", System.Text.RegularExpressions.RegexOptions.Compiled);
 
-    private KeyValuePair<string, string>[] BuildPollingProfileOptions(bool includePush = false)
+    private KeyValuePair<string, string>[] BuildPollingProfileOptions(bool includePush = false, bool editableOnly = false)
     {
         var options = Enum.GetValues<SensorPollingProfile>()
+            // Startup is never a choice for a built-in sensor; it is shown for a locked cell only.
+            .Where(profile => !editableOnly || profile != SensorPollingProfile.Startup)
             .Select(profile => new KeyValuePair<string, string>(
                 SensorPollingProfiles.ToKey(profile),
                 GetPollingProfileDisplayName(profile)));
@@ -2811,8 +2813,13 @@ internal sealed class MainForm : Form
             _builtInGrid.Rows[ri].Tag = def.Key;
             if (!BuiltInSensorCatalog.CanChangeProfile(def))
             {
-                _builtInGrid.Rows[ri].Cells["Profile"].ReadOnly = true;
-                _builtInGrid.Rows[ri].Cells["Profile"].Style.BackColor = SystemColors.Control;
+                // A locked cell shows "Startup" or "Push", which the column's own list does not offer.
+                var cell = (DataGridViewComboBoxCell)_builtInGrid.Rows[ri].Cells["Profile"];
+                cell.DataSource = BuildPollingProfileOptions(includePush: true);
+                cell.DisplayMember = "Value";
+                cell.ValueMember = "Key";
+                cell.ReadOnly = true;
+                cell.Style.BackColor = SystemColors.Control;
             }
             if (!def.SupportsTrayApp) { _builtInGrid.Rows[ri].Cells["TrayApp"].ReadOnly = true; _builtInGrid.Rows[ri].Cells["TrayApp"].Style.BackColor = SystemColors.Control; }
             if (!def.SupportsService) { _builtInGrid.Rows[ri].Cells["Service"].ReadOnly = true; _builtInGrid.Rows[ri].Cells["Service"].Style.BackColor = SystemColors.Control; }

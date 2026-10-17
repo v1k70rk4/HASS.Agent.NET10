@@ -158,10 +158,13 @@ internal sealed class SystemMetricsService : IDisposable
         var updateNormal = profiles.Contains(SensorPollingProfile.Normal);
         var updateStartup = profiles.Contains(SensorPollingProfile.Startup);
 
-        // A sensor is read when its profile is due: the catalog's profile, or the one the
-        // user moved it to. A read that serves several sensors runs for the earliest of them.
+        // A sensor is read when it is wanted and its profile is due: the catalog's profile, or
+        // the one the user moved it to. A read that serves several sensors runs for the
+        // earliest of the wanted ones. The first read takes everything, so that every field
+        // has a value to carry forward.
         bool Due(params string[] keys) =>
-            keys.Any(key => profiles.Contains(BuiltInSensorCatalog.EffectiveProfile(key, builtInSensors)));
+            previous is null ||
+            keys.Any(key => Wanted(key) && profiles.Contains(BuiltInSensorCatalog.EffectiveProfile(key, builtInSensors)));
         var activeWindowDue = Due("active_window", "active_process", "foreground_app_title") && _includeInteractiveMetrics;
         var sessionLockedDue = Due("session_locked", "user_present") && _includeInteractiveMetrics;
 
@@ -232,20 +235,29 @@ internal sealed class SystemMetricsService : IDisposable
         // Tray app only: the privacy record the older source reads lives in the signed-in
         // user's hive, and the service's HKCU is SYSTEM's. Null (never read) keeps both
         // sensors out of the payload.
-        if (Due("camera_in_use", "microphone_in_use") && _includeInteractiveMetrics)
+        if (_includeInteractiveMetrics)
         {
-            _lastCameraApps = Wanted("camera_in_use") ? Safe(ReadCameraUsers, _lastCameraApps) : null;
-            _lastMicrophoneApps = Wanted("microphone_in_use") ? Safe(ReadMicrophoneUsers, _lastMicrophoneApps) : null;
+            // Each on its own profile: the two are separate reads.
+            _lastCameraApps = !Wanted("camera_in_use") ? null : Due("camera_in_use") ? Safe(ReadCameraUsers, _lastCameraApps) : _lastCameraApps;
+            _lastMicrophoneApps = !Wanted("microphone_in_use") ? null : Due("microphone_in_use") ? Safe(ReadMicrophoneUsers, _lastMicrophoneApps) : _lastMicrophoneApps;
         }
 
         // The device lists behind the integration's audio selects; only for a sensor that is on.
-        if (Due("audio_sessions", "audio_output_device", "audio_input_device") && _includeInteractiveMetrics)
+        if (_includeInteractiveMetrics)
         {
-            _audioSessions = Wanted("audio_sessions") ? Safe(() => _audioEndpointService?.GetSessions(), _audioSessions) : null;
-            _audioOutputDevices = Wanted("audio_output_device") ? Safe(() => _audioEndpointService?.GetOutputDeviceNames(), _audioOutputDevices) : null;
-            var inputWanted = Wanted("audio_input_device");
-            _audioInputDevice = inputWanted ? Safe<string?>(() => LimitState(_audioEndpointService?.GetInputDeviceName() ?? string.Empty), _audioInputDevice) : null;
-            _audioInputDevices = inputWanted ? Safe(() => _audioEndpointService?.GetInputDeviceNames(), _audioInputDevices) : null;
+            // Three separate reads, each on its own sensor's profile.
+            _audioSessions = !Wanted("audio_sessions") ? null : Due("audio_sessions") ? Safe(() => _audioEndpointService?.GetSessions(), _audioSessions) : _audioSessions;
+            _audioOutputDevices = !Wanted("audio_output_device") ? null : Due("audio_output_device") ? Safe(() => _audioEndpointService?.GetOutputDeviceNames(), _audioOutputDevices) : _audioOutputDevices;
+            if (!Wanted("audio_input_device"))
+            {
+                _audioInputDevice = null;
+                _audioInputDevices = null;
+            }
+            else if (Due("audio_input_device"))
+            {
+                _audioInputDevice = Safe<string?>(() => LimitState(_audioEndpointService?.GetInputDeviceName() ?? string.Empty), _audioInputDevice);
+                _audioInputDevices = Safe(() => _audioEndpointService?.GetInputDeviceNames(), _audioInputDevices);
+            }
         }
 
         // Tray app only: the service has no desktop and sees no monitors. With no display

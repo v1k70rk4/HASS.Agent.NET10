@@ -101,7 +101,8 @@ internal static class CustomSensorUnits
         "V" or "mV" => "voltage",
         "A" or "mA" => "current",
         "Hz" or "kHz" or "MHz" or "GHz" => "frequency",
-        "Wh" or "kWh" or "MWh" => "energy",
+        // No energy: Home Assistant wants a total state class for it, and whether a value
+        // accumulates is not known here.
         _ => null
     };
 }

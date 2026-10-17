@@ -251,10 +251,13 @@ internal static class BuiltInSensorCatalog
     /// <summary>The profile the sensor runs on: the user's choice when there is a valid one, else the catalog's.</summary>
     public static SensorPollingProfile EffectiveProfile(BuiltInSensorDefinition definition, BuiltInSensorSetting? setting)
     {
+        // Only the three timed profiles by name; a number ("999") parses as an enum too, but
+        // no cycle would ever run it.
         if (setting?.PollingProfile is { } chosen &&
             CanChangeProfile(definition) &&
             Enum.TryParse<SensorPollingProfile>(chosen, ignoreCase: true, out var profile) &&
-            profile != SensorPollingProfile.Startup)
+            profile is SensorPollingProfile.Fast or SensorPollingProfile.Normal or SensorPollingProfile.Hourly &&
+            !char.IsDigit(chosen.Trim()[0]))
         {
             return profile;
         }
