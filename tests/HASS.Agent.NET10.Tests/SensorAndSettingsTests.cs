@@ -308,6 +308,31 @@ public class SettingsTests
     }
 
     [Fact]
+    public void The_metrics_payload_carries_a_renamed_sensor_under_both_keys()
+    {
+        // The record has many fields; built with defaults, the two that matter set.
+        var constructor = typeof(SystemMetricsMessage).GetConstructors().Single();
+        var arguments = constructor.GetParameters()
+            .Select(parameter => parameter.Name switch
+            {
+                "MemoryAvailableMb" => (object)6262L,
+                "SystemDriveFreeGb" => 295.4,
+                "Attributes" => new Dictionary<string, IReadOnlyDictionary<string, object?>>(),
+                _ => parameter.ParameterType.IsValueType ? Activator.CreateInstance(parameter.ParameterType) : null
+            })
+            .ToArray();
+        var message = (SystemMetricsMessage)constructor.Invoke(arguments);
+
+        using var json = JsonDocument.Parse(JsonSerializer.Serialize(message));
+
+        var root = json.RootElement;
+        Assert.Equal(6262, root.GetProperty("memory_available").GetInt64());
+        Assert.Equal(6262, root.GetProperty("memory_available_mb").GetInt64());
+        Assert.Equal(295.4, root.GetProperty("system_drive").GetDouble());
+        Assert.Equal(295.4, root.GetProperty("system_drive_free_gb").GetDouble());
+    }
+
+    [Fact]
     public void The_catalog_knows_the_keys_of_before_but_does_not_list_them()
     {
         Assert.Equal("system_drive", BuiltInSensorCatalog.CurrentKey("system_drive_free_gb"));
