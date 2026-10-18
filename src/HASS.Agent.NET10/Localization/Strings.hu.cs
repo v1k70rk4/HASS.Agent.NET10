@@ -31,7 +31,7 @@ internal static partial class Strings
             ["General.ShowStartup"] = "Értesítés megjelenítése induláskor",
             ["General.LocalApi"] = "Helyi HTTP API",
             ["General.LocalApiEnabled"] = "Helyi HTTP API bekapcsolása",
-            ["General.LocalApiHint"] = "Alapból kikapcsolva. Csak az integráció Local HTTP API módjához kell (csak értesítések); az MQTT-nek és a HA API-nak nem.",
+            ["General.LocalApiHint"] = "Új telepítésnél kikapcsolva; csak az integráció Local HTTP API módjához kell (csak értesítések).",
             ["General.CopyUrl"] = "URL másolása",
             ["General.ApiKey"] = "API kulcs",
             ["General.ApiKeyOnSave"] = "mentéskor készül",

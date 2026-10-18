@@ -405,16 +405,17 @@ internal sealed class MainForm : Form
         card1.Controls.Add(_haLangCombo);
 
         // Off unless turned on here: nothing listens and there is no key while it is off.
-        var card2 = MakeCard(page, 28, 404, 720, 318, S("General.LocalApi"));
+        var card2 = MakeCard(page, 28, 404, 720, 332, S("General.LocalApi"));
         _generalNetworkCard = card2;
         y = AddCheck(card2, _localApiEnabled, S("General.LocalApiEnabled"), 44);
+        // Room for two lines: in a narrow window the sentence wraps.
         var localApiHint = new Label
         {
             Text = S("General.LocalApiHint"), Location = Pt(20, y - 4),
-            Size = Sz(660, 20), ForeColor = TextMuted, Font = new Font("Segoe UI", 8.5F)
+            Size = Sz(660, 34), ForeColor = TextMuted, Font = new Font("Segoe UI", 8.5F)
         };
         card2.Controls.Add(localApiHint);
-        y += 22;
+        y += 36;
         y = AddField(card2, S("General.BindHost"), _bindHost, y);
         y = AddField(card2, S("General.Port"), _port, y, inputWidth: 120);
         var urls = string.Join(Environment.NewLine, NetworkInfo.GetLanUrls(_settings.Port));

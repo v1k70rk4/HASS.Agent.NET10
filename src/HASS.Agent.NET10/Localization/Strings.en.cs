@@ -31,7 +31,7 @@ internal static partial class Strings
             ["General.ShowStartup"] = "Show notification on startup",
             ["General.LocalApi"] = "Local HTTP API",
             ["General.LocalApiEnabled"] = "Turn on the local HTTP API",
-            ["General.LocalApiHint"] = "Off by default. Only for the integration's Local HTTP API mode (notifications only); MQTT and the HA API do not need it.",
+            ["General.LocalApiHint"] = "Off on a new install; only the integration's Local HTTP API mode (notifications only) needs it.",
             ["General.CopyUrl"] = "Copy URL",
             ["General.ApiKey"] = "API key",
             ["General.ApiKeyOnSave"] = "made when you save",
