@@ -24,7 +24,7 @@ The media player uses the Windows global media transport sessions for playback c
 
 ## The Media player page
 
-Its settings are on the **Media player** page of the app (10.9.3+):
+Its settings are on the **Media player** page of the app (10.10.0+):
 
 - **Media player (tray app)**: the switch for the whole entity.
 - **Send the cover art to Home Assistant**: off, the entity keeps the title and the controls but shows no picture. Over the HA API the picture travels as base64 and is a third larger than over MQTT, which is one reason to switch it off.
@@ -33,7 +33,7 @@ Its settings are on the **Media player** page of the app (10.9.3+):
 
 ## Announcements
 
-> From 10.9.3, with the integration 10.9.2 or newer.
+> From 10.10.0, with the integration 10.9.2 or newer.
 
 A `media_player.play_media` action sent with `announce: true` (a TTS message, `tts.speak` with the PC as its target, a doorbell sound) is meant to be heard. With **Announcements** on:
 

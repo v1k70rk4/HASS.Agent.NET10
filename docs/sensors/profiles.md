@@ -10,7 +10,7 @@ Sensors are refreshed by profile instead of one global interval. The intervals a
 | Profile | Default | What it is for |
 |---------|---------|-------------|
 | **push** | on change | Event-driven: reports within about 600 ms of a change (monitor power, session lock, power source, volume, mute, audio device). A poll still runs as a safety net. *Last wake reason* follows the event log and is published with the next fast cycle. |
-| **fast** | 10 s | CPU, memory, the active window and the like. Down to 5 seconds on the Capabilities page; 1–4 seconds after the **Fast sensors below 5 seconds** switch on the [Danger Zone](../features/danger-zone.md) page (10.9.3+). |
+| **fast** | 10 s | CPU, memory, the active window and the like. Down to 5 seconds on the Capabilities page; 1–4 seconds after the **Fast sensors below 5 seconds** switch on the [Danger Zone](../features/danger-zone.md) page (10.10.0+). |
 | **normal** | 60 s | Drives, battery, network, Bluetooth, the GPU and so on. |
 | **hourly** | 3600 s | Windows Update, the Event Log. |
 | **startup** | once | Boot time, last shutdown reason. |
@@ -19,7 +19,7 @@ The minimum is 10 seconds for the normal and hourly profiles.
 
 ## The profile per sensor
 
-> From 10.9.3.
+> From 10.10.0.
 
 The **Profile** column of the Built-in sensors tab is a choice: fast, normal or hourly for every sensor that is polled, so GPU usage can go to fast on a gaming PC and CPU usage to normal on a server. Push-driven and startup sensors keep theirs. The three intervals stay global; the choice is which one a sensor follows. [Built-in sensors](index.md) lists the defaults.
 
@@ -27,7 +27,7 @@ A custom [attribute sensor](custom.md#built_in_attribute) has a profile of its o
 
 ## Push events and the rest
 
-A push event (a volume change, a lock, a media event) refreshes the push-driven sensors only; the clock-driven ones keep their own pace (10.9.3+). So an evening of media does not turn the uptime or the GPU into fast sensors.
+A push event (a volume change, a lock, a media event) refreshes the push-driven sensors only; the clock-driven ones keep their own pace (10.10.0+). So an evening of media does not turn the uptime or the GPU into fast sensors.
 
 ## What fast means for Home Assistant
 

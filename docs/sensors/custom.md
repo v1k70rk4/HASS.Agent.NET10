@@ -10,7 +10,7 @@ Custom sensors are parameterized sensors you can add as many times as you like, 
 - **Type**: what kind of sensor it is
 - **Name**: the entity name in Home Assistant
 - **Parameter**: what to monitor (depends on the type)
-- **Unit**: optional unit of measurement shown in Home Assistant; it marks the sensor as a numeric `measurement`, and a unit of °C, GB, MB/s, h, W, V, A or MHz brings the matching device class (temperature, data size, data rate, duration, power, voltage, current, frequency), so a °C sensor shows as °F where that is the custom and the unit can be changed on the entity (10.9.3+, integration 10.9.2+)
+- **Unit**: optional unit of measurement shown in Home Assistant; it marks the sensor as a numeric `measurement`, and a unit of °C, GB, MB/s, h, W, V, A or MHz brings the matching device class (temperature, data size, data rate, duration, power, voltage, current, frequency), so a °C sensor shows as °F where that is the custom and the unit can be changed on the entity (10.10.0+, integration 10.9.2+)
 - **Profile**: the polling interval (fast / normal / hourly / startup)
 - **Tray** and **Svc**: which role reads it
 
@@ -19,7 +19,7 @@ Custom sensors are parameterized sensors you can add as many times as you like, 
 <figcaption>The Custom sensors tab</figcaption>
 </figure>
 
-**Add**, or a double click on a row, opens the editor: it explains the chosen type, offers what the PC has (running processes, services, drives, built-in attributes, LibreHardwareMonitor values), and **Test** shows the value the sensor would report. Shift and Ctrl pick several rows in the list; **Remove** and **Test** then work on all of them (10.9.3+). A sensor only the service can read says so instead of a value.
+**Add**, or a double click on a row, opens the editor: it explains the chosen type, offers what the PC has (running processes, services, drives, built-in attributes, LibreHardwareMonitor values), and **Test** shows the value the sensor would report. Shift and Ctrl pick several rows in the list; **Remove** and **Test** then work on all of them (10.10.0+). A sensor only the service can read says so instead of a value.
 
 <figure class="shot" markdown>
 ![The custom sensor editor](../images/ui-sensor-editor.png){ width="600" }

@@ -34,7 +34,7 @@ Starting with 10.6.8, the release assets (`HASS.Agent.NET10-Setup-<version>.exe`
 To check a download, open its **Properties → Digital Signatures** tab, or with the Windows SDK:
 
 ```powershell
-signtool verify /pa /v HASS.Agent.NET10-Setup-10.9.2.exe
+signtool verify /pa /v HASS.Agent.NET10-Setup-10.10.0.exe
 ```
 
 Signing happens on the maintainer's machine through SimplySign, unlocked with a one-time code; the private key lives in Certum's cloud HSM and is never exported. The GitHub Actions build itself is unsigned, the signed files replace its assets on the release. A certificate this new has little SmartScreen reputation yet, so Windows may still show a *"Windows protected your PC"* prompt for a while; the publisher name on that prompt is what confirms the file is genuine.

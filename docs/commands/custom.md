@@ -5,7 +5,7 @@ description: Your own buttons in Home Assistant with HASS.Agent .NET10 - program
 
 # Custom commands
 
-Beyond the built-in commands, you can define your own on the **Capabilities** page. Each custom command becomes a button in Home Assistant. **Add**, or a double click on a row, opens the editor; its **Test** button runs the command right away, in the tray app. Shift and Ctrl pick several rows, and **Remove** takes them all (10.9.3+).
+Beyond the built-in commands, you can define your own on the **Capabilities** page. Each custom command becomes a button in Home Assistant. **Add**, or a double click on a row, opens the editor; its **Test** button runs the command right away, in the tray app. Shift and Ctrl pick several rows, and **Remove** takes them all (10.10.0+).
 
 <figure class="shot" markdown>
 ![The custom command editor](../images/ui-command-editor.png){ width="600" }

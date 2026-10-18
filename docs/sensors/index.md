@@ -7,7 +7,7 @@ description: The built-in Windows sensors of HASS.Agent .NET10 for Home Assistan
 
 The **Sensors** page has two tabs: **Built-in sensors** and **Custom sensors**.
 
-Built-in sensors are predefined system metrics. Each one can be enabled or disabled on its own and assigned to the tray app, the service, or both. The **Profile** column is a choice too (10.9.3+): move a sensor to fast, normal or hourly as it suits the PC; the table below shows the defaults. Push-driven sensors (they report on change) and startup sensors keep theirs. [Polling profiles](profiles.md) says what the profiles mean.
+Built-in sensors are predefined system metrics. Each one can be enabled or disabled on its own and assigned to the tray app, the service, or both. The **Profile** column is a choice too (10.10.0+): move a sensor to fast, normal or hourly as it suits the PC; the table below shows the defaults. Push-driven sensors (they report on change) and startup sensors keep theirs. [Polling profiles](profiles.md) says what the profiles mean.
 
 The **Default** column shows whether a fresh install starts with the sensor switched on. Sensors that are useful, but not to everyone, start **off** so they do not clutter Home Assistant; enable them on the *Sensors* page. An update never changes a setting you already have: a sensor added by a new version simply arrives switched off.
 
@@ -68,7 +68,7 @@ A sensor the tray app cannot read (Drive health, Sleep blocked: both need admini
 
 ## Some of them, closer
 
-- **Drive health** (10.9.3+): Windows' own verdict on the drives from their SMART data, `healthy`, `warning`, `unhealthy` or `unknown`, the worst among the drives as the value; every drive with its temperature, highest temperature, power-on hours and wear in the attributes. NVMe drives report the temperature, SATA drives when the controller passes it on, USB enclosures nothing. Needs the integration 10.9.2 or newer. Read by the service, since the Storage Management API wants an administrator.
+- **Drive health** (10.10.0+): Windows' own verdict on the drives from their SMART data, `healthy`, `warning`, `unhealthy` or `unknown`, the worst among the drives as the value; every drive with its temperature, highest temperature, power-on hours and wear in the attributes. NVMe drives report the temperature, SATA drives when the controller passes it on, USB enclosures nothing. Needs the integration 10.9.2 or newer. Read by the service, since the Storage Management API wants an administrator.
 - **GPU usage**: the busiest GPU's load as the value, with the engines (3D, video decode, copy), the dedicated and shared memory and every adapter in the attributes; `name` says which GPU the value follows. On a PC with two GPUs each has its own values under `adapters[N]`.
 - **Camera in use / Microphone in use**: which apps use them, as `apps[N]`. Read from Windows' camera stack and from the apps recording on any input device, so they work on Windows 11 26H2 as well.
 - **Session locked**, **User present**, **Idle time**: for "turn the lights off when nobody is at the PC" automations. *Session locked* reads the lock state Windows keeps for the session; *Idle time* is the seconds since the last keyboard or mouse input.

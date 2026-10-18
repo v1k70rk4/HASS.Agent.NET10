@@ -36,4 +36,4 @@ actions:
       area_id: office
 ```
 
-Hotkeys are handled by the tray app: they belong to the logged-in user's keyboard. Shift and Ctrl pick several rows in the list, and **Remove** takes them all (10.9.3+).
+Hotkeys are handled by the tray app: they belong to the logged-in user's keyboard. Shift and Ctrl pick several rows in the list, and **Remove** takes them all (10.10.0+).

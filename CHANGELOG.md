@@ -2,9 +2,56 @@
 
 Every release of HASS.Agent .NET10, newest first. The downloads are on the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases).
 
-## 10.9.3-beta.7
+## 10.10.0
 
-> **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered it, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.9.2**, below.
+The seven betas of 10.9.3 as one release, with a bigger number than the betas carried, because it outgrew a third-number step: a system health pack of sensors, fast sensors down to 1 second and a polling profile of your own per sensor, a Media player page with announcements that are heard, a name of your own above the notifications, a security round with its recheck, and the fixes of the betas. Works with the Home Assistant integration **10.6.7** or newer; the announcements, the Drive health sensor, the device classes of custom sensors and the move of the two renamed sensor keys need the integration **10.9.2**, out at the same time (an older integration keeps the renamed sensors by their old keys). Signed release.
+
+**Sensors**
+
+- **Drive health**, a new built-in sensor from the Windows service: Windows' own verdict on the drives from their SMART data (`healthy`, `warning`, `unhealthy`, the worst of them as the value), with every drive in the attributes (`drives[N].name`, `health`, `temperature`, `temperature_max`, `power_on_hours`, `bus`, `media`) and the system drive's temperature as `temperature`, one attribute sensor away from a °C entity. NVMe drives report the temperature and its highest value, a SATA drive the temperature and the power-on hours when its controller passes them on, USB enclosures nothing; a field a drive does not report is left out. Service only, since reading it needs administrator rights. Needs the integration 10.9.2 or newer. Requested in [#107](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/107).
+- **Fast sensors down to 1 second.** The fast interval goes to 5 seconds on the Capabilities page (10 stays the default); the **Fast sensors below 5 seconds** switch on the Danger Zone page unlocks 1–4 seconds, with a note on what that means for the traffic and for Home Assistant's recorder, which writes a row at every change: a sensor you want every second but not in the history goes on the recorder's exclude list. Requested in [#108](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/108).
+- **The polling profile of a built-in sensor is yours to choose**: fast, normal or hourly in the Profile column of the Sensors page (GPU usage on fast, CPU usage on normal, whatever suits the PC); push-driven and startup sensors keep theirs. The three intervals stay global, the choice is which one a sensor follows. A custom attribute sensor on a faster profile refreshes the shared read at its own pace, while the built-in sensor still shows Home Assistant its value and attributes at its own: an hourly GPU usage stays hourly in the recorder even with an adapter's load wanted every second.
+- **A push event refreshes the push-driven sensors only.** A volume change, a lock or a media event used to re-read every fast and normal sensor along with it, so on a PC playing media the uptime, the GPU or the drive health arrived far more often than their profile says. Now such a read takes the push-driven sensors alone; the clock-driven ones keep their own pace. Uptime moved to the normal profile (every 60 seconds instead of every fast cycle): its value changes with every tick, so on the fast profile it wrote a new row to the recorder at every cycle for nothing.
+- **GPU usage per GPU.** On a PC with two GPUs (an integrated one and a graphics card) the sensor's value and its top-level `engines` and memory follow whichever GPU is busiest at each reading, so they could move from one to the other. Each entry of `adapters[N]` now has its own `usage`, `engines` (3D, video and the rest) and memory, so `gpu_usage.adapters[1].engines.3d` follows one card; `gpu_usage.name` says which GPU the main value follows. Requested in [#99](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/99). See [GPU usage with more than one GPU](docs/sensors/attributes.md).
+- **Gigabytes next to megabytes, and totals.** `memory_dedicated_gb`, `memory_shared_gb` and `adapters[N].memory_gb`, `memory_dedicated_gb`, `memory_shared_gb` on GPU usage, one decimal; the `_mb` attributes stay, so sensors built on them keep working. `memory_usage` has `total_gb`, `used_gb`, `available_gb`; both system drive sensors have `drive`, `total_gb`, `used_gb`, `free_gb`. Requested in [#107](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/107).
+- **Two sensor keys lost the unit in their name: `system_drive_free_gb` is `system_drive`, `memory_available_mb` is `memory_available`.** With the totals in the attributes a key with a unit in it read oddly: `system_drive_free_gb.total_gb`. Nothing changes in Home Assistant: the integration 10.9.2 moves the entity over to the new key, with its entity ID, its history and its statistics, and an older integration keeps its entity because the app still sends and advertises the old key next to the new one. An attribute sensor made on the old path follows the rename on its own. Raised in [#107](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/107).
+- **The attribute list follows this PC.** The Attributes button and the editor's list offer `adapters[1]`, `displays[1]`, `drives[1]` and so on for every item the sensor last reported, instead of `[0]` only; the second one's sensor gets a 2 after its name. An attribute sensor made from the list gets its unit (°C for temperatures, h for hours, GB / MB for memory, % for loads), and it can only be ticked for a role that reads its built-in sensor (the drive health for the service, the active window for the app).
+- **Custom sensors tell Home Assistant what they measure**: a unit of °C, GB, MB/s, h, W, V, A or MHz brings the matching device class (temperature, data size, data rate, duration, power, voltage, current, frequency), so a °C sensor shows as °F where that is the custom, history included, and the unit can be changed on the entity. Also for LibreHardwareMonitor sensors; per-app volumes from the list get % too. Needs the integration 10.9.2 or newer.
+- **Several rows at once on the Sensors page**: Shift and Ctrl pick several custom sensors, and **Remove** and **Test** work on all of them (removing more than one asks first). Custom commands and hotkeys get the multi-row **Remove** too.
+- **Fixed: LAN IP could show the address of a virtual adapter.** It took the first adapter Windows listed, often a VirtualBox, Hyper-V, WSL, Docker or VPN one. It now takes the adapter Windows routes through, and `network_address.addresses[N]` lists that one first, then those with a gateway, then the rest. A custom sensor on `addresses[0]` may therefore show another adapter than before: the real one. Reported in [#100](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/100).
+- **Fixed: Session locked went back to off a few seconds after locking.** The sensor took a locked session to be one whose input desktop the app cannot open. On Windows 11 the lock screen shows on the user's own desktop, so that was true only for a moment while the lock screen came up. It now reads the lock state Windows keeps for the session. Reported in [#96](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/96).
+- **Fixed: Logged in user was empty and Session state said *connected* on a PC used only over Remote Desktop.** Both read the console session, the PC's own screen, which shows the sign-in screen with nobody in it while you work over Remote Desktop. Now the console's session counts when someone is signed in there, otherwise the active Remote Desktop session, otherwise one that was disconnected without signing out.
+
+**Media player and notifications**
+
+- **A Media player page in the app.** The media player's switch moved there from Capabilities, with two things that were not there before: **Send the cover art to Home Assistant** (off, the entity shows no picture) and **Announcements**: a `play_media` action sent with `announce: true` (TTS, a doorbell sound) unmutes the PC and sets the announcement volume for it, pauses what was playing when you want that, and puts the volume, the mute and the playback back afterwards. On by default, because an announcement is meant to be heard; needs the integration 10.9.2 or newer, an older one plays it at the current volume as before. A pause or a stop from Home Assistant while the sound plays cuts it and puts everything back. The idea comes from a fork by @VorlonCD, thank you. The page also tells where turning the PC on and off from the media player is set up (the integration's options) and which of sleep, hibernate and shutdown this PC allows for it. See [Media player](docs/features/media-player.md).
+- **A name of your own above the notifications.** Under the notification style on the Capabilities page, tick **Custom name** and write the name the Windows notifications (and the app's own window) should show instead of *HASS.Agent .NET10*, for example to tell several PCs apart. One name for all notifications of the PC. Windows reads it again only once the app has no notifications left in the notification centre, so saving a changed name clears them. Asked for in [#101](https://github.com/v1k70rk4/HASS.Agent.NET10/discussions/101).
+
+**Security**
+
+From a security review of the app, the CodeRabbit remarks on it, and a recheck of what came out of it. Most of it is invisible.
+
+- **The local HTTP API is off by default.** It serves the integration's Local HTTP API mode only (notifications without MQTT or the HA API), yet every install listened on port 5115 with a key in its settings file. It is now a switch on the General page, under **Local HTTP API**, where the bind address and the port moved too: off, nothing listens and there is no key; on, the app makes a key and shows it. An install from before keeps it on, with its key, so a PC set up in Home Assistant with the Local HTTP API goes on working; turn it off on the General page when nothing uses it. The API also obeys the **Notifications** switch on the Capabilities page now, like the other two connections: with it off, `/notify` answers 403 and `/info` reports `notifications: false`. See [Local HTTP API](docs/connection/local-api.md).
+- **The settings export leaves out the local API key and the LibreHardwareMonitor password too**, next to the MQTT password and the HA API token it already left out; the import makes a new key when the API is on, the password is entered again.
+- **A message from the HA API larger than 1 MiB closes the connection** instead of being read into memory whole, fragment by fragment too; the MQTT side has had the same cap. Home Assistant's own messages are a few kilobytes.
+- **Writes into the settings folder never follow a link put under the file's name.** The log (which the Windows service writes as SYSTEM), the settings file, the device id, the service's version note and its policy, the MQTT packet dump of the Danger Zone and the notice marker are opened on the name itself through one handle: a link or a hard link found there is removed, the name only, and the file is made anew. Until now the log was appended by path, so a hard link made after the folder's rule was set would have taken the service's lines into another file.
+- **Who may use it: the rule is set file by file, and a file it could not be set on is reported.** Limiting the folder reset the rule of everything in it with `icacls`, which would also have rewritten the rule of a file elsewhere that a hard link in the folder named. The rule now goes through a handle on each file itself, and a link or a hard link found there goes, as a junction already did. A file with a rule of its own that keeps even an administrator out is opened with the restore privilege, and what still cannot be done is reported: the window shows the failure instead of success with the folder's rule alone.
+- **Who may use it: a PC with a domain or Entra ID user is not limited by an update on its own, and unticking such a user takes them out of the group.** The "every user is an administrator" decision counted the local accounts only; on a work PC the user who actually logs on is from the domain or from Entra ID, so an update could have limited the settings to the local administrators and shut that user out. The users with a profile from a domain or Entra ID now count as not known to be administrators: the update leaves the folder open, the app asks, and the question lists them as `DOMAIN\user` when Windows can name them. Unticking one takes them out of the group too; only local accounts were taken out before.
+- **Installer: "Only me" names the right user, or says that it could not.** The installer asked the user who started it for their name through its own temp folder, which belongs to the account Setup runs as; when an administrator's password was typed in, that is another account, the user could not write there, and the settings were limited to the administrator alone without a word. The name now goes through ProgramData, as `DOMAIN\user`, and when it still cannot be found the installer says whom the settings were limited to; a limit that fails is reported too, instead of being assumed.
+- **An administrator run says what became of it.** The service approval and the install button say when a run was not started because an earlier one is still going, when it is still going, and when it did not finish as asked, instead of promising a result that is not coming.
+- The CodeQL workflow's checkout no longer keeps the token in the working tree, as the other workflows already did not.
+
+**Fixes**
+
+- **Fixed: turning MQTT off while the HA API stays on left the app on MQTT.** Saving the MQTT page with the switch off, the app saw a connection that had not changed and kept it; only a restart of the app moved it to the HA API (the service, which starts fresh, went over at once). The app now says goodbye on the broker and starts again on the HA API alone.
+- **No more "Refusing to allow … to subscribe to event hass_agent_command" errors in Home Assistant's log after its restart.** A PC with a Home Assistant user of its own reconnected before the integration was loaded, found the integration's subscription missing and fell back to Home Assistant's own, which such a user may not use; Home Assistant logged the refusal, and the PC got in on its next attempt anyway. A user who is not an administrator is only ever set up with the newer integration, so the PC now just waits for the next attempt. An administrator's token keeps the fallback, for an integration older than 10.9.1.
+- **HA API page: the line under the token, "The token is of …, not an administrator", is no longer cut short** with a longer user name.
+- **Danger Zone: the note under "Fast sensors below 5 seconds" is shown in full in a narrow window**; the box had a fixed height and cut the sentence off.
+
+**The betas.** 10.10.0 went out first as 10.9.3-beta.1 to beta.7, on the beta channel. Their notes, as they were:
+
+<details markdown="1">
+<summary><b>10.9.3-beta.7</b>: what a recheck of the security round found</summary>
 
 The seventh beta of 10.9.3: what a recheck of beta.6's security round found, five points, the service's log writing first of all. Works with the integration **10.6.7** or newer; the renamed sensor keys move over cleanly with the integration **10.9.2-beta.5**. Signed release.
 
@@ -14,9 +61,10 @@ The seventh beta of 10.9.3: what a recheck of beta.6's security round found, fiv
 - **Fixed: the two renamed sensors, switched off, still went out under their old keys.** The filter that leaves switched-off sensors out of the payload removes the key of before as well.
 - **The service approval says when it was not started** because an earlier administrator run is still going, instead of promising an approval that is not coming from it.
 
-## 10.9.3-beta.6
+</details>
 
-> **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered it, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.9.2**, below.
+<details markdown="1">
+<summary><b>10.9.3-beta.6</b>: a security round, two sensor keys renamed, two fixes</summary>
 
 The sixth beta of 10.9.3: a security round from a review of the app and the CodeRabbit remarks on it, two sensor keys renamed with a migration ([#107](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/107)), and two fixes found on the way. Works with the integration **10.6.7** or newer; the renamed sensor keys move over cleanly with the integration **10.9.2-beta.5**, out at the same time, an older integration keeps working by the old keys. Signed release.
 
@@ -34,9 +82,10 @@ The sixth beta of 10.9.3: a security round from a review of the app and the Code
 - **HA API page: the line under the token, "The token is of …, not an administrator", is no longer cut short** with a longer user name; it takes the room up to the button next to it, or the card's width when the button is hidden.
 - **Danger Zone: the note under "Fast sensors below 5 seconds" is shown in full in a narrow window**; the box had a fixed height and cut the sentence off. The note now starts with a warning and says what to do about the history: a sensor you want every second but not in the database goes on the recorder's exclude list. Raised in [#108](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/108).
 
-## 10.9.3-beta.5
+</details>
 
-> **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered it, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.9.2**, below.
+<details markdown="1">
+<summary><b>10.9.3-beta.5</b>: the system health pack, fast sensors and the polling profile per sensor</summary>
 
 The fifth beta of 10.9.3: the system health pack from [#107](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/107), the fast sensors and the polling profile per sensor from [#108](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/108), and the Sensors page work that came with them. Works with the integration **10.6.7** or newer; the Drive health sensor needs the integration **10.9.2-beta.3** or newer, out at the same time. Signed release.
 
@@ -53,25 +102,28 @@ The fifth beta of 10.9.3: the system health pack from [#107](https://github.com/
 - **The polling profile of a built-in sensor is yours to choose**: fast, normal or hourly in the Profile column of the Sensors page (GPU usage on fast, CPU usage on normal, whatever suits the PC); push-driven and startup sensors keep theirs. The three intervals stay global, the choice is which one a sensor follows. A custom attribute sensor on a faster profile refreshes the shared read at its own pace, while the built-in sensor still shows Home Assistant its value and attributes at its own: an hourly GPU usage stays hourly in the recorder even with an adapter's load wanted every second.
 - **Custom sensors tell Home Assistant what they measure**: a unit of °C, GB, MB/s, h, W, V, A or MHz brings the matching device class (temperature, data size, data rate, duration, power, voltage, current, frequency), so a °C sensor shows as °F where that is the custom, history included, and the unit can be changed on the entity. Also for LibreHardwareMonitor sensors. Per-app volumes from the list get % too.
 
-## 10.9.3-beta.4
+</details>
 
-> **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered it, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.9.2**, below.
+<details markdown="1">
+<summary><b>10.9.3-beta.4</b>: the Media player page</summary>
 
 The fourth beta of 10.9.3: the Media player page. Works with the integration **10.6.7** or newer; the announcements need the integration **10.9.2-beta.2** or newer, out at the same time. Signed release.
 
 - **A Media player page in the app.** The media player's switch moved there from Capabilities, with two things that were not there before: **Send the cover art to Home Assistant** (off, the entity shows no picture) and **Announcements**: a `play_media` action sent with `announce: true` (TTS, a doorbell sound) unmutes the PC and sets the announcement volume for it, pauses what was playing when you want that, and puts the volume, the mute and the playback back afterwards. On by default, because an announcement is meant to be heard; needs the integration 10.9.2 or newer, an older one plays it at the current volume as before. A pause or a stop from Home Assistant while the sound plays cuts it and puts everything back. The idea comes from a fork by @VorlonCD, thank you. The page also tells where turning the PC on and off from the media player is set up (the integration's options) and which of sleep, hibernate and shutdown this PC allows for it.
 
-## 10.9.3-beta.3
+</details>
 
-> **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered it, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.9.2**, below.
+<details markdown="1">
+<summary><b>10.9.3-beta.3</b>: Logged in user over Remote Desktop</summary>
 
 The third beta of 10.9.3: one fix. Works with the integration **10.6.7** or newer; there is no new integration with this one. Signed release.
 
 - **Fixed: Logged in user was empty and Session state said *connected* on a PC used only over Remote Desktop.** Both read the console session, the PC's own screen, which shows the sign-in screen with nobody in it while you work over Remote Desktop. Now the console's session counts when someone is signed in there, otherwise the active Remote Desktop session, otherwise one that was disconnected without signing out.
 
-## 10.9.3-beta.2
+</details>
 
-> **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered it, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.9.2**, below.
+<details markdown="1">
+<summary><b>10.9.3-beta.2</b>: GPU usage per GPU, the LAN IP, a name above the notifications</summary>
 
 The second beta of 10.9.3: a sensor value per GPU, the right LAN IP and a name of your own above the notifications. Works with the integration **10.6.7** or newer; there is no new integration with this one. Signed release.
 
@@ -81,13 +133,16 @@ The second beta of 10.9.3: a sensor value per GPU, the right LAN IP and a name o
 - **Fixed: LAN IP could show the address of a virtual adapter.** It took the first adapter Windows listed, often a VirtualBox, Hyper-V, WSL, Docker or VPN one. It now takes the adapter Windows routes through, and `network_address.addresses[N]` lists that one first, then those with a gateway, then the rest. A custom sensor on `addresses[0]` may therefore show another adapter than before: the real one. Reported in [#100](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/100).
 - **A name of your own above the notifications.** Under the notification style on the Capabilities page, tick **Custom name** and write the name the Windows notifications (and the app's own window) should show instead of *HASS.Agent .NET10*, for example to tell several PCs apart. One name for all notifications of the PC. Windows reads it again only once the app has no notifications left in the notification centre, so saving a changed name clears them. Asked for in [#101](https://github.com/v1k70rk4/HASS.Agent.NET10/discussions/101).
 
-## 10.9.3-beta.1
+</details>
 
-> **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered it, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.9.2**, below.
+<details markdown="1">
+<summary><b>10.9.3-beta.1</b>: Session locked on Windows 11</summary>
 
 The first beta of 10.9.3: one fix. Works with the integration **10.6.7** or newer; there is no new integration with this one. Signed release.
 
 - **Fixed: Session locked went back to off a few seconds after locking.** The sensor took a locked session to be one whose input desktop the app cannot open. On Windows 11 the lock screen shows on the user's own desktop, so that was true only for a moment while the lock screen came up. It now reads the lock state Windows keeps for the session. Reported in [#96](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/96).
+
+</details>
 
 ## 10.9.2
 

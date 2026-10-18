@@ -15,7 +15,7 @@ Turning it off stops the server and drops the key. Turning it on again makes a n
 
 !!! note "Upgrading from 10.9.2 or earlier"
 
-    Until 10.9.3 the server was always on and every install had a key. An install from before keeps it on, with its key, so a PC set up in Home Assistant with the Local HTTP API goes on working. Turn it off on the General page when nothing uses it; only a new install starts with it off.
+    Until 10.10.0 the server was always on and every install had a key. An install from before keeps it on, with its key, so a PC set up in Home Assistant with the Local HTTP API goes on working. Turn it off on the General page when nothing uses it; only a new install starts with it off.
 
 **Endpoints:**
 

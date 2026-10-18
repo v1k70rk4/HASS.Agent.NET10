@@ -20,7 +20,7 @@ An opt-in maintenance and diagnostics toolbox. Enable it with the **Danger Zone*
 Two switches live here as well:
 
 - **Beta updates**: the update checks include GitHub pre-releases, so you can follow the beta channel. Stable users are never offered a pre-release. See [Updates from Home Assistant](updates.md).
-- **Fast sensors below 5 seconds** (10.9.3+): the fast [polling profile](../sensors/profiles.md) may go down to 1 second, with a note on what that means for the traffic and for Home Assistant's recorder, which writes a row at every change; a sensor you want every second but not in the history goes on the recorder's exclude list.
+- **Fast sensors below 5 seconds** (10.10.0+): the fast [polling profile](../sensors/profiles.md) may go down to 1 second, with a note on what that means for the traffic and for Home Assistant's recorder, which writes a row at every change; a sensor you want every second but not in the history goes on the recorder's exclude list.
 
 <figure class="shot" markdown>
 ![The Danger Zone page](../images/ui-dangerzone-menu.png){ width="700" }
