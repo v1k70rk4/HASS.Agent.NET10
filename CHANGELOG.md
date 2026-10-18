@@ -2,7 +2,11 @@
 
 Every release of HASS.Agent .NET10, newest first. The downloads are on the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases).
 
-## Unreleased
+## 10.9.3-beta.6
+
+> **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered it, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.9.2**, below.
+
+The sixth beta of 10.9.3: a security round from a review of the app and the CodeRabbit remarks on it, two sensor keys renamed with a migration ([#107](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/107)), and two fixes found on the way. Works with the integration **10.6.7** or newer; the renamed sensor keys move over cleanly with the integration **10.9.2-beta.5**, out at the same time, an older integration keeps working by the old keys. Signed release.
 
 - **Two sensor keys lost the unit in their name: `system_drive_free_gb` is `system_drive`, `memory_available_mb` is `memory_available`.** Since the attributes came (`drive`, `total_gb`, `used_gb` on the one, GB totals on the other), a key with a unit in it read oddly: `system_drive_free_gb.total_gb`. Nothing changes in Home Assistant: the integration 10.9.2-beta.5 moves the entity over to the new key, with its entity ID, its history and its statistics, and an older integration keeps its entity because the app still sends and advertises the old key next to the new one. An attribute sensor made on the old path follows the rename on its own. Raised in [#107](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/107).
 - **The local HTTP API is off by default.** It serves the integration's Local HTTP API mode only (notifications without MQTT or the HA API), yet every install listened on port 5115 with a key in its settings file. It is now a switch on the General page, under **Local HTTP API**, where the bind address and the port moved too: off, nothing listens and there is no key; on, the app makes a key and shows it. An install from before keeps it on, with its key, so a PC set up in Home Assistant with the Local HTTP API goes on working; turn it off on the General page when nothing uses it. The API also obeys the **Notifications** switch on the Capabilities page now, like the other two connections: with it off, `/notify` answers 403 and `/info` reports `notifications: false`. From a security review of the app.
