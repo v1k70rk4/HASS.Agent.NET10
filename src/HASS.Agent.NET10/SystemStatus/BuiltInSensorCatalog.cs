@@ -220,7 +220,8 @@ internal static class BuiltInSensorCatalog
     };
 
     /// <summary>The key as it is today, for one from a settings file or an attribute path of before.</summary>
-    public static string CurrentKey(string key) => RenamedKeys.TryGetValue(key, out var renamed) ? renamed : key;
+    public static string CurrentKey(string key) =>
+        !string.IsNullOrEmpty(key) && RenamedKeys.TryGetValue(key, out var renamed) ? renamed : key;
 
     /// <summary>The key the sensor was published under before it was renamed, or null.</summary>
     public static string? FormerKey(string key) =>
@@ -296,6 +297,8 @@ internal static class BuiltInSensorCatalog
     /// <summary>By key, from the settings; the catalog's profile for a key the settings do not have.</summary>
     public static SensorPollingProfile EffectiveProfile(string key, IReadOnlyList<BuiltInSensorSetting>? settings)
     {
+        // The settings hold the current key only; asked by a former one, it is the same sensor.
+        key = CurrentKey(key);
         var definition = Find(key);
         if (definition is null)
         {

@@ -1854,6 +1854,11 @@ internal sealed class MainForm : Form
             {
                 await ServiceApproval.RequestIfNeededAsync(this, _settings, _log);
             }
+            else if (outcome == ElevatedOutcome.Busy)
+            {
+                _log.Warning("The service installation was not started: an earlier administrator run is still going.");
+                MessageBox.Show(this, S("Access.Busy"), AppIdentity.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
 
             statusLabel.Text = CompanionServiceManager.GetStatusText();
             UpdateGeneralStatusMessages();

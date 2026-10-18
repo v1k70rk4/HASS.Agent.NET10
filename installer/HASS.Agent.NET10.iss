@@ -143,38 +143,39 @@ begin
   Result := ReadPreviousVersion() = '';
 end;
 
-{ The name an account answers with to "whoami": DOMAIN\name, so a domain account is named
-  in full. The file is written where the account can write and Setup can read; read only when
-  the account's own write succeeded, so a file someone else put there first is not taken. }
-function WhoAmIInto(NameFile: string; AsOriginalUser: Boolean): string;
-var
-  Lines: TArrayOfString;
-  ResultCode: Integer;
-  Ran: Boolean;
-begin
-  Result := '';
-  DeleteFile(NameFile);
-  if AsOriginalUser then
-    Ran := ExecAsOriginalUser(ExpandConstant('{cmd}'), '/C whoami>"' + NameFile + '"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode)
-  else
-    Ran := Exec(ExpandConstant('{cmd}'), '/C whoami>"' + NameFile + '"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-  if Ran and (ResultCode = 0) and LoadStringsFromFile(NameFile, Lines) and (GetArrayLength(Lines) > 0) then
-    Result := Trim(Lines[0]);
-  DeleteFile(NameFile);
-end;
-
-{ The account Setup runs as: the user, or an administrator whose password was typed in. }
+{ The account Setup runs as, as DOMAIN\name: the user, or an administrator whose password
+  was typed in. From Setup's own environment, which is Unicode, so an accent in the name
+  survives; whoami's redirected output would be in the OEM code page and lose it. }
 function SetupUserName(): string;
 begin
-  Result := WhoAmIInto(ExpandConstant('{tmp}\hass-agent-user.txt'), False);
+  Result := ExpandConstant('{username}');
+  if GetEnv('USERDOMAIN') <> '' then
+    Result := GetEnv('USERDOMAIN') + '\' + Result;
 end;
 
-{ The user logged on to the PC who started Setup. Setup's own temp folder is the elevated
-  account's, where another user cannot write, which is exactly the case this is for; ProgramData
-  lets every user create a file. }
+{ The user logged on to the PC who started Setup, as DOMAIN\name. Written by that user into
+  ProgramData, where every user may create a file (Setup's own temp folder is the elevated
+  account's, where another user cannot write, which is exactly the case this is for), under a
+  name made up for this run, so nobody can put a file of that name there first; read only when
+  the user's own write succeeded. PowerShell writes it in the ANSI code page, which is what
+  LoadStringsFromFile reads, so an accent in the name survives. }
 function OriginalUserName(): string;
+var
+  NameFile: string;
+  Lines: TArrayOfString;
+  ResultCode: Integer;
 begin
-  Result := WhoAmIInto(ExpandConstant('{commonappdata}\hass-agent-setup-user.txt'), True);
+  Result := '';
+  NameFile := ExpandConstant('{commonappdata}\hass-agent-setup-user-')
+    + GetDateTimeString('yyyymmddhhnnsszzz', #0, #0) + '-' + IntToStr(Random(2147483647)) + '.txt';
+  DeleteFile(NameFile);
+  if ExecAsOriginalUser(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
+      '-NoProfile -NonInteractive -Command "[IO.File]::WriteAllText(''' + NameFile + ''', $env:USERDOMAIN + ''\'' + $env:USERNAME, '
+      + '[Text.Encoding]::GetEncoding([Globalization.CultureInfo]::CurrentCulture.TextInfo.ANSICodePage))"',
+      '', SW_HIDE, ewWaitUntilTerminated, ResultCode)
+    and (ResultCode = 0) and LoadStringsFromFile(NameFile, Lines) and (GetArrayLength(Lines) > 0) then
+    Result := Trim(Lines[0]);
+  DeleteFile(NameFile);
 end;
 
 function RunHidden(FileName: string; Parameters: string): Boolean;
@@ -240,8 +241,6 @@ begin
     and (Copy(ExpandConstant('{username}'), Length(ExpandConstant('{username}')), 1) <> '$') then
   begin
     Elevated := SetupUserName();
-    if Elevated = '' then
-      Elevated := ExpandConstant('{username}');
     Users := '"' + Elevated + '"';
     Original := OriginalUserName();
     if (Original <> '') and (CompareText(Original, Elevated) <> 0) then

@@ -409,8 +409,11 @@ internal static class SettingsAccess
     /// by entry through a handle opened on the entry itself. A link made since MakeSafe is
     /// removed, not followed; so is a file that has another name elsewhere (a hard link), since
     /// a rule set on it here would be the rule of that other file too, which is what
-    /// icacls /reset did until 10.9.3. A file another process holds open still takes the rule;
-    /// one that cannot be opened is left as it is, and does not undo what the folder has.
+    /// icacls /reset did until 10.9.3. A subfolder is held open, with no one allowed to delete
+    /// or rename it, for as long as its contents are being done: its path cannot be swapped for
+    /// a junction in between, the way the folder itself is held by SetFolderRule. A file
+    /// another process holds open still takes the rule; one that cannot be opened is left as
+    /// it is, and does not undo what the folder has.
     /// </summary>
     private static void ResetContents(string directory, RawAcl folderRule)
     {
@@ -418,9 +421,10 @@ internal static class SettingsAccess
         {
             var isFolder = entry is DirectoryInfo;
             var inherited = InheritedFrom(folderRule, isFolder);
+            Microsoft.Win32.SafeHandles.SafeFileHandle? held;
             try
             {
-                if (!TryResetEntry(entry.FullName, isFolder, inherited))
+                if (!TryResetEntry(entry.FullName, isFolder, inherited, out held))
                 {
                     entry.Delete();
                     continue;
@@ -431,30 +435,43 @@ internal static class SettingsAccess
                 continue;
             }
 
-            if (isFolder)
+            using (held)
             {
-                ResetContents(entry.FullName, inherited);
+                if (isFolder)
+                {
+                    ResetContents(entry.FullName, inherited);
+                }
             }
         }
     }
 
-    /// <summary>False when the entry is a link or a hard link: to be removed, not changed.</summary>
-    private static bool TryResetEntry(string path, bool isFolder, RawAcl inherited)
+    /// <summary>
+    /// False when the entry is a link or a hard link: to be removed, not changed. A folder's
+    /// handle is handed back open, to be held while its contents are done.
+    /// </summary>
+    private static bool TryResetEntry(string path, bool isFolder, RawAcl inherited, out Microsoft.Win32.SafeHandles.SafeFileHandle? held)
     {
-        using var handle = CreateFile(path, ReadControl | WriteDac, FileShareRead | FileShareWrite | FileShareDelete, IntPtr.Zero,
+        held = null;
+        var share = isFolder ? FileShareRead | FileShareWrite : FileShareRead | FileShareWrite | FileShareDelete;
+        var handle = CreateFile(path, ReadControl | WriteDac, share, IntPtr.Zero,
             OpenExisting, FileFlagBackupSemantics | FileFlagOpenReparsePoint, IntPtr.Zero);
         if (handle.IsInvalid)
         {
-            throw new Win32Exception(Marshal.GetLastWin32Error(), $"{path} could not be opened");
+            var error = Marshal.GetLastWin32Error();
+            handle.Dispose();
+            throw new Win32Exception(error, $"{path} could not be opened");
         }
 
         if (!GetFileInformationByHandle(handle, out var information))
         {
-            throw new Win32Exception(Marshal.GetLastWin32Error());
+            var error = Marshal.GetLastWin32Error();
+            handle.Dispose();
+            throw new Win32Exception(error);
         }
 
         if ((information.FileAttributes & (uint)FileAttributes.ReparsePoint) != 0 || (!isFolder && information.NumberOfLinks > 1))
         {
+            handle.Dispose();
             return false;
         }
 
@@ -467,7 +484,18 @@ internal static class SettingsAccess
         descriptor.GetBinaryForm(bytes, 0);
         if (!SetKernelObjectSecurity(handle, DaclSecurityInformation, bytes))
         {
-            throw new Win32Exception(Marshal.GetLastWin32Error(), $"{path} did not take the rule");
+            var error = Marshal.GetLastWin32Error();
+            handle.Dispose();
+            throw new Win32Exception(error, $"{path} did not take the rule");
+        }
+
+        if (isFolder)
+        {
+            held = handle;
+        }
+        else
+        {
+            handle.Dispose();
         }
 
         return true;

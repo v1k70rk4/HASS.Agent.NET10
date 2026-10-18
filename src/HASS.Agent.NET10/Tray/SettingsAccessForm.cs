@@ -65,9 +65,7 @@ internal sealed class SettingsAccessForm : Form
         // The local accounts, then the users from a domain or Entra ID as DOMAIN\user (the ones
         // Windows can name; a bare SID is nobody to tick). The current user is listed in the
         // form that names them.
-        var current = string.Equals(Environment.UserDomainName, Environment.MachineName, StringComparison.OrdinalIgnoreCase)
-            ? Environment.UserName
-            : $"{Environment.UserDomainName}\\{Environment.UserName}";
+        var current = CurrentUserName;
         var members = SettingsAccess.Members();
         var listed = SettingsAccess.LocalUsers()
             .Concat(SettingsAccess.DirectoryUsersWithProfiles().Where(user => !user.StartsWith("S-1-", StringComparison.Ordinal)));
@@ -206,13 +204,19 @@ internal sealed class SettingsAccessForm : Form
             new[] { control }.Concat(control.Controls.OfType<Control>().SelectMany(Descendants));
     }
 
+    /// <summary>The user running this, the way the list names users: bare for a local account, DOMAIN\user otherwise.</summary>
+    private static string CurrentUserName =>
+        string.Equals(Environment.UserDomainName, Environment.MachineName, StringComparison.OrdinalIgnoreCase)
+            ? Environment.UserName
+            : $"{Environment.UserDomainName}\\{Environment.UserName}";
+
     private async Task LimitAsync()
     {
         var users = _users.CheckedItems.Cast<string>().ToList();
-        if (!users.Contains(Environment.UserName, StringComparer.OrdinalIgnoreCase))
+        if (!users.Contains(CurrentUserName, StringComparer.OrdinalIgnoreCase))
         {
             // Leaving yourself out would lock this app out of its own settings.
-            users.Insert(0, Environment.UserName);
+            users.Insert(0, CurrentUserName);
         }
 
         if (!await RunElevatedAsync("--settings-access only " + string.Join(' ', users.Select(Quote))))

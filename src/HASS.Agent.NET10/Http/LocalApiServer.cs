@@ -23,6 +23,8 @@ internal sealed class LocalApiServer : IDisposable
     private readonly CompanionSettings _settings;
     private readonly INotificationSink _notificationSink;
     private readonly FileLog _log;
+    // One start or stop at a time: two saves in a row must not race for the same port.
+    private readonly SemaphoreSlim _gate = new(1, 1);
     private WebApplication? _app;
     private string? _listenUrl;
 
@@ -41,28 +43,49 @@ internal sealed class LocalApiServer : IDisposable
     /// </summary>
     public async Task ApplySettingsAsync()
     {
-        if (!_settings.LocalApiEnabled)
+        await _gate.WaitAsync();
+        try
         {
-            if (_app is not null)
+            if (!_settings.LocalApiEnabled)
             {
-                await StopAsync();
-                _log.Info("Local API stopped: turned off in the settings.");
+                if (_app is not null)
+                {
+                    await StopCoreAsync();
+                    _log.Info("Local API stopped: turned off in the settings.");
+                }
+
+                return;
             }
 
-            return;
-        }
+            if (_app is not null && _listenUrl == _settings.ListenUrl)
+            {
+                return;
+            }
 
-        if (_app is not null && _listenUrl == _settings.ListenUrl)
+            await StopCoreAsync();
+            await StartCoreAsync();
+            _log.Info($"Local API listening on {_settings.ListenUrl}.");
+        }
+        finally
         {
-            return;
+            _gate.Release();
         }
-
-        await StopAsync();
-        await StartAsync();
-        _log.Info($"Local API listening on {_settings.ListenUrl}.");
     }
 
     public async Task StartAsync()
+    {
+        await _gate.WaitAsync();
+        try
+        {
+            await StartCoreAsync();
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    private async Task StartCoreAsync()
     {
         var builder = WebApplication.CreateSlimBuilder(new WebApplicationOptions
         {
@@ -131,12 +154,36 @@ internal sealed class LocalApiServer : IDisposable
             return Results.Ok(new { status = "notification_processed" });
         });
 
+        // Remembered only once it listens: a port that was taken is tried again at the next
+        // save, instead of being taken for running.
+        try
+        {
+            await app.StartAsync();
+        }
+        catch
+        {
+            await app.DisposeAsync();
+            throw;
+        }
+
         _app = app;
         _listenUrl = _settings.ListenUrl;
-        await app.StartAsync();
     }
 
     public async Task StopAsync()
+    {
+        await _gate.WaitAsync();
+        try
+        {
+            await StopCoreAsync();
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    private async Task StopCoreAsync()
     {
         if (_app is null)
         {
