@@ -83,7 +83,7 @@ internal static partial class Strings
 
             // HA persistent notifications (HA entitás nyelv)
             ["HaPn.AccessTitle"] = "HASS.Agent: ki használhatja ezen a gépen",
-            ["HaPn.AccessOpen"] = "{0}: a gép minden Windows-felhasználója olvashatja a HASS.Agent beállításait, az MQTT-jelszót és a Home Assistant tokent is, és módosíthatja az általa futtatott parancsokat. Közülük nem rendszergazda: {1}. Nyisd meg a gépen a HASS.Agent ablakát, és válaszd ki, ki használhatja (rendszergazdának jóvá kell hagynia). Addig minden ugyanúgy működik, mint eddig.",
+            ["HaPn.AccessOpen"] = "{0}: a gép minden Windows-felhasználója olvashatja a HASS.Agent beállításait, az MQTT-jelszót és a Home Assistant tokent is, és módosíthatja az általa futtatott parancsokat. Közülük nem rendszergazda, vagy nem tudható róla, hogy az: {1}. Nyisd meg a gépen a HASS.Agent ablakát, és válaszd ki, ki használhatja (rendszergazdának jóvá kell hagynia). Addig minden ugyanúgy működik, mint eddig.",
             ["HaPn.UpdateTitle"] = "HASS.Agent frissítés",
             ["HaPn.UpdateCompleted"] = "{0}: frissítve {1} → {2}.",
             ["HaPn.NoUpdate"] = "{0}: nincs elérhető frissítés.",

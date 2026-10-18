@@ -176,19 +176,17 @@ internal static class SettingsAccess
         return machine is null || parsed.AccountDomainSid != machine;
     }
 
-    // The SID of the PC itself, the domain part of every local account's SID. Looked up by the
-    // PC's name; failing that, from a local account.
+    // The SID of the PC itself, the domain part of every local account's SID.
     private static readonly Lazy<SecurityIdentifier?> MachineSid = new(FindMachineSid);
 
     private static SecurityIdentifier? FindMachineSid()
     {
-        try
+        // Asked of Windows itself: the account domain of the PC's security authority is the PC.
+        // Looking up the PC's name never gives it, and a domain-joined PC often has no enabled
+        // local account to take it from, which made every profile there a domain one.
+        if (AccountDomainSid() is { } sid)
         {
-            var sid = (SecurityIdentifier)new NTAccount(Environment.MachineName).Translate(typeof(SecurityIdentifier));
-            return sid.AccountDomainSid ?? sid;
-        }
-        catch (Exception ex) when (ex is IdentityNotMappedException or SystemException)
-        {
+            return sid;
         }
 
         if (string.Equals(Environment.UserDomainName, Environment.MachineName, StringComparison.OrdinalIgnoreCase))
@@ -199,6 +197,38 @@ internal static class SettingsAccess
         return LocalUsers().Select(TrySid).OfType<SecurityIdentifier>().FirstOrDefault()?.AccountDomainSid;
     }
 
+    /// <summary>The PC's account domain SID, as its local security authority keeps it; null when it cannot be read.</summary>
+    internal static SecurityIdentifier? AccountDomainSid()
+    {
+        var attributes = new LsaObjectAttributes { Length = Marshal.SizeOf<LsaObjectAttributes>() };
+        if (LsaOpenPolicy(IntPtr.Zero, ref attributes, PolicyViewLocalInformation, out var policy) != 0)
+        {
+            return null;
+        }
+
+        try
+        {
+            if (LsaQueryInformationPolicy(policy, PolicyAccountDomainInformation, out var buffer) != 0 || buffer == IntPtr.Zero)
+            {
+                return null;
+            }
+
+            try
+            {
+                var info = Marshal.PtrToStructure<PolicyAccountDomainInfo>(buffer);
+                return info.DomainSid == IntPtr.Zero ? null : new SecurityIdentifier(info.DomainSid);
+            }
+            finally
+            {
+                LsaFreeMemory(buffer);
+            }
+        }
+        finally
+        {
+            LsaClose(policy);
+        }
+    }
+
     /// <summary>
     /// Everyone the settings should not be limited to without asking: the local users who are
     /// not administrators, and the users from a domain or Entra ID, whom the local list does
@@ -206,15 +236,88 @@ internal static class SettingsAccess
     /// nothing from anyone, so an update does it without asking.
     /// </summary>
     public static IReadOnlyList<string> UsersNotKnownToBeAdministrators() =>
-        NonAdministratorUsers().Concat(DirectoryUsersWithProfiles()).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        NonAdministratorUsers().Concat(DirectoryUsersByRole().NotKnown).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
 
     /// <summary>The local users who are not administrators.</summary>
     public static IReadOnlyList<string> NonAdministratorUsers()
     {
-        // The group's name depends on the language of Windows ("Rendszergazdák"): looked up by its SID.
-        var administratorsGroup = ((NTAccount)Administrators.Translate(typeof(NTAccount))).Value;
-        var administrators = GroupMemberSids(administratorsGroup[(administratorsGroup.LastIndexOf('\\') + 1)..]);
+        var (_, administrators) = AdministratorsGroup();
         return LocalUsers().Where(user => TrySid(user) is not { } sid || !administrators.Contains(sid)).ToList();
+    }
+
+    /// <summary>
+    /// The users from a domain or Entra ID with a profile here, split by whether Windows shows
+    /// them to be administrators of this PC: members of its Administrators group, by their own
+    /// account or through a domain group in it (Domain Admins, say). The members of a domain
+    /// group are known from a domain controller; with none answering, and for Entra ID groups,
+    /// only the users in the group by their own account count.
+    /// </summary>
+    internal static (IReadOnlyList<string> Administrators, IReadOnlyList<string> NotKnown) DirectoryUsersByRole()
+    {
+        var (group, members) = AdministratorsGroup();
+        var administrators = new List<string>();
+        var notKnown = new List<string>();
+        foreach (var user in DirectoryUsersWithProfiles())
+        {
+            (IsAdministratorHere(user, group, members) ? administrators : notKnown).Add(user);
+        }
+
+        return (administrators, notKnown);
+    }
+
+    internal static bool IsAdministratorHere(string user, string group, IReadOnlySet<SecurityIdentifier> members)
+    {
+        if (TrySid(user) is { } sid && members.Contains(sid))
+        {
+            return true;
+        }
+
+        // A user listed by SID has no name left to ask Windows about.
+        return !user.StartsWith("S-1-", StringComparison.Ordinal)
+            && LocalGroupsOf(user).Contains(group, StringComparer.OrdinalIgnoreCase);
+    }
+
+    // The Administrators group: its name depends on the language of Windows ("Rendszergazdák"),
+    // so it is looked up by its SID.
+    private static (string Name, HashSet<SecurityIdentifier> Members) AdministratorsGroup()
+    {
+        var name = ((NTAccount)Administrators.Translate(typeof(NTAccount))).Value;
+        name = name[(name.LastIndexOf('\\') + 1)..];
+        return (name, GroupMemberSids(name));
+    }
+
+    // The local groups the user is in, also through a domain group (the domain groups come from
+    // a domain controller). Empty when Windows cannot tell.
+    private static List<string> LocalGroupsOf(string user)
+    {
+        var groups = new List<string>();
+        var status = NetUserGetLocalGroups(null, user, 0, LgIncludeIndirect, out var buffer, MaxPreferredLength, out var read, out _);
+        try
+        {
+            if (status != 0)
+            {
+                return groups;
+            }
+
+            var size = Marshal.SizeOf<LocalGroupUsersInfo0>();
+            for (var index = 0; index < read; index++)
+            {
+                var info = Marshal.PtrToStructure<LocalGroupUsersInfo0>(buffer + index * size);
+                if (!string.IsNullOrEmpty(info.Name))
+                {
+                    groups.Add(info.Name);
+                }
+            }
+        }
+        finally
+        {
+            if (buffer != IntPtr.Zero)
+            {
+                NetApiBufferFree(buffer);
+            }
+        }
+
+        return groups;
     }
 
     private static HashSet<SecurityIdentifier> GroupMemberSids(string group)
@@ -352,8 +455,12 @@ internal static class SettingsAccess
             return;
         }
 
-        var users = LocalUsers();
-        switch (OnUpdate(restricted: false, users.Count, NonAdministratorUsers().Count, DirectoryUsersWithProfiles().Count))
+        // The administrators from a domain are named too: an administrator's app runs without
+        // elevation, where the Administrators group does not count, so the folder lets each of
+        // them in by name, as the local ones.
+        var (directoryAdministrators, notKnown) = DirectoryUsersByRole();
+        var users = LocalUsers().Concat(directoryAdministrators).ToList();
+        switch (OnUpdate(restricted: false, users.Count, NonAdministratorUsers().Count, notKnown.Count))
         {
             case UpdateAction.LimitToTheUsers:
                 RestrictTo(configDirectory, users);
@@ -373,16 +480,16 @@ internal static class SettingsAccess
 
     /// <summary>
     /// What an update does with the folder. A limited one stays as it is. One open to every
-    /// user on a PC whose users are all administrators is limited to them: it changes nothing
-    /// for anyone today and keeps out a user added later. Otherwise, and on a PC where someone
-    /// from a domain or Entra ID has logged on (not a local account, so not in the list, and
-    /// not known to be an administrator), the choice is someone's to make (the app asks when
-    /// its window is opened, and Home Assistant is told), and the folder gets the rule every
-    /// install had.
+    /// user on a PC whose users are all administrators (the local ones, and those from a domain
+    /// shown to be) is limited to them: it changes nothing for anyone today and keeps out a user
+    /// added later. Otherwise, and on a PC where someone from a domain or Entra ID has logged on
+    /// who is not known to be an administrator, the choice is someone's to make (the app asks
+    /// when its window is opened, and Home Assistant is told), and the folder gets the rule
+    /// every install had.
     /// </summary>
-    internal static UpdateAction OnUpdate(bool restricted, int users, int nonAdministrators, int directoryUsers) =>
+    internal static UpdateAction OnUpdate(bool restricted, int users, int nonAdministrators, int directoryUsersNotKnown) =>
         restricted ? UpdateAction.LeaveAsItIs
-        : users > 0 && nonAdministrators == 0 && directoryUsers == 0 ? UpdateAction.LimitToTheUsers
+        : users > 0 && nonAdministrators == 0 && directoryUsersNotKnown == 0 ? UpdateAction.LimitToTheUsers
         : UpdateAction.OpenToEveryone;
 
     // Exactly this on the folder: SYSTEM and administrators full control, nothing inherited
@@ -865,6 +972,24 @@ internal static class SettingsAccess
     private const int NerrGroupExists = 2223;
     private const int ErrorMemberInAlias = 1378;
     private const int ErrorMemberNotInAlias = 1377;
+    private const int LgIncludeIndirect = 0x1;
+    private const int PolicyViewLocalInformation = 0x1;
+    private const int PolicyAccountDomainInformation = 5;
+
+    [DllImport("netapi32.dll", CharSet = CharSet.Unicode)]
+    private static extern int NetUserGetLocalGroups(string? server, string user, int level, int flags, out IntPtr buffer, int maxLength, out int entriesRead, out int totalEntries);
+
+    [DllImport("advapi32.dll")]
+    private static extern int LsaOpenPolicy(IntPtr system, ref LsaObjectAttributes attributes, int access, out IntPtr policy);
+
+    [DllImport("advapi32.dll")]
+    private static extern int LsaQueryInformationPolicy(IntPtr policy, int informationClass, out IntPtr buffer);
+
+    [DllImport("advapi32.dll")]
+    private static extern int LsaFreeMemory(IntPtr buffer);
+
+    [DllImport("advapi32.dll")]
+    private static extern int LsaClose(IntPtr policy);
 
     [DllImport("netapi32.dll", CharSet = CharSet.Unicode)]
     private static extern int NetUserEnum(string? server, int level, int filter, out IntPtr buffer, int maxLength, out int entriesRead, out int totalEntries, ref int resumeHandle);
@@ -957,5 +1082,37 @@ internal static class SettingsAccess
     private struct LocalGroupMembersInfo3
     {
         public string DomainAndName;
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct LocalGroupUsersInfo0
+    {
+        public string Name;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct LsaObjectAttributes
+    {
+        public int Length;
+        public IntPtr RootDirectory;
+        public IntPtr ObjectName;
+        public int Attributes;
+        public IntPtr SecurityDescriptor;
+        public IntPtr SecurityQualityOfService;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct LsaUnicodeString
+    {
+        public ushort Length;
+        public ushort MaximumLength;
+        public IntPtr Buffer;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct PolicyAccountDomainInfo
+    {
+        public LsaUnicodeString DomainName;
+        public IntPtr DomainSid;
     }
 }

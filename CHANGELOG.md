@@ -2,6 +2,12 @@
 
 Every release of HASS.Agent .NET10, newest first. The downloads are on the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases).
 
+## 10.10.1
+
+Hotfix: who may use the settings, on a PC joined to a domain. Works with the Home Assistant integration **10.6.7** or newer. Signed release.
+
+- **Fixed: on a domain-joined PC, administrators were reported as users who are not.** After the update to 10.10.0 Home Assistant could get a notice that the settings are open to users who are not administrators, naming the PC's own local Administrator and domain users who are administrators. The app told the local profiles from the domain ones by the PC's own SID, and on a PC with no enabled local account, as many domain-joined PCs are, it could not find that SID and took every profile for a domain one. It now asks Windows for it directly. A user from a domain is also checked for membership of the PC's Administrators group, by their own account or through a domain group such as Domain Admins, instead of counting as not known to be an administrator; on a PC where everyone is an administrator there is no notice, and the update limits the settings to them as on any other PC. The notice no longer calls a user it does not know about "not an administrator". Reported in [#119](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/119).
+
 ## 10.10.0
 
 A feature release: a system health pack of sensors, fast sensors down to 1 second and a polling profile of your own per sensor, a Media player page with announcements that are heard, a name of your own above the notifications, a security round with its recheck, and a handful of fixes. Works with the Home Assistant integration **10.6.7** or newer; the announcements, the Drive health sensor, the device classes of custom sensors and the move of the two renamed sensor keys need the integration **10.10.0**, out at the same time (an older integration keeps the renamed sensors by their old keys). Signed release.

@@ -453,7 +453,7 @@ internal sealed class MqttCompanionService : IDisposable
 
     /// <summary>
     /// Once per PC, from the tray app: the settings are still open to every user of the PC and
-    /// one of them is not an administrator. Home Assistant says so, and that the choice is made
+    /// one of them is not known to be an administrator. Home Assistant says so, and that the choice is made
     /// in the app's window (SettingsAccessForm). A marker in the settings folder keeps it to once.
     /// </summary>
     private async Task PublishSettingsAccessNoticeAsync()
@@ -493,7 +493,7 @@ internal sealed class MqttCompanionService : IDisposable
             _log.Warning($"Unable to remember the settings access notice: {ex.Message}");
         }
 
-        _log.Info($"Told Home Assistant that every user of this PC may use the settings (users who are not administrators: {string.Join(", ", others)}).");
+        _log.Info($"Told Home Assistant that every user of this PC may use the settings (users not known to be administrators: {string.Join(", ", others)}).");
     }
 
     /// <summary>A tray app runs: it reports the finished update itself.</summary>

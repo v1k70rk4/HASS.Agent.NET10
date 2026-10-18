@@ -226,10 +226,45 @@ public class SettingsAccessTests : IDisposable
     [InlineData(false, 2, 0, 0, "LimitToTheUsers")]
     [InlineData(false, 2, 1, 0, "OpenToEveryone")]   // someone else's choice
     [InlineData(false, 0, 0, 0, "OpenToEveryone")]   // no users found: as before
-    [InlineData(false, 1, 0, 1, "OpenToEveryone")]   // a domain or Entra user has logged on: not known to be an administrator
-    public void What_an_update_does_with_the_folder(bool restricted, int users, int nonAdministrators, int directoryUsers, string expected)
+    [InlineData(false, 1, 0, 1, "OpenToEveryone")]   // a domain or Entra user has logged on who is not known to be an administrator
+    public void What_an_update_does_with_the_folder(bool restricted, int users, int nonAdministrators, int directoryUsersNotKnown, string expected)
     {
-        Assert.Equal(expected, SettingsAccess.OnUpdate(restricted, users, nonAdministrators, directoryUsers).ToString());
+        Assert.Equal(expected, SettingsAccess.OnUpdate(restricted, users, nonAdministrators, directoryUsersNotKnown).ToString());
+    }
+
+    [Fact]
+    public void The_pc_s_own_sid_comes_from_windows()
+    {
+        // Also on a PC with no enabled local account, where it cannot be taken from one.
+        var machine = SettingsAccess.AccountDomainSid();
+
+        Assert.NotNull(machine);
+        Assert.StartsWith("S-1-5-21-", machine.Value);
+        if (string.Equals(Environment.UserDomainName, Environment.MachineName, StringComparison.OrdinalIgnoreCase))
+        {
+            Assert.Equal(Me.AccountDomainSid, machine);
+        }
+    }
+
+    [Fact]
+    public void A_directory_user_in_the_administrators_group_by_their_own_account_is_an_administrator()
+    {
+        // By SID, as one whose name no longer resolves is listed: no domain controller is asked.
+        var user = new SecurityIdentifier("S-1-5-21-9999-8888-7777-1105");
+        var members = new HashSet<SecurityIdentifier> { user };
+
+        Assert.True(SettingsAccess.IsAdministratorHere(user.Value, "Administrators", members));
+        Assert.False(SettingsAccess.IsAdministratorHere("S-1-5-21-9999-8888-7777-1106", "Administrators", members));
+    }
+
+    [Fact]
+    public void The_directory_users_of_this_pc_are_split_by_role()
+    {
+        var (administrators, notKnown) = SettingsAccess.DirectoryUsersByRole();
+
+        Assert.Equal(
+            SettingsAccess.DirectoryUsersWithProfiles().Order(StringComparer.OrdinalIgnoreCase),
+            administrators.Concat(notKnown).Order(StringComparer.OrdinalIgnoreCase));
     }
 
     [Theory]
