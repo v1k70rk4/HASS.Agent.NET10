@@ -46,6 +46,17 @@ public class LocalApiKeyTests
     }
 }
 
+public class HaWebSocketSubscriptionTests
+{
+    [Fact]
+    public void Only_an_administrator_or_an_unknown_user_falls_back_to_subscribe_events()
+    {
+        Assert.True(HaWebSocketService.FallsBackToSubscribeEvents(new HaTokenUser("Admin", IsAdmin: true)));
+        Assert.True(HaWebSocketService.FallsBackToSubscribeEvents(null));
+        Assert.False(HaWebSocketService.FallsBackToSubscribeEvents(new HaTokenUser("HASS.Agent PC", IsAdmin: false)));
+    }
+}
+
 /// <summary>The HA WebSocket's receive side, on a loopback socket pair: no Home Assistant needed.</summary>
 public class HaWebSocketMessageSizeTests
 {
