@@ -51,16 +51,38 @@ internal static class SafeFiles
     private static SafeFileHandle OpenOwnFile(string path, bool append)
     {
         var access = (append ? FileAppendData : GenericWrite) | FileReadAttributes | Synchronize;
+        const uint share = FileShareRead | FileShareWrite | FileShareDelete;
         for (var attempt = 0; ; attempt++)
         {
-            // Backup semantics so that a folder under the name opens too, to be looked at.
-            var handle = CreateFile(path, access, FileShareRead | FileShareWrite | FileShareDelete, IntPtr.Zero,
-                OpenAlways, FileAttributeNormal | FileFlagBackupSemantics | FileFlagOpenReparsePoint, IntPtr.Zero);
+            // What is there, as it is: backup semantics so that a folder under the name opens
+            // too, to be looked at (OPEN_EXISTING, as CreateFile wants for a folder).
+            var handle = CreateFile(path, access, share, IntPtr.Zero,
+                OpenExisting, FileAttributeNormal | FileFlagBackupSemantics | FileFlagOpenReparsePoint, IntPtr.Zero);
             if (handle.IsInvalid)
             {
                 var error = Marshal.GetLastWin32Error();
                 handle.Dispose();
-                throw new Win32Exception(error, $"{path} could not be opened");
+                if (error != ErrorFileNotFound)
+                {
+                    throw new Win32Exception(error, $"{path} could not be opened");
+                }
+
+                // Nothing under the name: a file made by this very call, so there is nothing to
+                // check on it. One that appeared in between is looked at on the next round.
+                handle = CreateFile(path, access, share, IntPtr.Zero, CreateNew, FileAttributeNormal, IntPtr.Zero);
+                if (!handle.IsInvalid)
+                {
+                    return handle;
+                }
+
+                error = Marshal.GetLastWin32Error();
+                handle.Dispose();
+                if (error == ErrorFileExists && attempt < 2)
+                {
+                    continue;
+                }
+
+                throw new Win32Exception(error, $"{path} could not be made");
             }
 
             if (!GetFileInformationByHandle(handle, out var information))
@@ -107,7 +129,10 @@ internal static class SafeFiles
     private const uint FileShareRead = 0x1;
     private const uint FileShareWrite = 0x2;
     private const uint FileShareDelete = 0x4;
-    private const uint OpenAlways = 4;
+    private const uint CreateNew = 1;
+    private const uint OpenExisting = 3;
+    private const int ErrorFileNotFound = 2;
+    private const int ErrorFileExists = 80;
     private const uint FileAttributeNormal = 0x00000080;
     private const uint FileFlagBackupSemantics = 0x02000000;
     private const uint FileFlagOpenReparsePoint = 0x00200000;
