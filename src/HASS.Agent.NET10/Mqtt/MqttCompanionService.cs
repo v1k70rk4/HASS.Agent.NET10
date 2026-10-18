@@ -15,6 +15,7 @@ using HASS.Agent.Companion.Media;
 using HASS.Agent.Companion.SystemCommands;
 using HASS.Agent.Companion.SystemStatus;
 using HASS.Agent.Companion.Runtime;
+using HASS.Agent.Companion.Security;
 using MQTTnet;
 using MQTTnet.Protocol;
 
@@ -485,7 +486,7 @@ internal sealed class MqttCompanionService : IDisposable
             string.Format(Strings.GetHa("HaPn.AccessOpen"), _settings.DeviceName, string.Join(", ", others)));
         try
         {
-            File.WriteAllText(marker, DateTimeOffset.Now.ToString("O"));
+            SafeFiles.WriteAllText(marker, DateTimeOffset.Now.ToString("O"));
         }
         catch (Exception ex)
         {

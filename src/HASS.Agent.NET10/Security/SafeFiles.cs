@@ -43,17 +43,19 @@ internal static class SafeFiles
 
     /// <summary>
     /// The file under the name, made when there is none, and only when it is a plain file
-    /// of its own: a link or a hard link found there is removed and the name is tried again.
-    /// Appending opens with append access alone, so two processes appending (the tray app
-    /// and the service share the log) never write over each other.
+    /// of its own: a link, a hard link or a folder link (a junction) found there is removed
+    /// and the name is tried again; a real folder under the name is refused. Appending opens
+    /// with append access alone, so two processes appending (the tray app and the service
+    /// share the log) never write over each other.
     /// </summary>
     private static SafeFileHandle OpenOwnFile(string path, bool append)
     {
         var access = (append ? FileAppendData : GenericWrite) | FileReadAttributes | Synchronize;
         for (var attempt = 0; ; attempt++)
         {
+            // Backup semantics so that a folder under the name opens too, to be looked at.
             var handle = CreateFile(path, access, FileShareRead | FileShareWrite | FileShareDelete, IntPtr.Zero,
-                OpenAlways, FileAttributeNormal | FileFlagOpenReparsePoint, IntPtr.Zero);
+                OpenAlways, FileAttributeNormal | FileFlagBackupSemantics | FileFlagOpenReparsePoint, IntPtr.Zero);
             if (handle.IsInvalid)
             {
                 var error = Marshal.GetLastWin32Error();
@@ -69,19 +71,25 @@ internal static class SafeFiles
             }
 
             var isLink = (information.FileAttributes & (uint)FileAttributes.ReparsePoint) != 0;
-            if (!isLink && information.NumberOfLinks <= 1)
+            var isFolder = (information.FileAttributes & (uint)FileAttributes.Directory) != 0;
+            if (!isLink && !isFolder && information.NumberOfLinks <= 1)
             {
                 return handle;
             }
 
             handle.Dispose();
+            if (isFolder && !isLink)
+            {
+                throw new IOException($"{path} is a folder; not written.");
+            }
+
             if (attempt == 2)
             {
                 throw new IOException($"{path} keeps being a link; not written.");
             }
 
             // The name only: what it pointed to stays as it is.
-            if ((information.FileAttributes & (uint)FileAttributes.Directory) != 0)
+            if (isFolder)
             {
                 Directory.Delete(path);
             }
@@ -101,6 +109,7 @@ internal static class SafeFiles
     private const uint FileShareDelete = 0x4;
     private const uint OpenAlways = 4;
     private const uint FileAttributeNormal = 0x00000080;
+    private const uint FileFlagBackupSemantics = 0x02000000;
     private const uint FileFlagOpenReparsePoint = 0x00200000;
     private const uint FileBegin = 0;
 

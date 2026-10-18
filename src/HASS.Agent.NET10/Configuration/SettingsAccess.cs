@@ -147,6 +147,18 @@ internal static class SettingsAccess
     /// </summary>
     internal static bool IsDirectoryAccount(string sid, SecurityIdentifier? machine = null)
     {
+        // A profile key that only looks like a SID (ProfileList is system data, but not trusted
+        // to be well formed) is nobody.
+        SecurityIdentifier parsed;
+        try
+        {
+            parsed = new SecurityIdentifier(sid);
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
+
         if (sid.StartsWith("S-1-12-1-", StringComparison.Ordinal))
         {
             return true;
@@ -158,15 +170,6 @@ internal static class SettingsAccess
         }
 
         machine ??= MachineSid.Value;
-        SecurityIdentifier parsed;
-        try
-        {
-            parsed = new SecurityIdentifier(sid);
-        }
-        catch (ArgumentException)
-        {
-            return false;
-        }
 
         // The PC's own SID unknown: a domain account cannot be told from a local one, and an
         // update must not take an unknown one for a local administrator.
@@ -305,10 +308,8 @@ internal static class SettingsAccess
         // that list, so it stays a member.
         // A directory user whose name no longer resolves is listed by SID, and by that SID
         // goes out as well.
-        var listed = LocalUsers().Select(TrySid)
-            .Concat(DirectoryUsersWithProfiles().Select(user =>
-                user.StartsWith("S-1-", StringComparison.Ordinal) ? new SecurityIdentifier(user) : TrySid(user)))
-            .OfType<SecurityIdentifier>().ToHashSet();
+        var listed = LocalUsers().Concat(DirectoryUsersWithProfiles())
+            .Select(TrySid).OfType<SecurityIdentifier>().ToHashSet();
         foreach (var sid in current.Except(wanted).Where(listed.Contains))
         {
             ChangeMember(sid, add: false);
@@ -824,8 +825,14 @@ internal static class SettingsAccess
         }
     }
 
+    // A name (bare for a local account, DOMAIN\user otherwise) or a SID as text, which is how
+    // a directory user whose name no longer resolves is listed. A name that does not resolve
+    // throws: a user asked for on the command line must not be dropped in silence, and
+    // RestrictTo resolves every name before it changes anything.
     private static SecurityIdentifier Sid(string user) =>
-        (SecurityIdentifier)new NTAccount(user.Contains('\\') ? user : $"{Environment.MachineName}\\{user}").Translate(typeof(SecurityIdentifier));
+        user.StartsWith("S-1-", StringComparison.Ordinal)
+            ? new SecurityIdentifier(user)
+            : (SecurityIdentifier)new NTAccount(user.Contains('\\') ? user : $"{Environment.MachineName}\\{user}").Translate(typeof(SecurityIdentifier));
 
     private static void ChangeMember(SecurityIdentifier sid, bool add)
     {

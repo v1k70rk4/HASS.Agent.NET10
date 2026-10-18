@@ -118,6 +118,38 @@ public class SafeFilesTests : IDisposable
         Assert.False(new FileInfo(link).Attributes.HasFlag(FileAttributes.ReparsePoint));
     }
 
+    [Fact]
+    public void A_folder_link_under_the_name_is_removed_and_the_file_made()
+    {
+        // A junction needs no privilege. The folder it points to must stay as it is.
+        var target = Directory.CreateDirectory(Path.Combine(_folder, "target")).FullName;
+        File.WriteAllText(Path.Combine(target, "keep.txt"), "x");
+        var link = Path.Combine(_folder, "log.txt");
+        var mklink = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("cmd.exe", $"/c mklink /J \"{link}\" \"{target}\"")
+        {
+            UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true
+        })!;
+        mklink.WaitForExit();
+        Assert.Equal(0, mklink.ExitCode);
+
+        SafeFiles.AppendAllText(link, "line\n");
+
+        Assert.Equal("line\n", File.ReadAllText(link));
+        Assert.False(new FileInfo(link).Attributes.HasFlag(FileAttributes.Directory));
+        Assert.True(File.Exists(Path.Combine(target, "keep.txt")));
+    }
+
+    [Fact]
+    public void A_real_folder_under_the_name_is_refused_and_kept()
+    {
+        var folder = Directory.CreateDirectory(Path.Combine(_folder, "log.txt")).FullName;
+        File.WriteAllText(Path.Combine(folder, "inside.txt"), "x");
+
+        Assert.Throws<IOException>(() => SafeFiles.AppendAllText(folder, "line"));
+
+        Assert.True(File.Exists(Path.Combine(folder, "inside.txt")));
+    }
+
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern bool CreateHardLink(string fileName, string existingFileName, IntPtr securityAttributes);
 }

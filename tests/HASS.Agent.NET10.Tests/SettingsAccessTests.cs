@@ -241,6 +241,8 @@ public class SettingsAccessTests : IDisposable
     [InlineData("S-1-5-19", false)]
     [InlineData("S-1-5-20", false)]
     [InlineData("not-a-sid", false)]
+    [InlineData("S-1-12-1-broken", false)]                // shaped like an Entra one, not a SID
+    [InlineData("S-1-5-21-", false)]
     public void A_profile_from_a_domain_or_entra_is_told_from_a_local_one(string sid, bool expected)
     {
         var machine = new SecurityIdentifier("S-1-5-21-1111-2222-3333");

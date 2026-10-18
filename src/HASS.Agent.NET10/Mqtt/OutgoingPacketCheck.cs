@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using HASS.Agent.Companion.Logging;
+using HASS.Agent.Companion.Security;
 using MQTTnet.Diagnostics.PacketInspection;
 
 namespace HASS.Agent.Companion.Mqtt;
@@ -261,8 +262,10 @@ internal sealed class OutgoingPacketCheck
                     : $"{Convert.ToHexString(bytes, 0, 1024)} ... {Convert.ToHexString(bytes, bytes.Length - 256, 256)}");
             }
 
+            // Through SafeFiles, as every write next to the log: the name is predictable, and a
+            // link put there beforehand must not be followed.
             var file = Path.Combine(_directory, $"mqtt-packets-{DateTime.Now:yyyyMMdd-HHmmss}-{why}.txt");
-            File.WriteAllText(file, text.ToString());
+            SafeFiles.WriteAllText(file, text.ToString());
             _log.Warning($"The last MQTT packets are in {Path.GetFileName(file)}.");
 
             foreach (var old in new DirectoryInfo(_directory).GetFiles("mqtt-packets-*.txt")
