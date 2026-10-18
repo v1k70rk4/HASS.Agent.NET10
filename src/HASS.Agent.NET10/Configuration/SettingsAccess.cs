@@ -246,8 +246,9 @@ internal static class SettingsAccess
         {
             return Sid(user);
         }
-        catch (IdentityNotMappedException)
+        catch (Exception ex) when (ex is IdentityNotMappedException or SystemException)
         {
+            // Not a name here, or a domain that cannot be asked right now.
             return null;
         }
     }
@@ -302,9 +303,12 @@ internal static class SettingsAccess
         // users with a profile, which is the list this was chosen from. Someone an administrator
         // added by other means (another group, an account that never logged on here) is not in
         // that list, so it stays a member.
-        var listed = LocalUsers()
-            .Concat(DirectoryUsersWithProfiles().Where(user => !user.StartsWith("S-1-", StringComparison.Ordinal)))
-            .Select(TrySid).OfType<SecurityIdentifier>().ToHashSet();
+        // A directory user whose name no longer resolves is listed by SID, and by that SID
+        // goes out as well.
+        var listed = LocalUsers().Select(TrySid)
+            .Concat(DirectoryUsersWithProfiles().Select(user =>
+                user.StartsWith("S-1-", StringComparison.Ordinal) ? new SecurityIdentifier(user) : TrySid(user)))
+            .OfType<SecurityIdentifier>().ToHashSet();
         foreach (var sid in current.Except(wanted).Where(listed.Contains))
         {
             ChangeMember(sid, add: false);
@@ -387,7 +391,7 @@ internal static class SettingsAccess
     // their own and inherit only that.
     internal static void SetFolderRule(string configDirectory, IEnumerable<SecurityIdentifier> users)
     {
-        MakeSafe(configDirectory);
+        var notTakenOver = MakeSafe(configDirectory);
         const InheritanceFlags inherit = InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit;
         var security = new DirectorySecurity();
         security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
@@ -410,8 +414,8 @@ internal static class SettingsAccess
         // out (one made so on purpose) still opens for its rule to be set. What still cannot
         // be done is reported at the end, after everything else has been: the folder's rule
         // stands, but the caller must not take the limiting for complete.
-        var failures = new List<string>();
-        using (TokenPrivileges.Enable(TokenPrivileges.TakeOwnership, TokenPrivileges.Restore))
+        var failures = new List<string>(notTakenOver);
+        using (TokenPrivileges.Enable(TokenPrivileges.Backup, TokenPrivileges.Restore))
         {
             ResetContents(configDirectory, new RawSecurityDescriptor(rule, 0).DiscretionaryAcl!, failures);
         }
@@ -629,7 +633,8 @@ internal static class SettingsAccess
     /// would then set. A link, here or under it, is removed (the link only, not where it
     /// points); what someone else owns is taken over by the administrators.
     /// </summary>
-    internal static void MakeSafe(string configDirectory)
+    /// <returns>The entries that could not be looked at or taken over, for the caller to report.</returns>
+    internal static IReadOnlyList<string> MakeSafe(string configDirectory)
     {
         var folder = new DirectoryInfo(configDirectory);
         if (folder.Exists && folder.Attributes.HasFlag(FileAttributes.ReparsePoint))
@@ -638,7 +643,10 @@ internal static class SettingsAccess
         }
 
         Directory.CreateDirectory(configDirectory);
-        using (TokenPrivileges.Enable(TokenPrivileges.TakeOwnership, TokenPrivileges.Restore))
+        var failures = new List<string>();
+        // Backup for the read-only opens past any rule, take-ownership for the owner, restore
+        // for the rule later: what an administrator has, and a test run as the owner does without.
+        using (TokenPrivileges.Enable(TokenPrivileges.Backup, TokenPrivileges.TakeOwnership, TokenPrivileges.Restore))
         {
             // The folder itself first, held open while its contents are done; one that became
             // a link in the meantime is left to OpenTheFolderItself, which comes back here.
@@ -646,31 +654,42 @@ internal static class SettingsAccess
             if (root is not null)
             {
                 TakeOver(root, isFolder: true, configDirectory);
-                TakeOverContents(configDirectory);
+                TakeOverContents(configDirectory, failures);
             }
         }
+
+        return failures;
     }
 
     // Entry by entry through a handle on the entry itself, like ResetContents: a link (a
     // junction, a symbolic link) is not followed and a hard link, a file under another name
     // elsewhere whose owner is that file's, is not touched; both go, the name only. A folder
     // is held open, with no one allowed to delete or rename it, while what is in it is done.
-    private static void TakeOverContents(string directory)
+    // One entry that cannot be looked at or taken over is named among the failures and the
+    // rest is still done; SetFolderRule reports them with its own.
+    private static void TakeOverContents(string directory, List<string> failures)
     {
         foreach (var entry in new DirectoryInfo(directory).EnumerateFileSystemInfos())
         {
             var isFolder = entry is DirectoryInfo;
-            using var handle = OpenEntryItself(entry.FullName, isFolder, ReadControl);
-            if (handle is null)
+            try
             {
-                entry.Delete();
-                continue;
-            }
+                using var handle = OpenEntryItself(entry.FullName, isFolder, ReadControl);
+                if (handle is null)
+                {
+                    entry.Delete();
+                    continue;
+                }
 
-            TakeOver(handle, isFolder, entry.FullName);
-            if (isFolder)
+                TakeOver(handle, isFolder, entry.FullName);
+                if (isFolder)
+                {
+                    TakeOverContents(entry.FullName, failures);
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or Win32Exception)
             {
-                TakeOverContents(entry.FullName);
+                failures.Add($"{entry.FullName}: {ex.Message}");
             }
         }
     }

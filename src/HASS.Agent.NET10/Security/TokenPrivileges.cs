@@ -14,6 +14,7 @@ internal sealed class TokenPrivileges : IDisposable
 {
     public const string TakeOwnership = "SeTakeOwnershipPrivilege";
     public const string Restore = "SeRestorePrivilege";
+    public const string Backup = "SeBackupPrivilege";
 
     private readonly IntPtr _token;
     private readonly List<Luid> _enabled = [];
