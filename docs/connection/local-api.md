@@ -1,11 +1,21 @@
 ---
 title: Local HTTP API
-description: The local HTTP API of HASS.Agent .NET10 - the notification endpoint on port 5115, the API key, and the Windows Firewall rule.
+description: The local HTTP API of HASS.Agent .NET10 - off by default, the notification endpoint on port 5115, the API key, and the Windows Firewall rule.
 ---
 
 # Local HTTP API
 
-The app runs a lightweight HTTP server on port `5115`. The integration's Local HTTP API mode uses it for notifications, and it serves the device info.
+A small HTTP server in the app for the integration's Local HTTP API mode: notifications only, for a setup with neither MQTT nor the HA API. **It is off by default**: nothing listens on the port and there is no API key until you turn it on. MQTT and the HA API do not use it.
+
+## Turning it on
+
+On the **General** page, under **Local HTTP API**, tick **Turn on the local HTTP API** and save. The app then listens on the bind address and port set there (`0.0.0.0` and `5115` by default), makes an API key and shows it with a **Copy key** button; the LAN addresses Home Assistant can reach it at are listed above it, and the tray menu gets a **Copy URL** item. Copy the key into the integration's Local HTTP API setup in Home Assistant.
+
+Turning it off stops the server and drops the key. Turning it on again makes a new key, which has to go into Home Assistant again: remove the PC from the integration and add it once more with the new key.
+
+!!! note "Upgrading from 10.9.2 or earlier"
+
+    Until 10.9.3 the server was always on and every install had a key. The upgrade turns it off on every PC. A PC that is set up in Home Assistant with the Local HTTP API needs the API turned on again on the General page, and the new key put into the integration (remove the PC there and add it again). PCs on MQTT or the HA API are not affected.
 
 **Endpoints:**
 
@@ -14,7 +24,7 @@ The app runs a lightweight HTTP server on port `5115`. The integration's Local H
 | `GET` | `/info` | | Device info and capabilities |
 | `POST` | `/notify` | Bearer | Send a notification |
 
-The `POST /notify` endpoint requires an API key in the `Authorization: Bearer <key>` header. The key is generated on the first launch and shown on the **General** page under **Network**, with a **Copy key** button; the bind address and the port are set there too. Copy it from there when setting up the Local HTTP API integration in Home Assistant.
+`POST /notify` needs the key in the `Authorization: Bearer <key>` header, and obeys the **Notifications** switch on the Capabilities page like the other two connections: while that is off it answers `403` with `notifications_disabled`, and `GET /info` reports `notifications: false`.
 
 ```powershell
 # Test from the local machine
@@ -30,7 +40,7 @@ Invoke-RestMethod http://localhost:5115/notify -Method Post -Body $body -Content
 
     `GET /info` is intentionally unauthenticated so the Home Assistant config flow can validate the connection. It only returns the device name, serial number and capability flags.
 
-The settings and the API key are stored in:
+The settings, with the key while there is one, are stored in:
 
 ```text
 C:\ProgramData\HASS.Agent.NET10\settings.json
@@ -40,9 +50,9 @@ C:\ProgramData\HASS.Agent.NET10\settings.json
 
 !!! note
 
-    If you used the installer, the firewall rule is already configured. This section is only needed for manual (non-installer) setups.
+    If you used the installer, the firewall rule is already configured. This section is only needed for manual (non-installer) setups. The rule only matters while the API is on: with it off nothing listens on the port.
 
-The local HTTP API listens on TCP port `5115`. If you run the app without the installer, allow Home Assistant to reach it from your local network:
+The local HTTP API listens on TCP port `5115` when it is on. If you run the app without the installer, allow Home Assistant to reach it from your local network:
 
 ```powershell
 New-NetFirewallRule `

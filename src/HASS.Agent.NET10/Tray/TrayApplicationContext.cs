@@ -27,6 +27,7 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
     private string? _notificationName;
     private Action? _pendingBalloonAction;
     private MainForm? _mainForm;
+    private ToolStripMenuItem? _copyUrlItem;
     private WebViewForm? _dashboardPopup;
     private readonly HotkeyService _hotkeys;
     private DateTime _dashboardClosedAt;
@@ -254,7 +255,12 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
         menu.Items.Add(Strings.Get("Tray.Dashboard"), null, (_, _) => ToggleDashboard());
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(BuildServiceMenu());
-        menu.Items.Add(Strings.Get("Tray.CopyUrl"), null, (_, _) => CopyApiUrl());
+        // The local HTTP API's address: only while there is one.
+        _copyUrlItem = new ToolStripMenuItem(Strings.Get("Tray.CopyUrl"), null, (_, _) => CopyApiUrl())
+        {
+            Visible = _settings.LocalApiEnabled
+        };
+        menu.Items.Add(_copyUrlItem);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(Strings.Get("Tray.Exit"), null, (_, _) => ExitThread());
 
@@ -294,6 +300,11 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
         {
             _hotkeys.Apply(_settings.Hotkeys);
             ApplyNotificationName();
+            if (_copyUrlItem is not null)
+            {
+                _copyUrlItem.Visible = _settings.LocalApiEnabled;
+            }
+
             SettingsSaved?.Invoke(this, EventArgs.Empty);
         };
         _mainForm.FormClosed += (_, _) => _mainForm = null;

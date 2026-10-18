@@ -83,7 +83,7 @@ The setup package is built with [Inno Setup](https://jrsoftware.org/isinfo.php).
 - **Clean install** (removes existing settings, API key, and log files — useful for a fresh start)
 - **Who may use it** (first install only): *Only me* or *Every user of this PC*, see [Who May Use It on This PC](docs/features/users.md)
 
-The installer automatically configures a **Windows Firewall** rule (Private profile, TCP port 5115) for the Local HTTP API, so manual firewall setup is not needed.
+The installer automatically configures a **Windows Firewall** rule (Private profile, TCP port 5115) for the Local HTTP API, so manual firewall setup is not needed if you turn that on (it is off by default).
 
 During upgrades the installer stops the running tray app, stops the system service if installed, replaces the files, reinstalls/starts the service, and restarts the tray app. On uninstall the firewall rule is removed automatically, and you are asked whether the settings (with the tokens and passwords in them) should go too.
 

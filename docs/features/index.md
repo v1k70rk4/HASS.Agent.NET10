@@ -24,9 +24,9 @@ description: Everything HASS.Agent .NET10 does for a Windows PC in Home Assistan
 
 ## The pages of the app
 
-A click on the tray icon opens the settings window; the tray menu also has the dashboard popup, the service's status and controls, the local API's address and **Exit**. The pages, in the order of the sidebar:
+A click on the tray icon opens the settings window; the tray menu also has the dashboard popup, the service's status and controls, the local API's address while that is on, and **Exit**. The pages, in the order of the sidebar:
 
-- **General**: the device name Home Assistant shows, the local HTTP API's address, port and API key, the UI language and the language of the entity names in Home Assistant (English or Hungarian), start on login, the notification at startup, the settings and log folder, and the **Danger Zone** switch.
+- **General**: the device name Home Assistant shows, the local HTTP API (off by default) with its address, port and API key, the UI language and the language of the entity names in Home Assistant (English or Hungarian), start on login, the notification at startup, the settings and log folder, and the **Danger Zone** switch.
 - **MQTT** and **HA API**: the two connections, each with a connection test. [Connection modes](../connection/index.md)
 - **Capabilities**: which role, the tray app or the service, handles each feature and each system command; the notification style and the custom name; the dashboard popup; the custom commands; the hotkeys; the polling intervals. [Windows service](windows-service.md)
 - **Media player**: the media player entity, the cover art, the announcements. [Media player](media-player.md)

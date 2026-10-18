@@ -47,6 +47,10 @@ internal sealed class MainForm : Form
     private readonly NumericUpDown _port = new() { Minimum = 1, Maximum = 65535 };
     private readonly CheckBox _autoStart = new();
     private readonly CheckBox _showStartup = new();
+    private readonly CheckBox _localApiEnabled = new();
+    private TextBox? _apiKeyBox;
+    private Button? _copyKeyButton;
+    private readonly List<Control> _localApiControls = [];
     private readonly ComboBox _langCombo = new() { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly ComboBox _haLangCombo = new() { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly Label _generalNotConfiguredError = new();
@@ -368,12 +372,10 @@ internal sealed class MainForm : Form
         page.Controls.Add(_generalServiceWarning);
         page.Layout += (_, _) => LayoutGeneralStatusMessages();
 
-        var card1 = MakeCard(page, 28, 64, 720, 320, S("General.Device"));
+        var card1 = MakeCard(page, 28, 64, 720, 252, S("General.Device"));
         _generalDeviceCard = card1;
         var y = 44;
         y = AddField(card1, S("General.DeviceName"), _deviceName, y);
-        y = AddField(card1, S("General.BindHost"), _bindHost, y);
-        y = AddField(card1, S("General.Port"), _port, y, inputWidth: 120);
         y = AddCheck(card1, _autoStart, S("General.AutoStart"), y + 4);
         y = AddCheck(card1, _showStartup, S("General.ShowStartup"), y);
         y += 6;
@@ -402,41 +404,60 @@ internal sealed class MainForm : Form
         _haLangCombo.Size = Sz(180, 28);
         card1.Controls.Add(_haLangCombo);
 
-        var card2 = MakeCard(page, 28, 404, 720, 194, S("General.Network"));
+        // Off unless turned on here: nothing listens and there is no key while it is off.
+        var card2 = MakeCard(page, 28, 404, 720, 318, S("General.LocalApi"));
         _generalNetworkCard = card2;
+        y = AddCheck(card2, _localApiEnabled, S("General.LocalApiEnabled"), 44);
+        var localApiHint = new Label
+        {
+            Text = S("General.LocalApiHint"), Location = Pt(20, y - 4),
+            Size = Sz(660, 20), ForeColor = TextMuted, Font = new Font("Segoe UI", 8.5F)
+        };
+        card2.Controls.Add(localApiHint);
+        y += 22;
+        y = AddField(card2, S("General.BindHost"), _bindHost, y);
+        y = AddField(card2, S("General.Port"), _port, y, inputWidth: 120);
         var urls = string.Join(Environment.NewLine, NetworkInfo.GetLanUrls(_settings.Port));
         var urlBox = new TextBox
         {
             Text = urls, ReadOnly = true, Multiline = true, ScrollBars = ScrollBars.Vertical,
-            Location = Pt(20, 44), Size = Sz(540, 52),
+            Location = Pt(20, y + 4), Size = Sz(540, 52),
             BackColor = PageBg, BorderStyle = BorderStyle.FixedSingle, Font = new Font("Segoe UI", 9F)
         };
         card2.Controls.Add(urlBox);
+        y += 60;
         var copyBtn = MakeSecondaryButton(S("General.CopyUrl"), 120, 30);
-        copyBtn.Location = Pt(20, 100);
+        copyBtn.Location = Pt(20, y);
         copyBtn.Click += (_, _) => Clipboard.SetText(NetworkInfo.GetPreferredLanUrl(_settings.Port));
         card2.Controls.Add(copyBtn);
+        y += 40;
 
         card2.Controls.Add(new Label
         {
-            Text = S("General.ApiKey"), Location = Pt(20, 140),
+            Text = S("General.ApiKey"), Location = Pt(20, y + 4),
             Size = Sz(80, 22), ForeColor = TextBody
         });
         var apiKeyBox = new TextBox
         {
-            Text = _settings.ApiKey, ReadOnly = true,
-            Location = Pt(104, 136), Size = Sz(400, 28),
+            ReadOnly = true,
+            Location = Pt(104, y), Size = Sz(400, 28),
             BackColor = PageBg, BorderStyle = BorderStyle.FixedSingle, Font = new Font("Consolas", 9F)
         };
         card2.Controls.Add(apiKeyBox);
+        _apiKeyBox = apiKeyBox;
         var copyKeyBtn = MakeSecondaryButton(S("General.CopyApiKey"), 100, 28);
-        copyKeyBtn.Location = Pt(512, 136);
+        copyKeyBtn.Location = Pt(512, y);
         copyKeyBtn.Click += (_, _) => Clipboard.SetText(_settings.ApiKey);
         card2.Controls.Add(copyKeyBtn);
+        _copyKeyButton = copyKeyBtn;
+        _localApiControls.AddRange([_bindHost, _port, urlBox, copyBtn, apiKeyBox]);
+        _localApiEnabled.CheckedChanged += (_, _) => UpdateLocalApiControls();
+        UpdateLocalApiControls();
 
         card2.Layout += (_, _) =>
         {
             var margin = D(20);
+            localApiHint.Width = Math.Max(D(200), card2.ClientSize.Width - localApiHint.Left - margin);
             urlBox.Width = Math.Max(D(160), Math.Min(D(540), card2.ClientSize.Width - urlBox.Left - margin));
             copyKeyBtn.Left = Math.Min(D(512), card2.ClientSize.Width - copyKeyBtn.Width - margin);
             apiKeyBox.Width = Math.Max(D(100), copyKeyBtn.Left - apiKeyBox.Left - D(8));
@@ -2785,6 +2806,7 @@ internal sealed class MainForm : Form
     private void LoadSettings()
     {
         _deviceName.Text = _settings.DeviceName;
+        _localApiEnabled.Checked = _settings.LocalApiEnabled;
         _bindHost.Text = _settings.BindHost;
         _port.Value = _settings.Port;
         _autoStart.Checked = _settings.AutoStartOnLogin || StartupManager.IsEnabled();
@@ -3216,6 +3238,7 @@ internal sealed class MainForm : Form
     private async Task SaveSettingsAsync()
     {
         _settings.DeviceName = _deviceName.Text.Trim();
+        _settings.LocalApiEnabled = _localApiEnabled.Checked;
         _settings.BindHost = _bindHost.Text.Trim();
         _settings.Port = (int)_port.Value;
         _settings.AutoStartOnLogin = _autoStart.Checked;
@@ -3357,6 +3380,7 @@ internal sealed class MainForm : Form
             || customCommands.Any(command => command.Enabled);
 
         SettingsStore.Save(_paths, _settings);
+        UpdateLocalApiControls();
         SettingsSaved?.Invoke(this, EventArgs.Empty);
         await ServiceApproval.RequestIfNeededAsync(this, _settings, _log);
         UpdateGeneralStatusMessages();
@@ -3468,6 +3492,31 @@ internal sealed class MainForm : Form
         };
 
         return y + 34;
+    }
+
+    /// <summary>
+    /// The address, port and key rows follow the switch. The key box shows the key the settings
+    /// hold; one that was just turned on has none until it is saved.
+    /// </summary>
+    private void UpdateLocalApiControls()
+    {
+        var on = _localApiEnabled.Checked;
+        foreach (var control in _localApiControls)
+        {
+            control.Enabled = on;
+        }
+
+        if (_apiKeyBox is not null)
+        {
+            _apiKeyBox.Text = !on ? string.Empty
+                : string.IsNullOrEmpty(_settings.ApiKey) ? S("General.ApiKeyOnSave")
+                : _settings.ApiKey;
+        }
+
+        if (_copyKeyButton is not null)
+        {
+            _copyKeyButton.Enabled = on && !string.IsNullOrEmpty(_settings.ApiKey);
+        }
     }
 
     /// <summary>y is logical. Returns the next logical y.</summary>

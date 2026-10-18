@@ -268,14 +268,76 @@ public class SettingsTests
     }
 
     [Fact]
-    public void Normalized_settings_always_have_an_api_key_and_a_serial_number()
+    public void Normalized_settings_always_have_a_serial_number()
     {
-        var settings = new CompanionSettings { ApiKey = "", SerialNumber = " " };
+        var settings = new CompanionSettings { SerialNumber = " " };
 
         settings.Normalize();
 
-        Assert.Matches("^[0-9a-f]{32}$", settings.ApiKey);
         Assert.Matches("^[0-9a-f]{32}$", settings.SerialNumber);
+    }
+
+    [Fact]
+    public void Local_api_is_off_by_default_and_has_no_key_while_off()
+    {
+        // Also what an older settings file gets: it has a key, and no switch.
+        var settings = new CompanionSettings { ApiKey = "0123456789abcdef0123456789abcdef" };
+
+        settings.Normalize();
+
+        Assert.False(settings.LocalApiEnabled);
+        Assert.Equal(string.Empty, settings.ApiKey);
+    }
+
+    [Fact]
+    public void Turning_the_local_api_on_makes_a_key_and_keeps_it()
+    {
+        var settings = new CompanionSettings { LocalApiEnabled = true };
+
+        settings.Normalize();
+        var key = settings.ApiKey;
+        settings.Normalize();
+
+        Assert.Matches("^[0-9a-f]{32}$", key);
+        Assert.Equal(key, settings.ApiKey);
+    }
+
+    [Fact]
+    public void Export_leaves_every_secret_out_and_import_makes_a_new_key()
+    {
+        var settings = new CompanionSettings
+        {
+            DeviceName = "PC-1", LocalApiEnabled = true, MqttUsername = "ha",
+            LibreHardwareMonitorUser = "lhm"
+        };
+        settings.Normalize();
+        settings.SetMqttPassword("secret-mqtt");
+        settings.SetHaApiToken("secret-token");
+        settings.SetLibreHardwareMonitorPassword("secret-lhm");
+        var keyBefore = settings.ApiKey;
+
+        var json = SettingsStore.ExportJson(settings);
+
+        Assert.DoesNotContain("secret-", json);
+        Assert.DoesNotContain(keyBefore, json);
+        using (var document = JsonDocument.Parse(json))
+        {
+            foreach (var secret in SettingsStore.SecretsLeftOutOfExport)
+            {
+                Assert.False(document.RootElement.TryGetProperty(secret, out _), secret);
+            }
+
+            Assert.Equal("PC-1", document.RootElement.GetProperty("deviceName").GetString());
+            Assert.Equal("ha", document.RootElement.GetProperty("mqttUsername").GetString());
+            Assert.Equal("lhm", document.RootElement.GetProperty("libreHardwareMonitorUser").GetString());
+        }
+
+        var imported = JsonSerializer.Deserialize<CompanionSettings>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
+        imported.Normalize();
+        Assert.True(imported.LocalApiEnabled);
+        Assert.Matches("^[0-9a-f]{32}$", imported.ApiKey);
+        Assert.NotEqual(keyBefore, imported.ApiKey);
+        Assert.Equal(string.Empty, imported.GetLibreHardwareMonitorPassword());
     }
 
     [Theory]

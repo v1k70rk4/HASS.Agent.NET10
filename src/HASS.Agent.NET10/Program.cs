@@ -190,21 +190,40 @@ internal static class Program
         {
             log.Info("Settings saved from UI.");
             _ = Task.Run(() => mqttService.RestartAsync());
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await localApi.ApplySettingsAsync();
+                }
+                catch (Exception ex)
+                {
+                    log.Error(ex, "Unable to start Local API.");
+                    trayContext.ShowStartupError(ex);
+                }
+            });
         };
         trayContext.DiscoveryRepublishHandler = mqttService.RepublishDiscoveryAsync;
         trayContext.HaTokenProbe = () => mqttService.HaTokenStatus;
         trayContext.HaUserProvisioner = mqttService.ProvisionHaUserAsync;
         trayContext.UpdateStateHandler = mqttService.ReportUpdateStateAsync;
 
-        try
+        if (settings.LocalApiEnabled)
         {
-            localApi.StartAsync().GetAwaiter().GetResult();
-            log.Info($"Local API listening on {settings.ListenUrl}.");
+            try
+            {
+                localApi.StartAsync().GetAwaiter().GetResult();
+                log.Info($"Local API listening on {settings.ListenUrl}.");
+            }
+            catch (Exception ex)
+            {
+                log.Error(ex, "Unable to start Local API.");
+                trayContext.ShowStartupError(ex);
+            }
         }
-        catch (Exception ex)
+        else
         {
-            log.Error(ex, "Unable to start Local API.");
-            trayContext.ShowStartupError(ex);
+            log.Info("Local API is off.");
         }
 
         // Detect a completed update: the previous run was a different version.
@@ -248,7 +267,9 @@ internal static class Program
             trayContext.ShowNotification(new NotificationPayload
             {
                 Title = AppIdentity.DisplayName,
-                Message = $"Home Assistant URL: {NetworkInfo.GetPreferredLanUrl(settings.Port)}"
+                Message = settings.LocalApiEnabled
+                    ? $"Home Assistant URL: {NetworkInfo.GetPreferredLanUrl(settings.Port)}"
+                    : Strings.Get("Tray.Running")
             });
         }
 

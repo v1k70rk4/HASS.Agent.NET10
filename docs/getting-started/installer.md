@@ -24,7 +24,7 @@ winget runs the installer without its wizard pages, showing only the progress, s
 - **Clean install**: removes the existing settings, API key and log files, for a fresh start
 - **Who may use it** (first install only): *Only me* or *Every user of this PC*, see [Who may use it on this PC](../features/users.md)
 
-The installer also sets up a **Windows Firewall** rule (Private profile, TCP port 5115) for the [local HTTP API](../connection/local-api.md), so no manual firewall setup is needed.
+The installer also sets up a **Windows Firewall** rule (Private profile, TCP port 5115) for the [local HTTP API](../connection/local-api.md), so no manual firewall setup is needed when you turn that on; it is off by default.
 
 ## Upgrades and uninstall
 
@@ -34,4 +34,4 @@ On uninstall the firewall rule is removed, and you are asked whether the setting
 
 ## Without the installer
 
-The zip on the releases page holds the same `HASS.Agent.NET10.exe`: start it and it runs from wherever it is, with its settings in `C:\ProgramData\HASS.Agent.NET10`. Set the firewall rule yourself if Home Assistant should reach the local HTTP API ([Windows Firewall](../connection/local-api.md#windows-firewall)), and install the service from the **Service** page.
+The zip on the releases page holds the same `HASS.Agent.NET10.exe`: start it and it runs from wherever it is, with its settings in `C:\ProgramData\HASS.Agent.NET10`. Set the firewall rule yourself if you turn on the local HTTP API ([Windows Firewall](../connection/local-api.md#windows-firewall)), and install the service from the **Service** page.

@@ -24,12 +24,42 @@ internal sealed class LocalApiServer : IDisposable
     private readonly INotificationSink _notificationSink;
     private readonly FileLog _log;
     private WebApplication? _app;
+    private string? _listenUrl;
 
     public LocalApiServer(CompanionSettings settings, INotificationSink notificationSink, FileLog log)
     {
         _settings = settings;
         _notificationSink = notificationSink;
         _log = log;
+    }
+
+    public bool IsRunning => _app is not null;
+
+    /// <summary>
+    /// Brings the server in line with the settings: started when the API was turned on, stopped
+    /// when it was turned off, restarted when its address or port changed.
+    /// </summary>
+    public async Task ApplySettingsAsync()
+    {
+        if (!_settings.LocalApiEnabled)
+        {
+            if (_app is not null)
+            {
+                await StopAsync();
+                _log.Info("Local API stopped: turned off in the settings.");
+            }
+
+            return;
+        }
+
+        if (_app is not null && _listenUrl == _settings.ListenUrl)
+        {
+            return;
+        }
+
+        await StopAsync();
+        await StartAsync();
+        _log.Info($"Local API listening on {_settings.ListenUrl}.");
     }
 
     public async Task StartAsync()
@@ -58,7 +88,7 @@ internal sealed class LocalApiServer : IDisposable
                 _settings.Model,
                 _settings.SoftwareVersion),
             new ApiCapabilitiesResponse(
-                Notifications: true,
+                Notifications: _settings.MqttNotificationsEnabled,
                 MediaPlayer: false,
                 Buttons: false,
                 SystemSensors: false,
@@ -70,6 +100,12 @@ internal sealed class LocalApiServer : IDisposable
             if (!IsAuthorized(context))
             {
                 return Results.Json(new { error = "unauthorized" }, statusCode: 401);
+            }
+
+            if (!_settings.MqttNotificationsEnabled)
+            {
+                // The same switch the MQTT and HA API notifications obey (Capabilities page).
+                return Results.Json(new { error = "notifications_disabled" }, statusCode: 403);
             }
 
             NotificationPayload? payload;
@@ -96,6 +132,7 @@ internal sealed class LocalApiServer : IDisposable
         });
 
         _app = app;
+        _listenUrl = _settings.ListenUrl;
         await app.StartAsync();
     }
 
@@ -109,6 +146,7 @@ internal sealed class LocalApiServer : IDisposable
         await _app.StopAsync(TimeSpan.FromSeconds(5));
         await _app.DisposeAsync();
         _app = null;
+        _listenUrl = null;
     }
 
     public void Dispose()
@@ -123,7 +161,7 @@ internal sealed class LocalApiServer : IDisposable
 
     internal static bool IsAuthorized(string? authorization, string? apiKey)
     {
-        // The settings always generate a key; without one nothing is let in.
+        // There is a key only while the API is on; without one nothing is let in.
         if (string.IsNullOrWhiteSpace(apiKey))
         {
             return false;

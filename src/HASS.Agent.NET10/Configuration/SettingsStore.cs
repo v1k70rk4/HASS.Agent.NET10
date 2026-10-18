@@ -124,13 +124,32 @@ internal static class SettingsStore
         Write(paths, Serialize(settings));
     }
 
-    /// <summary>Writes a portable copy of the settings. DPAPI blobs are machine-bound, so they are left out.</summary>
+    /// <summary>The settings an export leaves out: every secret, whether it would travel or not.</summary>
+    internal static readonly string[] SecretsLeftOutOfExport =
+    [
+        // DPAPI blobs, bound to this machine: useless anywhere else.
+        "mqttPasswordProtected",
+        "haApiTokenProtected",
+        "libreHardwareMonitorPasswordProtected",
+        // Plain text: whoever gets the file could send this PC notifications. Import makes a new one.
+        "apiKey",
+    ];
+
+    /// <summary>Writes a portable copy of the settings, without the secrets.</summary>
     public static void Export(CompanionSettings settings, string targetFile)
     {
+        File.WriteAllText(targetFile, ExportJson(settings));
+    }
+
+    internal static string ExportJson(CompanionSettings settings)
+    {
         var node = JsonSerializer.SerializeToNode(settings, JsonOptions)!.AsObject();
-        node.Remove("mqttPasswordProtected");
-        node.Remove("haApiTokenProtected");
-        File.WriteAllText(targetFile, node.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+        foreach (var secret in SecretsLeftOutOfExport)
+        {
+            node.Remove(secret);
+        }
+
+        return node.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
     }
 
     public static CompanionSettings Import(string sourceFile)

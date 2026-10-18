@@ -27,7 +27,7 @@ The app supports three connection modes. MQTT and the HA API can be used togethe
 
 **HA API (WebSocket)**. The app connects directly to Home Assistant's WebSocket API with a long-lived access token. Works remotely (through Nabu Casa, for example) without an MQTT broker. Almost all features work, with some trade-offs: no retained state (sensor values are lost until the app reconnects after a restart), no MQTT Last Will (no automatic offline detection), and media thumbnails are about a third larger (base64 encoding). HTTPS is required for remote access. [HA API](ha-api.md) has the events.
 
-**Local HTTP API**. A minimal fallback: the app runs a small HTTP server that Home Assistant connects to. Only notifications are supported. Requires manual setup (IP address, port, API key). Use MQTT or the HA API instead for full functionality. [Local HTTP API](local-api.md).
+**Local HTTP API**. A minimal fallback, off by default: turned on on the General page, the app runs a small HTTP server that Home Assistant connects to. Only notifications are supported. Requires manual setup (IP address, port, API key). Use MQTT or the HA API instead for full functionality. [Local HTTP API](local-api.md).
 
 <figure class="shot" markdown>
 ![The MQTT page](../images/ui-mqtt.png){ width="700" }

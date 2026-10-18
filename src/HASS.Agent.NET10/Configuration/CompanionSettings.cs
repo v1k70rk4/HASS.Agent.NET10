@@ -15,10 +15,17 @@ internal sealed class CompanionSettings
 
     public string SerialNumber { get; set; } = string.Empty;
 
+    /// <summary>
+    /// The local HTTP API (notifications from Home Assistant without MQTT or the HA API). Off
+    /// unless turned on: nothing listens on the port and there is no key while it is off.
+    /// </summary>
+    public bool LocalApiEnabled { get; set; }
+
     public string BindHost { get; set; } = "0.0.0.0";
 
     public int Port { get; set; } = 5115;
 
+    /// <summary>The bearer key of the local HTTP API; made when it is turned on, dropped when it is off.</summary>
     public string ApiKey { get; set; } = string.Empty;
 
     public bool ShowStartupNotification { get; set; }
@@ -318,7 +325,13 @@ internal sealed class CompanionSettings
             SerialNumber = Guid.NewGuid().ToString("N");
         }
 
-        if (string.IsNullOrWhiteSpace(ApiKey))
+        if (!LocalApiEnabled)
+        {
+            // No key while nothing listens: an export, a backup or a glance at the settings file
+            // gives away nothing, and turning the API on makes a fresh one.
+            ApiKey = string.Empty;
+        }
+        else if (string.IsNullOrWhiteSpace(ApiKey))
         {
             // A secret, so from the cryptographic generator: a GUID is only promised to be unique.
             // Same 32 lowercase hex characters as the keys made before.
