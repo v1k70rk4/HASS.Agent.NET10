@@ -2,7 +2,11 @@
 
 Every release of HASS.Agent .NET10, newest first. The downloads are on the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases).
 
-## Unreleased
+## 10.9.3-beta.7
+
+> **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered it, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.9.2**, below.
+
+The seventh beta of 10.9.3: what a recheck of beta.6's security round found, five points, the service's log writing first of all. Works with the integration **10.6.7** or newer; the renamed sensor keys move over cleanly with the integration **10.9.2-beta.5**. Signed release.
 
 - **Writes into the settings folder never follow a link put under the file's name.** The log (which the Windows service writes as SYSTEM), the settings file, the device id, the service's version note and its policy are opened on the name itself through one handle: a link or a hard link found there is removed, the name only, and the file is made anew. Until now the log was appended by path, so a hard link made after the folder's rule was set would have taken the service's lines into another file. Found by a recheck of beta.6's security round.
 - **Who may use it: limiting that could not be set on every file says so.** A file in the settings folder with a rule of its own that keeps even an administrator out is now opened with the restore privilege, and what still cannot be done is reported: the command exits with 1 and the window shows the failure, instead of success with the folder's rule alone. The ownership pass before the rule goes through handles too, with each subfolder held while its contents are done.

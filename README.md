@@ -2,7 +2,7 @@
 
 ![Windows](https://img.shields.io/badge/Windows-10%202004%2B%20%7C%2011-0078D4?logo=windows&logoColor=white)
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet&logoColor=white)
-![Version](https://img.shields.io/badge/version-10.9.3--beta.6-orange)
+![Version](https://img.shields.io/badge/version-10.9.3--beta.7-orange)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-MQTT%20%7C%20WebSocket%20API-41BDF5?logo=homeassistant&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/15316/badge)](https://www.bestpractices.dev/projects/15316)
@@ -26,7 +26,7 @@ It is designed for Windows PCs you want to observe and control from Home Assista
 
 The .NET10 line starts at **version 10.0.0**. The classic client is a separate program: if you want to stay with it, it is still available from its own project, and the integration keeps a [`legacy` branch](https://github.com/v1k70rk4/HASS.Agent.NET10-Integration/tree/legacy) for it. Thinking about switching? See [Coming from HASS.Agent](docs/getting-started/migrating.md).
 
-> **Stable:** [10.9.2](https://github.com/v1k70rk4/HASS.Agent.NET10/releases/latest) &nbsp;·&nbsp; **Beta:** [10.9.3-beta.6](https://github.com/v1k70rk4/HASS.Agent.NET10/releases/tag/v10.9.3-beta.6) &nbsp;·&nbsp; [What changed](#what-changed) &nbsp;·&nbsp; [Full changelog](CHANGELOG.md)
+> **Stable:** [10.9.2](https://github.com/v1k70rk4/HASS.Agent.NET10/releases/latest) &nbsp;·&nbsp; **Beta:** [10.9.3-beta.7](https://github.com/v1k70rk4/HASS.Agent.NET10/releases/tag/v10.9.3-beta.7) &nbsp;·&nbsp; [What changed](#what-changed) &nbsp;·&nbsp; [Full changelog](CHANGELOG.md)
 
 ---
 
@@ -171,12 +171,13 @@ No telemetry, analytics, or usage data is collected or transmitted.
 
 ## What Changed
 
-### 10.9.3-beta.1-6
+### 10.9.3-beta.1-7
 
 > **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered it, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.9.2**, below.
 
 Works with the integration **10.6.7** or newer; the announcements need the integration **10.9.2-beta.2** or newer, the Drive health sensor **10.9.2-beta.3** or newer, and the renamed sensor keys move over cleanly with **10.9.2-beta.5** (an older integration keeps working by the old keys). Signed release.
 
+- **The recheck of the security round (beta.7).** Writes into the settings folder, the service's log first of all, never follow a link put under the file's name; limiting *who may use it* reports a file it could not set the rule on instead of claiming success; unticking a domain or Entra ID user takes them out of the group; and the two renamed sensors, switched off, no longer go out under their old keys.
 - **A security round (beta.6).** The local HTTP API is a switch now, off on a new install, with no key while it is off; an install from before keeps it on. The settings export leaves every secret out, the local API key and the LibreHardwareMonitor password included. A message from the HA API past 1 MiB closes the connection. *Who may use it*: a hard link in the settings folder is removed instead of getting the folder's rule, a PC with a domain or Entra ID user is not limited by an update on its own, and the installer says when "Only me" could not name the user. From a security review of the app and the CodeRabbit remarks on it.
 - **Two sensor keys lost the unit in their name (beta.6):** `system_drive_free_gb` is `system_drive`, `memory_available_mb` is `memory_available`. The integration 10.9.2-beta.5 moves the entities over with their IDs and history; an older one keeps them by the old keys. Raised in [#107](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/107).
 - **Fixed (beta.6): turning MQTT off with the HA API on left the app on MQTT until a restart**; and a PC with a Home Assistant user of its own no longer leaves "Refusing to allow … to subscribe" errors in Home Assistant's log after its restart.
