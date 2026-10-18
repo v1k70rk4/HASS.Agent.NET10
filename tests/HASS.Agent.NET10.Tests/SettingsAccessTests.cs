@@ -220,15 +220,50 @@ public class SettingsAccessTests : IDisposable
     // What an update decides, without doing it: doing it on an open folder would create the
     // local group and change its members on the machine that runs the tests.
     [Theory]
-    [InlineData(true, 3, 1, "LeaveAsItIs")]       // already limited
-    [InlineData(true, 1, 0, "LeaveAsItIs")]
-    [InlineData(false, 1, 0, "LimitToTheUsers")]  // administrators only
-    [InlineData(false, 2, 0, "LimitToTheUsers")]
-    [InlineData(false, 2, 1, "OpenToEveryone")]   // someone else's choice
-    [InlineData(false, 0, 0, "OpenToEveryone")]   // no users found: as before
-    public void What_an_update_does_with_the_folder(bool restricted, int users, int nonAdministrators, string expected)
+    [InlineData(true, 3, 1, 0, "LeaveAsItIs")]       // already limited
+    [InlineData(true, 1, 0, 0, "LeaveAsItIs")]
+    [InlineData(false, 1, 0, 0, "LimitToTheUsers")]  // administrators only
+    [InlineData(false, 2, 0, 0, "LimitToTheUsers")]
+    [InlineData(false, 2, 1, 0, "OpenToEveryone")]   // someone else's choice
+    [InlineData(false, 0, 0, 0, "OpenToEveryone")]   // no users found: as before
+    [InlineData(false, 1, 0, 1, "OpenToEveryone")]   // a domain or Entra user has logged on: not known to be an administrator
+    public void What_an_update_does_with_the_folder(bool restricted, int users, int nonAdministrators, int directoryUsers, string expected)
     {
-        Assert.Equal(expected, SettingsAccess.OnUpdate(restricted, users, nonAdministrators).ToString());
+        Assert.Equal(expected, SettingsAccess.OnUpdate(restricted, users, nonAdministrators, directoryUsers).ToString());
+    }
+
+    [Theory]
+    [InlineData("S-1-5-21-1111-2222-3333-1001", false)]   // this PC's own account
+    [InlineData("S-1-5-21-1111-2222-3333-500", false)]
+    [InlineData("S-1-5-21-9999-8888-7777-1105", true)]    // a domain account
+    [InlineData("S-1-12-1-123-456-789-1011", true)]       // an Entra ID account
+    [InlineData("S-1-5-18", false)]                       // SYSTEM and the service accounts have profiles too
+    [InlineData("S-1-5-19", false)]
+    [InlineData("S-1-5-20", false)]
+    [InlineData("not-a-sid", false)]
+    public void A_profile_from_a_domain_or_entra_is_told_from_a_local_one(string sid, bool expected)
+    {
+        var machine = new SecurityIdentifier("S-1-5-21-1111-2222-3333");
+
+        Assert.Equal(expected, SettingsAccess.IsDirectoryAccount(sid, machine));
+    }
+
+    [Fact]
+    public void Without_the_machine_sid_a_domain_shaped_profile_counts_as_not_local()
+    {
+        Assert.True(SettingsAccess.IsDirectoryAccount("S-1-5-21-1111-2222-3333-1001", machine: new SecurityIdentifier("S-1-5-21-4-5-6")));
+    }
+
+    [Fact]
+    public void The_profiles_of_this_pc_can_be_listed()
+    {
+        // Whatever this PC has: the call works, and a local account never shows up as a directory one.
+        var users = SettingsAccess.DirectoryUsersWithProfiles();
+
+        if (string.Equals(Environment.UserDomainName, Environment.MachineName, StringComparison.OrdinalIgnoreCase))
+        {
+            Assert.DoesNotContain(users, user => user.EndsWith("\\" + Environment.UserName, StringComparison.OrdinalIgnoreCase));
+        }
     }
 
     [Fact]
@@ -260,6 +295,11 @@ public class SettingsAccessTests : IDisposable
     [Fact]
     public void Local_users_include_the_one_running_this()
     {
+        // The list is of local accounts; one from a domain or Entra ID is not in it by design.
+        Assert.SkipUnless(
+            string.Equals(Environment.UserDomainName, Environment.MachineName, StringComparison.OrdinalIgnoreCase),
+            "The account running the tests is not a local one.");
+
         Assert.Contains(Environment.UserName, SettingsAccess.LocalUsers(), StringComparer.OrdinalIgnoreCase);
     }
 }

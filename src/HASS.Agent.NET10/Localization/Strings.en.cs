@@ -481,6 +481,7 @@ internal static partial class Strings
             ["Access.Usage"] = "Usage: --settings-access only USER [USER ...] | everyone | open | keep",
             ["SvcMgr.ApprovalPending"] = "The approval has not finished yet. When it does, the service runs these on its own: {0}",
             ["Access.StillRunning"] = "The change has not finished yet. Open this window again in a moment to see the result.",
+            ["Access.Busy"] = "An earlier administrator run of HASS.Agent has not finished yet. Wait for it, then try again.",
             ["Access.NotForYou"] = "HASS.Agent on this PC is set up for other users, so it does not start for {0}.\n\nAn administrator can add you to the \"{1}\" group, or in HASS.Agent of an allowed user: Danger Zone, Users of this PC. This note is not shown again.",
             ["SvcMgr.ScFailed"] = "Failed to start sc.exe.",
             ["SvcMgr.AlreadyRunning"] = "The service is already running.",

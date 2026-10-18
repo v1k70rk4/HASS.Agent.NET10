@@ -457,7 +457,7 @@ internal sealed class MqttCompanionService : IDisposable
                 return;
             }
 
-            others = SettingsAccess.NonAdministratorUsers();
+            others = SettingsAccess.UsersNotKnownToBeAdministrators();
         }
         catch (Exception ex)
         {

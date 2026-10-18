@@ -33,6 +33,8 @@ internal static class CompanionServiceManager
         var result = command == "--settings-access"
             ? ChangeSettingsAccess(args.Skip(1).Where(arg => !string.Equals(arg, "--quiet", StringComparison.OrdinalIgnoreCase)).ToList())
             : ExecuteControlCommand(command, args);
+        // For whoever started this (the installer, a script): 1 when it did not do what was asked.
+        Environment.ExitCode = result.Success ? 0 : 1;
         if (!args.Any(arg => string.Equals(arg, "--quiet", StringComparison.OrdinalIgnoreCase)))
         {
             MessageBox.Show(

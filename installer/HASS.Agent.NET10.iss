@@ -62,6 +62,8 @@ english.TaskGroupAccess=Who will use HASS.Agent on this PC? (its settings hold t
 english.TaskAccessMe=Only me
 english.TaskAccessAll=Every user of this PC
 english.UninstallSettings=Remove the settings too?%n%nThey hold the Home Assistant token, the MQTT password and the API key. Keep them only if you will install HASS.Agent .NET10 again.
+english.AccessUserUnknown=Setup could not find out which user started it, so HASS.Agent .NET10 was limited to %1 only.%n%nIf that is not you, an administrator can add you in HASS.Agent: Danger Zone, Users of this PC.
+english.AccessFailed=HASS.Agent .NET10 could not be limited to the chosen users; every user of this PC can use it for now.%n%nIt can be set in HASS.Agent: Danger Zone, Users of this PC.
 
 hungarian.TaskAutostart=Automatikus indítás bejelentkezéskor
 hungarian.TaskGroupStartup=Indítás:
@@ -74,6 +76,8 @@ hungarian.TaskGroupAccess=Ki fogja használni a HASS.Agentet ezen a gépen? (a b
 hungarian.TaskAccessMe=Csak én
 hungarian.TaskAccessAll=A gép minden felhasználója
 hungarian.UninstallSettings=A beállításokat is törlöd?%n%nBennük van a Home Assistant token, az MQTT jelszó és az API kulcs. Csak akkor tartsd meg őket, ha újra telepíted a HASS.Agent .NET10-et.
+hungarian.AccessUserUnknown=A telepítő nem tudta megállapítani, melyik felhasználó indította, ezért a HASS.Agent .NET10 csak %1 számára lett korlátozva.%n%nHa ez nem te vagy, egy rendszergazda felvehet a HASS.Agentben: Danger Zone, A gép felhasználói.
+hungarian.AccessFailed=A HASS.Agent .NET10-et nem sikerült a választott felhasználókra korlátozni; egyelőre a gép minden felhasználója használhatja.%n%nA HASS.Agentben beállítható: Danger Zone, A gép felhasználói.
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
@@ -139,26 +143,45 @@ begin
   Result := ReadPreviousVersion() = '';
 end;
 
-{ The user logged on to the PC who started Setup. Setup itself may run as another account,
-  an administrator whose password was typed in; that account is added too, below. }
-function OriginalUserName(): string;
+{ The name an account answers with to "whoami": DOMAIN\name, so a domain account is named
+  in full. The file is written where the account can write and Setup can read; read only when
+  the account's own write succeeded, so a file someone else put there first is not taken. }
+function WhoAmIInto(NameFile: string; AsOriginalUser: Boolean): string;
 var
-  NameFile: string;
   Lines: TArrayOfString;
   ResultCode: Integer;
+  Ran: Boolean;
 begin
   Result := '';
-  NameFile := ExpandConstant('{tmp}\hass-agent-user.txt');
-  if ExecAsOriginalUser(ExpandConstant('{cmd}'), '/C echo %USERNAME%>"' + NameFile + '"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode)
-    and LoadStringsFromFile(NameFile, Lines) and (GetArrayLength(Lines) > 0) then
+  DeleteFile(NameFile);
+  if AsOriginalUser then
+    Ran := ExecAsOriginalUser(ExpandConstant('{cmd}'), '/C whoami>"' + NameFile + '"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode)
+  else
+    Ran := Exec(ExpandConstant('{cmd}'), '/C whoami>"' + NameFile + '"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  if Ran and (ResultCode = 0) and LoadStringsFromFile(NameFile, Lines) and (GetArrayLength(Lines) > 0) then
     Result := Trim(Lines[0]);
+  DeleteFile(NameFile);
+end;
+
+{ The account Setup runs as: the user, or an administrator whose password was typed in. }
+function SetupUserName(): string;
+begin
+  Result := WhoAmIInto(ExpandConstant('{tmp}\hass-agent-user.txt'), False);
+end;
+
+{ The user logged on to the PC who started Setup. Setup's own temp folder is the elevated
+  account's, where another user cannot write, which is exactly the case this is for; ProgramData
+  lets every user create a file. }
+function OriginalUserName(): string;
+begin
+  Result := WhoAmIInto(ExpandConstant('{commonappdata}\hass-agent-setup-user.txt'), True);
 end;
 
 function RunHidden(FileName: string; Parameters: string): Boolean;
 var
   ResultCode: Integer;
 begin
-  Result := Exec(FileName, Parameters, '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Result := Exec(FileName, Parameters, '', SW_HIDE, ewWaitUntilTerminated, ResultCode) and (ResultCode = 0);
 end;
 
 { True when the setup was started by the HASS.Agent silent self-update.
@@ -206,6 +229,7 @@ end;
 procedure EnsureConfigDirectoryPermissions();
 var
   Users: string;
+  Elevated: string;
   Original: string;
 begin
   { PreviousVersion, read before the files went in: by now this setup is registered itself.
@@ -215,11 +239,24 @@ begin
     and (CompareText(ExpandConstant('{username}'), 'SYSTEM') <> 0)
     and (Copy(ExpandConstant('{username}'), Length(ExpandConstant('{username}')), 1) <> '$') then
   begin
-    Users := '"' + ExpandConstant('{username}') + '"';
+    Elevated := SetupUserName();
+    if Elevated = '' then
+      Elevated := ExpandConstant('{username}');
+    Users := '"' + Elevated + '"';
     Original := OriginalUserName();
-    if (Original <> '') and (CompareText(Original, ExpandConstant('{username}')) <> 0) then
+    if (Original <> '') and (CompareText(Original, Elevated) <> 0) then
       Users := Users + ' "' + Original + '"';
-    RunHidden(ExpandConstant('{app}\{#MyAppExeName}'), '--settings-access only ' + Users + ' --quiet');
+    if not RunHidden(ExpandConstant('{app}\{#MyAppExeName}'), '--settings-access only ' + Users + ' --quiet') then
+    begin
+      Log('Limiting the settings to ' + Users + ' failed.');
+      MsgBox(CustomMessage('AccessFailed'), mbError, MB_OK);
+    end
+    else if Original = '' then
+    begin
+      { "Only me" with nobody known to be me but the account Setup runs as: said, not left to be found out. }
+      Log('The user who started Setup could not be determined; limited to ' + Elevated + '.');
+      MsgBox(FmtMessage(CustomMessage('AccessUserUnknown'), [Elevated]), mbInformation, MB_OK);
+    end;
   end
   else if (PreviousVersion = '') and WizardIsTaskSelected('accessall') and (not WizardSilent()) then
     RunHidden(ExpandConstant('{app}\{#MyAppExeName}'), '--settings-access everyone --quiet')

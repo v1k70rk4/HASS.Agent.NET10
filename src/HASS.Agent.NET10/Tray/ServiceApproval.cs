@@ -47,10 +47,13 @@ internal static class ServiceApproval
             log.Warning($"Unable to start the service approval: {error}");
         }
 
-        if (outcome == ElevatedOutcome.StillRunning)
+        if (outcome is ElevatedOutcome.StillRunning or ElevatedOutcome.Busy)
         {
-            // Not a refusal: the approval may still finish, and the service picks it up when it does.
-            log.Warning($"The service approval has not finished yet: {names}.");
+            // Not a refusal: the approval may still finish, and the service picks it up when it
+            // does; or an earlier administrator run is still going and this one was not started.
+            log.Warning(outcome == ElevatedOutcome.Busy
+                ? $"The service approval was not started, an earlier administrator run is still going: {names}."
+                : $"The service approval has not finished yet: {names}.");
             MessageBox.Show(owner, string.Format(Strings.Get("SvcMgr.ApprovalPending"), names), AppIdentity.DisplayName,
                 MessageBoxButtons.OK, MessageBoxIcon.Information);
             return;

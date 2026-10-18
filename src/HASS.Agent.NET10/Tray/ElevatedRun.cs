@@ -9,7 +9,10 @@ internal enum ElevatedOutcome
 {
     Finished,
     Cancelled,
+    /// <summary>Started, and not over by the end of the wait: it may still finish.</summary>
     StillRunning,
+    /// <summary>Not started: an earlier run is still going.</summary>
+    Busy,
     Failed,
 }
 
@@ -43,7 +46,7 @@ internal static class ElevatedRun
 
         if (Interlocked.CompareExchange(ref _busy, 1, 0) != 0)
         {
-            return (ElevatedOutcome.StillRunning, null);
+            return (ElevatedOutcome.Busy, null);
         }
 
         Process? process;

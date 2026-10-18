@@ -62,12 +62,19 @@ internal sealed class SettingsAccessForm : Form
                 + Strings.Get(restricted ? "Access.NowRestricted" : "Access.NowEveryone"),
         };
 
-        var current = Environment.UserName;
+        // The local accounts, then the users from a domain or Entra ID as DOMAIN\user (the ones
+        // Windows can name; a bare SID is nobody to tick). The current user is listed in the
+        // form that names them.
+        var current = string.Equals(Environment.UserDomainName, Environment.MachineName, StringComparison.OrdinalIgnoreCase)
+            ? Environment.UserName
+            : $"{Environment.UserDomainName}\\{Environment.UserName}";
         var members = SettingsAccess.Members();
-        foreach (var user in SettingsAccess.LocalUsers())
+        var listed = SettingsAccess.LocalUsers()
+            .Concat(SettingsAccess.DirectoryUsersWithProfiles().Where(user => !user.StartsWith("S-1-", StringComparison.Ordinal)));
+        foreach (var user in listed)
         {
             var isCurrent = string.Equals(user, current, StringComparison.OrdinalIgnoreCase);
-            _users.Items.Add(user, isCurrent || members.Contains(user));
+            _users.Items.Add(user, isCurrent || members.Contains(user[(user.LastIndexOf('\\') + 1)..]));
         }
 
         if (!_users.Items.Contains(current))
@@ -148,7 +155,7 @@ internal sealed class SettingsAccessForm : Form
         {
             if (settings.SettingsAccessDecided
                 || SettingsAccess.IsRestricted(paths.ConfigDirectory)
-                || SettingsAccess.NonAdministratorUsers().Count == 0)
+                || SettingsAccess.UsersNotKnownToBeAdministrators().Count == 0)
             {
                 return;
             }
@@ -270,6 +277,10 @@ internal sealed class SettingsAccessForm : Form
                 // It may still finish: not reported as a failure, and the dialog stays open.
                 _log.Warning($"The settings access change has not finished yet ({arguments}).");
                 MessageBox.Show(this, Strings.Get("Access.StillRunning"), AppIdentity.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return false;
+            case ElevatedOutcome.Busy:
+                _log.Warning($"The settings access change was not started: an earlier administrator run is still going ({arguments}).");
+                MessageBox.Show(this, Strings.Get("Access.Busy"), AppIdentity.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return false;
             case ElevatedOutcome.Failed:
                 _log.Warning($"Unable to change the settings access: {error}");

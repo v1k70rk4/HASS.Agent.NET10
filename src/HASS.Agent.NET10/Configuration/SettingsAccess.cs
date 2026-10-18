@@ -5,6 +5,7 @@ using System.Security.AccessControl;
 using System.Security.Principal;
 using HASS.Agent.Companion.Runtime;
 using HASS.Agent.Companion.Security;
+using Microsoft.Win32;
 
 namespace HASS.Agent.Companion.Configuration;
 
@@ -106,9 +107,105 @@ internal static class SettingsAccess
     }
 
     /// <summary>
-    /// The local users who are not administrators. While there are none, limiting the settings
-    /// to the users of the PC takes nothing from anyone, so an update does it without asking.
+    /// The users who have logged on to this PC with an account that is not a local one: from a
+    /// domain, or from Entra ID (a work PC). They are known from their profiles, since the local
+    /// account list does not have them, and whether they are administrators is not known either.
+    /// Named as DOMAIN\user when Windows can name them, and by their SID when it cannot.
     /// </summary>
+    public static IReadOnlyList<string> DirectoryUsersWithProfiles()
+    {
+        var users = new List<string>();
+        using var profiles = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList");
+        if (profiles is null)
+        {
+            return users;
+        }
+
+        foreach (var name in profiles.GetSubKeyNames())
+        {
+            if (!IsDirectoryAccount(name))
+            {
+                continue;
+            }
+
+            try
+            {
+                users.Add(new SecurityIdentifier(name).Translate(typeof(NTAccount)).Value);
+            }
+            catch (Exception ex) when (ex is IdentityNotMappedException or SystemException)
+            {
+                users.Add(name);
+            }
+        }
+
+        return users.Order(StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    /// <summary>
+    /// A domain account (S-1-5-21-…, with a domain other than this PC's) or an Entra ID one
+    /// (S-1-12-1-…). A deleted local account's leftover profile is neither.
+    /// </summary>
+    internal static bool IsDirectoryAccount(string sid, SecurityIdentifier? machine = null)
+    {
+        if (sid.StartsWith("S-1-12-1-", StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        if (!sid.StartsWith("S-1-5-21-", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        machine ??= MachineSid.Value;
+        SecurityIdentifier parsed;
+        try
+        {
+            parsed = new SecurityIdentifier(sid);
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
+
+        // The PC's own SID unknown: a domain account cannot be told from a local one, and an
+        // update must not take an unknown one for a local administrator.
+        return machine is null || parsed.AccountDomainSid != machine;
+    }
+
+    // The SID of the PC itself, the domain part of every local account's SID. Looked up by the
+    // PC's name; failing that, from a local account.
+    private static readonly Lazy<SecurityIdentifier?> MachineSid = new(FindMachineSid);
+
+    private static SecurityIdentifier? FindMachineSid()
+    {
+        try
+        {
+            var sid = (SecurityIdentifier)new NTAccount(Environment.MachineName).Translate(typeof(SecurityIdentifier));
+            return sid.AccountDomainSid ?? sid;
+        }
+        catch (Exception ex) when (ex is IdentityNotMappedException or SystemException)
+        {
+        }
+
+        if (string.Equals(Environment.UserDomainName, Environment.MachineName, StringComparison.OrdinalIgnoreCase))
+        {
+            return CurrentUser.Value?.AccountDomainSid;
+        }
+
+        return LocalUsers().Select(TrySid).OfType<SecurityIdentifier>().FirstOrDefault()?.AccountDomainSid;
+    }
+
+    /// <summary>
+    /// Everyone the settings should not be limited to without asking: the local users who are
+    /// not administrators, and the users from a domain or Entra ID, whom the local list does
+    /// not know. While there are none, limiting the settings to the users of the PC takes
+    /// nothing from anyone, so an update does it without asking.
+    /// </summary>
+    public static IReadOnlyList<string> UsersNotKnownToBeAdministrators() =>
+        NonAdministratorUsers().Concat(DirectoryUsersWithProfiles()).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+
+    /// <summary>The local users who are not administrators.</summary>
     public static IReadOnlyList<string> NonAdministratorUsers()
     {
         // The group's name depends on the language of Windows ("Rendszergazdák"): looked up by its SID.
@@ -246,7 +343,7 @@ internal static class SettingsAccess
         }
 
         var users = LocalUsers();
-        switch (OnUpdate(restricted: false, users.Count, NonAdministratorUsers().Count))
+        switch (OnUpdate(restricted: false, users.Count, NonAdministratorUsers().Count, DirectoryUsersWithProfiles().Count))
         {
             case UpdateAction.LimitToTheUsers:
                 RestrictTo(configDirectory, users);
@@ -267,13 +364,15 @@ internal static class SettingsAccess
     /// <summary>
     /// What an update does with the folder. A limited one stays as it is. One open to every
     /// user on a PC whose users are all administrators is limited to them: it changes nothing
-    /// for anyone today and keeps out a user added later. Otherwise the choice is someone's to
-    /// make (the app asks when its window is opened, and Home Assistant is told), and the folder
-    /// gets the rule every install had.
+    /// for anyone today and keeps out a user added later. Otherwise, and on a PC where someone
+    /// from a domain or Entra ID has logged on (not a local account, so not in the list, and
+    /// not known to be an administrator), the choice is someone's to make (the app asks when
+    /// its window is opened, and Home Assistant is told), and the folder gets the rule every
+    /// install had.
     /// </summary>
-    internal static UpdateAction OnUpdate(bool restricted, int users, int nonAdministrators) =>
+    internal static UpdateAction OnUpdate(bool restricted, int users, int nonAdministrators, int directoryUsers) =>
         restricted ? UpdateAction.LeaveAsItIs
-        : users > 0 && nonAdministrators == 0 ? UpdateAction.LimitToTheUsers
+        : users > 0 && nonAdministrators == 0 && directoryUsers == 0 ? UpdateAction.LimitToTheUsers
         : UpdateAction.OpenToEveryone;
 
     // Exactly this on the folder: SYSTEM and administrators full control, nothing inherited
