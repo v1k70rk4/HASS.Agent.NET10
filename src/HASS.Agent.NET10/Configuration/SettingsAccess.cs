@@ -295,19 +295,128 @@ internal static class SettingsAccess
             security.AddAccessRule(new FileSystemAccessRule(user, FileSystemRights.Modify | FileSystemRights.Synchronize, inherit, PropagationFlags.InheritOnly, AccessControlType.Allow));
         }
 
+        var rule = security.GetSecurityDescriptorBinaryForm();
         using var folder = OpenTheFolderItself(configDirectory);
-        if (!SetKernelObjectSecurity(folder, DaclSecurityInformation, security.GetSecurityDescriptorBinaryForm()))
+        if (!SetKernelObjectSecurity(folder, DaclSecurityInformation, rule))
         {
             throw new Win32Exception(Marshal.GetLastWin32Error());
         }
 
-        if (Directory.EnumerateFileSystemEntries(configDirectory).Any())
+        ResetContents(configDirectory, new RawSecurityDescriptor(rule, 0).DiscretionaryAcl!);
+    }
+
+    /// <summary>
+    /// What is in the folder loses any rule of its own and gets the folder's, inherited, entry
+    /// by entry through a handle opened on the entry itself. A link made since MakeSafe is
+    /// removed, not followed; so is a file that has another name elsewhere (a hard link), since
+    /// a rule set on it here would be the rule of that other file too, which is what
+    /// icacls /reset did until 10.9.3. A file another process holds open still takes the rule;
+    /// one that cannot be opened is left as it is, and does not undo what the folder has.
+    /// </summary>
+    private static void ResetContents(string directory, RawAcl folderRule)
+    {
+        foreach (var entry in new DirectoryInfo(directory).EnumerateFileSystemInfos())
         {
-            // A file another process holds open still takes the new rule; one that cannot is
-            // reported but does not undo what the folder already has. /L: a link made since
-            // MakeSafe is changed itself, never what it points to.
-            Icacls($"\"{Path.Combine(configDirectory, "*")}\" /reset /T /C /L", mustSucceed: false);
+            var isFolder = entry is DirectoryInfo;
+            var inherited = InheritedFrom(folderRule, isFolder);
+            try
+            {
+                if (!TryResetEntry(entry.FullName, isFolder, inherited))
+                {
+                    entry.Delete();
+                    continue;
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or Win32Exception)
+            {
+                continue;
+            }
+
+            if (isFolder)
+            {
+                ResetContents(entry.FullName, inherited);
+            }
         }
+    }
+
+    /// <summary>False when the entry is a link or a hard link: to be removed, not changed.</summary>
+    private static bool TryResetEntry(string path, bool isFolder, RawAcl inherited)
+    {
+        using var handle = CreateFile(path, ReadControl | WriteDac, FileShareRead | FileShareWrite | FileShareDelete, IntPtr.Zero,
+            OpenExisting, FileFlagBackupSemantics | FileFlagOpenReparsePoint, IntPtr.Zero);
+        if (handle.IsInvalid)
+        {
+            throw new Win32Exception(Marshal.GetLastWin32Error(), $"{path} could not be opened");
+        }
+
+        if (!GetFileInformationByHandle(handle, out var information))
+        {
+            throw new Win32Exception(Marshal.GetLastWin32Error());
+        }
+
+        if ((information.FileAttributes & (uint)FileAttributes.ReparsePoint) != 0 || (!isFolder && information.NumberOfLinks > 1))
+        {
+            return false;
+        }
+
+        // Not protected, so the folder's rule keeps flowing to it later; what the kernel is
+        // handed is the rule as inherited, since it propagates nothing on its own.
+        var descriptor = new CommonSecurityDescriptor(
+            isFolder, false, ControlFlags.DiscretionaryAclPresent | ControlFlags.DiscretionaryAclAutoInherited,
+            null, null, null, new DiscretionaryAcl(isFolder, false, inherited));
+        var bytes = new byte[descriptor.BinaryLength];
+        descriptor.GetBinaryForm(bytes, 0);
+        if (!SetKernelObjectSecurity(handle, DaclSecurityInformation, bytes))
+        {
+            throw new Win32Exception(Marshal.GetLastWin32Error(), $"{path} did not take the rule");
+        }
+
+        return true;
+    }
+
+    /// <summary>The rule a folder passes on to a folder or a file in it, as Windows would inherit it.</summary>
+    internal static RawAcl InheritedFrom(RawAcl folderRule, bool toFolder)
+    {
+        var acl = new RawAcl(folderRule.Revision, folderRule.Count);
+        foreach (var ace in folderRule.OfType<CommonAce>())
+        {
+            var flags = ace.AceFlags;
+            var toFolders = flags.HasFlag(AceFlags.ContainerInherit);
+            var toFiles = flags.HasFlag(AceFlags.ObjectInherit);
+            AceFlags inherited;
+            if (toFolder)
+            {
+                if (!toFolders && !toFiles)
+                {
+                    continue;
+                }
+
+                // Applies to the folder when meant for folders; passed on unless told not to.
+                inherited = AceFlags.Inherited;
+                if (!flags.HasFlag(AceFlags.NoPropagateInherit))
+                {
+                    inherited |= flags & (AceFlags.ContainerInherit | AceFlags.ObjectInherit);
+                }
+
+                if (!toFolders)
+                {
+                    inherited |= AceFlags.InheritOnly;
+                }
+            }
+            else
+            {
+                if (!toFiles)
+                {
+                    continue;
+                }
+
+                inherited = AceFlags.Inherited;
+            }
+
+            acl.InsertAce(acl.Count, new CommonAce(inherited, ace.AceQualifier, ace.AccessMask, ace.SecurityIdentifier, ace.IsCallback, ace.GetOpaque()));
+        }
+
+        return acl;
     }
 
     /// <summary>
@@ -385,7 +494,9 @@ internal static class SettingsAccess
     {
         foreach (var entry in new DirectoryInfo(directory).EnumerateFileSystemInfos())
         {
-            if (entry.Attributes.HasFlag(FileAttributes.ReparsePoint))
+            // A hard link is a file under another name elsewhere: its owner and rule are that
+            // file's, and are left alone; the name here goes.
+            if (entry.Attributes.HasFlag(FileAttributes.ReparsePoint) || (entry is FileInfo file && HasOtherNames(file.FullName)))
             {
                 entry.Delete();
                 continue;
@@ -417,6 +528,24 @@ internal static class SettingsAccess
         }
     }
 
+    /// <summary>Whether the file has more than one name (a hard link); the handle is opened on the name itself.</summary>
+    internal static bool HasOtherNames(string path)
+    {
+        using var handle = CreateFile(path, FileReadAttributes, FileShareRead | FileShareWrite | FileShareDelete, IntPtr.Zero,
+            OpenExisting, FileFlagBackupSemantics | FileFlagOpenReparsePoint, IntPtr.Zero);
+        if (handle.IsInvalid)
+        {
+            throw new Win32Exception(Marshal.GetLastWin32Error(), $"{path} could not be opened");
+        }
+
+        if (!GetFileInformationByHandle(handle, out var information))
+        {
+            throw new Win32Exception(Marshal.GetLastWin32Error());
+        }
+
+        return information.NumberOfLinks > 1;
+    }
+
     private static bool OwnerIsTrusted(FileSystemSecurity security) =>
         security.GetOwner(typeof(SecurityIdentifier)) is SecurityIdentifier owner
         && (owner == LocalSystem || owner == Administrators || owner == CurrentUser.Value);
@@ -433,25 +562,6 @@ internal static class SettingsAccess
             .Where(sid => sid != LocalSystem && sid != Administrators)
             .Distinct()
             .ToList();
-
-    private static void Icacls(string arguments, bool mustSucceed = true)
-    {
-        using var process = Process.Start(new ProcessStartInfo
-        {
-            FileName = SystemTools.InSystem32("icacls.exe"),
-            Arguments = arguments,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-        }) ?? throw new InvalidOperationException("icacls.exe did not start.");
-        var output = process.StandardOutput.ReadToEnd() + process.StandardError.ReadToEnd();
-        process.WaitForExit();
-        if (mustSucceed && process.ExitCode != 0)
-        {
-            throw new InvalidOperationException($"icacls {arguments} failed ({process.ExitCode}): {output.Trim()}");
-        }
-    }
 
     private static SecurityIdentifier EnsureGroup()
     {
@@ -530,10 +640,12 @@ internal static class SettingsAccess
     [DllImport("netapi32.dll")]
     private static extern int NetApiBufferFree(IntPtr buffer);
 
+    private const uint FileReadAttributes = 0x00000080;
     private const uint ReadControl = 0x00020000;
     private const uint WriteDac = 0x00040000;
     private const uint FileShareRead = 0x1;
     private const uint FileShareWrite = 0x2;
+    private const uint FileShareDelete = 0x4;
     private const uint OpenExisting = 3;
     private const uint FileFlagBackupSemantics = 0x02000000;
     private const uint FileFlagOpenReparsePoint = 0x00200000;
@@ -547,7 +659,7 @@ internal static class SettingsAccess
     private static extern bool GetFileInformationByHandle(Microsoft.Win32.SafeHandles.SafeFileHandle file, out ByHandleFileInformation information);
 
     // The descriptor carries the "protected" flag set by SetAccessRuleProtection; nothing is
-    // propagated to what is in the folder here, icacls does that afterwards.
+    // propagated to what is in the folder here, ResetContents does that afterwards.
     [DllImport("advapi32.dll", SetLastError = true)]
     private static extern bool SetKernelObjectSecurity(Microsoft.Win32.SafeHandles.SafeFileHandle handle, uint information, byte[] descriptor);
 

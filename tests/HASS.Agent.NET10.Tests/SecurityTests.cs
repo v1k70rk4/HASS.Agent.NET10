@@ -1,4 +1,9 @@
+using System.Net;
+using System.Net.Sockets;
+using System.Net.WebSockets;
+using System.Text;
 using HASS.Agent.Companion.Http;
+using HASS.Agent.Companion.Mqtt;
 using HASS.Agent.Companion.Security;
 
 namespace HASS.Agent.Companion.Tests;
@@ -38,6 +43,97 @@ public class LocalApiKeyTests
     {
         Assert.False(LocalApiServer.IsAuthorized("Bearer ", key));
         Assert.False(LocalApiServer.IsAuthorized("Bearer anything", key));
+    }
+}
+
+/// <summary>The HA WebSocket's receive side, on a loopback socket pair: no Home Assistant needed.</summary>
+public class HaWebSocketMessageSizeTests
+{
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task A_message_past_the_cap_closes_the_connection(bool fragmented)
+    {
+        using var pair = await SocketPair.ConnectAsync();
+        var big = Encoding.UTF8.GetBytes("{\"type\":\"event\",\"pad\":\"" + new string('x', HaWebSocketService.MaxIncomingMessage) + "\"}");
+        _ = fragmented ? pair.SendInPiecesAsync(big, 64 * 1024) : pair.Server.SendAsync(big, WebSocketMessageType.Text, true, CancellationToken.None);
+
+        var ex = await Assert.ThrowsAsync<WebSocketException>(() => HaWebSocketService.ReceiveMessageAsync(pair.Client, CancellationToken.None));
+
+        Assert.Equal(HaWebSocketService.MessageTooBig, ex.Message);
+        Assert.Equal(WebSocketState.CloseSent, pair.Client.State);
+    }
+
+    [Fact]
+    public async Task A_message_within_the_cap_is_read_whole_fragments_and_all()
+    {
+        using var pair = await SocketPair.ConnectAsync();
+        var json = Encoding.UTF8.GetBytes("{\"type\":\"pong\",\"pad\":\"" + new string('x', 200_000) + "\"}");
+        _ = pair.SendInPiecesAsync(json, 4096);
+
+        using var message = await HaWebSocketService.ReceiveMessageAsync(pair.Client, CancellationToken.None);
+
+        Assert.Equal("pong", message.RootElement.GetProperty("type").GetString());
+        Assert.Equal(200_000, message.RootElement.GetProperty("pad").GetString()!.Length);
+    }
+
+    private sealed class SocketPair : IDisposable
+    {
+        private readonly TcpClient _clientTcp;
+        private readonly TcpClient _serverTcp;
+
+        public WebSocket Client { get; }
+        public WebSocket Server { get; }
+
+        private SocketPair(TcpClient clientTcp, TcpClient serverTcp)
+        {
+            _clientTcp = clientTcp;
+            _serverTcp = serverTcp;
+            Client = WebSocket.CreateFromStream(clientTcp.GetStream(), isServer: false, subProtocol: null, keepAliveInterval: Timeout.InfiniteTimeSpan);
+            Server = WebSocket.CreateFromStream(serverTcp.GetStream(), isServer: true, subProtocol: null, keepAliveInterval: Timeout.InfiniteTimeSpan);
+        }
+
+        public static async Task<SocketPair> ConnectAsync()
+        {
+            var listener = new TcpListener(IPAddress.Loopback, 0);
+            listener.Start();
+            try
+            {
+                var accepting = listener.AcceptTcpClientAsync();
+                var client = new TcpClient();
+                await client.ConnectAsync(IPAddress.Loopback, ((IPEndPoint)listener.LocalEndpoint).Port);
+                return new SocketPair(client, await accepting);
+            }
+            finally
+            {
+                listener.Stop();
+            }
+        }
+
+        public async Task SendInPiecesAsync(byte[] message, int pieceSize)
+        {
+            try
+            {
+                for (var offset = 0; offset < message.Length; offset += pieceSize)
+                {
+                    var count = Math.Min(pieceSize, message.Length - offset);
+                    await Server.SendAsync(new ArraySegment<byte>(message, offset, count), WebSocketMessageType.Text,
+                        endOfMessage: offset + count == message.Length, CancellationToken.None);
+                }
+            }
+            catch (Exception)
+            {
+                // The receiver dropped the connection: what the test is about.
+            }
+        }
+
+        public void Dispose()
+        {
+            Client.Abort();
+            Server.Abort();
+            _clientTcp.Dispose();
+            _serverTcp.Dispose();
+        }
     }
 }
 

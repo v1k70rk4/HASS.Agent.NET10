@@ -218,8 +218,13 @@ internal sealed class HaWebSocketService : IDisposable
                 {
                     throw;
                 }
-                catch (WebSocketException)
+                catch (WebSocketException ex)
                 {
+                    if (ex.Message == MessageTooBig)
+                    {
+                        _log.Warning($"HA WebSocket: {ex.Message}");
+                    }
+
                     break;
                 }
 
@@ -1074,7 +1079,14 @@ internal sealed class HaWebSocketService : IDisposable
         return ReceiveMessageAsync(_ws, cancellationToken);
     }
 
-    private static async Task<JsonDocument> ReceiveMessageAsync(ClientWebSocket ws, CancellationToken cancellationToken)
+    /// <summary>
+    /// The most one message from the server may be, the same as over MQTT. Home Assistant's own
+    /// messages are a few kilobytes; whatever answers at the address is not trusted to keep
+    /// sending until the memory runs out.
+    /// </summary>
+    internal const int MaxIncomingMessage = MqttCompanionService.MaxIncomingPayload;
+
+    internal static async Task<JsonDocument> ReceiveMessageAsync(WebSocket ws, CancellationToken cancellationToken)
     {
         var buffer = ArrayPool<byte>.Shared.Rent(8192);
         try
@@ -1089,6 +1101,13 @@ internal sealed class HaWebSocketService : IDisposable
                     throw new WebSocketException("Server closed the connection.");
                 }
 
+                // Checked fragment by fragment: the size of a message is only known at its end.
+                if (ms.Length + result.Count > MaxIncomingMessage)
+                {
+                    await CloseTooBigAsync(ws);
+                    throw new WebSocketException(WebSocketError.Faulted, MessageTooBig);
+                }
+
                 ms.Write(buffer, 0, result.Count);
             }
             while (!result.EndOfMessage);
@@ -1101,6 +1120,22 @@ internal sealed class HaWebSocketService : IDisposable
             ArrayPool<byte>.Shared.Return(buffer);
         }
     }
+
+    // Tells the server why, when it still listens; the connection is dropped either way.
+    private static async Task CloseTooBigAsync(WebSocket ws)
+    {
+        try
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+            await ws.CloseOutputAsync(WebSocketCloseStatus.MessageTooBig, "message too big", timeout.Token);
+        }
+        catch (Exception)
+        {
+            // The connection is being dropped anyway.
+        }
+    }
+
+    internal const string MessageTooBig = "a message from the server is larger than 1 MiB; the connection was closed.";
 }
 
 /// <summary>The Home Assistant user a token belongs to.</summary>
