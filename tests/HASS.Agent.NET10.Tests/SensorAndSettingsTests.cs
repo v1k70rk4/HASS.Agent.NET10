@@ -278,6 +278,51 @@ public class SettingsTests
     }
 
     [Fact]
+    public void A_sensor_key_of_before_is_read_as_the_renamed_one()
+    {
+        var settings = new CompanionSettings
+        {
+            BuiltInSensors =
+            [
+                new BuiltInSensorSetting { Key = "system_drive_free_gb", Service = false, TrayApp = true, PollingProfile = "hourly" },
+                new BuiltInSensorSetting { Key = "memory_available_mb", Service = false, TrayApp = false },
+            ],
+            CustomSensors =
+            [
+                new CustomSensorDefinition { Id = "a", Name = "Drive size", Type = CustomSensorTypes.BuiltInAttribute, Parameter = "system_drive_free_gb.total_gb", Service = true },
+                new CustomSensorDefinition { Id = "b", Name = "Free", Type = CustomSensorTypes.BuiltInAttribute, Parameter = "memory_available_mb", Service = true },
+            ]
+        };
+
+        settings.Normalize();
+
+        var drive = Assert.Single(settings.BuiltInSensors, sensor => sensor.Key == "system_drive");
+        Assert.True(drive.TrayApp);
+        Assert.False(drive.Service);
+        Assert.Equal("hourly", drive.PollingProfile);
+        var memory = Assert.Single(settings.BuiltInSensors, sensor => sensor.Key == "memory_available");
+        Assert.False(memory.TrayApp);
+        Assert.DoesNotContain(settings.BuiltInSensors, sensor => sensor.Key is "system_drive_free_gb" or "memory_available_mb");
+        Assert.Equal("system_drive.total_gb", settings.CustomSensors[0].Parameter);
+        Assert.Equal("memory_available", settings.CustomSensors[1].Parameter);
+    }
+
+    [Fact]
+    public void The_catalog_knows_the_keys_of_before_but_does_not_list_them()
+    {
+        Assert.Equal("system_drive", BuiltInSensorCatalog.CurrentKey("system_drive_free_gb"));
+        Assert.Equal("cpu_usage", BuiltInSensorCatalog.CurrentKey("cpu_usage"));
+        Assert.Equal("memory_available_mb", BuiltInSensorCatalog.FormerKey("memory_available"));
+        Assert.Null(BuiltInSensorCatalog.FormerKey("cpu_usage"));
+        Assert.Equal("system_drive", BuiltInSensorCatalog.Find("system_drive_free_gb")?.Key);
+        Assert.All(BuiltInSensorCatalog.RenamedKeys, pair =>
+        {
+            Assert.DoesNotContain(pair.Key, BuiltInSensorCatalog.AllKeys);
+            Assert.Contains(pair.Value, BuiltInSensorCatalog.AllKeys);
+        });
+    }
+
+    [Fact]
     public void Local_api_is_off_by_default_and_has_no_key_while_off()
     {
         var settings = new CompanionSettings { ApiKey = "0123456789abcdef0123456789abcdef" };

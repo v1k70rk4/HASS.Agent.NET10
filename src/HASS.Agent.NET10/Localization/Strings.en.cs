@@ -504,9 +504,9 @@ internal static partial class Strings
             // Built-in sensors
             ["Sensor.cpu_usage"] = "CPU usage",
             ["Sensor.memory_usage"] = "Memory usage",
-            ["Sensor.memory_available_mb"] = "Available memory",
+            ["Sensor.memory_available"] = "Available memory",
             ["Sensor.system_drive_free_percent"] = "System drive free %",
-            ["Sensor.system_drive_free_gb"] = "System drive free space",
+            ["Sensor.system_drive"] = "System drive free space",
             ["Sensor.uptime_seconds"] = "Uptime",
             ["Sensor.battery_level"] = "Battery level",
             ["Sensor.power_status"] = "Power status",

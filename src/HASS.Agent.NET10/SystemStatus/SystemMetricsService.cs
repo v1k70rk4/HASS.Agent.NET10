@@ -204,12 +204,12 @@ internal sealed class SystemMetricsService : IDisposable
         var activeWindowDue = Due("active_window", "active_process", "foreground_app_title") && _includeInteractiveMetrics;
         var sessionLockedDue = Due("session_locked", "user_present") && _includeInteractiveMetrics;
 
-        var memory = Due("memory_usage", "memory_available_mb") ? Safe(ReadMemoryCounted, (UsagePercent: previous?.MemoryUsage ?? 0, AvailableMb: previous?.MemoryAvailableMb ?? 0, TotalMb: _memoryTotalMb)) : (UsagePercent: previous!.MemoryUsage, AvailableMb: previous.MemoryAvailableMb, TotalMb: _memoryTotalMb);
+        var memory = Due("memory_usage", "memory_available") ? Safe(ReadMemoryCounted, (UsagePercent: previous?.MemoryUsage ?? 0, AvailableMb: previous?.MemoryAvailableMb ?? 0, TotalMb: _memoryTotalMb)) : (UsagePercent: previous!.MemoryUsage, AvailableMb: previous.MemoryAvailableMb, TotalMb: _memoryTotalMb);
         _memoryTotalMb = memory.TotalMb;
         var activeWindow = activeWindowDue ? Safe(ReadActiveWindow, (Title: previous?.ActiveWindow ?? string.Empty, ProcessName: previous?.ActiveProcess ?? string.Empty)) : (Title: previous?.ActiveWindow ?? string.Empty, ProcessName: previous?.ActiveProcess ?? string.Empty);
         var sessionLocked = sessionLockedDue ? Safe(ReadSessionLocked, previous?.SessionLocked) : previous?.SessionLocked;
 
-        var drive = Due("system_drive_free_percent", "system_drive_free_gb") ? Safe(ReadSystemDrive, (FreePercent: previous?.SystemDriveFreePercent ?? 0, FreeGb: previous?.SystemDriveFreeGb ?? 0, TotalGb: _driveTotalGb, Drive: _driveLetter)) : (FreePercent: previous!.SystemDriveFreePercent, FreeGb: previous.SystemDriveFreeGb, TotalGb: _driveTotalGb, Drive: _driveLetter);
+        var drive = Due("system_drive_free_percent", "system_drive") ? Safe(ReadSystemDrive, (FreePercent: previous?.SystemDriveFreePercent ?? 0, FreeGb: previous?.SystemDriveFreeGb ?? 0, TotalGb: _driveTotalGb, Drive: _driveLetter)) : (FreePercent: previous!.SystemDriveFreePercent, FreeGb: previous.SystemDriveFreeGb, TotalGb: _driveTotalGb, Drive: _driveLetter);
         _driveTotalGb = drive.TotalGb;
         _driveLetter = drive.Drive;
 
@@ -372,9 +372,9 @@ internal sealed class SystemMetricsService : IDisposable
         var message = new SystemMetricsMessage(
             CpuUsage: Shown("cpu_usage") ? (Due("cpu_usage") ? Safe(ReadCpuUsage, previous?.CpuUsage ?? 0) : previous!.CpuUsage) : previous!.CpuUsage,
             MemoryUsage: Shown("memory_usage") ? (memory.UsagePercent) : previous!.MemoryUsage,
-            MemoryAvailableMb: Shown("memory_available_mb") ? (memory.AvailableMb) : previous!.MemoryAvailableMb,
+            MemoryAvailableMb: Shown("memory_available") ? (memory.AvailableMb) : previous!.MemoryAvailableMb,
             SystemDriveFreePercent: Shown("system_drive_free_percent") ? (drive.FreePercent) : previous!.SystemDriveFreePercent,
-            SystemDriveFreeGb: Shown("system_drive_free_gb") ? (drive.FreeGb) : previous!.SystemDriveFreeGb,
+            SystemDriveFreeGb: Shown("system_drive") ? (drive.FreeGb) : previous!.SystemDriveFreeGb,
             UptimeSeconds: Shown("uptime_seconds") ? (Due("uptime_seconds") ? Math.Max(0, Environment.TickCount64 / 1000) : previous!.UptimeSeconds) : previous!.UptimeSeconds,
             // Null, not empty: a role that cannot measure these (the service runs without
             // interactive metrics) must leave them out of the payload entirely. The
@@ -2121,6 +2121,8 @@ internal sealed class SystemMetricsService : IDisposable
                 ["free_gb"] = drive.FreeGb
             };
             attributes["system_drive_free_percent"] = driveTotals;
+            attributes["system_drive"] = driveTotals;
+            // Under the key of before too, for an integration from before (BuiltInSensorCatalog.RenamedKeys).
             attributes["system_drive_free_gb"] = driveTotals;
         }
 
@@ -2700,9 +2702,9 @@ internal sealed class SystemMetricsService : IDisposable
 internal sealed record SystemMetricsMessage(
     [property: JsonPropertyName("cpu_usage")] double CpuUsage,
     [property: JsonPropertyName("memory_usage")] double MemoryUsage,
-    [property: JsonPropertyName("memory_available_mb")] long MemoryAvailableMb,
+    [property: JsonPropertyName("memory_available")] long MemoryAvailableMb,
     [property: JsonPropertyName("system_drive_free_percent")] double SystemDriveFreePercent,
-    [property: JsonPropertyName("system_drive_free_gb")] double SystemDriveFreeGb,
+    [property: JsonPropertyName("system_drive")] double SystemDriveFreeGb,
     [property: JsonPropertyName("uptime_seconds")] long UptimeSeconds,
     [property: JsonPropertyName("active_window")] string? ActiveWindow,
     [property: JsonPropertyName("active_process")] string? ActiveProcess,
@@ -2748,7 +2750,16 @@ internal sealed record SystemMetricsMessage(
     [property: JsonPropertyName("boot_time")] DateTimeOffset BootTime,
     [property: JsonPropertyName("custom_sensors")] IReadOnlyList<CustomSensorState> CustomSensors,
     [property: JsonPropertyName("attributes")] IReadOnlyDictionary<string, IReadOnlyDictionary<string, object?>> Attributes,
-    [property: JsonPropertyName("updated_at")] DateTimeOffset UpdatedAt);
+    [property: JsonPropertyName("updated_at")] DateTimeOffset UpdatedAt)
+{
+    // The two renamed sensors under their keys of before as well, for an integration from
+    // before 10.9.2-beta.5 (BuiltInSensorCatalog.RenamedKeys); a newer one reads the new keys.
+    [JsonPropertyName("memory_available_mb")]
+    public long MemoryAvailableMbLegacy => MemoryAvailableMb;
+
+    [JsonPropertyName("system_drive_free_gb")]
+    public double SystemDriveFreeGbLegacy => SystemDriveFreeGb;
+}
 
 internal sealed record NetworkAddressInfo(
     [property: JsonPropertyName("adapter")] string Adapter,

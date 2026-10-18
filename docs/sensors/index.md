@@ -21,9 +21,9 @@ The **Default** column shows whether a fresh install starts with the sensor swit
 | CPU usage | fast | yes | yes | on |
 | GPU usage | normal | yes | yes | off |
 | Memory usage | fast | yes | yes | on |
-| Available memory (MB) | fast | yes | yes | on |
+| Available memory | fast | yes | yes | on |
 | System drive free % | normal | yes | yes | on |
-| System drive free (GB) | normal | yes | yes | on |
+| System drive free space | normal | yes | yes | on |
 | Drive health | normal | yes | | on |
 | Uptime | normal | yes | yes | on |
 | Boot time | startup | yes | yes | on |

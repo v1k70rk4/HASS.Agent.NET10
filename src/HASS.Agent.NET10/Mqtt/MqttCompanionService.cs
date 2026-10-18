@@ -2226,7 +2226,7 @@ internal sealed class MqttCompanionService : IDisposable
 
     private IReadOnlyList<BuiltInSensorDescriptor> BuildStandardSensorDescriptors(bool serviceRole)
     {
-        return _settings.BuiltInSensors
+        var descriptors = _settings.BuiltInSensors
             .Where(sensor => serviceRole ? sensor.Service : sensor.TrayApp)
             .Select(sensor => BuiltInSensorCatalog.Find(sensor.Key))
             .Where(sensor => sensor is not null)
@@ -2239,6 +2239,19 @@ internal sealed class MqttCompanionService : IDisposable
                 sensor.AttributePaths,
                 sensor.DeviceClass,
                 sensor.Options))
+            .ToList();
+
+        // A renamed sensor is advertised under its key of before as well, with the same name:
+        // an integration from before keeps its entity by it, a newer one folds it into the new.
+        return descriptors.Concat(descriptors
+            .Select(descriptor => (Descriptor: descriptor, Former: BuiltInSensorCatalog.FormerKey(descriptor.Key)))
+            .Where(pair => pair.Former is not null)
+            .Select(pair => pair.Descriptor with
+            {
+                Key = pair.Former!,
+                DefaultAttributePath = pair.Descriptor.DefaultAttributePath is { } path ? pair.Former + path[pair.Descriptor.Key.Length..] : null,
+                AttributePaths = pair.Descriptor.AttributePaths?.Select(path => pair.Former + path[pair.Descriptor.Key.Length..]).ToList(),
+            }))
             .ToList();
     }
 

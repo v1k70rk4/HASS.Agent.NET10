@@ -504,9 +504,9 @@ internal static partial class Strings
             // Built-in sensors
             ["Sensor.cpu_usage"] = "CPU terhelés",
             ["Sensor.memory_usage"] = "Memória használat",
-            ["Sensor.memory_available_mb"] = "Szabad memória",
+            ["Sensor.memory_available"] = "Szabad memória",
             ["Sensor.system_drive_free_percent"] = "Rendszermeghajtó szabad %",
-            ["Sensor.system_drive_free_gb"] = "Rendszermeghajtó szabad hely",
+            ["Sensor.system_drive"] = "Rendszermeghajtó szabad hely",
             ["Sensor.uptime_seconds"] = "Uptime",
             ["Sensor.battery_level"] = "Akkumulátor",
             ["Sensor.power_status"] = "Tápellátás",

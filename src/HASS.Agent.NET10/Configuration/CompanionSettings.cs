@@ -492,6 +492,12 @@ internal sealed class CompanionSettings
                 continue;
             }
 
+            if (sensor.IsBuiltInAttribute)
+            {
+                // Made before the sensor was renamed: follows it.
+                sensor.Parameter = BuiltInSensorCatalog.CurrentAttributePath(sensor.Parameter);
+            }
+
             // An attribute of a built-in sensor can only come from a role that reads that
             // sensor: the drive health is the service's alone, the active window the app's.
             // Ticked for the other role, the sensor would publish nothing and blank the value.
@@ -583,6 +589,8 @@ internal sealed class CompanionSettings
 
     private static List<BuiltInSensorSetting> NormalizeBuiltInSensors(List<BuiltInSensorSetting>? sensors)
     {
+        // A sensor named by a key of before is the renamed one.
+        sensors?.ForEach(sensor => sensor.Key = BuiltInSensorCatalog.CurrentKey(sensor.Key));
         var byKey = sensors?
             .Where(sensor => BuiltInSensorCatalog.AllKeys.Contains(sensor.Key))
             .GroupBy(sensor => sensor.Key, StringComparer.OrdinalIgnoreCase)

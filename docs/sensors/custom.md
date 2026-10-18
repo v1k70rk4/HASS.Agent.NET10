@@ -120,7 +120,7 @@ The editor's list offers every path this PC has, with the unit filled in when it
 | GPU usage | `gpu_usage.adapters[0].usage` | This adapter's load (%) |
 | GPU usage | `gpu_usage.adapters[1].engines.3d` | The second adapter's 3D engine load (%) |
 | Memory usage | `memory_usage.total_gb` | Installed memory (GB) |
-| System drive free | `system_drive_free_gb.total_gb` | The system drive's size (GB) |
+| System drive free | `system_drive.total_gb` | The system drive's size (GB) |
 | Drive health | `drive_health.temperature` | The system drive's temperature (°C) |
 | Drive health | `drive_health.drives[0].power_on_hours` | The first drive's power-on hours (h) |
 | Drive health | `drive_health.drives[1].health` | The second drive's health |

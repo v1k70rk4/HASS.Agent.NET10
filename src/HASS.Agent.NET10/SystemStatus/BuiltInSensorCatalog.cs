@@ -57,15 +57,15 @@ internal static class BuiltInSensorCatalog
             "memory_usage.used_gb",
             "memory_usage.available_gb"
         ]),
-        new("memory_available_mb", SupportsService: true, SupportsTrayApp: true, SensorPollingProfile.Fast),
+        new("memory_available", SupportsService: true, SupportsTrayApp: true, SensorPollingProfile.Fast),
         new("system_drive_free_percent", SupportsService: true, SupportsTrayApp: true, SensorPollingProfile.Normal),
         // The drive's totals hang on both system drive sensors; the list is on one of them
         // so that the Attributes button does not make the same sensors twice.
-        new("system_drive_free_gb", SupportsService: true, SupportsTrayApp: true, SensorPollingProfile.Normal,
+        new("system_drive", SupportsService: true, SupportsTrayApp: true, SensorPollingProfile.Normal,
         [
-            "system_drive_free_gb.drive",
-            "system_drive_free_gb.total_gb",
-            "system_drive_free_gb.used_gb"
+            "system_drive.drive",
+            "system_drive.total_gb",
+            "system_drive.used_gb"
         ]),
         // Windows' own drive health data (what Get-StorageReliabilityCounter shows) needs
         // administrator rights, which the service has. NVMe drives report it; a SATA drive
@@ -206,8 +206,36 @@ internal static class BuiltInSensorCatalog
         .Select(sensor => sensor.Key)
         .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// Keys renamed in 10.9.3 (old → new): the unit had no place in the key once the
+    /// attributes came in other units (system_drive_free_gb.total_gb). The old key is still
+    /// published and advertised next to the new one, so an integration from before keeps its
+    /// entity; a newer one maps it to the new key and moves the entity over, history and all.
+    /// Settings that name the old key are read as the new one.
+    /// </summary>
+    public static IReadOnlyDictionary<string, string> RenamedKeys { get; } = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["system_drive_free_gb"] = "system_drive",
+        ["memory_available_mb"] = "memory_available",
+    };
+
+    /// <summary>The key as it is today, for one from a settings file or an attribute path of before.</summary>
+    public static string CurrentKey(string key) => RenamedKeys.TryGetValue(key, out var renamed) ? renamed : key;
+
+    /// <summary>The key the sensor was published under before it was renamed, or null.</summary>
+    public static string? FormerKey(string key) =>
+        RenamedKeys.FirstOrDefault(pair => string.Equals(pair.Value, key, StringComparison.OrdinalIgnoreCase)).Key;
+
+    /// <summary>An attribute path ("system_drive_free_gb.total_gb") with the sensor's current key in front.</summary>
+    public static string CurrentAttributePath(string path)
+    {
+        var dot = path.IndexOf('.');
+        return dot > 0 ? CurrentKey(path[..dot]) + path[dot..] : CurrentKey(path);
+    }
+
     public static BuiltInSensorDefinition? Find(string key)
     {
+        key = CurrentKey(key);
         return Sensors.FirstOrDefault(sensor => string.Equals(sensor.Key, key, StringComparison.OrdinalIgnoreCase));
     }
 
