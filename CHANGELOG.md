@@ -2,6 +2,14 @@
 
 Every release of HASS.Agent .NET10, newest first. The downloads are on the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases).
 
+## Unreleased
+
+- **Writes into the settings folder never follow a link put under the file's name.** The log (which the Windows service writes as SYSTEM), the settings file, the device id, the service's version note and its policy are opened on the name itself through one handle: a link or a hard link found there is removed, the name only, and the file is made anew. Until now the log was appended by path, so a hard link made after the folder's rule was set would have taken the service's lines into another file. Found by a recheck of beta.6's security round.
+- **Who may use it: limiting that could not be set on every file says so.** A file in the settings folder with a rule of its own that keeps even an administrator out is now opened with the restore privilege, and what still cannot be done is reported: the command exits with 1 and the window shows the failure, instead of success with the folder's rule alone. The ownership pass before the rule goes through handles too, with each subfolder held while its contents are done.
+- **Who may use it: unticking a domain or Entra ID user takes them out of the group.** Only local accounts were taken out before, so such a user kept access through the group after being unticked.
+- **Fixed: the two renamed sensors, switched off, still went out under their old keys.** The filter that leaves switched-off sensors out of the payload removes the key of before as well.
+- **The service approval says when it was not started** because an earlier administrator run is still going, instead of promising an approval that is not coming from it.
+
 ## 10.9.3-beta.6
 
 > **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered it, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.9.2**, below.

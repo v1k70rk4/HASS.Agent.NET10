@@ -25,6 +25,6 @@ HASS.Agent.NET10.exe --settings-access only USER [USER ...]
 HASS.Agent.NET10.exe --settings-access everyone
 ```
 
-A user from a domain or Entra ID is given as `DOMAIN\user`. The exit code is 1 when the change could not be made.
+A user from a domain or Entra ID is given as `DOMAIN\user`. The exit code is 1 when the change could not be made, also when the folder took the rule but a file in it did not; the message names the file.
 
 What is at stake is named in the question itself: the MQTT password opens the whole broker, and the Home Assistant token can do whatever its user can. [Security and privacy](../getting-started/security.md) has the rest.

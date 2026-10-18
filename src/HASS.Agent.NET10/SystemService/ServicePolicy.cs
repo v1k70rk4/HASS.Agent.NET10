@@ -6,6 +6,8 @@ using HASS.Agent.Companion.Configuration;
 using HASS.Agent.Companion.SystemCommands;
 using HASS.Agent.Companion.SystemStatus;
 
+using HASS.Agent.Companion.Security;
+
 namespace HASS.Agent.Companion.SystemService;
 
 /// <summary>
@@ -121,7 +123,7 @@ internal sealed class ServicePolicy
     public void Save(string path)
     {
         var temporary = path + ".tmp";
-        File.WriteAllText(temporary, JsonSerializer.Serialize(this, JsonOptions));
+        SafeFiles.WriteAllText(temporary, JsonSerializer.Serialize(this, JsonOptions));
         File.Move(temporary, path, overwrite: true);
     }
 

@@ -1,5 +1,8 @@
 using System.Text.Json;
+using System.Runtime.InteropServices;
+using System.Text;
 using HASS.Agent.Companion.Configuration;
+using HASS.Agent.Companion.Security;
 using HASS.Agent.Companion.Logging;
 using HASS.Agent.Companion.Runtime;
 using HASS.Agent.Companion.SystemStatus;
@@ -51,6 +54,74 @@ public class SystemToolsTests : IDisposable
     }
 }
 
+/// <summary>Writes into the shared folder never follow a link planted under the name.</summary>
+public class SafeFilesTests : IDisposable
+{
+    private readonly string _folder = Directory.CreateTempSubdirectory("hass-agent-safefiles-").FullName;
+
+    public void Dispose() => Directory.Delete(_folder, recursive: true);
+
+    [Fact]
+    public void Append_and_write_make_the_file_and_keep_its_bytes_plain()
+    {
+        var path = Path.Combine(_folder, "log.txt");
+
+        SafeFiles.AppendAllText(path, "one\n");
+        SafeFiles.AppendAllText(path, "two\n");
+
+        Assert.Equal("one\ntwo\n", File.ReadAllText(path));
+
+        SafeFiles.WriteAllText(path, "árvíztűrő");
+
+        Assert.Equal("árvíztűrő", File.ReadAllText(path));
+        Assert.Equal(Encoding.UTF8.GetBytes("árvíztűrő"), File.ReadAllBytes(path)); // no byte order mark
+    }
+
+    [Fact]
+    public void A_hard_link_under_the_name_is_not_written_through()
+    {
+        // The log's name made the other name of a file elsewhere: the line must not land in
+        // that file. Hard links need no privilege on the same volume.
+        var target = Path.Combine(_folder, "target.txt");
+        File.WriteAllText(target, "x");
+        var inner = Directory.CreateDirectory(Path.Combine(_folder, "config")).FullName;
+        var link = Path.Combine(inner, "log.txt");
+        Assert.True(CreateHardLink(link, target, IntPtr.Zero), $"CreateHardLink failed: {Marshal.GetLastWin32Error()}");
+
+        SafeFiles.AppendAllText(link, "secret line\n");
+
+        Assert.Equal("x", File.ReadAllText(target));
+        Assert.Equal("secret line\n", File.ReadAllText(link));
+        Assert.False(SettingsAccess.HasOtherNames(link));
+        Assert.False(SettingsAccess.HasOtherNames(target));
+    }
+
+    [Fact]
+    public void A_link_under_the_name_is_not_followed()
+    {
+        var target = Path.Combine(_folder, "target.txt");
+        File.WriteAllText(target, "x");
+        var link = Path.Combine(_folder, "link.txt");
+        try
+        {
+            File.CreateSymbolicLink(link, target);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Assert.Skip("Creating a symbolic link needs Developer Mode or an administrator.");
+        }
+
+        SafeFiles.WriteAllText(link, "new");
+
+        Assert.Equal("x", File.ReadAllText(target));
+        Assert.Equal("new", File.ReadAllText(link));
+        Assert.False(new FileInfo(link).Attributes.HasFlag(FileAttributes.ReparsePoint));
+    }
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern bool CreateHardLink(string fileName, string existingFileName, IntPtr securityAttributes);
+}
+
 public class SensorPayloadFilterTests
 {
     private static readonly JsonSerializerOptions Options = new();
@@ -87,6 +158,29 @@ public class SensorPayloadFilterTests
 
         var attributes = payload["attributes"]?.AsObject();
         Assert.True(attributes is null || !attributes.ContainsKey("network_address"));
+    }
+
+    [Fact]
+    public void A_renamed_sensor_switched_off_goes_out_under_neither_name()
+    {
+        var payload = SensorPayloadFilter.WithoutDisabled(Message(), Options, [On("cpu_usage")], serviceRole: false);
+
+        foreach (var key in new[] { "memory_available", "memory_available_mb", "system_drive", "system_drive_free_gb" })
+        {
+            Assert.False(payload.ContainsKey(key), key);
+        }
+
+        var attributes = payload["attributes"]?.AsObject();
+        Assert.True(attributes is null || (!attributes.ContainsKey("system_drive") && !attributes.ContainsKey("system_drive_free_gb")));
+    }
+
+    [Fact]
+    public void A_renamed_sensor_switched_on_goes_out_under_both_names()
+    {
+        var payload = SensorPayloadFilter.WithoutDisabled(Message(), Options, [On("memory_available")], serviceRole: false);
+
+        Assert.True(payload.ContainsKey("memory_available"));
+        Assert.True(payload.ContainsKey("memory_available_mb"));
     }
 
     [Fact]

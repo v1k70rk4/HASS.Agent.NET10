@@ -47,9 +47,12 @@ internal static class SensorPayloadFilter
             }
         }
 
+        // A renamed sensor goes out under its key of before as well
+        // (BuiltInSensorCatalog.RenamedKeys): switched off, neither name goes.
         var removable = BuiltInSensorCatalog.AllKeys
             .Concat(Companions.Values.SelectMany(companions => companions))
             .Where(key => !kept.Contains(key))
+            .SelectMany(key => BuiltInSensorCatalog.FormerKey(key) is { } former ? new[] { key, former } : [key])
             .ToList();
         var attributes = payload["attributes"] as JsonObject;
         foreach (var key in removable)

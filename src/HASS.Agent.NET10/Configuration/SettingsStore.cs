@@ -2,6 +2,8 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using HASS.Agent.Companion.Logging;
 
+using HASS.Agent.Companion.Security;
+
 namespace HASS.Agent.Companion.Configuration;
 
 internal static class SettingsStore
@@ -251,7 +253,7 @@ internal static class SettingsStore
         try
         {
             Directory.CreateDirectory(paths.ConfigDirectory);
-            File.WriteAllText(paths.DeviceIdFile, serialNumber);
+            SafeFiles.WriteAllText(paths.DeviceIdFile, serialNumber);
         }
         catch
         {
@@ -275,7 +277,9 @@ internal static class SettingsStore
 
         try
         {
-            File.WriteAllText(temp, json);
+            // Through SafeFiles, as every write into the shared folder: a link put under the
+            // temp file's name beforehand is not followed.
+            SafeFiles.WriteAllText(temp, json);
             if (File.Exists(target))
             {
                 // rotateBackup is off when recovering from the backup: the file we are
@@ -306,7 +310,7 @@ internal static class SettingsStore
 
         // Fall back to a direct write so a locked file or a failed replace can never stop
         // settings from being saved at all.
-        File.WriteAllText(target, json);
+        SafeFiles.WriteAllText(target, json);
     }
 
     private static string Serialize(CompanionSettings settings)

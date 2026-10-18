@@ -1,3 +1,5 @@
+using HASS.Agent.Companion.Security;
+
 namespace HASS.Agent.Companion.Logging;
 
 internal sealed class FileLog : IDisposable
@@ -68,7 +70,9 @@ internal sealed class FileLog : IDisposable
             try
             {
                 Maintain();
-                File.AppendAllText(_path, line);
+                // Through SafeFiles: the service writes this as SYSTEM into a folder every
+                // user may create files in, so a link put under the log's name is not followed.
+                SafeFiles.AppendAllText(_path, line);
             }
             catch
             {
@@ -110,7 +114,7 @@ internal sealed class FileLog : IDisposable
                 var outcome = File.Exists(rotatedTo)
                     ? $"the previous file is {Path.GetFileName(rotatedTo)}"
                     : $"the previous file was over the {MaxArchiveBytes / (1024 * 1024)} MB archive cap and was removed";
-                File.AppendAllText(_path, $"{DateTimeOffset.Now:O} [INFO] Log rotated; {outcome}. Archives are kept for {ArchiveRetention.Days} days.{Environment.NewLine}");
+                SafeFiles.AppendAllText(_path, $"{DateTimeOffset.Now:O} [INFO] Log rotated; {outcome}. Archives are kept for {ArchiveRetention.Days} days.{Environment.NewLine}");
             }
         }
         catch

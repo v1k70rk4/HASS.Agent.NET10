@@ -9,6 +9,8 @@ using HASS.Agent.Companion.Runtime;
 using HASS.Agent.Companion.SystemCommands;
 using HASS.Agent.Companion.SystemStatus;
 
+using HASS.Agent.Companion.Security;
+
 namespace HASS.Agent.Companion.SystemService;
 
 internal sealed class CompanionWindowsService : ServiceBase
@@ -309,7 +311,7 @@ internal sealed class CompanionWindowsService : ServiceBase
             if (string.IsNullOrEmpty(previous))
             {
                 // Nothing to compare with: a first install, nothing to report.
-                File.WriteAllText(versionFile, settings.SoftwareVersion);
+                SafeFiles.WriteAllText(versionFile, settings.SoftwareVersion);
                 return null;
             }
 
@@ -338,7 +340,7 @@ internal sealed class CompanionWindowsService : ServiceBase
 
         try
         {
-            File.WriteAllText(ServiceVersionFile(_paths), _runningVersion);
+            SafeFiles.WriteAllText(ServiceVersionFile(_paths), _runningVersion);
             File.Delete(UpdatedFromFile(_paths));
         }
         catch (Exception ex)
