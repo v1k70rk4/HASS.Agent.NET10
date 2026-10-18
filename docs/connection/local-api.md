@@ -15,7 +15,7 @@ Turning it off stops the server and drops the key. Turning it on again makes a n
 
 !!! note "Upgrading from 10.9.2 or earlier"
 
-    Until 10.9.3 the server was always on and every install had a key. The upgrade turns it off on every PC. A PC that is set up in Home Assistant with the Local HTTP API needs the API turned on again on the General page, and the new key put into the integration (remove the PC there and add it again). PCs on MQTT or the HA API are not affected.
+    Until 10.9.3 the server was always on and every install had a key. An install from before keeps it on, with its key, so a PC set up in Home Assistant with the Local HTTP API goes on working. Turn it off on the General page when nothing uses it; only a new install starts with it off.
 
 **Endpoints:**
 

@@ -280,13 +280,29 @@ public class SettingsTests
     [Fact]
     public void Local_api_is_off_by_default_and_has_no_key_while_off()
     {
-        // Also what an older settings file gets: it has a key, and no switch.
         var settings = new CompanionSettings { ApiKey = "0123456789abcdef0123456789abcdef" };
 
         settings.Normalize();
 
         Assert.False(settings.LocalApiEnabled);
         Assert.Equal(string.Empty, settings.ApiKey);
+    }
+
+    [Theory]
+    [InlineData("""{"deviceName":"PC","apiKey":"0123456789abcdef0123456789abcdef"}""", true, "0123456789abcdef0123456789abcdef")]  // before 10.9.3: always on
+    [InlineData("""{"deviceName":"PC","apiKey":""}""", false, "")]                                                                   // before 10.9.3, no key yet: nothing to keep
+    [InlineData("""{"deviceName":"PC","localApiEnabled":false,"apiKey":"0123456789abcdef0123456789abcdef"}""", false, "")]          // this version, turned off
+    [InlineData("""{"deviceName":"PC","localApiEnabled":true,"apiKey":"0123456789abcdef0123456789abcdef"}""", true, "0123456789abcdef0123456789abcdef")]
+    public void A_settings_file_from_before_the_switch_keeps_the_local_api_on(string json, bool expectedOn, string expectedKey)
+    {
+        var settings = JsonSerializer.Deserialize<CompanionSettings>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
+
+        var kept = SettingsStore.KeepLocalApiOnFromOlderFile(json, settings);
+        settings.Normalize();
+
+        Assert.Equal(expectedOn && !json.Contains("localApiEnabled"), kept);
+        Assert.Equal(expectedOn, settings.LocalApiEnabled);
+        Assert.Equal(expectedKey, settings.ApiKey);
     }
 
     [Fact]

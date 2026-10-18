@@ -58,6 +58,7 @@ internal static class SettingsStore
             }
         }
 
+        var keptLocalApiOn = originalJson is not null && KeepLocalApiOnFromOlderFile(originalJson, settings);
         settings.Normalize();
         WriteDeviceId(paths, settings.SerialNumber);
         var migratedPassword = settings.MigratePlainTextPassword();
@@ -67,7 +68,7 @@ internal static class SettingsStore
         // restoredFromBackup/adoptedSerial force a write: the settings file itself is
         // missing or unreadable in those cases and has to be rebuilt, even when the
         // recovered content happens to match what we would have written.
-        if (originalJson is null || restoredFromBackup || adoptedSerial || migratedPassword || migratedPasswordScope || migratedHaApiToken || !JsonEquals(originalJson, normalizedJson))
+        if (originalJson is null || restoredFromBackup || adoptedSerial || keptLocalApiOn || migratedPassword || migratedPasswordScope || migratedHaApiToken || !JsonEquals(originalJson, normalizedJson))
         {
             Write(paths, normalizedJson, rotateBackup: !restoredFromBackup);
         }
@@ -154,10 +155,41 @@ internal static class SettingsStore
 
     public static CompanionSettings Import(string sourceFile)
     {
-        var settings = JsonSerializer.Deserialize<CompanionSettings>(File.ReadAllText(sourceFile), JsonOptions)
+        var json = File.ReadAllText(sourceFile);
+        var settings = JsonSerializer.Deserialize<CompanionSettings>(json, JsonOptions)
             ?? throw new InvalidDataException("Not a valid settings file.");
+        KeepLocalApiOnFromOlderFile(json, settings);
         settings.Normalize();
         return settings;
+    }
+
+    /// <summary>
+    /// A file from before 10.9.3 has no switch for the local HTTP API, and a key, because the
+    /// API was always on: it stays on, with its key, so a PC set up in Home Assistant with the
+    /// Local HTTP API goes on working. Only a new install starts with it off.
+    /// </summary>
+    internal static bool KeepLocalApiOnFromOlderFile(string json, CompanionSettings settings)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object
+                || root.TryGetProperty("localApiEnabled", out _)
+                || !root.TryGetProperty("apiKey", out var key)
+                || key.ValueKind != JsonValueKind.String
+                || string.IsNullOrWhiteSpace(key.GetString()))
+            {
+                return false;
+            }
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+
+        settings.LocalApiEnabled = true;
+        return true;
     }
 
     private static string BackupFile(AppPaths paths) => paths.SettingsFile + ".bak";
