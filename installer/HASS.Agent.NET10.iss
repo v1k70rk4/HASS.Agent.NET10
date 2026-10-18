@@ -143,14 +143,26 @@ begin
   Result := ReadPreviousVersion() = '';
 end;
 
+{ Secur32's GetUserNameEx: the account of this process's own token, as DOMAIN\name
+  (NameSamCompatible = 2), in Unicode. }
+function GetUserNameExW(NameFormat: Integer; NameBuffer: String; var Size: DWORD): Boolean;
+  external 'GetUserNameExW@secur32.dll stdcall';
+
 { The account Setup runs as, as DOMAIN\name: the user, or an administrator whose password
-  was typed in. From Setup's own environment, which is Unicode, so an accent in the name
-  survives; whoami's redirected output would be in the OEM code page and lose it. }
+  was typed in. From Setup's own token, so the domain and the name are the same account's
+  (the environment may still be the user's after an elevation with other credentials), and
+  an accent in the name survives; whoami's redirected output would be in the OEM code page. }
 function SetupUserName(): string;
+var
+  Buffer: String;
+  Size: DWORD;
 begin
-  Result := ExpandConstant('{username}');
-  if GetEnv('USERDOMAIN') <> '' then
-    Result := GetEnv('USERDOMAIN') + '\' + Result;
+  Size := 512;
+  SetLength(Buffer, Size);
+  if GetUserNameExW(2, Buffer, Size) and (Size > 0) then
+    Result := Copy(Buffer, 1, Size)
+  else
+    Result := ExpandConstant('{username}');
 end;
 
 { The user logged on to the PC who started Setup, as DOMAIN\name. Written by that user into

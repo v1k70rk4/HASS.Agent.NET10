@@ -252,7 +252,7 @@ internal static class SettingsAccess
         }
     }
 
-    /// <summary>The members of the group, by name; empty when there is no group.</summary>
+    /// <summary>The members of the group, as DOMAIN\name (the PC's name for a local account); empty when there is no group.</summary>
     public static IReadOnlySet<string> Members()
     {
         var members = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -268,8 +268,10 @@ internal static class SettingsAccess
             for (var index = 0; index < read; index++)
             {
                 var info = Marshal.PtrToStructure<LocalGroupMembersInfo3>(buffer + index * size);
-                var name = info.DomainAndName ?? string.Empty;
-                members.Add(name[(name.LastIndexOf('\\') + 1)..]);
+                if (!string.IsNullOrEmpty(info.DomainAndName))
+                {
+                    members.Add(info.DomainAndName);
+                }
             }
         }
         finally
@@ -439,7 +441,15 @@ internal static class SettingsAccess
             {
                 if (isFolder)
                 {
-                    ResetContents(entry.FullName, inherited);
+                    try
+                    {
+                        ResetContents(entry.FullName, inherited);
+                    }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or Win32Exception)
+                    {
+                        // What is in it keeps what it has; the folder's own rule stands, and
+                        // the entries after it are still done.
+                    }
                 }
             }
         }

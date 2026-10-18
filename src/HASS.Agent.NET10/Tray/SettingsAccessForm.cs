@@ -71,8 +71,10 @@ internal sealed class SettingsAccessForm : Form
             .Concat(SettingsAccess.DirectoryUsersWithProfiles().Where(user => !user.StartsWith("S-1-", StringComparison.Ordinal)));
         foreach (var user in listed)
         {
+            // Membership by the full name: a local "alice" is not CORP\alice.
             var isCurrent = string.Equals(user, current, StringComparison.OrdinalIgnoreCase);
-            _users.Items.Add(user, isCurrent || members.Contains(user[(user.LastIndexOf('\\') + 1)..]));
+            var qualified = user.Contains('\\') ? user : $"{Environment.MachineName}\\{user}";
+            _users.Items.Add(user, isCurrent || members.Contains(qualified));
         }
 
         if (!_users.Items.Contains(current))
