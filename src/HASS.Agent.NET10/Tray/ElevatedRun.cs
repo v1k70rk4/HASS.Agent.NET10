@@ -13,6 +13,9 @@ internal enum ElevatedOutcome
     StillRunning,
     /// <summary>Not started: an earlier run is still going.</summary>
     Busy,
+    /// <summary>Not started: the prompt or the start itself failed, so no run of its own has said anything.</summary>
+    NotStarted,
+    /// <summary>Started and ended, but not as asked: the run has shown or logged why.</summary>
     Failed,
 }
 
@@ -69,13 +72,13 @@ internal static class ElevatedRun
         catch (Exception ex)
         {
             Interlocked.Exchange(ref _busy, 0);
-            return (ElevatedOutcome.Failed, ex.Message);
+            return (ElevatedOutcome.NotStarted, ex.Message);
         }
 
         if (process is null)
         {
             Interlocked.Exchange(ref _busy, 0);
-            return (ElevatedOutcome.Failed, null);
+            return (ElevatedOutcome.NotStarted, "the administrator run did not start");
         }
 
         _running = process;

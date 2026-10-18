@@ -1859,6 +1859,17 @@ internal sealed class MainForm : Form
                 _log.Warning("The service installation was not started: an earlier administrator run is still going.");
                 MessageBox.Show(this, S("Access.Busy"), AppIdentity.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
+            else if (outcome == ElevatedOutcome.StillRunning)
+            {
+                _log.Warning("The service installation has not finished yet.");
+                MessageBox.Show(this, S("Access.StillRunning"), AppIdentity.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            else if (outcome == ElevatedOutcome.NotStarted)
+            {
+                // No administrator run to say anything: this is the only place the user hears it.
+                _log.Warning($"The service installation could not be started: {error}");
+                MessageBox.Show(this, string.Format(S("Access.Failed"), error), AppIdentity.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
             else if (outcome == ElevatedOutcome.Failed)
             {
                 // The administrator run itself has told the user what went wrong (it runs

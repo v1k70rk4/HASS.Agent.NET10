@@ -288,6 +288,7 @@ internal sealed class SettingsAccessForm : Form
                 _log.Warning($"The settings access change was not started: an earlier administrator run is still going ({arguments}).");
                 MessageBox.Show(this, Strings.Get("Access.Busy"), AppIdentity.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return false;
+            case ElevatedOutcome.NotStarted:
             case ElevatedOutcome.Failed:
                 _log.Warning($"Unable to change the settings access: {error}");
                 MessageBox.Show(this, string.Format(Strings.Get("Access.Failed"), error), AppIdentity.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Error);
