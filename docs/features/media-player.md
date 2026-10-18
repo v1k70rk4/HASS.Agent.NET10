@@ -33,7 +33,7 @@ Its settings are on the **Media player** page of the app (10.10.0+):
 
 ## Announcements
 
-> From 10.10.0, with the integration 10.9.2 or newer.
+> From 10.10.0, with the integration 10.10.0 or newer.
 
 A `media_player.play_media` action sent with `announce: true` (a TTS message, `tts.speak` with the PC as its target, a doorbell sound) is meant to be heard. With **Announcements** on:
 

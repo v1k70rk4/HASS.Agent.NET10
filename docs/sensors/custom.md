@@ -10,7 +10,7 @@ Custom sensors are parameterized sensors you can add as many times as you like, 
 - **Type**: what kind of sensor it is
 - **Name**: the entity name in Home Assistant
 - **Parameter**: what to monitor (depends on the type)
-- **Unit**: optional unit of measurement shown in Home Assistant; it marks the sensor as a numeric `measurement`, and a unit of °C, GB, MB/s, h, W, V, A or MHz brings the matching device class (temperature, data size, data rate, duration, power, voltage, current, frequency), so a °C sensor shows as °F where that is the custom and the unit can be changed on the entity (10.10.0+, integration 10.9.2+)
+- **Unit**: optional unit of measurement shown in Home Assistant; it marks the sensor as a numeric `measurement`, and a unit of °C, GB, MB/s, h, W, V, A or MHz brings the matching device class (temperature, data size, data rate, duration, power, voltage, current, frequency), so a °C sensor shows as °F where that is the custom and the unit can be changed on the entity (10.10.0+, integration 10.10.0+)
 - **Profile**: the polling interval (fast / normal / hourly / startup)
 - **Tray** and **Svc**: which role reads it
 
