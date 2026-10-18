@@ -51,7 +51,9 @@ internal static class SafeFiles
     private static SafeFileHandle OpenOwnFile(string path, bool append)
     {
         var access = (append ? FileAppendData : GenericWrite) | FileReadAttributes | Synchronize;
-        const uint share = FileShareRead | FileShareWrite | FileShareDelete;
+        // Appending shares the file with other appenders (the tray app and the service share
+        // the log); a file written whole is nobody else's to write meanwhile.
+        var share = append ? FileShareRead | FileShareWrite | FileShareDelete : FileShareRead | FileShareDelete;
         for (var attempt = 0; ; attempt++)
         {
             // What is there, as it is: backup semantics so that a folder under the name opens
