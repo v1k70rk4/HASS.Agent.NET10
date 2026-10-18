@@ -160,8 +160,12 @@ internal sealed class MqttCompanionService : IDisposable
         await _restartLock.WaitAsync();
         try
         {
-            if (!_settings.MqttEnabled && !_settings.HaApiEnabled)
+            if (!_settings.MqttEnabled)
             {
+                // Turned off: a goodbye on the broker first, so Home Assistant does not go on
+                // taking the PC for one on MQTT by the retained messages. With the HA API on,
+                // the runtime starts again on that alone; NeedsReconnect below does not see
+                // the switch itself, and a connected client would otherwise just carry on.
                 if (_client is { IsConnected: true })
                 {
                     _log.Info("MQTT disabled, publishing offline discovery.");
@@ -169,6 +173,12 @@ internal sealed class MqttCompanionService : IDisposable
                 }
 
                 await StopAsync(publishOffline: false);
+                if (_settings.HaApiEnabled)
+                {
+                    _log.Info("Continuing on the HA WebSocket API.");
+                    Start();
+                }
+
                 return;
             }
 
