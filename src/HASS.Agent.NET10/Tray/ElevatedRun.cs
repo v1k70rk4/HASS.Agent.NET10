@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Windows.Forms;
+using HASS.Agent.Companion.Localization;
 
 namespace HASS.Agent.Companion.Tray;
 
@@ -78,7 +79,7 @@ internal static class ElevatedRun
         if (process is null)
         {
             Interlocked.Exchange(ref _busy, 0);
-            return (ElevatedOutcome.NotStarted, "the administrator run did not start");
+            return (ElevatedOutcome.NotStarted, Strings.Get("Elevated.NotStarted"));
         }
 
         _running = process;
@@ -112,8 +113,8 @@ internal static class ElevatedRun
         return exitCode switch
         {
             0 => (ElevatedOutcome.Finished, null),
-            null => (ElevatedOutcome.Failed, "the result of the administrator run could not be read; the log says what it did"),
-            _ => (ElevatedOutcome.Failed, $"the administrator run ended with code {exitCode}; the log says what went wrong"),
+            null => (ElevatedOutcome.Failed, Strings.Get("Elevated.ResultUnknown")),
+            _ => (ElevatedOutcome.Failed, string.Format(Strings.Get("Elevated.ExitCode"), exitCode)),
         };
     }
 

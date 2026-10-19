@@ -102,7 +102,7 @@ internal sealed class CompanionSettings
 
     public string HaLanguage { get; set; } = "en";
 
-    private static string DetectSystemLanguage()
+    internal static string DetectSystemLanguage()
     {
         var culture = CultureInfo.CurrentUICulture;
         // Walk up the culture chain (e.g. "hu-HU" → "hu" → invariant).

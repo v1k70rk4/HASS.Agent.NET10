@@ -171,7 +171,7 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
     public void ShowStartupError(Exception exception)
     {
         MessageBox.Show(
-            $"The Local API could not start.{Environment.NewLine}{Environment.NewLine}{exception.Message}",
+            Strings.Get("Tray.LocalApiNotStarted") + Environment.NewLine + Environment.NewLine + exception.Message,
             AppIdentity.DisplayName,
             MessageBoxButtons.OK,
             MessageBoxIcon.Error);

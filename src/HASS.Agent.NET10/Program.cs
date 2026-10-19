@@ -89,7 +89,7 @@ internal static class Program
                     string.Equals(arg, "-ToastActivated", StringComparison.OrdinalIgnoreCase)))
             {
                 MessageBox.Show(
-                    $"{AppIdentity.DisplayName} is already running.",
+                    string.Format(Localization.Strings.Get("App.AlreadyRunning"), AppIdentity.DisplayName),
                     AppIdentity.DisplayName,
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Information);
@@ -128,7 +128,7 @@ internal static class Program
         {
             log.Error(ex, "Unable to load settings.");
             MessageBox.Show(
-                $"Unable to load settings: {ex.Message}",
+                string.Format(Localization.Strings.Get("App.SettingsNotLoaded"), ex.Message),
                 AppIdentity.DisplayName,
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
@@ -332,6 +332,9 @@ internal static class Program
 
     private static void LoadLanguageEarly()
     {
+        // Until the settings say otherwise, the language of Windows: a user the settings are
+        // limited away from cannot read them, and the note telling them so came in English.
+        Localization.Strings.Language = CompanionSettings.DetectSystemLanguage();
         try
         {
             var settingsPath = Path.Combine(
