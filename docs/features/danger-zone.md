@@ -44,5 +44,5 @@ Two switches live here as well:
 
 <figure class="shot" markdown>
 ![Backup and restore](../images/ui-dangerzone-backup-restore.png){ width="700" }
-<figcaption>Backup, restore and the factory reset</figcaption>
+<figcaption>Backup and restore: the export leaves the secrets out</figcaption>
 </figure>
