@@ -2027,7 +2027,7 @@ internal sealed class MainForm : Form
         page.Controls.Add(warning);
 
         // Tool picker view — one button per tool, each opening its own sub-view.
-        var toolsCard = MakeCard(page, 28, 116, 720, 394, S("Danger.Tools"));
+        var toolsCard = MakeCard(page, 28, 116, 720, 436, S("Danger.Tools"));
         var subCards = new List<Panel>();
 
         void ShowView(Panel? sub)
@@ -2091,14 +2091,18 @@ internal sealed class MainForm : Form
         };
         AddToolRow(3, "Danger.Monitor", "Danger.MonitorHint").Click += (_, _) => ShowView(monitorCard);
         AddToolRow(4, "Danger.Backup", "Danger.BackupHint").Click += (_, _) => ShowView(backupCard);
-        var factoryBtn = AddToolRow(5, "Danger.FactoryReset", "Danger.FactoryResetHint");
+        // A row of its own: the note shown to a user left out, the notice in Home Assistant and
+        // the docs all send people to "Danger Zone, Users of this PC". It was a button on the
+        // Backup / restore view, where nobody looked for it.
+        AddToolRow(5, "Access.Button", "Danger.UsersHint").Click += (_, _) => SettingsAccessForm.Show(this, _paths, _settings, _log);
+        var factoryBtn = AddToolRow(6, "Danger.FactoryReset", "Danger.FactoryResetHint");
         factoryBtn.ForeColor = Color.FromArgb(185, 28, 28);
         factoryBtn.Click += (_, _) => FactoryReset();
 
         // Beta update channel — persists immediately, no Save button needed.
         var betaCheck = new CheckBox
         {
-            Text = S("Danger.BetaUpdates"), Location = Pt(20, 298),
+            Text = S("Danger.BetaUpdates"), Location = Pt(20, 340),
             Size = Sz(680, 26), ForeColor = TextBody, Checked = _settings.BetaUpdatesEnabled
         };
         betaCheck.CheckedChanged += (_, _) =>
@@ -2117,7 +2121,7 @@ internal sealed class MainForm : Form
         // Fast sensors below 5 seconds — persists immediately too. The text wraps in the box.
         var fastCheck = new CheckBox
         {
-            Text = S("Danger.FastSensors"), Location = Pt(20, 330),
+            Text = S("Danger.FastSensors"), Location = Pt(20, 372),
             Size = Sz(680, 48), ForeColor = TextBody, Checked = _settings.FastSensorsUnlocked,
             TextAlign = ContentAlignment.MiddleLeft
         };
@@ -2489,11 +2493,12 @@ internal sealed class MainForm : Form
     {
         var card = addToolCard("Danger.Backup", null);
 
-        card.Controls.Add(new Label
+        var note = new Label
         {
             Text = S("Danger.BackupNote"), Location = Pt(20, 84),
             Size = Sz(680, 36), ForeColor = TextMuted, Font = new Font("Segoe UI", 8.5F)
-        });
+        };
+        card.Controls.Add(note);
 
         var exportBtn = MakeSecondaryButton(S("Danger.Export"), 210, 32);
         exportBtn.Location = Pt(20, 128);
@@ -2505,10 +2510,23 @@ internal sealed class MainForm : Form
         importBtn.Click += async (_, _) => await ImportSettingsAsync();
         card.Controls.Add(importBtn);
 
-        var accessBtn = MakeSecondaryButton(S("Access.Button"), 210, 32);
-        accessBtn.Location = Pt(456, 128);
-        accessBtn.Click += (_, _) => SettingsAccessForm.Show(this, _paths, _settings, _log);
-        card.Controls.Add(accessBtn);
+        // The note was a fixed box and the buttons sat side by side whatever the width, so in a
+        // narrow window the end of the sentence and the last button were cut off.
+        card.Layout += (_, _) =>
+        {
+            var width = Math.Max(D(200), card.ClientSize.Width - D(40));
+            var height = TextRenderer.MeasureText(
+                note.Text, note.Font, new Size(width, int.MaxValue),
+                TextFormatFlags.WordBreak | TextFormatFlags.TextBoxControl).Height;
+            note.Size = new Size(width, Math.Max(D(18), height));
+
+            var top = note.Bottom + D(8);
+            exportBtn.Location = new Point(D(20), top);
+            var besides = exportBtn.Right + D(8);
+            importBtn.Location = besides + importBtn.Width <= card.ClientSize.Width - D(20)
+                ? new Point(besides, top)
+                : new Point(D(20), exportBtn.Bottom + D(8));
+        };
 
         return card;
     }

@@ -76,6 +76,7 @@ internal static partial class Strings
             ["Danger.ImportDone"] = "Settings imported. The application will now restart.",
             ["Danger.FactoryReset"] = "Factory reset",
             ["Danger.FactoryResetHint"] = "Deletes all settings (new serial number and API key) and restarts the app.",
+            ["Danger.UsersHint"] = "Who may use HASS.Agent on this PC: every user, or only the ticked ones.",
             ["Danger.FactoryConfirm1"] = "This deletes ALL settings, including the MQTT/HA API connection, the API key, and the serial number.\n\nThe device will appear as a NEW device in Home Assistant. Continue?",
             ["Danger.FactoryConfirm2"] = "Are you absolutely sure? This cannot be undone.",
             ["Danger.BetaUpdates"] = "Beta updates — update checks also offer pre-releases",

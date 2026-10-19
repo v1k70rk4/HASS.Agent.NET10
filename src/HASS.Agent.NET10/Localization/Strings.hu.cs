@@ -76,6 +76,7 @@ internal static partial class Strings
             ["Danger.ImportDone"] = "Beállítások importálva. Az alkalmazás most újraindul.",
             ["Danger.FactoryReset"] = "Gyári visszaállítás",
             ["Danger.FactoryResetHint"] = "Minden beállítás törlése (új sorozatszám és API-kulcs), majd újraindítás.",
+            ["Danger.UsersHint"] = "Ki használhatja a HASS.Agentet ezen a gépen: minden felhasználó, vagy csak a kipipáltak.",
             ["Danger.FactoryConfirm1"] = "Ez MINDEN beállítást töröl, beleértve az MQTT/HA API kapcsolatot, az API kulcsot és a serial numbert.\n\nAz eszköz ÚJ eszközként fog megjelenni a Home Assistantban. Folytatod?",
             ["Danger.FactoryConfirm2"] = "Biztosan biztos vagy benne? Ez nem visszavonható.",
             ["Danger.BetaUpdates"] = "Beta frissítések — a frissítéskeresés a pre-release kiadásokat is felajánlja",
