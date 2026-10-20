@@ -21,11 +21,11 @@ Before you open it:
 - **It builds.** Warnings are errors in this project, so a new warning fails the build.
 - **The tests pass:** `dotnet test --project tests/HASS.Agent.NET10.Tests -c Release`.
 - **A bug fix comes with a test** that fails without the fix. New logic with an input and an output gets tests in the same pull request. What only Windows itself can show (windows, the tray, audio and display devices) is tested by hand; write in the pull request what you tried and on which Windows version.
-- **Text the user sees** goes into both `Localization/Strings.en.cs` and `Localization/Strings.hu.cs`. If you don't speak Hungarian, put the English text in both and say so; it will be translated.
+- **Text the user sees** goes into every language file under `src/HASS.Agent.NET10/Localization/` (`en.json`, `hu.json` and any other), under the same key. If you don't speak a language, put the English text in its file and say so; it will be translated. The tests fail when a language lacks a key.
 - **A new feature is documented** under [`docs/`](docs/), with one line in the README's feature table.
 - **Leave the version numbers and the changelog alone.** They are updated when a release is made.
 
-How to build and run it: [Building and development](docs/development.md).
+How to build and run it: [Building and development](docs/development.md). Translating the app into a new language: [Translating the app](docs/translating.md).
 
 ## License
 

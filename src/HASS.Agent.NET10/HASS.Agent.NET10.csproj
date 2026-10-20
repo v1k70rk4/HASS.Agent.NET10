@@ -31,6 +31,8 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Assets\hassagent.ico" LogicalName="hassagent.ico" />
+    <!-- The texts of the app, one file per language; Localization/Strings.cs finds them by name. -->
+    <EmbeddedResource Include="Localization\*.json" LogicalName="lang.%(Filename).json" />
   </ItemGroup>
 
   <ItemGroup>

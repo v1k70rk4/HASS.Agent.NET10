@@ -102,17 +102,13 @@ internal sealed class CompanionSettings
 
     public string HaLanguage { get; set; } = "en";
 
-    internal static string DetectSystemLanguage()
-    {
-        var culture = CultureInfo.CurrentUICulture;
-        // Walk up the culture chain (e.g. "hu-HU" → "hu" → invariant).
-        while (culture != CultureInfo.InvariantCulture)
-        {
-            if (culture.TwoLetterISOLanguageName == "hu") return "hu";
-            culture = culture.Parent;
-        }
-        return "en";
-    }
+    /// <summary>The app's language for the language of Windows; English when the app has none for it.</summary>
+    private static string NormalizeLanguage(string? language) =>
+        language is not null && System.Text.RegularExpressions.Regex.IsMatch(language, @"^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$")
+            ? language
+            : Localization.Strings.English;
+
+    internal static string DetectSystemLanguage() => Localization.Strings.LanguageForCulture(CultureInfo.CurrentUICulture);
 
     public string Manufacturer { get; set; } = "v1k70rk4";
 
@@ -311,8 +307,11 @@ internal sealed class CompanionSettings
         MqttHost = NormalizeText(MqttHost, "homeassistant.local");
         MqttUsername = MqttUsername.Trim();
         HaApiUrl = NormalizeUrl(HaApiUrl);
-        if (Language is not "hu" and not "en") Language = "en";
-        if (HaLanguage is not "hu" and not "en") HaLanguage = "en";
+        // Any well-formed language code stays: a language from a translator's own file is not
+        // known to the service, which also loads these settings, and must not be lost there.
+        // A language the app turns out not to have shows in English.
+        Language = NormalizeLanguage(Language);
+        HaLanguage = NormalizeLanguage(HaLanguage);
         NotificationStyle = NotificationStyles.Normalize(NotificationStyle);
         CustomNotificationName = CustomNotificationName.Trim();
         if (CustomNotificationName.Length > MaxNotificationNameLength)

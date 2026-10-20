@@ -119,6 +119,14 @@ internal static class Program
         using var log = new FileLog(paths.LogFile);
         log.Info($"Starting {AppIdentity.DisplayName}.");
 
+        // A translator's own language files, before the settings name a language: for this
+        // Windows user only, never for the service.
+        var userLanguages = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), AppIdentity.ConfigurationDirectoryName, "languages");
+        foreach (var problem in Localization.Strings.LoadUserLanguages(userLanguages))
+        {
+            log.Warning(problem);
+        }
+
         CompanionSettings settings;
         try
         {
