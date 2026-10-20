@@ -128,6 +128,29 @@ public sealed class LocalizationTests : IDisposable
         Assert.Equal("fine", Strings.Get("Nav.General", "xx"));
     }
 
+    [Theory]
+    [InlineData("General", "{", false)]                        // a stray brace would not format
+    [InlineData("General", "Altalanos {0}", false)]            // a placeholder English does not have
+    [InlineData("{0} is running", "{99999999999999999999} fut", false)]   // no overflow, just refused
+    [InlineData("{0} is running", "{0} fut", true)]
+    [InlineData("{0} of {1}", "{1}-ből {0}", true)]           // order is the language's
+    [InlineData("Use {{braces}}", "Kapcsos {{zárójel}}", true)]
+    public void A_text_is_checked_against_the_english_one(string english, string translated, bool taken)
+    {
+        Assert.Equal(taken, Strings.SamePlaceholders(english, translated));
+    }
+
+    [Fact]
+    public void A_rejected_text_of_a_built_in_language_keeps_the_built_in_translation()
+    {
+        var builtIn = Strings.Get("Access.Failed", "hu");
+        Write("hu.json", "hu", "Magyar", ["hu"], new() { ["Access.Failed"] = "nincs helyőrző" });
+
+        Assert.Single(Strings.LoadUserLanguages(_folder));
+
+        Assert.Equal(builtIn, Strings.Get("Access.Failed", "hu"));
+    }
+
     [Fact]
     public void A_translators_file_for_a_built_in_language_replaces_only_its_own_texts()
     {

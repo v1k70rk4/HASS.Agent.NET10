@@ -111,9 +111,21 @@ internal static partial class Strings
             return problems;
         }
 
+        List<string> files;
+        try
+        {
+            files = Directory.EnumerateFiles(folder, "*.json").Order(StringComparer.OrdinalIgnoreCase).Take(MaxUserFiles).ToList();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException)
+        {
+            // The built-in languages are all there is then: a language folder never stops the app.
+            problems.Add($"The language folder {folder} could not be read: {ex.Message}");
+            return problems;
+        }
+
         var packs = new Dictionary<string, LanguagePack>(_packs, StringComparer.OrdinalIgnoreCase);
         var english = packs[English].Texts;
-        foreach (var file in Directory.EnumerateFiles(folder, "*.json").Order(StringComparer.OrdinalIgnoreCase).Take(MaxUserFiles))
+        foreach (var file in files)
         {
             var name = Path.GetFileName(file);
             try
@@ -236,23 +248,29 @@ internal static partial class Strings
         }
     }
 
-    /// <summary>The same {0}-style placeholders as the English text, and a text that formats.</summary>
+    /// <summary>
+    /// The same {0}-style placeholders as the English text, and a text that formats wherever the
+    /// English one does: a stray brace makes string.Format throw, also in a text with no
+    /// placeholder. An index of more than three digits is no placeholder of this app and fails.
+    /// </summary>
     internal static bool SamePlaceholders(string english, string translated)
     {
         var expected = Placeholders(english);
-        if (!expected.SetEquals(Placeholders(translated)))
+        var found = Placeholders(translated);
+        if (expected is null || found is null || !expected.SetEquals(found))
         {
             return false;
         }
 
-        if (expected.Count == 0)
-        {
-            return true;
-        }
+        var arguments = new object[expected.Count == 0 ? 0 : expected.Max() + 1];
+        return !Formats(english, arguments) || Formats(translated, arguments);
+    }
 
+    private static bool Formats(string text, object[] arguments)
+    {
         try
         {
-            _ = string.Format(CultureInfo.InvariantCulture, translated, new object[expected.Max() + 1]);
+            _ = string.Format(CultureInfo.InvariantCulture, text, arguments);
             return true;
         }
         catch (FormatException)
@@ -261,10 +279,23 @@ internal static partial class Strings
         }
     }
 
-    private static HashSet<int> Placeholders(string text) =>
-        Placeholder().Matches(text.Replace("{{", "").Replace("}}", ""))
-            .Select(match => int.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture))
-            .ToHashSet();
+    // Null when an index is out of all proportion (more than three digits).
+    private static HashSet<int>? Placeholders(string text)
+    {
+        var indices = new HashSet<int>();
+        foreach (Match match in Placeholder().Matches(text.Replace("{{", "").Replace("}}", "")))
+        {
+            if (match.Groups[1].Value.Length > 3
+                || !int.TryParse(match.Groups[1].Value, NumberStyles.None, CultureInfo.InvariantCulture, out var index))
+            {
+                return null;
+            }
+
+            indices.Add(index);
+        }
+
+        return indices;
+    }
 
     private static string Known(string? language) =>
         language is not null && _packs.TryGetValue(language, out var pack) ? pack.Code : English;
