@@ -2,6 +2,16 @@
 
 Every release of HASS.Agent .NET10, newest first. The downloads are on the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases).
 
+## 10.10.2-beta.1
+
+> **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered it, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.10.1**, below.
+
+The first beta of the next version: the app's texts in one JSON file per language, so a new language is a file and a translator can try it in the installed app; and what testing on a domain-joined PC turned up. Works with the integration **10.6.7** or newer; there is no new integration with this one. Signed release.
+
+- **Translations in a file per language.** The texts of the app are in `en.json` and `hu.json` now, instead of C# code. A new language is a new file: it shows in the language lists, and a Windows set to that language picks it. A translator can try a language without building the app: a file in `%LOCALAPPDATA%\HASS.Agent.NET10\languages` is read by the tray app of that Windows user, checked against English first (a text with other `{0}`-style placeholders than the English one is left out, and English shows for it). See [Translating the app](docs/translating.md). A Simplified Chinese translation is on its way: see the [translations discussion](https://github.com/v1k70rk4/HASS.Agent.NET10/discussions/126).
+- **Danger Zone: Users of this PC has a row of its own.** The note shown to a user who is left out, the notice in Home Assistant and the docs all send people to "Danger Zone, Users of this PC", but it was a button on the Backup / restore view. The Backup / restore view follows the window now: its note wraps and a button that does not fit goes below.
+- **No English left on a Hungarian app.** The note shown to a user the settings are limited away from is in the language of Windows, as that user cannot read the settings that name the app's language; and the last messages written into the code (already running, settings not loaded, Local API not started, why an administrator run did not go as asked) come from the language files.
+
 ## 10.10.1
 
 Hotfix: who may use the settings, on a PC joined to a domain. Works with the Home Assistant integration **10.6.7** or newer. Signed release.
