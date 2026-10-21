@@ -2,6 +2,18 @@
 
 Every release of HASS.Agent .NET10, newest first. The downloads are on the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases).
 
+## 10.10.2-beta.2
+
+> **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered it, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.10.1**, below.
+
+The second beta of the next version: Simplified Chinese, and what trying it in the app turned up. Works with the integration **10.6.7** or newer; there is no new integration with this one. Signed release.
+
+- **Simplified Chinese.** 中文(简体), translated by @natsu-tsuki in [#132](https://github.com/v1k70rk4/HASS.Agent.NET10/pull/132), thank you! A Windows set to Chinese picks it, or choose it under **UI language** on the General page.
+- **Key press commands take full-width punctuation.** A Chinese or Japanese input method writes `ctrl+c，ctrl+v` with a full-width comma, which made one combination with an unknown key of it. `，`, `、` and the ideographic space now separate combinations like a space or a comma, and `＋` joins keys like `+`, in key press commands and in the hotkey editor.
+- **A longer translation is not cut off.** A check box whose text is longer than the English one wraps, with the box at its first line, instead of ending at the edge of the card; the fast sensors box on the Danger Zone page sits at the first line of its text too.
+- **Texts that were English in every language can be translated**: the Tray / Service columns of the system commands, the sensors and the custom commands, and the state and start type on the Service page, which showed Windows' own `Running` and `START_TYPE : 2 AUTO_START`.
+- **Hungarian:** no "tray app" or "service" left in the texts.
+
 ## 10.10.2-beta.1
 
 > **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered it, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.10.1**, below.
