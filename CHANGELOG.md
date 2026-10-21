@@ -2,9 +2,15 @@
 
 Every release of HASS.Agent .NET10, newest first. The downloads are on the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases).
 
-## 10.10.2-beta.2
+## 10.10.2-beta.3
 
 > **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered it, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.10.1**, below.
+
+The third beta of the next version: the Simplified Chinese translation complete. Works with the integration **10.6.7** or newer; there is no new integration with this one. Signed release.
+
+- **Simplified Chinese, complete.** The texts that came with 10.10.2-beta.2 (the service state and start type, the column headers, the HA API failover note) are in Chinese now, and some of the earlier ones read better; by @natsu-tsuki in [#140](https://github.com/v1k70rk4/HASS.Agent.NET10/pull/140), thank you!
+
+## 10.10.2-beta.2
 
 The second beta of the next version: Simplified Chinese, and what trying it in the app turned up. Works with the integration **10.6.7** or newer; there is no new integration with this one. Signed release.
 
