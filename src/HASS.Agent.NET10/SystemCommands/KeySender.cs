@@ -14,6 +14,11 @@ internal static class KeySender
     private const uint KeyEventKeyUp = 0x0002;
     private static readonly TimeSpan StepDelay = TimeSpan.FromMilliseconds(50);
 
+    // A Chinese or Japanese input method writes full-width punctuation: "，" (U+FF0C), "、"
+    // (U+3001), the ideographic space (U+3000) and "＋" (U+FF0B) count as their plain kin.
+    private static readonly char[] CombinationSeparators = [' ', ',', '　', '，', '、'];
+    private static readonly char[] KeyJoiners = ['+', '＋'];
+
     private readonly record struct Key(ushort VirtualKey, bool Extended = false);
 
     private static readonly Dictionary<string, Key> NamedKeys = BuildNamedKeys();
@@ -28,10 +33,10 @@ internal static class KeySender
         var parsed = new List<IReadOnlyList<ushort>>();
         combinations = parsed;
 
-        foreach (var combination in (text ?? string.Empty).Split([' ', ','], StringSplitOptions.RemoveEmptyEntries))
+        foreach (var combination in (text ?? string.Empty).Split(CombinationSeparators, StringSplitOptions.RemoveEmptyEntries))
         {
             var keys = new List<ushort>();
-            foreach (var name in combination.Split('+', StringSplitOptions.RemoveEmptyEntries))
+            foreach (var name in combination.Split(KeyJoiners, StringSplitOptions.RemoveEmptyEntries))
             {
                 if (!TryResolve(name, out var key, out var modifiers))
                 {

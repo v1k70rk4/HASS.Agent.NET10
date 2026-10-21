@@ -24,6 +24,29 @@ public class KeyCombinationTests
         Assert.Equal([Ctrl, Shift, (ushort)0x1B], combinations[2]);
     }
 
+    [Theory]
+    [InlineData("ctrl+c，ctrl+v")]        // full-width comma, as a Chinese input method writes it
+    [InlineData("ctrl+c、ctrl+v")]        // ideographic comma
+    [InlineData("ctrl+c　ctrl+v")]   // ideographic space
+    [InlineData("ctrl＋c ctrl＋v")]       // full-width plus
+    public void Full_width_punctuation_counts_as_its_plain_kin(string text)
+    {
+        Assert.True(KeySender.TryParse(text, out var combinations, out _));
+
+        Assert.Equal(2, combinations.Count);
+        Assert.Equal([Ctrl, (ushort)'C'], combinations[0]);
+        Assert.Equal([Ctrl, (ushort)'V'], combinations[1]);
+    }
+
+    [Fact]
+    public void A_hotkey_typed_with_a_full_width_plus()
+    {
+        Assert.True(KeySender.TryParseHotkey("ctrl＋alt＋h", out var modifiers, out var key));
+
+        Assert.Equal(0x0003u, modifiers);
+        Assert.Equal((uint)'H', key);
+    }
+
     [Fact]
     public void Key_names_ignore_case()
     {
