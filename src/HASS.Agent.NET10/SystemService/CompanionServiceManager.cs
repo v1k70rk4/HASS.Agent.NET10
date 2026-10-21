@@ -72,7 +72,7 @@ internal static class CompanionServiceManager
         try
         {
             using var controller = new ServiceController(ServiceName);
-            return $"{S("SvcMgr.Installed")}: {S("SvcMgr.Yes")}{Environment.NewLine}{S("SvcMgr.Status")}: {controller.Status}{Environment.NewLine}{S("SvcMgr.StartType")}: {GetStartModeText()}";
+            return $"{S("SvcMgr.Installed")}: {S("SvcMgr.Yes")}{Environment.NewLine}{S("SvcMgr.Status")}: {StateText(controller.Status)}{Environment.NewLine}{S("SvcMgr.StartType")}: {StartTypeText(controller.StartType)}";
         }
         catch (InvalidOperationException)
         {
@@ -370,20 +370,24 @@ internal static class CompanionServiceManager
         return !IsInstalled();
     }
 
-    private static string GetStartModeText()
+    // In the app's language; sc.exe's "START_TYPE : 2 AUTO_START" read the same in every one.
+    internal static string StateText(ServiceControllerStatus status) => status switch
     {
-        var query = RunSc("qc", Quote(ServiceName));
-        if (!query.Success)
-        {
-            return S("SvcMgr.Unknown");
-        }
+        ServiceControllerStatus.Running => S("SvcMgr.Running"),
+        ServiceControllerStatus.Stopped => S("SvcMgr.Stopped"),
+        ServiceControllerStatus.StartPending or ServiceControllerStatus.ContinuePending => S("SvcMgr.StartPending"),
+        ServiceControllerStatus.StopPending or ServiceControllerStatus.PausePending => S("SvcMgr.StopPending"),
+        ServiceControllerStatus.Paused => S("SvcMgr.Paused"),
+        _ => S("SvcMgr.Unknown")
+    };
 
-        var line = query.Message
-            .Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries)
-            .FirstOrDefault(item => item.Contains("START_TYPE", StringComparison.OrdinalIgnoreCase));
-
-        return line?.Trim() ?? S("SvcMgr.Unknown");
-    }
+    internal static string StartTypeText(ServiceStartMode mode) => mode switch
+    {
+        ServiceStartMode.Automatic => S("SvcMgr.Automatic"),
+        ServiceStartMode.Manual => S("SvcMgr.Manual"),
+        ServiceStartMode.Disabled => S("SvcMgr.Disabled"),
+        _ => S("SvcMgr.Unknown")
+    };
 
     private const int ErrorServiceAlreadyRunning = 1056;
     private const int ErrorServiceNotActive = 1062;

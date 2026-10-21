@@ -278,3 +278,26 @@ public class ServicePolicyTests : IDisposable
         Assert.Equal(["process b.exe", "command_pwsh hostname"], ServiceApproval.PendingNames(settings, policy));
     }
 }
+
+// The service page reads these in the app's language; sc.exe's own words read the same in all.
+[Collection(nameof(LocalizationCollection))]
+public class ServiceStateTextTests
+{
+    [Fact]
+    public void Every_state_of_the_service_has_a_text()
+    {
+        foreach (var status in Enum.GetValues<System.ServiceProcess.ServiceControllerStatus>())
+        {
+            Assert.NotEqual(Localization.Strings.Get("SvcMgr.Unknown"), CompanionServiceManager.StateText(status));
+        }
+    }
+
+    [Theory]
+    [InlineData(System.ServiceProcess.ServiceStartMode.Automatic, "SvcMgr.Automatic")]
+    [InlineData(System.ServiceProcess.ServiceStartMode.Manual, "SvcMgr.Manual")]
+    [InlineData(System.ServiceProcess.ServiceStartMode.Disabled, "SvcMgr.Disabled")]
+    public void The_start_type_in_the_apps_words(System.ServiceProcess.ServiceStartMode mode, string key)
+    {
+        Assert.Equal(Localization.Strings.Get(key), CompanionServiceManager.StartTypeText(mode));
+    }
+}

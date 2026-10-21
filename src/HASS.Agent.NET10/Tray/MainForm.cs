@@ -1057,8 +1057,8 @@ internal sealed class MainForm : Form
         var cmdY = 408;
         var card2 = MakeCard(page, 28, cmdY, 600, 50 + SystemCommandCatalog.Commands.Count * 30 + 16, S("Cap.Commands"));
         y = 44;
-        card2.Controls.Add(new Label { Text = "Tray", Font = new Font("Segoe UI", 8.5F, FontStyle.Bold), ForeColor = TextMuted, Location = Pt(320, y), AutoSize = true });
-        card2.Controls.Add(new Label { Text = "Service", Font = new Font("Segoe UI", 8.5F, FontStyle.Bold), ForeColor = TextMuted, Location = Pt(410, y), AutoSize = true });
+        card2.Controls.Add(new Label { Text = S("Cap.ColTray"), Font = new Font("Segoe UI", 8.5F, FontStyle.Bold), ForeColor = TextMuted, Location = Pt(320, y), AutoSize = true });
+        card2.Controls.Add(new Label { Text = S("Cap.ColService"), Font = new Font("Segoe UI", 8.5F, FontStyle.Bold), ForeColor = TextMuted, Location = Pt(410, y), AutoSize = true });
         y += 24;
 
         foreach (var cmd in SystemCommandCatalog.Commands)
@@ -1513,8 +1513,8 @@ internal sealed class MainForm : Form
     private void SetupBuiltInGrid()
     {
         StyleGrid(_builtInGrid);
-        _builtInGrid.Columns.Add(new DataGridViewCheckBoxColumn { Name = "TrayApp", HeaderText = "Tray", Width = D(50) });
-        _builtInGrid.Columns.Add(new DataGridViewCheckBoxColumn { Name = "Service", HeaderText = "Svc", Width = D(50) });
+        _builtInGrid.Columns.Add(new DataGridViewCheckBoxColumn { Name = "TrayApp", HeaderText = S("Cap.ColTray"), Width = D(50) });
+        _builtInGrid.Columns.Add(new DataGridViewCheckBoxColumn { Name = "Service", HeaderText = S("Cap.ColSvc"), Width = D(50) });
         _builtInGrid.Columns.Add(new DataGridViewTextBoxColumn
         {
             Name = "Name", HeaderText = S("Sensors.Sensor"), AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill,
@@ -1544,8 +1544,8 @@ internal sealed class MainForm : Form
         // Shift and Ctrl pick several rows: Remove and Test then work on all of them.
         _customGrid.MultiSelect = true;
         _customGrid.Columns.Add(new DataGridViewCheckBoxColumn { Name = "Enabled", HeaderText = S("Sensors.Active"), Width = D(50) });
-        _customGrid.Columns.Add(new DataGridViewCheckBoxColumn { Name = "TrayApp", HeaderText = "Tray", Width = D(50) });
-        _customGrid.Columns.Add(new DataGridViewCheckBoxColumn { Name = "Service", HeaderText = "Svc", Width = D(50) });
+        _customGrid.Columns.Add(new DataGridViewCheckBoxColumn { Name = "TrayApp", HeaderText = S("Cap.ColTray"), Width = D(50) });
+        _customGrid.Columns.Add(new DataGridViewCheckBoxColumn { Name = "Service", HeaderText = S("Cap.ColSvc"), Width = D(50) });
         var sensorTypes = new[]
         {
             CustomSensorTypes.ProcessRunning,
@@ -1595,8 +1595,8 @@ internal sealed class MainForm : Form
         StyleGrid(_customCommandGrid);
         _customCommandGrid.MultiSelect = true;
         _customCommandGrid.Columns.Add(new DataGridViewCheckBoxColumn { Name = "Enabled", HeaderText = S("Sensors.Active"), Width = D(50) });
-        _customCommandGrid.Columns.Add(new DataGridViewCheckBoxColumn { Name = "TrayApp", HeaderText = "Tray", Width = D(50) });
-        _customCommandGrid.Columns.Add(new DataGridViewCheckBoxColumn { Name = "Service", HeaderText = "Svc", Width = D(50) });
+        _customCommandGrid.Columns.Add(new DataGridViewCheckBoxColumn { Name = "TrayApp", HeaderText = S("Cap.ColTray"), Width = D(50) });
+        _customCommandGrid.Columns.Add(new DataGridViewCheckBoxColumn { Name = "Service", HeaderText = S("Cap.ColSvc"), Width = D(50) });
         var commandTypes = new[]
         {
             CustomCommandTypes.Process,
@@ -2123,7 +2123,7 @@ internal sealed class MainForm : Form
         {
             Text = S("Danger.FastSensors"), Location = Pt(20, 372),
             Size = Sz(680, 48), ForeColor = TextBody, Checked = _settings.FastSensorsUnlocked,
-            TextAlign = ContentAlignment.MiddleLeft
+            TextAlign = ContentAlignment.TopLeft, CheckAlign = ContentAlignment.TopLeft
         };
         fastCheck.CheckedChanged += (_, _) =>
         {
@@ -3566,9 +3566,24 @@ internal sealed class MainForm : Form
         cb.Text = text;
         cb.Location = Pt(20, y);
         cb.Size = new Size(Math.Max(D(420), card.ClientSize.Width - D(40)), D(26));
+        cb.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
         cb.ForeColor = TextBody;
         card.Controls.Add(cb);
-        return y + 30;
+
+        // A translation can say more than the English label; then it wraps, with the box at its
+        // first line, and what follows moves down. One line wide was cut off at the card's edge.
+        var textHeight = TextRenderer.MeasureText(
+            text, cb.Font, new Size(cb.Width - D(24), int.MaxValue),
+            TextFormatFlags.WordBreak | TextFormatFlags.TextBoxControl).Height;
+        if (textHeight + D(8) <= cb.Height)
+        {
+            return y + 30;
+        }
+
+        cb.Height = textHeight + D(8);
+        cb.TextAlign = ContentAlignment.TopLeft;
+        cb.CheckAlign = ContentAlignment.TopLeft;
+        return y + 30 + (int)Math.Ceiling((cb.Height - D(26)) * 96f / DeviceDpi);
     }
 
     /// <summary>w and h are logical (96 DPI) pixels.</summary>
