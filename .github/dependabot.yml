@@ -1,4 +1,4 @@
-# Dependabot: weekly update PRs for GitHub Actions and NuGet packages.
+# Dependabot: weekly update PRs for GitHub Actions, NuGet packages and the website's pip packages.
 # Security updates are opened automatically once "Dependabot alerts" is enabled on the repo
 # (Settings -> Code security). Grouped so each ecosystem lands as a single PR, not one per package.
 version: 2
@@ -26,4 +26,15 @@ updates:
       prefix: "deps"
     groups:
       nuget:
+        patterns: ["*"]
+
+  # The website's build (MkDocs): website/requirements.txt, made with pip-compile --generate-hashes
+  - package-ecosystem: "pip"
+    directory: "/website"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "deps"
+    groups:
+      website:
         patterns: ["*"]
