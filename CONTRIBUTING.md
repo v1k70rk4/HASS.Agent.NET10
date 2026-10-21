@@ -15,6 +15,7 @@ Problems on the Home Assistant side (entities, config flow, services) belong to 
 1. Fork the repository and branch off `main`.
 2. Keep a pull request to one change. Say what it changes and why; for a bug, how to reproduce it.
 3. Open the pull request against `main`. CI builds it and runs the tests, CodeQL scans it, and it gets a review before it is merged.
+   The first review comes from CodeRabbit, an automated reviewer. Its comments are suggestions: fix what it rightly points out, and if you don't agree with one, say why in a reply or simply resolve the thread.
 
 Before you open it:
 
