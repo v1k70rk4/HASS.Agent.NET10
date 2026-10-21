@@ -47,7 +47,7 @@ No build is needed. Put the file into
 %LOCALAPPDATA%\HASS.Agent.NET10\languages\
 ```
 
-(create the `languages` folder), then quit HASS.Agent from the tray menu and start it again. Your language is in the **UI language** list of the General page; choose it and save. A file for a language the app already has replaces only the texts it contains, which is how a correction can be tried.
+(create it if it is not there: the app makes `HASS.Agent.NET10` only when it needs it, so on many PCs both folders are new; typing `%LOCALAPPDATA%` into the Explorer address bar gets you there), then quit HASS.Agent from the tray menu and start it again. Your language is in the **UI language** list of the General page; choose it and save. A file for a language the app already has replaces only the texts it contains, which is how a correction can be tried.
 
 The app checks the file when it starts and writes what it could not use into its log (Danger Zone, Debug log, or `C:\ProgramData\HASS.Agent.NET10\hass-agent-net10.log`): a text with other placeholders than the English one or a stray brace, a key English does not have, a file that is not valid JSON. For such a text the app keeps what it had: the built-in translation of a language it has, English otherwise. These files are read by the tray app of your own Windows user only; the Windows service and other users never see them.
 
