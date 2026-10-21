@@ -55,7 +55,7 @@ The app checks the file when it starts and writes what it could not use into its
 
 Open a pull request that adds your file to `src/HASS.Agent.NET10/Localization/`, or attach the file to an issue or to a post on the [Discussions page](https://github.com/v1k70rk4/HASS.Agent.NET10/discussions) if you prefer not to deal with git. A language that comes into the app this way has every key of `en.json`, translated: the tests check every built-in language against English (the same keys, the same placeholders, a name and at least one culture) and fail on a missing key. A text you are unsure of can stay in English in the file for now; say so, and it gets looked at.
 
-A pull request first gets a review from CodeRabbit, an automated reviewer. On a translation, take its comments as suggestions. It is good at spotting a missing placeholder, a text left in English, or an example that no longer matches the English one. Grammar, and how a sentence sounds in your language, are up to you. Take what helps, and resolve the threads you don't agree with; no reply is needed.
+A pull request first gets a review from CodeRabbit, an automated reviewer. On a translation, take its comments as suggestions. It is good at spotting a missing placeholder, a text left in English, or an example that no longer matches the English one. Grammar, and how a sentence sounds in your language, are up to you. Take what helps. Where you don't agree, a short reply on why before you resolve the thread is enough, a line in English is fine: it tells the reviewer it was your choice and not an oversight.
 
 When the app gets new texts later, they show in English in your language until someone translates them; the tests then list the missing keys.
 
