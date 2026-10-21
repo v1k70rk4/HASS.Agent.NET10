@@ -3566,9 +3566,11 @@ internal sealed class MainForm : Form
         cb.Text = text;
         cb.Location = Pt(20, y);
         cb.Size = new Size(Math.Max(D(420), card.ClientSize.Width - D(40)), D(26));
-        cb.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
         cb.ForeColor = TextBody;
         card.Controls.Add(cb);
+        // As wide as the card, less its margins: a longer text has the room, and the box does
+        // not reach over the card's border.
+        card.Resize += (_, _) => cb.Width = Math.Max(D(200), card.ClientSize.Width - D(40));
 
         // A translation can say more than the English label; then it wraps, with the box at its
         // first line, and what follows moves down. One line wide was cut off at the card's edge.
