@@ -199,7 +199,7 @@
     "Cap.HotkeyKeys": "按键",
     "Editor.HotkeyTitle": "热键",
     "Editor.HotkeyHint": "点击按键文本框后，可同时按下需要设置的按键，所需的所有按键的名称将会自动填入。\n组合键的开头需要至少一个修饰键；\n组合键注册在Windows中，设置好后会显示是否冲突；\n此处的名称为HomeAssistant的触发标识。",
-    "Editor.HotkeyInvalid": "热键请至少以一个修饰键开头，修饰键可以是Ctrl、Alt、Shift和徽标键",
+    "Editor.HotkeyInvalid": "热键必须由一个或多个修饰键（Ctrl、Alt、Shift 或徽标键）和一个按键组成，例如 Ctrl+Alt+H。",
     "Editor.HotkeyPress": "点击该文本框，然后按下所需的组合键。如若报错，则该组合键被其他程序注册或被占用，需要另选其他组合键。",
     "Editor.HotkeyFree": "当前组合键可用，可被HASS.Agent使用",
     "Editor.HotkeyCommon": "当前组合键可用，但建议增加修饰键数量，过少的修饰键容易与其他应用的应用内快捷键冲突。注意：请不要试图占用系统常用快捷键，例如复制粘贴、运行、移动中心等，注册后会完全拦截该快捷键。",
