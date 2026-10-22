@@ -18,7 +18,7 @@ Some sensors have a simple primary state but expose richer details as attributes
 | **GPU usage** | `name` (the GPU the main value follows), `engines.<type>` (e.g. `engines.3d`, `engines.videodecode`), `npu_usage`, `memory_dedicated_gb`, `memory_shared_gb` (and the same in `_mb`), `adapters[N].name`, `adapters[N].memory_gb`, `adapters[N].usage`, `adapters[N].engines.<type>`, `adapters[N].memory_dedicated_gb`, `adapters[N].memory_shared_gb` (and `_mb`) |
 | **Memory usage** | `total_gb`, `used_gb`, `available_gb` |
 | **System drive free % / (GB)** | `drive`, `total_gb`, `used_gb`, `free_gb` |
-| **Drive space** | `fullest` (the letter of the fullest fixed drive), and per drive by its letter: `<letter>.label`, `<letter>.file_system`, `<letter>.removable`, `<letter>.total_gb`, `<letter>.used_gb`, `<letter>.free_gb`, `<letter>.used_percent`, `<letter>.free_percent` (e.g. `D.free_gb`) |
+| **Drive space** | `system` (the system drive's letter, the one the value is about), and per drive by its letter: `<letter>.label`, `<letter>.file_system`, `<letter>.removable`, `<letter>.total_gb`, `<letter>.used_gb`, `<letter>.free_gb`, `<letter>.used_percent`, `<letter>.free_percent` (e.g. `D.free_gb`) |
 | **Drive health** | `temperature` (the system drive's), `drives[N].name`, `drives[N].health`, `drives[N].bus`, `drives[N].media`, `drives[N].temperature`, `drives[N].temperature_max`, `drives[N].power_on_hours`, `drives[N].wear`, `drives[N].system` |
 | **Audio sessions** | `apps[N].app`, `apps[N].volume`, `apps[N].muted`, `apps[N].active` |
 | **Camera in use** / **Microphone in use** | `apps[N]` |

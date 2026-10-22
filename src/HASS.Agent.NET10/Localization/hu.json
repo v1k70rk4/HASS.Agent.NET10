@@ -345,7 +345,6 @@
     "Attribute.used_gb": "Használt (GB)",
     "Attribute.available_gb": "Szabad (GB)",
     "Attribute.drive": "Meghajtó",
-    "Attribute.fullest": "Legtelibb meghajtó",
     "Attribute.label": "Címke",
     "Attribute.file_system": "Fájlrendszer",
     "Attribute.removable": "Cserélhető",

@@ -422,8 +422,8 @@ internal sealed class SystemMetricsService : IDisposable
             GpuUsage: Shown("gpu_usage") ? (_lastGpu?.Usage) : previous!.GpuUsage,
             // Windows' verdict on the drives, the worst of them; the temperatures are attributes.
             DriveHealth: Shown("drive_health") ? (_lastDrives is null ? null : DriveHealth.WorstHealth(_lastDrives)) : previous!.DriveHealth,
-            // How full the fullest drive is; every drive's figures are attributes.
-            DriveSpace: Shown("drive_space") ? (_lastDriveSpace is null ? null : SystemStatus.DriveSpace.FullestPercent(_lastDriveSpace)) : previous!.DriveSpace,
+            // How full the system drive is; every drive's figures are attributes.
+            DriveSpace: Shown("drive_space") ? (_lastDriveSpace is null ? null : SystemStatus.DriveSpace.SystemPercent(_lastDriveSpace, SystemStatus.DriveSpace.SystemLetter())) : previous!.DriveSpace,
             SessionState: Shown("session_state") ? (session.State) : previous!.SessionState,
             LoggedInUser: Shown("logged_in_user") ? (session.User) : previous!.LoggedInUser,
             LoggedInUsers: Shown("logged_in_users") ? (sessions.LoggedInUsers) : previous!.LoggedInUsers,
@@ -2154,7 +2154,7 @@ internal sealed class SystemMetricsService : IDisposable
 
         if (driveSpace is not null)
         {
-            attributes["drive_space"] = DriveSpace.Attributes(driveSpace);
+            attributes["drive_space"] = DriveSpace.Attributes(driveSpace, DriveSpace.SystemLetter());
         }
 
         RememberListCounts(attributes);

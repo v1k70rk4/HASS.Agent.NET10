@@ -80,10 +80,9 @@ internal static class BuiltInSensorCatalog
             "drive_health.drives[0].power_on_hours"
         ], DeviceClass: "enum", Options: ["healthy", "warning", "unhealthy", "unknown"]),
         // The space on every drive with a letter, keyed by it: drive_space.D.free_gb stays on
-        // D: whatever is plugged in. The value is how full the fullest fixed drive is.
+        // D: whatever is plugged in. The value is how full the system drive is.
         new("drive_space", SupportsService: true, SupportsTrayApp: true, SensorPollingProfile.Normal,
         [
-            "drive_space.fullest",
             "drive_space.{drive}.used_percent",
             "drive_space.{drive}.free_gb",
             "drive_space.{drive}.used_gb",

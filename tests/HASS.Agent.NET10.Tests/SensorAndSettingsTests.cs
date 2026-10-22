@@ -811,15 +811,15 @@ public class DriveSpaceTests
     }
 
     [Fact]
-    public void The_value_is_the_fullest_fixed_drive()
+    public void The_value_is_always_the_system_drive()
     {
-        // D: is 90 % full; the stick is fuller, but a stick is not what the value watches.
-        Assert.Equal(90, DriveSpace.FullestPercent([C, D, E]));
-        Assert.Equal("D", DriveSpace.Attributes([C, D, E])["fullest"]);
+        // D: and the stick are fuller, but the value stays on the system drive: it does not jump
+        // when a stick is plugged in.
+        Assert.Equal(60, DriveSpace.SystemPercent([C, D, E], "C"));
+        Assert.Equal("C", DriveSpace.Attributes([C, D, E], "C")["system"]);
 
-        // With only removable drives, those.
-        Assert.Equal(96.9, DriveSpace.FullestPercent([E]));
-        Assert.Null(DriveSpace.FullestPercent([]));
+        Assert.Null(DriveSpace.SystemPercent([D, E], "C"));
+        Assert.False(DriveSpace.Attributes([D, E], "C").ContainsKey("system"));
     }
 
     [Fact]
@@ -827,7 +827,7 @@ public class DriveSpaceTests
     {
         var attributes = new Dictionary<string, IReadOnlyDictionary<string, object?>>
         {
-            ["drive_space"] = DriveSpace.Attributes([C, D, E])
+            ["drive_space"] = DriveSpace.Attributes([C, D, E], "C")
         };
 
         // A whole number comes back as one (100, not 100.0), as the attribute's JSON has it.
@@ -844,27 +844,27 @@ public class DriveSpaceTests
     [Fact]
     public void The_attribute_list_offers_every_drive_by_letter()
     {
-        var paths = new[] { "drive_space.fullest", "drive_space.{drive}.free_gb", "drive_space.{drive}.total_gb", "gpu_usage.adapters[0].usage" };
+        var paths = new[] { "drive_space.system", "drive_space.{drive}.free_gb", "drive_space.{drive}.total_gb", "gpu_usage.adapters[0].usage" };
 
         var expanded = BuiltInSensorCatalog.ExpandAttributePaths(paths, _ => null, () => ["C", "D"]);
 
         // Drive by drive: all of C:, then all of D:.
         Assert.Equal(
         [
-            "drive_space.fullest",
+            "drive_space.system",
             "drive_space.C.free_gb", "drive_space.C.total_gb",
             "drive_space.D.free_gb", "drive_space.D.total_gb",
             "gpu_usage.adapters[0].usage"
         ], expanded);
         // No drive, no drive path.
-        Assert.Equal(["drive_space.fullest"], BuiltInSensorCatalog.ExpandAttributePaths(paths[..2], _ => null, () => []));
+        Assert.Equal(["drive_space.system"], BuiltInSensorCatalog.ExpandAttributePaths(paths[..2], _ => null, () => []));
     }
 
     [Theory]
     [InlineData("drive_space.C.used_percent", "%")]
     [InlineData("drive_space.D.free_percent", "%")]
     [InlineData("drive_space.D.free_gb", "GB")]
-    [InlineData("drive_space.fullest", "")]
+    [InlineData("drive_space.D.label", "")]
     public void A_drive_sensor_made_from_the_list_gets_its_unit(string path, string unit)
     {
         Assert.Equal(unit, BuiltInSensorCatalog.AttributeUnit(path));

@@ -67,20 +67,23 @@ internal static class DriveSpace
     internal static IReadOnlyList<DriveSpaceInfo> Order(IEnumerable<DriveSpaceInfo> drives) =>
         drives.OrderBy(drive => drive.Removable).ThenBy(drive => drive.Letter, StringComparer.Ordinal).ToList();
 
-    /// <summary>
-    /// The sensor's value: how full the fullest fixed drive is, in percent, as that is the one
-    /// to watch; the removable ones only when there is no fixed drive. Null with no drive.
-    /// </summary>
-    internal static double? FullestPercent(IReadOnlyList<DriveSpaceInfo> drives) =>
-        Fullest(drives) is { } fullest ? UsedPercent(fullest) : null;
+    /// <summary>The letter of the drive Windows runs from ("C").</summary>
+    public static string? SystemLetter() => Letter(Path.GetPathRoot(Environment.SystemDirectory) ?? string.Empty);
 
-    /// <summary>The attributes: one entry per letter, and which drive the value is about.</summary>
-    internal static IReadOnlyDictionary<string, object?> Attributes(IReadOnlyList<DriveSpaceInfo> drives)
+    /// <summary>
+    /// The sensor's value: how full the system drive is, in percent. Always that one, so the value
+    /// does not jump to a USB stick that is fuller; the other drives are in the attributes.
+    /// </summary>
+    internal static double? SystemPercent(IReadOnlyList<DriveSpaceInfo> drives, string? systemLetter) =>
+        drives.FirstOrDefault(drive => drive.Letter == systemLetter) is { } system ? UsedPercent(system) : null;
+
+    /// <summary>The attributes: which drive the value is about, and one entry per letter.</summary>
+    internal static IReadOnlyDictionary<string, object?> Attributes(IReadOnlyList<DriveSpaceInfo> drives, string? systemLetter)
     {
         var attributes = new Dictionary<string, object?>(StringComparer.Ordinal);
-        if (Fullest(drives) is { } fullest)
+        if (drives.Any(drive => drive.Letter == systemLetter))
         {
-            attributes["fullest"] = fullest.Letter;
+            attributes["system"] = systemLetter;
         }
 
         foreach (var drive in drives)
@@ -99,12 +102,6 @@ internal static class DriveSpace
         }
 
         return attributes;
-    }
-
-    private static DriveSpaceInfo? Fullest(IReadOnlyList<DriveSpaceInfo> drives)
-    {
-        var watched = drives.Any(drive => !drive.Removable) ? drives.Where(drive => !drive.Removable) : drives;
-        return watched.OrderByDescending(UsedPercent).FirstOrDefault();
     }
 
     internal static double UsedPercent(DriveSpaceInfo drive) =>

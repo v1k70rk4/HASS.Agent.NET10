@@ -345,7 +345,6 @@
     "Attribute.used_gb": "Used (GB)",
     "Attribute.available_gb": "Available (GB)",
     "Attribute.drive": "Drive",
-    "Attribute.fullest": "Fullest drive",
     "Attribute.label": "Label",
     "Attribute.file_system": "File system",
     "Attribute.removable": "Removable",
