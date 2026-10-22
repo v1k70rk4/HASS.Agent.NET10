@@ -83,6 +83,24 @@ public sealed class LocalizationTests : IDisposable
         Assert.NotEmpty(header.GetProperty("cultures").EnumerateArray());
     }
 
+    [Theory]
+    [MemberData(nameof(BuiltInFiles))]
+    public void A_todo_list_names_texts_that_exist(string resource)
+    {
+        // The keys waiting for the translator (new ones in English, or put together from their
+        // words for them to check); a misspelt one would never be looked at.
+        using var stream = App.GetManifestResourceStream(resource)!;
+        using var document = JsonDocument.Parse(stream);
+        if (!document.RootElement.GetProperty("language").TryGetProperty("todo", out var todo))
+        {
+            return;
+        }
+
+        var english = TextsOf("lang.en.json");
+        Assert.Equal(JsonValueKind.Array, todo.ValueKind);
+        Assert.All(todo.EnumerateArray(), item => Assert.Contains(item.GetString() ?? string.Empty, english.Keys));
+    }
+
     [Fact]
     public void The_language_of_windows_is_chosen_from_the_files()
     {

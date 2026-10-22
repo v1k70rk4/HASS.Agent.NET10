@@ -29,6 +29,7 @@ Copy `en.json` and name the copy after the language, for example `ja.json` for J
 - **`name`**: the language's name in itself, as the language lists show it.
 - **`cultures`**: the Windows display languages this language is chosen for. A culture also covers the ones derived from it: `zh-Hans` covers `zh-CN` and `zh-SG`, `hu` covers `hu-HU`.
 - **`strings`**: the English file's keys, with the text in your language. Leave the keys as they are and translate the values only.
+- **`todo`** (optional): the keys waiting for you. When the app gets a new text, it goes into every language file in English, and its key onto this list; a text put together from your own words is listed too, for you to check. Take a key off the list once it is done. The app does not use the list; the tests check that every key on it exists.
 
 Things to keep in a text:
 

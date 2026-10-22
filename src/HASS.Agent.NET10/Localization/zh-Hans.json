@@ -4,6 +4,15 @@
     "name": "中文(简体)",
     "cultures": [
       "zh-Hans"
+    ],
+    "todo": [
+      "Sensor.drive_space",
+      "Attribute.free_gb",
+      "Attribute.used_percent",
+      "Attribute.free_percent",
+      "Attribute.label",
+      "Attribute.file_system",
+      "Attribute.removable"
     ]
   },
   "strings": {
