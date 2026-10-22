@@ -565,8 +565,20 @@ internal sealed class MqttCompanionService : IDisposable
         {
             _log.Info("Update install requested from Home Assistant.");
             var update = await AppUpdateService.CheckAsync(_settings.SoftwareVersion, _settings.BetaUpdatesEnabled);
+            // What came of it goes into the log too, not only into Home Assistant: a failed
+            // check used to say "no update" there and nothing here.
+            if (!string.IsNullOrWhiteSpace(update.Error))
+            {
+                _log.Warning($"Update install: the check failed: {AppUpdateService.Explain(update.Error)}");
+                await PublishPersistentNotificationAsync(
+                    Strings.GetHa("HaPn.UpdateTitle"),
+                    string.Format(Strings.GetHa("HaPn.UpdateCheckFailed"), _settings.DeviceName));
+                return;
+            }
+
             if (!update.UpdateAvailable)
             {
+                _log.Info($"Update install: no newer release than {update.InstalledVersion} (latest: {update.LatestVersion}).");
                 await PublishPersistentNotificationAsync(
                     Strings.GetHa("HaPn.UpdateTitle"),
                     string.Format(Strings.GetHa("HaPn.NoUpdate"), _settings.DeviceName));
@@ -575,6 +587,7 @@ internal sealed class MqttCompanionService : IDisposable
 
             if (!IsInstallerAsset(update.AssetName))
             {
+                _log.Warning($"Update install: release {update.LatestVersion} has no installer asset.");
                 await PublishPersistentNotificationAsync(
                     Strings.GetHa("HaPn.UpdateTitle"),
                     string.Format(Strings.GetHa("HaPn.NoInstaller"), _settings.DeviceName, update.LatestVersion));
@@ -692,6 +705,17 @@ internal sealed class MqttCompanionService : IDisposable
         {
             _log.Info("Silent update install requested (service role).");
             var update = await AppUpdateService.CheckAsync(_settings.SoftwareVersion, _settings.BetaUpdatesEnabled);
+            if (!string.IsNullOrWhiteSpace(update.Error))
+            {
+                _log.Warning($"The update check failed, skipping silent install: {AppUpdateService.Explain(update.Error)}");
+                if (announce)
+                {
+                    await AnnounceAsync(string.Format(Strings.GetHa("HaPn.UpdateCheckFailed"), _settings.DeviceName));
+                }
+
+                return;
+            }
+
             if (!update.UpdateAvailable)
             {
                 _log.Info("No update available, skipping silent install.");
@@ -2015,7 +2039,7 @@ internal sealed class MqttCompanionService : IDisposable
             {
                 // The state still goes out, with the error in it; only the check failed.
                 var again = _updateRetries < MaxUpdateRetries ? "; trying again in a minute" : string.Empty;
-                _log.Warning($"Update check failed: {_lastUpdateState.Error}{again}");
+                _log.Warning($"Update check failed: {AppUpdateService.Explain(_lastUpdateState.Error)}{again}");
             }
         }
 

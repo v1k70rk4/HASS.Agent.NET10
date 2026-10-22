@@ -7,6 +7,19 @@ namespace HASS.Agent.Companion.Runtime;
 
 internal static class AppUpdateService
 {
+    /// <summary>The check got no release from GitHub (an empty list, or one without a tag).</summary>
+    public const string NoRelease = "latest_release_unavailable";
+
+    /// <summary>
+    /// A check's error for the log. An empty answer is GitHub's: on 2026-10-22, during an incident
+    /// of theirs, the anonymous release list came back empty for hours. The app does not ask
+    /// githubstatus.com itself (it talks to GitHub's API only); it names the page.
+    /// </summary>
+    public static string Explain(string? error) =>
+        error == NoRelease
+            ? "GitHub returned no release; if that lasts, GitHub may be having trouble, see https://www.githubstatus.com"
+            : error ?? string.Empty;
+
     public static async Task<AppUpdateState> CheckAsync(string installedVersion, bool includePrereleases = false, CancellationToken cancellationToken = default)
     {
         try
@@ -31,7 +44,7 @@ internal static class AppUpdateService
 
             if (release is null || string.IsNullOrWhiteSpace(release.TagName))
             {
-                return AppUpdateState.Failed(installedVersion, "latest_release_unavailable");
+                return AppUpdateState.Failed(installedVersion, NoRelease);
             }
 
             var asset = SelectReleaseAsset(release.Assets);

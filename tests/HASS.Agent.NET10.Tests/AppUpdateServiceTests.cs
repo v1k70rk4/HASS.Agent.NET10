@@ -126,3 +126,15 @@ public class ReleaseNotesTests
         Assert.Equal(string.Empty, AppUpdateService.SummarizeReleaseNotes(markdown));
     }
 }
+
+public class UpdateCheckErrorTests
+{
+    [Fact]
+    public void An_empty_answer_from_github_points_to_its_status_page()
+    {
+        Assert.Contains("githubstatus.com", AppUpdateService.Explain(AppUpdateService.NoRelease));
+        // Any other error is shown as it is.
+        Assert.Equal("The operation was canceled.", AppUpdateService.Explain("The operation was canceled."));
+        Assert.Equal(string.Empty, AppUpdateService.Explain(null));
+    }
+}
