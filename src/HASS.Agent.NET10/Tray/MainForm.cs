@@ -3230,6 +3230,7 @@ internal sealed class MainForm : Form
             var update = await AppUpdateService.CheckAsync(_settings.SoftwareVersion, _settings.BetaUpdatesEnabled);
             if (!string.IsNullOrWhiteSpace(update.Error))
             {
+                _log.Warning($"Update check from the About page failed: {AppUpdateService.Explain(update.Error)}");
                 MessageBox.Show(S("About.UpdateCheckFailed"), AppIdentity.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }

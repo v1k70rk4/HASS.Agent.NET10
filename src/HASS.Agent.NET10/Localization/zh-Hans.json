@@ -13,7 +13,8 @@
       "Attribute.label",
       "Attribute.file_system",
       "Attribute.removable",
-      "HaPn.UpdateCheckFailed"
+      "HaPn.UpdateCheckFailed",
+      "About.UpdateCheckFailed"
     ]
   },
   "strings": {

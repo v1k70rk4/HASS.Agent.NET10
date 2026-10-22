@@ -398,7 +398,7 @@
     "About.UpdateDownloadedText": "{0}\n\nThe app closes during the install and reopens when it finishes.",
     "About.UpdateInstallNow": "Install now",
     "About.UpdateLater": "Later",
-    "About.UpdateCheckFailed": "Unable to read the latest release from GitHub.",
+    "About.UpdateCheckFailed": "Unable to read the latest release from GitHub. If that lasts, GitHub may be having trouble: see https://www.githubstatus.com",
     "About.UpdateError": "Update check failed: {0}",
     "Msg.SettingsSaved": "Settings saved.",
     "Msg.RestartRequired": "Please restart the application to apply the language change.",
