@@ -2,7 +2,7 @@
 
 ![Windows](https://img.shields.io/badge/Windows-10%202004%2B%20%7C%2011-0078D4?logo=windows&logoColor=white)
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet&logoColor=white)
-![Version](https://img.shields.io/badge/version-10.10.2--beta.3-orange)
+![Version](https://img.shields.io/badge/version-10.10.2--beta.4-orange)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-MQTT%20%7C%20WebSocket%20API-41BDF5?logo=homeassistant&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/15316/badge)](https://www.bestpractices.dev/projects/15316)
@@ -26,7 +26,7 @@ It is designed for Windows PCs you want to observe and control from Home Assista
 
 The .NET10 line starts at **version 10.0.0**. The classic client is a separate program: if you want to stay with it, it is still available from its own project, and the integration keeps a [`legacy` branch](https://github.com/v1k70rk4/HASS.Agent.NET10-Integration/tree/legacy) for it. Thinking about switching? See [Coming from HASS.Agent](docs/getting-started/migrating.md).
 
-> **Stable:** [10.10.1](https://github.com/v1k70rk4/HASS.Agent.NET10/releases/latest) &nbsp;·&nbsp; **Beta:** [10.10.2-beta.3](https://github.com/v1k70rk4/HASS.Agent.NET10/releases/tag/v10.10.2-beta.3) &nbsp;·&nbsp; [What changed](#what-changed) &nbsp;·&nbsp; [Full changelog](CHANGELOG.md)
+> **Stable:** [10.10.1](https://github.com/v1k70rk4/HASS.Agent.NET10/releases/latest) &nbsp;·&nbsp; **Beta:** [10.10.2-beta.4](https://github.com/v1k70rk4/HASS.Agent.NET10/releases/tag/v10.10.2-beta.4) &nbsp;·&nbsp; [What changed](#what-changed) &nbsp;·&nbsp; [Full changelog](CHANGELOG.md)
 
 ---
 
@@ -171,23 +171,17 @@ No telemetry, analytics, or usage data is collected or transmitted.
 
 ## What Changed
 
-### 10.10.2-beta.3
+### 10.10.2-beta.1–4
 
-> **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered it, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.10.1**, below.
+> **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered it, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.10.1**, below. The Drive space sensor needs the integration [10.10.2-beta.4](https://github.com/v1k70rk4/HASS.Agent.NET10-Integration/releases/tag/v10.10.2-beta.4) in Home Assistant.
 
-- **Simplified Chinese, complete**, by @natsu-tsuki, thank you!
-
-### 10.10.2-beta.2
-
-- **Simplified Chinese**, translated by @natsu-tsuki, thank you!
+- **Drive space**: a built-in sensor with every drive by its letter. Requested in [#143](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/143).
+- **Simplified Chinese**, translated by @natsu-tsuki. See [#129](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/129).
+- **Translations in a file per language**, and a translator can try one in the installed app.
 - **Key press commands take full-width punctuation**, as a Chinese or Japanese input method writes it.
-- **A longer translation is not cut off**, and the texts that were English in every language can be translated.
-
-### 10.10.2-beta.1
-
-- **Translations in a file per language**, so a new language is a file, and a translator can try it in the installed app. See [Translating the app](docs/translating.md).
-- **Danger Zone: Users of this PC has a row of its own**, and Backup / restore follows the window.
-- **No English left on a Hungarian app**, the note for a user left out included.
+- **Longer translations wrap**, and the Tray / Service columns and the service state can be translated.
+- **Danger Zone: Users of this PC has a row of its own.**
+- **No English left on a Hungarian app.**
 
 ### 10.10.1 — hotfix
 
