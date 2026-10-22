@@ -360,20 +360,27 @@ internal static class BuiltInSensorCatalog
     /// <summary>
     /// <paramref name="countOf"/> gives the item count of a list by its path (gpu_usage.adapters);
     /// null when the list has not been seen, which keeps the [0] path as it is.
-    /// <paramref name="driveLetters"/> gives the letters a {drive} path is repeated for; a drive
-    /// path is left out when there is none.
+    /// <paramref name="driveLetters"/> gives the letters the {drive} paths are repeated for, drive
+    /// by drive (all of C:, then all of D:); they are left out when there is no drive.
     /// </summary>
     internal static IReadOnlyList<string> ExpandAttributePaths(
         IEnumerable<string> paths, Func<string, int?> countOf, Func<IReadOnlyList<string>>? driveLetters = null)
     {
         var result = new List<string>();
-        IReadOnlyList<string>? letters = null;
+        var drivePaths = paths.Where(path => path.Contains(DriveToken, StringComparison.Ordinal)).ToList();
         foreach (var path in paths)
         {
             if (path.Contains(DriveToken, StringComparison.Ordinal))
             {
-                letters ??= driveLetters?.Invoke() ?? [];
-                result.AddRange(letters.Select(letter => path.Replace(DriveToken, letter, StringComparison.Ordinal)));
+                // All of them at the first one, grouped by drive.
+                if (ReferenceEquals(path, drivePaths[0]))
+                {
+                    result.AddRange(
+                        from letter in driveLetters?.Invoke() ?? []
+                        from drivePath in drivePaths
+                        select drivePath.Replace(DriveToken, letter, StringComparison.Ordinal));
+                }
+
                 continue;
             }
 

@@ -844,11 +844,18 @@ public class DriveSpaceTests
     [Fact]
     public void The_attribute_list_offers_every_drive_by_letter()
     {
-        var paths = new[] { "drive_space.fullest", "drive_space.{drive}.free_gb", "gpu_usage.adapters[0].usage" };
+        var paths = new[] { "drive_space.fullest", "drive_space.{drive}.free_gb", "drive_space.{drive}.total_gb", "gpu_usage.adapters[0].usage" };
 
         var expanded = BuiltInSensorCatalog.ExpandAttributePaths(paths, _ => null, () => ["C", "D"]);
 
-        Assert.Equal(["drive_space.fullest", "drive_space.C.free_gb", "drive_space.D.free_gb", "gpu_usage.adapters[0].usage"], expanded);
+        // Drive by drive: all of C:, then all of D:.
+        Assert.Equal(
+        [
+            "drive_space.fullest",
+            "drive_space.C.free_gb", "drive_space.C.total_gb",
+            "drive_space.D.free_gb", "drive_space.D.total_gb",
+            "gpu_usage.adapters[0].usage"
+        ], expanded);
         // No drive, no drive path.
         Assert.Equal(["drive_space.fullest"], BuiltInSensorCatalog.ExpandAttributePaths(paths[..2], _ => null, () => []));
     }
