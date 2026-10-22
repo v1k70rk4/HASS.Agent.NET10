@@ -81,7 +81,7 @@
     "HaPn.UpdateTitle": "HASS.Agent frissítés",
     "HaPn.UpdateCompleted": "{0}: frissítve {1} → {2}.",
     "HaPn.NoUpdate": "{0}: nincs elérhető frissítés.",
-    "HaPn.UpdateCheckFailed": "{0}: a frissítést nem sikerült ellenőrizni, a GitHub nem a várt választ adta. Ha ez tartósan így marad, nézd meg: https://www.githubstatus.com",
+    "HaPn.UpdateCheckFailed": "{0}: a frissítést nem sikerült ellenőrizni, az okát a gép naplója írja. Ha ez tartósan így marad, a GitHubnál lehet gond: nézd meg a https://www.githubstatus.com oldalt.",
     "HaPn.NoInstaller": "{0}: a(z) {1} kiadáshoz nincs telepítő — telepítsd kézzel.",
     "HaPn.UpdateStartedSilent": "{0}: a(z) {1} frissítés csendes telepítése elindult a rendszerszolgáltatáson keresztül.",
     "HaPn.UpdateStartedUac": "{0}: a(z) {1} frissítés elindult — erősítsd meg a UAC ablakot a gépen. Teljesen csendes frissítéshez telepítsd a rendszerszolgáltatást.",

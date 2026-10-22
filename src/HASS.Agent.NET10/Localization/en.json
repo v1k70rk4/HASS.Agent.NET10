@@ -81,7 +81,7 @@
     "HaPn.UpdateTitle": "HASS.Agent update",
     "HaPn.UpdateCompleted": "{0}: updated from {1} to {2}.",
     "HaPn.NoUpdate": "{0}: no update available.",
-    "HaPn.UpdateCheckFailed": "{0}: the update could not be checked, GitHub did not give the expected answer. If that lasts, see https://www.githubstatus.com",
+    "HaPn.UpdateCheckFailed": "{0}: the update could not be checked; the log on the PC says why. If that lasts, GitHub may be having trouble: see https://www.githubstatus.com",
     "HaPn.NoInstaller": "{0}: release {1} has no installer asset — install it manually.",
     "HaPn.UpdateStartedSilent": "{0}: installing update {1} silently via the system service.",
     "HaPn.UpdateStartedUac": "{0}: update {1} started — confirm the UAC prompt on the PC. Install the system service for fully silent updates.",

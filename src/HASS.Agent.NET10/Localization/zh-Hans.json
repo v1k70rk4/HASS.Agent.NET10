@@ -92,7 +92,7 @@
     "HaPn.UpdateTitle": "HASS.Agent更新",
     "HaPn.UpdateCompleted": "{0}：已成功从版本 {1} 升级至 {2}.",
     "HaPn.NoUpdate": "{0}：当前已是最新版本，无可用更新。",
-    "HaPn.UpdateCheckFailed": "{0}: the update could not be checked, GitHub did not give the expected answer. If that lasts, see https://www.githubstatus.com",
+    "HaPn.UpdateCheckFailed": "{0}: the update could not be checked; the log on the PC says why. If that lasts, GitHub may be having trouble: see https://www.githubstatus.com",
     "HaPn.NoInstaller": "{0}：发布版本 {1} 缺少安装包组件(Installer Asset)，请前往 GitHub 进行手动安装。",
     "HaPn.UpdateStartedSilent": "{0}：正在通过系统服务在后台静默安装更新版本 {1} ",
     "HaPn.UpdateStartedUac": "{0}：已启动更新版本 {1} 请前往电脑桌面确认UAC账户控制弹窗。若要实现完全无感知的静默更新，请安装并启用系统服务组件。",
