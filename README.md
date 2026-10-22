@@ -173,14 +173,14 @@ No telemetry, analytics, or usage data is collected or transmitted.
 
 ### 10.10.2-beta.1–4
 
-> **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered it, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.10.1**, below. The Drive space sensor needs the integration [10.10.2-beta.4](https://github.com/v1k70rk4/HASS.Agent.NET10-Integration/releases/tag/v10.10.2-beta.4) in Home Assistant.
+> **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered the beta, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.10.1**, below. The Drive space sensor needs the integration [10.10.2-beta.4](https://github.com/v1k70rk4/HASS.Agent.NET10-Integration/releases/tag/v10.10.2-beta.4) in Home Assistant.
 
 - **Drive space**: a built-in sensor with every drive by its letter. Requested in [#143](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/143).
 - **Simplified Chinese**, translated by @natsu-tsuki. See [#129](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/129).
 - **Translations in a file per language**, and a translator can try one in the installed app.
 - **Key press commands take full-width punctuation**, as a Chinese or Japanese input method writes it.
 - **Longer translations wrap**, and the Tray / Service columns and the service state can be translated.
-- **Danger Zone: Users of this PC has a row of its own.**
+- **Danger Zone: Users of this PC has a row of its own**, and Backup / restore follows the window.
 - **No English left on a Hungarian app.**
 
 ### 10.10.1 — hotfix

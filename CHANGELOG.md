@@ -4,7 +4,7 @@ Every release of HASS.Agent .NET10, newest first. The downloads are on the [rele
 
 ## 10.10.2-beta.4
 
-> **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered it, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.10.1**, below.
+> **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered the beta, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.10.1**, below.
 
 The fourth beta of the next version: a Drive space sensor with every drive by its letter. Works with the integration **10.6.7** or newer; the Drive space sensor needs the integration **10.10.2-beta.4**, out at the same time. Signed release.
 
