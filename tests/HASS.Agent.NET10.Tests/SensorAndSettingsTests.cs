@@ -799,9 +799,10 @@ public class PushReadTests
 
 public class DriveSpaceTests
 {
-    private static readonly DriveSpaceInfo C = new("C", "Windows", "NTFS", Removable: false, TotalGb: 100, FreeGb: 40);
-    private static readonly DriveSpaceInfo D = new("D", "Data", "NTFS", Removable: false, TotalGb: 1000, FreeGb: 100);
-    private static readonly DriveSpaceInfo E = new("E", "STICK", "FAT32", Removable: true, TotalGb: 16, FreeGb: 0.5);
+    private const long GiB = 1024L * 1024 * 1024;
+    private static readonly DriveSpaceInfo C = new("C", "Windows", "NTFS", Removable: false, TotalBytes: 100 * GiB, FreeBytes: 40 * GiB);
+    private static readonly DriveSpaceInfo D = new("D", "Data", "NTFS", Removable: false, TotalBytes: 1000 * GiB, FreeBytes: 100 * GiB);
+    private static readonly DriveSpaceInfo E = new("E", "STICK", "FAT32", Removable: true, TotalBytes: 16 * GiB, FreeBytes: GiB / 2);
 
     [Fact]
     public void Fixed_drives_come_first_so_a_stick_does_not_shift_them()
@@ -839,6 +840,18 @@ public class DriveSpaceTests
         Assert.Equal(true, SystemMetricsService.ReadBuiltInAttributeValue("drive_space.E.removable", attributes));
         // A drive that is not there is no value, not another drive's.
         Assert.Null(SystemMetricsService.ReadBuiltInAttributeValue("drive_space.G.free_gb", attributes));
+    }
+
+    [Fact]
+    public void A_little_free_space_is_not_rounded_away_from_the_percentage()
+    {
+        // 1 GiB with 40 MiB free: 0.0 GB free once rounded, but 96.1 % used, not 100.
+        var small = new DriveSpaceInfo("Z", "", "NTFS", Removable: false, TotalBytes: GiB, FreeBytes: 40L * 1024 * 1024);
+
+        Assert.Equal(96.1, DriveSpace.UsedPercent(small));
+        var attributes = (IReadOnlyDictionary<string, object?>)DriveSpace.Attributes([small], "C")["Z"]!;
+        Assert.Equal(0.0, attributes["free_gb"]);
+        Assert.Equal(3.9, attributes["free_percent"]);
     }
 
     [Fact]

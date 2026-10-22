@@ -1,13 +1,16 @@
 namespace HASS.Agent.Companion.SystemStatus;
 
-/// <summary>One drive with a letter, as the drive space sensor reports it.</summary>
+/// <summary>
+/// One drive with a letter, as the drive space sensor reports it. In bytes: the percentages come
+/// from these, and only what is published is rounded (0.04 GB free is not 0, and not 100 % used).
+/// </summary>
 internal sealed record DriveSpaceInfo(
     string Letter,
     string Label,
     string FileSystem,
     bool Removable,
-    double TotalGb,
-    double FreeGb);
+    long TotalBytes,
+    long FreeBytes);
 
 /// <summary>
 /// The space on the drives with a letter: the fixed ones, USB disks included, and removable ones
@@ -38,8 +41,10 @@ internal static class DriveSpace
                     drive.VolumeLabel,
                     drive.DriveFormat,
                     drive.DriveType == DriveType.Removable,
-                    Gb(drive.TotalSize),
-                    Gb(drive.AvailableFreeSpace)));
+                    drive.TotalSize,
+                    // The drive's own free space, not what a disk quota leaves this account: the
+                    // service and the tray app report the same drive the same way.
+                    drive.TotalFreeSpace));
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
@@ -93,9 +98,9 @@ internal static class DriveSpace
                 ["label"] = drive.Label,
                 ["file_system"] = drive.FileSystem,
                 ["removable"] = drive.Removable,
-                ["total_gb"] = drive.TotalGb,
-                ["used_gb"] = Math.Round(drive.TotalGb - drive.FreeGb, 1),
-                ["free_gb"] = drive.FreeGb,
+                ["total_gb"] = Gb(drive.TotalBytes),
+                ["used_gb"] = Gb(drive.TotalBytes - drive.FreeBytes),
+                ["free_gb"] = Gb(drive.FreeBytes),
                 ["used_percent"] = UsedPercent(drive),
                 ["free_percent"] = Math.Round(100 - UsedPercent(drive), 1)
             };
@@ -105,11 +110,11 @@ internal static class DriveSpace
     }
 
     internal static double UsedPercent(DriveSpaceInfo drive) =>
-        drive.TotalGb <= 0 ? 0 : Math.Round((drive.TotalGb - drive.FreeGb) * 100 / drive.TotalGb, 1);
+        drive.TotalBytes <= 0 ? 0 : Math.Round((drive.TotalBytes - drive.FreeBytes) * 100d / drive.TotalBytes, 1);
 
     // "D:\" → "D"; a volume mounted in a folder has no letter of its own.
     private static string? Letter(string root) =>
         root.Length >= 2 && char.IsAsciiLetter(root[0]) && root[1] == ':' ? char.ToUpperInvariant(root[0]).ToString() : null;
 
-    private static double Gb(long bytes) => Math.Round(bytes / 1024d / 1024d / 1024d, 1);
+    internal static double Gb(long bytes) => Math.Round(bytes / 1024d / 1024d / 1024d, 1);
 }
