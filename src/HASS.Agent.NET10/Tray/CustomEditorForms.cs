@@ -500,6 +500,8 @@ internal sealed class CustomSensorEditorForm : CustomEditorForm
 
         var y = 20;
         AddLabel(S("Sensors.Type"), y);
+        // Disk free space is the built-in Drive space sensor's job now (drive_space.D.free_gb, with
+        // the total and the percentages); a sensor of the old type still works and is still edited.
         _type = AddOptionBox(y, new[]
         {
             CustomSensorTypes.ProcessRunning,
@@ -510,7 +512,9 @@ internal sealed class CustomSensorEditorForm : CustomEditorForm
             CustomSensorTypes.CommandPowerShell,
             CustomSensorTypes.CommandPwsh,
             CustomSensorTypes.LibreHardwareMonitor
-        }.Select(type => new Option(type, S($"SensorType.{type}"))));
+        }
+            .Where(type => type != CustomSensorTypes.DiskFree || sensor.IsDiskFree)
+            .Select(type => new Option(type, S($"SensorType.{type}"))));
 
         y += RowHeight;
         _hint = AddHint(y, 76);

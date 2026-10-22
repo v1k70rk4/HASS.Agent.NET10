@@ -796,3 +796,70 @@ public class PushReadTests
         Assert.NotSame(first.CustomSensors.Single(), timed.CustomSensors.Single());
     }
 }
+
+public class DriveSpaceTests
+{
+    private static readonly DriveSpaceInfo C = new("C", "Windows", "NTFS", Removable: false, TotalGb: 100, FreeGb: 40);
+    private static readonly DriveSpaceInfo D = new("D", "Data", "NTFS", Removable: false, TotalGb: 1000, FreeGb: 100);
+    private static readonly DriveSpaceInfo E = new("E", "STICK", "FAT32", Removable: true, TotalGb: 16, FreeGb: 0.5);
+
+    [Fact]
+    public void Fixed_drives_come_first_so_a_stick_does_not_shift_them()
+    {
+        Assert.Equal(["C", "D", "E"], DriveSpace.Order([E, D, C]).Select(drive => drive.Letter));
+        Assert.Equal(["C", "F", "B"], DriveSpace.Order([E with { Letter = "B" }, D with { Letter = "F" }, C]).Select(drive => drive.Letter));
+    }
+
+    [Fact]
+    public void The_value_is_the_fullest_fixed_drive()
+    {
+        // D: is 90 % full; the stick is fuller, but a stick is not what the value watches.
+        Assert.Equal(90, DriveSpace.FullestPercent([C, D, E]));
+        Assert.Equal("D", DriveSpace.Attributes([C, D, E])["fullest"]);
+
+        // With only removable drives, those.
+        Assert.Equal(96.9, DriveSpace.FullestPercent([E]));
+        Assert.Null(DriveSpace.FullestPercent([]));
+    }
+
+    [Fact]
+    public void Each_drive_is_found_by_its_letter()
+    {
+        var attributes = new Dictionary<string, IReadOnlyDictionary<string, object?>>
+        {
+            ["drive_space"] = DriveSpace.Attributes([C, D, E])
+        };
+
+        // A whole number comes back as one (100, not 100.0), as the attribute's JSON has it.
+        double Number(string path) => Convert.ToDouble(SystemMetricsService.ReadBuiltInAttributeValue(path, attributes));
+        Assert.Equal(100, Number("drive_space.D.free_gb"));
+        Assert.Equal(900, Number("drive_space.D.used_gb"));
+        Assert.Equal(60, Number("drive_space.C.used_percent"));
+        Assert.Equal(40, Number("drive_space.C.free_percent"));
+        Assert.Equal(true, SystemMetricsService.ReadBuiltInAttributeValue("drive_space.E.removable", attributes));
+        // A drive that is not there is no value, not another drive's.
+        Assert.Null(SystemMetricsService.ReadBuiltInAttributeValue("drive_space.G.free_gb", attributes));
+    }
+
+    [Fact]
+    public void The_attribute_list_offers_every_drive_by_letter()
+    {
+        var paths = new[] { "drive_space.fullest", "drive_space.{drive}.free_gb", "gpu_usage.adapters[0].usage" };
+
+        var expanded = BuiltInSensorCatalog.ExpandAttributePaths(paths, _ => null, () => ["C", "D"]);
+
+        Assert.Equal(["drive_space.fullest", "drive_space.C.free_gb", "drive_space.D.free_gb", "gpu_usage.adapters[0].usage"], expanded);
+        // No drive, no drive path.
+        Assert.Equal(["drive_space.fullest"], BuiltInSensorCatalog.ExpandAttributePaths(paths[..2], _ => null, () => []));
+    }
+
+    [Theory]
+    [InlineData("drive_space.C.used_percent", "%")]
+    [InlineData("drive_space.D.free_percent", "%")]
+    [InlineData("drive_space.D.free_gb", "GB")]
+    [InlineData("drive_space.fullest", "")]
+    public void A_drive_sensor_made_from_the_list_gets_its_unit(string path, string unit)
+    {
+        Assert.Equal(unit, BuiltInSensorCatalog.AttributeUnit(path));
+    }
+}

@@ -1752,6 +1752,13 @@ internal sealed class MainForm : Form
         var translated = Strings.GetHa(key);
         var display = translated == key ? name : translated;
 
+        // A drive's sensors are told apart by its letter (drive_space.D.free_gb: "D: Free (GB)").
+        var parts = attributePath.Split('.');
+        if (parts.Length >= 3 && parts[^2] is [var letter] && char.IsAsciiLetterUpper(letter))
+        {
+            return $"{letter}: {display}";
+        }
+
         // The second GPU's or display's sensor is told apart from the first one's by a number.
         var index = AttributeIndex.Match(attributePath);
         return index.Success && int.TryParse(index.Groups[1].Value, out var position) && position > 0

@@ -79,6 +79,16 @@ internal static class BuiltInSensorCatalog
             "drive_health.drives[0].temperature_max",
             "drive_health.drives[0].power_on_hours"
         ], DeviceClass: "enum", Options: ["healthy", "warning", "unhealthy", "unknown"]),
+        // The space on every drive with a letter, keyed by it: drive_space.D.free_gb stays on
+        // D: whatever is plugged in. The value is how full the fullest fixed drive is.
+        new("drive_space", SupportsService: true, SupportsTrayApp: true, SensorPollingProfile.Normal,
+        [
+            "drive_space.fullest",
+            "drive_space.{drive}.used_percent",
+            "drive_space.{drive}.free_gb",
+            "drive_space.{drive}.used_gb",
+            "drive_space.{drive}.total_gb"
+        ]),
         new("uptime_seconds", SupportsService: true, SupportsTrayApp: true, SensorPollingProfile.Normal),
         new("battery_level", SupportsService: true, SupportsTrayApp: true, SensorPollingProfile.Normal),
         new("power_status", SupportsService: true, SupportsTrayApp: true, SensorPollingProfile.Normal,
@@ -246,7 +256,7 @@ internal static class BuiltInSensorCatalog
     /// display), so that nobody has to know to change the index by hand.
     /// </summary>
     public static IReadOnlyList<string> SuggestedAttributePaths(BuiltInSensorDefinition definition) =>
-        ExpandAttributePaths(definition.AttributePaths ?? [], ListCount);
+        ExpandAttributePaths(definition.AttributePaths ?? [], ListCount, DriveSpace.Letters);
 
     // The counts come from the last read in this process. The settings window lives in the
     // tray app, which never reads the drive health (that takes administrator rights), so the
@@ -337,22 +347,36 @@ internal static class BuiltInSensorCatalog
         if (name.EndsWith("_hours", StringComparison.Ordinal)) return "h";
         if (name.EndsWith("_seconds", StringComparison.Ordinal)) return "s";
         if (name.EndsWith("_minutes", StringComparison.Ordinal)) return "min";
+        if (name.EndsWith("_percent", StringComparison.Ordinal)) return "%";
         if (name is "usage" or "npu_usage" or "wear" or "volume" || parent.EndsWith(".engines", StringComparison.Ordinal)) return "%";
         if (name is "width" or "height" or "x" or "y") return "px";
         return string.Empty;
     }
+
+    private const string DriveToken = "{drive}";
 
     private static readonly System.Text.RegularExpressions.Regex FirstItem = new(@"\[0\]", System.Text.RegularExpressions.RegexOptions.Compiled);
 
     /// <summary>
     /// <paramref name="countOf"/> gives the item count of a list by its path (gpu_usage.adapters);
     /// null when the list has not been seen, which keeps the [0] path as it is.
+    /// <paramref name="driveLetters"/> gives the letters a {drive} path is repeated for; a drive
+    /// path is left out when there is none.
     /// </summary>
-    internal static IReadOnlyList<string> ExpandAttributePaths(IEnumerable<string> paths, Func<string, int?> countOf)
+    internal static IReadOnlyList<string> ExpandAttributePaths(
+        IEnumerable<string> paths, Func<string, int?> countOf, Func<IReadOnlyList<string>>? driveLetters = null)
     {
         var result = new List<string>();
+        IReadOnlyList<string>? letters = null;
         foreach (var path in paths)
         {
+            if (path.Contains(DriveToken, StringComparison.Ordinal))
+            {
+                letters ??= driveLetters?.Invoke() ?? [];
+                result.AddRange(letters.Select(letter => path.Replace(DriveToken, letter, StringComparison.Ordinal)));
+                continue;
+            }
+
             var match = FirstItem.Match(path);
             if (!match.Success)
             {

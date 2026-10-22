@@ -81,6 +81,7 @@ internal sealed class SystemMetricsService : IDisposable
     private double _driveTotalGb;
     private string _driveLetter = string.Empty;
     private IReadOnlyList<DriveHealthInfo>? _lastDrives;
+    private IReadOnlyList<DriveSpaceInfo>? _lastDriveSpace;
     private Dictionary<string, IReadOnlyDictionary<string, object?>>? _lastShownAttributes;
 
     // How many items each list attribute had the last time it was read (gpu_usage.adapters: 2),
@@ -223,6 +224,16 @@ internal sealed class SystemMetricsService : IDisposable
         {
             _lastDrives = Safe(() => DriveHealth.Read(_log), _lastDrives ?? []);
         }
+
+        // The space on every drive with a letter; anyone may ask, so both roles read it.
+        if (!Wanted("drive_space"))
+        {
+            _lastDriveSpace = null;
+        }
+        else if (Due("drive_space") || _lastDriveSpace is null)
+        {
+            _lastDriveSpace = Safe(DriveSpace.Read, _lastDriveSpace ?? []);
+        }
         var power = Due("battery_level", "power_status", "battery_time_remaining") ? Safe(ReadPowerStatus, (BatteryLevel: previous?.BatteryLevel, Status: previous?.PowerStatus ?? "unknown", TimeRemainingSeconds: previous?.BatteryTimeRemaining)) : (BatteryLevel: previous!.BatteryLevel, Status: previous.PowerStatus, TimeRemainingSeconds: previous.BatteryTimeRemaining);
         var session = Due("session_state", "logged_in_user", "user_present") ? Safe(ReadSessionStatus, (State: previous?.SessionState ?? "none", User: previous?.LoggedInUser ?? string.Empty)) : (State: previous!.SessionState, User: previous.LoggedInUser);
         var wifi = Due("wifi_ssid", "wifi_signal") ? Safe(ReadWifiStatus, (Ssid: previous?.WifiSsid ?? string.Empty, Signal: previous?.WifiSignal)) : (Ssid: previous!.WifiSsid, Signal: previous.WifiSignal);
@@ -361,7 +372,7 @@ internal sealed class SystemMetricsService : IDisposable
         var lastWake = Wanted("last_wake_reason") ? _lastWake : null;
         var attributes = BuildAttributes(_lastNetworkAddresses, _lastDisplays, _lastRecentErrors, _lastShutdown,
             lastWake, _lastExecutionState, _lastPowerRequests, _lastCameraApps, _lastMicrophoneApps, _lastGpu, _audioSessions,
-            memory, drive, _lastDrives);
+            memory, drive, _lastDrives, _lastDriveSpace);
         var shownAttributes = new Dictionary<string, IReadOnlyDictionary<string, object?>>(StringComparer.OrdinalIgnoreCase);
         foreach (var (key, values) in attributes)
         {
@@ -411,6 +422,8 @@ internal sealed class SystemMetricsService : IDisposable
             GpuUsage: Shown("gpu_usage") ? (_lastGpu?.Usage) : previous!.GpuUsage,
             // Windows' verdict on the drives, the worst of them; the temperatures are attributes.
             DriveHealth: Shown("drive_health") ? (_lastDrives is null ? null : DriveHealth.WorstHealth(_lastDrives)) : previous!.DriveHealth,
+            // How full the fullest drive is; every drive's figures are attributes.
+            DriveSpace: Shown("drive_space") ? (_lastDriveSpace is null ? null : SystemStatus.DriveSpace.FullestPercent(_lastDriveSpace)) : previous!.DriveSpace,
             SessionState: Shown("session_state") ? (session.State) : previous!.SessionState,
             LoggedInUser: Shown("logged_in_user") ? (session.User) : previous!.LoggedInUser,
             LoggedInUsers: Shown("logged_in_users") ? (sessions.LoggedInUsers) : previous!.LoggedInUsers,
@@ -2001,7 +2014,8 @@ internal sealed class SystemMetricsService : IDisposable
         IReadOnlyList<AudioEndpointService.AudioSessionInfo>? audioSessions,
         (double UsagePercent, long AvailableMb, long TotalMb) memory = default,
         (double FreePercent, double FreeGb, double TotalGb, string Drive) drive = default,
-        IReadOnlyList<DriveHealthInfo>? drives = null)
+        IReadOnlyList<DriveHealthInfo>? drives = null,
+        IReadOnlyList<DriveSpaceInfo>? driveSpace = null)
     {
         var attributes = new Dictionary<string, IReadOnlyDictionary<string, object?>>
         {
@@ -2136,6 +2150,11 @@ internal sealed class SystemMetricsService : IDisposable
                                    ?? drives.FirstOrDefault(drive => drive.Temperature is not null))?.Temperature,
                 ["drives"] = drives
             };
+        }
+
+        if (driveSpace is not null)
+        {
+            attributes["drive_space"] = DriveSpace.Attributes(driveSpace);
         }
 
         RememberListCounts(attributes);
@@ -2402,7 +2421,7 @@ internal sealed class SystemMetricsService : IDisposable
         return null;
     }
 
-    private static object? ReadBuiltInAttributeValue(
+    internal static object? ReadBuiltInAttributeValue(
         string parameter,
         IReadOnlyDictionary<string, IReadOnlyDictionary<string, object?>> attributes)
     {
@@ -2736,6 +2755,7 @@ internal sealed record SystemMetricsMessage(
     [property: JsonPropertyName("display_brightness_supported")] bool? DisplayBrightnessSupported,
     [property: JsonPropertyName("gpu_usage")] double? GpuUsage,
     [property: JsonPropertyName("drive_health")] string? DriveHealth,
+    [property: JsonPropertyName("drive_space")] double? DriveSpace,
     [property: JsonPropertyName("session_state")] string SessionState,
     [property: JsonPropertyName("logged_in_user")] string LoggedInUser,
     [property: JsonPropertyName("logged_in_users")] int LoggedInUsers,

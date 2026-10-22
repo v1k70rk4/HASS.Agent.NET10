@@ -25,6 +25,7 @@ The **Default** column shows whether a fresh install starts with the sensor swit
 | System drive free % | normal | yes | yes | on |
 | System drive free space | normal | yes | yes | on |
 | Drive health | normal | yes | | on |
+| Drive space | normal | yes | yes | on |
 | Uptime | normal | yes | yes | on |
 | Boot time | startup | yes | yes | on |
 | Battery level | normal | yes | yes | on |
@@ -69,6 +70,7 @@ A sensor the tray app cannot read (Drive health, Sleep blocked: both need admini
 ## Some of them, closer
 
 - **Drive health** (10.10.0+): Windows' own verdict on the drives from their SMART data, `healthy`, `warning`, `unhealthy` or `unknown`, the worst among the drives as the value; every drive with its temperature, highest temperature, power-on hours and wear in the attributes. NVMe drives report the temperature, SATA drives when the controller passes it on, USB enclosures nothing. Needs the integration 10.10.0 or newer. Read by the service, since the Storage Management API wants an administrator.
+- **Drive space** (10.10.2+): every drive with a letter, the fixed ones (USB disks included) and the removable ones with something in them, keyed by the letter in the attributes: `drive_space.D.free_gb`, `drive_space.D.used_percent`. A sensor made on a drive stays on that drive however many USB sticks come and go, and is unavailable while the drive is not there. The value is how full the fullest fixed drive is, in percent, and `fullest` says which one. Network drives are left out: the service does not see a user's mapped drives, and one that does not answer would hold up the read. Needs the integration 10.10.2 or newer.
 - **GPU usage**: the busiest GPU's load as the value, with the engines (3D, video decode, copy), the dedicated and shared memory and every adapter in the attributes; `name` says which GPU the value follows. On a PC with two GPUs each has its own values under `adapters[N]`.
 - **Camera in use / Microphone in use**: which apps use them, as `apps[N]`. Read from Windows' camera stack and from the apps recording on any input device, so they work on Windows 11 26H2 as well.
 - **Session locked**, **User present**, **Idle time**: for "turn the lights off when nobody is at the PC" automations. *Session locked* reads the lock state Windows keeps for the session; *Idle time* is the seconds since the last keyboard or mouse input.

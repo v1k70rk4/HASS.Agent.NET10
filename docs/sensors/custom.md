@@ -64,7 +64,7 @@ Parameter: Spooler
 
 ## `disk_free`
 
-Reports the free space on a drive in GiB.
+Reports the free space on a drive in GiB. From 10.10.2 the built-in **Drive space** sensor does this for every drive, with the total, the used space and the percentages too (`drive_space.D.free_gb`), so this type is no longer offered for a new sensor; one made before keeps working and can still be edited.
 
 | Field | Example |
 |-------|---------|
@@ -121,6 +121,8 @@ The editor's list offers every path this PC has, with the unit filled in when it
 | GPU usage | `gpu_usage.adapters[1].engines.3d` | The second adapter's 3D engine load (%) |
 | Memory usage | `memory_usage.total_gb` | Installed memory (GB) |
 | System drive free | `system_drive.total_gb` | The system drive's size (GB) |
+| Drive space | `drive_space.D.free_gb` | Free space on D: (GB) |
+| Drive space | `drive_space.C.used_percent` | How full C: is (%) |
 | Drive health | `drive_health.temperature` | The system drive's temperature (°C) |
 | Drive health | `drive_health.drives[0].power_on_hours` | The first drive's power-on hours (h) |
 | Drive health | `drive_health.drives[1].health` | The second drive's health |
