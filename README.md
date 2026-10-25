@@ -2,7 +2,7 @@
 
 ![Windows](https://img.shields.io/badge/Windows-10%202004%2B%20%7C%2011-0078D4?logo=windows&logoColor=white)
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet&logoColor=white)
-![Version](https://img.shields.io/badge/version-10.10.2--beta.4-orange)
+![Version](https://img.shields.io/badge/version-10.10.2-brightgreen)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-MQTT%20%7C%20WebSocket%20API-41BDF5?logo=homeassistant&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/15316/badge)](https://www.bestpractices.dev/projects/15316)
@@ -26,7 +26,7 @@ It is designed for Windows PCs you want to observe and control from Home Assista
 
 The .NET10 line starts at **version 10.0.0**. The classic client is a separate program: if you want to stay with it, it is still available from its own project, and the integration keeps a [`legacy` branch](https://github.com/v1k70rk4/HASS.Agent.NET10-Integration/tree/legacy) for it. Thinking about switching? See [Coming from HASS.Agent](docs/getting-started/migrating.md).
 
-> **Stable:** [10.10.1](https://github.com/v1k70rk4/HASS.Agent.NET10/releases/latest) &nbsp;·&nbsp; **Beta:** [10.10.2-beta.4](https://github.com/v1k70rk4/HASS.Agent.NET10/releases/tag/v10.10.2-beta.4) &nbsp;·&nbsp; [What changed](#what-changed) &nbsp;·&nbsp; [Full changelog](CHANGELOG.md)
+> **Stable:** [10.10.2](https://github.com/v1k70rk4/HASS.Agent.NET10/releases/latest) &nbsp;·&nbsp; [What changed](#what-changed) &nbsp;·&nbsp; [Full changelog](CHANGELOG.md)
 
 ---
 
@@ -171,17 +171,31 @@ No telemetry, analytics, or usage data is collected or transmitted.
 
 ## What Changed
 
-### 10.10.2-beta.1–4
+### 10.10.2
 
-> **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered the beta, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.10.1**, below. The Drive space sensor needs the integration [10.10.2-beta.4](https://github.com/v1k70rk4/HASS.Agent.NET10-Integration/releases/tag/v10.10.2-beta.4) in Home Assistant.
+A translation release: the app's texts in a file per language, with Simplified Chinese as the first language from a translator, a Drive space sensor with every drive by its letter, and an update check that says when it failed. Works with the Home Assistant integration **10.6.7** or newer; the Drive space sensor needs the integration **10.10.2**, out at the same time. Signed release.
 
-- **Drive space**: a built-in sensor with every drive by its letter. Requested in [#143](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/143).
-- **Simplified Chinese**, translated by @natsu-tsuki. See [#129](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/129).
-- **Translations in a file per language**, and a translator can try one in the installed app.
-- **Key press commands take full-width punctuation**, as a Chinese or Japanese input method writes it.
-- **Longer translations wrap**, and the Tray / Service columns and the service state can be translated.
-- **Danger Zone: Users of this PC has a row of its own**, and Backup / restore follows the window.
-- **No English left on a Hungarian app.**
+**Sensors**
+
+- **Drive space**, a new built-in sensor: the space on every drive with a letter, fixed ones (USB disks included) and removable ones with something in them, keyed by the letter in the attributes: `drive_space.D.free_gb`, `D.used_gb`, `D.total_gb`, `D.used_percent`, `D.free_percent`, `D.label`, `D.file_system`, `D.removable`. A sensor made on D: stays on D: however many USB sticks come and go. The value is how full the system drive is, always that one, and `system` says which letter it is. The Attributes button makes the sensors for every drive, named with the letter. Network drives are left out. The custom **Disk free space** type is no longer offered for a new sensor; one made before keeps working. Needs the integration 10.10.2 or newer. Requested in [#143](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/143).
+
+**Translations**
+
+- **Translations in a file per language.** The texts of the app are in `en.json` and `hu.json` now, instead of C# code. A new language is a new file: it shows in the language lists, and a Windows set to that language picks it. A translator can try a language without building the app: a file in `%LOCALAPPDATA%\HASS.Agent.NET10\languages` is read by the tray app of that Windows user, checked against English first (a text with other `{0}`-style placeholders than the English one, or a stray brace, is left out, and the app keeps what it had for it: the built-in translation, or English). See [Translating the app](docs/translating.md).
+- **Simplified Chinese.** 中文(简体), translated by @natsu-tsuki in [#132](https://github.com/v1k70rk4/HASS.Agent.NET10/pull/132), [#140](https://github.com/v1k70rk4/HASS.Agent.NET10/pull/140) and [#147](https://github.com/v1k70rk4/HASS.Agent.NET10/pull/147), thank you! A Windows set to Chinese picks it, or choose it under **UI language** on the General page.
+- **A `todo` list in a language file's header**, the keys waiting for the translator: new texts in English, and texts put together from the translator's own words for them to check. See [Translating the app](docs/translating.md).
+- **Key press commands take full-width punctuation.** A Chinese or Japanese input method writes `ctrl+c，ctrl+v` with a full-width comma, which made one combination with an unknown key of it. `，`, `、` and the ideographic space now separate combinations like a space or a comma, and `＋` joins keys like `+`, in key press commands and in the hotkey editor.
+- **A longer translation is not cut off.** A check box whose text is longer than the English one wraps, with the box at its first line, instead of ending at the edge of the card; the fast sensors box on the Danger Zone page sits at the first line of its text too.
+- **Texts that were English in every language can be translated**: the Tray / Service columns of the system commands, the sensors and the custom commands, and the state and start type on the Service page, which showed Windows' own `Running` and `START_TYPE : 2 AUTO_START`.
+- **No English left on a Hungarian app.** The note shown to a user the settings are limited away from is in the language of Windows, as that user cannot read the settings that name the app's language; the last messages written into the code (already running, settings not loaded, Local API not started, why an administrator run did not go as asked) come from the language files; and the Hungarian texts no longer say "tray app" or "service" in English.
+
+**Also in this release**
+
+- **An update check that fails says so.** When Home Assistant asked for an update and the app could not get the list of releases from GitHub, it answered that there was no update and wrote nothing to the log. That is what happened during a GitHub outage on 22 October, when GitHub answered with an empty list for hours. An install request from Home Assistant, the service's silent install and **Check for updates** on the About page now log why the check failed, and Home Assistant gets a notification that the update could not be checked. An empty answer is explained in the log, with GitHub's status page (https://www.githubstatus.com) to look at; the app itself still talks to GitHub's API only. When there is no newer release, or a release has no installer, the log says that too.
+- **Danger Zone: Users of this PC has a row of its own.** The note shown to a user who is left out, the notice in Home Assistant and the docs all send people to "Danger Zone, Users of this PC", but it was a button on the Backup / restore view. The Backup / restore view follows the window now: its note wraps and a button that does not fit goes below.
+
+<details>
+<summary><b>10.10.1 — hotfix</b> and <b>10.10.0</b></summary>
 
 ### 10.10.1 — hotfix
 
@@ -232,6 +246,8 @@ From a security review of the app, the CodeRabbit remarks on it, and a recheck o
 - **No more "Refusing to allow … to subscribe to event hass_agent_command" errors in Home Assistant's log after its restart.** A PC with a Home Assistant user of its own reconnected before the integration was loaded, found the integration's subscription missing and fell back to Home Assistant's own, which such a user may not use; Home Assistant logged the refusal, and the PC got in on its next attempt anyway. A user who is not an administrator is only ever set up with the newer integration, so the PC now just waits for the next attempt. An administrator's token keeps the fallback, for an integration older than 10.9.1.
 - **HA API page: the line under the token, "The token is of …, not an administrator", is no longer cut short** with a longer user name.
 - **Danger Zone: the note under "Fast sensors below 5 seconds" is shown in full in a narrow window**; the box had a fixed height and cut the sentence off.
+
+</details>
 
 Older versions are in the [changelog](CHANGELOG.md).
 

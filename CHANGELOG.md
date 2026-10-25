@@ -2,24 +2,52 @@
 
 Every release of HASS.Agent .NET10, newest first. The downloads are on the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases).
 
-## 10.10.2-beta.4
+## 10.10.2
 
-> **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered the beta, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.10.1**, below.
+A translation release: the app's texts in a file per language, with Simplified Chinese as the first language from a translator, a Drive space sensor with every drive by its letter, and an update check that says when it failed. Works with the Home Assistant integration **10.6.7** or newer; the Drive space sensor needs the integration **10.10.2**, out at the same time. Signed release.
+
+**Sensors**
+
+- **Drive space**, a new built-in sensor: the space on every drive with a letter, fixed ones (USB disks included) and removable ones with something in them, keyed by the letter in the attributes: `drive_space.D.free_gb`, `D.used_gb`, `D.total_gb`, `D.used_percent`, `D.free_percent`, `D.label`, `D.file_system`, `D.removable`. A sensor made on D: stays on D: however many USB sticks come and go. The value is how full the system drive is, always that one, and `system` says which letter it is. The Attributes button makes the sensors for every drive, named with the letter. Network drives are left out. The custom **Disk free space** type is no longer offered for a new sensor; one made before keeps working. Needs the integration 10.10.2 or newer. Requested in [#143](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/143).
+
+**Translations**
+
+- **Translations in a file per language.** The texts of the app are in `en.json` and `hu.json` now, instead of C# code. A new language is a new file: it shows in the language lists, and a Windows set to that language picks it. A translator can try a language without building the app: a file in `%LOCALAPPDATA%\HASS.Agent.NET10\languages` is read by the tray app of that Windows user, checked against English first (a text with other `{0}`-style placeholders than the English one, or a stray brace, is left out, and the app keeps what it had for it: the built-in translation, or English). See [Translating the app](docs/translating.md).
+- **Simplified Chinese.** 中文(简体), translated by @natsu-tsuki in [#132](https://github.com/v1k70rk4/HASS.Agent.NET10/pull/132), [#140](https://github.com/v1k70rk4/HASS.Agent.NET10/pull/140) and [#147](https://github.com/v1k70rk4/HASS.Agent.NET10/pull/147), thank you! A Windows set to Chinese picks it, or choose it under **UI language** on the General page.
+- **A `todo` list in a language file's header**, the keys waiting for the translator: new texts in English, and texts put together from the translator's own words for them to check. See [Translating the app](docs/translating.md).
+- **Key press commands take full-width punctuation.** A Chinese or Japanese input method writes `ctrl+c，ctrl+v` with a full-width comma, which made one combination with an unknown key of it. `，`, `、` and the ideographic space now separate combinations like a space or a comma, and `＋` joins keys like `+`, in key press commands and in the hotkey editor.
+- **A longer translation is not cut off.** A check box whose text is longer than the English one wraps, with the box at its first line, instead of ending at the edge of the card; the fast sensors box on the Danger Zone page sits at the first line of its text too.
+- **Texts that were English in every language can be translated**: the Tray / Service columns of the system commands, the sensors and the custom commands, and the state and start type on the Service page, which showed Windows' own `Running` and `START_TYPE : 2 AUTO_START`.
+- **No English left on a Hungarian app.** The note shown to a user the settings are limited away from is in the language of Windows, as that user cannot read the settings that name the app's language; the last messages written into the code (already running, settings not loaded, Local API not started, why an administrator run did not go as asked) come from the language files; and the Hungarian texts no longer say "tray app" or "service" in English.
+
+**Also in this release**
+
+- **An update check that fails says so.** When Home Assistant asked for an update and the app could not get the list of releases from GitHub, it answered that there was no update and wrote nothing to the log. That is what happened during a GitHub outage on 22 October, when GitHub answered with an empty list for hours. An install request from Home Assistant, the service's silent install and **Check for updates** on the About page now log why the check failed, and Home Assistant gets a notification that the update could not be checked. An empty answer is explained in the log, with GitHub's status page (https://www.githubstatus.com) to look at; the app itself still talks to GitHub's API only. When there is no newer release, or a release has no installer, the log says that too.
+- **Danger Zone: Users of this PC has a row of its own.** The note shown to a user who is left out, the notice in Home Assistant and the docs all send people to "Danger Zone, Users of this PC", but it was a button on the Backup / restore view. The Backup / restore view follows the window now: its note wraps and a button that does not fit goes below.
+
+**The betas before it**, with their notes as they were:
+
+<details markdown="1">
+<summary><b>10.10.2-beta.4</b>: Drive space</summary>
 
 The fourth beta of the next version: a Drive space sensor with every drive by its letter. Works with the integration **10.6.7** or newer; the Drive space sensor needs the integration **10.10.2-beta.4**, out at the same time. Signed release.
 
 - **Drive space**, a new built-in sensor: the space on every drive with a letter, fixed ones (USB disks included) and removable ones with something in them, keyed by the letter in the attributes: `drive_space.D.free_gb`, `D.used_gb`, `D.total_gb`, `D.used_percent`, `D.free_percent`, `D.label`, `D.file_system`, `D.removable`. A sensor made on D: stays on D: however many USB sticks come and go. The value is how full the system drive is, always that one, and `system` says which letter it is. The Attributes button makes the sensors for every drive, named with the letter. Network drives are left out. The custom **Disk free space** type is no longer offered for a new sensor; one made before keeps working. Needs the integration 10.10.2-beta.4 or newer. Requested in [#143](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/143).
 - **Translations: a `todo` list in a language file's header**, the keys waiting for the translator: new texts in English, and texts put together from the translator's own words for them to check. See [Translating the app](docs/translating.md).
 
-## 10.10.2-beta.3
+</details>
 
-> **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered it, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.10.1**, below.
+<details markdown="1">
+<summary><b>10.10.2-beta.3</b>: Simplified Chinese complete</summary>
 
 The third beta of the next version: the Simplified Chinese translation complete. Works with the integration **10.6.7** or newer; there is no new integration with this one. Signed release.
 
 - **Simplified Chinese, complete.** The texts that came with 10.10.2-beta.2 (the service state and start type, the column headers, the HA API failover note) are in Chinese now, and some of the earlier ones read better; by @natsu-tsuki in [#140](https://github.com/v1k70rk4/HASS.Agent.NET10/pull/140), thank you!
 
-## 10.10.2-beta.2
+</details>
+
+<details markdown="1">
+<summary><b>10.10.2-beta.2</b>: Simplified Chinese, and what trying it in the app turned up</summary>
 
 The second beta of the next version: Simplified Chinese, and what trying it in the app turned up. Works with the integration **10.6.7** or newer; there is no new integration with this one. Signed release.
 
@@ -29,15 +57,18 @@ The second beta of the next version: Simplified Chinese, and what trying it in t
 - **Texts that were English in every language can be translated**: the Tray / Service columns of the system commands, the sensors and the custom commands, and the state and start type on the Service page, which showed Windows' own `Running` and `START_TYPE : 2 AUTO_START`.
 - **Hungarian:** no "tray app" or "service" left in the texts.
 
-## 10.10.2-beta.1
+</details>
 
-> **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered it, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.10.1**, below.
+<details markdown="1">
+<summary><b>10.10.2-beta.1</b>: the texts in a file per language</summary>
 
 The first beta of the next version: the app's texts in one JSON file per language, so a new language is a file and a translator can try it in the installed app; and what testing on a domain-joined PC turned up. Works with the integration **10.6.7** or newer; there is no new integration with this one. Signed release.
 
 - **Translations in a file per language.** The texts of the app are in `en.json` and `hu.json` now, instead of C# code. A new language is a new file: it shows in the language lists, and a Windows set to that language picks it. A translator can try a language without building the app: a file in `%LOCALAPPDATA%\HASS.Agent.NET10\languages` is read by the tray app of that Windows user, checked against English first (a text with other `{0}`-style placeholders than the English one, or a stray brace, is left out, and the app keeps what it had for it: the built-in translation, or English). See [Translating the app](docs/translating.md). A Simplified Chinese translation is on its way: see the [Discussions](https://github.com/v1k70rk4/HASS.Agent.NET10/discussions).
 - **Danger Zone: Users of this PC has a row of its own.** The note shown to a user who is left out, the notice in Home Assistant and the docs all send people to "Danger Zone, Users of this PC", but it was a button on the Backup / restore view. The Backup / restore view follows the window now: its note wraps and a button that does not fit goes below.
 - **No English left on a Hungarian app.** The note shown to a user the settings are limited away from is in the language of Windows, as that user cannot read the settings that name the app's language; and the last messages written into the code (already running, settings not loaded, Local API not started, why an administrator run did not go as asked) come from the language files.
+
+</details>
 
 ## 10.10.1
 
