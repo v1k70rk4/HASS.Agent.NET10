@@ -50,6 +50,12 @@ cosign verify-blob HASS.Agent.NET10-Setup-<version>.exe \
 
 The built-in updater runs a downloaded installer only when it carries the publisher's valid Authenticode signature; anything else is deleted and the update stops, with the reason in the log and in Home Assistant. [Updates from Home Assistant](../features/updates.md)
 
+## Security fixes from .NET and the libraries
+
+The app carries its own .NET runtime, so it runs on any PC without installing .NET; but Windows Update does not patch the copy inside it. When Microsoft fixes a security problem in .NET, the fix reaches you with a HASS.Agent release built on the patched runtime. The same goes for the libraries the app uses, such as MQTTnet and WebView2. Such a release says in its notes which .NET version it is built on and names the CVEs it fixes, so updating is worth it even when nothing new shows in the app.
+
+To keep up: the .NET SDK the release is built with is pinned in the repository, Dependabot proposes each new SDK and library version, and the build fails on a library with a known vulnerability.
+
 ## Reviewed
 
 CodeQL scans every change, the app, the integration and the release flow have had security reviews, the project carries the [OpenSSF Best Practices](https://www.bestpractices.dev/projects/15316) passing badge and an [OpenSSF Scorecard](https://scorecard.dev/viewer/?uri=github.com/v1k70rk4/HASS.Agent.NET10) that checks it on every change. A vulnerability is reported privately, as the [security policy](https://github.com/v1k70rk4/HASS.Agent.NET10/security/policy) says, not in an issue.

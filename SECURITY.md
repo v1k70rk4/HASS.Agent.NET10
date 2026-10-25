@@ -8,7 +8,7 @@
 | The beta running at the time, if there is one | Yes |
 | Older versions | No, please update first |
 
-Fixes come out as a new release, signed like every other one.
+Fixes come out as a new release, signed like every other one. That includes security fixes of .NET and of the libraries the app uses: the .NET runtime is built into the app, and Windows Update does not patch it there, so they reach you with a release whose notes name the CVEs it fixes.
 
 ## Reporting a vulnerability
 

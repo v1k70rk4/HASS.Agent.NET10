@@ -9,7 +9,7 @@ Sending a pull request? [CONTRIBUTING.md](https://github.com/v1k70rk4/HASS.Agent
 
 ## Build from source
 
-Install the .NET 10 SDK, then publish:
+Install the .NET 10 SDK named in `global.json` (or a newer patch of the same feature band, `10.0.4xx`), then publish:
 
 ```powershell
 dotnet publish .\src\HASS.Agent.NET10\HASS.Agent.NET10.csproj `
@@ -21,6 +21,8 @@ The output goes to:
 ```text
 src\HASS.Agent.NET10\bin\Release\net10.0-windows10.0.19041.0\win-x64\publish\HASS.Agent.NET10.exe
 ```
+
+The publish is self-contained: the .NET runtime of that SDK goes into the exe, and Windows Update does not patch it there. That is why `global.json` pins the SDK: the release is built on a known runtime, CI uses the same one, and Dependabot opens a pull request when a new SDK comes out. When it brings .NET security fixes, the next release is built on it and its notes name the CVEs. See [Security and privacy](getting-started/security.md#security-fixes-from-net-and-the-libraries).
 
 To build the installer, also install [Inno Setup](https://jrsoftware.org/isinfo.php) and compile `installer\HASS.Agent.NET10.iss`.
 

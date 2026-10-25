@@ -45,7 +45,7 @@ jobs:
       - name: Setup .NET 10
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
-          dotnet-version: 10.0.x
+          global-json-file: global.json
       - name: Restore
         run: dotnet restore src/HASS.Agent.sln
       - name: Audit (fail on vulnerable packages)
@@ -68,7 +68,7 @@ jobs:
       - name: Setup .NET 10
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
-          dotnet-version: 10.0.x
+          global-json-file: global.json
       # The installer signature tests need a real signed installer, too big for the
       # repository: the one of the latest published release is the reference.
       - name: Get the signed installer of the latest release
@@ -109,7 +109,7 @@ jobs:
       - name: Setup .NET 10
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
-          dotnet-version: 10.0.x
+          global-json-file: global.json
 
       - name: Restore
         run: dotnet restore $env:PROJECT
