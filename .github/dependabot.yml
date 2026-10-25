@@ -30,7 +30,8 @@ updates:
 
   # The .NET SDK in global.json. The app is self-contained: the runtime of this SDK is built into
   # the release, and Windows Update does not patch it. A new SDK (a .NET security fix most months)
-  # means a release built on it, its notes naming the CVEs it fixes.
+  # is the cue for a release built on it, its notes naming the CVEs it fixes. Majors are left out:
+  # moving to a new .NET version is a change of its own.
   - package-ecosystem: "dotnet-sdk"
     directory: "/"
     schedule:

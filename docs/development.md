@@ -22,7 +22,7 @@ The output goes to:
 src\HASS.Agent.NET10\bin\Release\net10.0-windows10.0.19041.0\win-x64\publish\HASS.Agent.NET10.exe
 ```
 
-The publish is self-contained: the .NET runtime of that SDK goes into the exe, and Windows Update does not patch it there. That is why `global.json` pins the SDK: the release is built on a known runtime, CI uses the same one, and Dependabot opens a pull request when a new SDK comes out. When it brings .NET security fixes, the next release is built on it and its notes name the CVEs. See [Security and privacy](getting-started/security.md#security-fixes-from-net-and-the-libraries).
+The publish is self-contained: the .NET runtime of that SDK goes into the exe, and Windows Update does not patch it there. That is why `global.json` pins the SDK: the release is built on a known runtime, CI uses the same one, and Dependabot opens a pull request for each new .NET 10 SDK (a new major version is left out: moving to it is a change of its own). When a new SDK brings .NET security fixes, merging it is the cue for a release built on it, whose notes name the CVEs; nothing does that by itself. See [Security and privacy](getting-started/security.md#security-fixes-from-net-and-the-libraries).
 
 To build the installer, also install [Inno Setup](https://jrsoftware.org/isinfo.php) and compile `installer\HASS.Agent.NET10.iss`.
 

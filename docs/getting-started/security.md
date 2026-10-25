@@ -52,9 +52,9 @@ The built-in updater runs a downloaded installer only when it carries the publis
 
 ## Security fixes from .NET and the libraries
 
-The app carries its own .NET runtime, so it runs on any PC without installing .NET; but Windows Update does not patch the copy inside it. When Microsoft fixes a security problem in .NET, the fix reaches you with a HASS.Agent release built on the patched runtime. The same goes for the libraries the app uses, such as MQTTnet and WebView2. Such a release says in its notes which .NET version it is built on and names the CVEs it fixes, so updating is worth it even when nothing new shows in the app.
+The app carries its own .NET runtime, so it runs on any PC without installing .NET; but Windows Update does not patch the copy inside it. When Microsoft fixes a security problem in .NET, the fix reaches you with a HASS.Agent release built on the patched runtime. The same goes for the libraries built into the app, such as MQTTnet. Such a release says in its notes which .NET version it is built on and names the CVEs it fixes, so updating is worth it even when nothing new shows in the app. Of WebView2, behind the [dashboard popup](../features/dashboard-popup.md) and the popup window commands, the app carries only the loader that starts it; the browser engine itself is the WebView2 runtime, which comes with Windows and Microsoft Edge, and their updates keep it patched.
 
-To keep up: the .NET SDK the release is built with is pinned in the repository, Dependabot proposes each new SDK and library version, and the build fails on a library with a known vulnerability.
+To keep up: the .NET SDK the release is built with is pinned in the repository, Dependabot proposes each new .NET 10 SDK and each new library version, and a NuGet audit in CI fails when a library has a known vulnerability.
 
 ## Reviewed
 
