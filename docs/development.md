@@ -9,7 +9,7 @@ Sending a pull request? [CONTRIBUTING.md](https://github.com/v1k70rk4/HASS.Agent
 
 ## Build from source
 
-Install the .NET 10 SDK named in `global.json` (or a newer patch of the same feature band, `10.0.4xx`), then publish:
+Install the .NET 10 SDK named in `global.json`, that exact version (`dotnet --list-sdks` shows what you have), then publish:
 
 ```powershell
 dotnet publish .\src\HASS.Agent.NET10\HASS.Agent.NET10.csproj `
