@@ -70,12 +70,26 @@ internal static class SettingsStore
         // restoredFromBackup/adoptedSerial force a write: the settings file itself is
         // missing or unreadable in those cases and has to be rebuilt, even when the
         // recovered content happens to match what we would have written.
+        string? notWritten = null;
         if (originalJson is null || restoredFromBackup || adoptedSerial || keptLocalApiOn || migratedPassword || migratedPasswordScope || migratedHaApiToken || !JsonEquals(originalJson, normalizedJson))
         {
-            Write(paths, normalizedJson, rotateBackup: !restoredFromBackup);
+            try
+            {
+                Write(paths, normalizedJson, rotateBackup: !restoredFromBackup);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception)
+            {
+                // A user who may only read the settings (kiosk mode) still starts: the settings
+                // are used as they were read, and whoever may change them writes them back.
+                notWritten = ex.Message;
+            }
         }
 
         log.Info($"Loaded settings from {paths.SettingsFile}.");
+        if (notWritten is not null)
+        {
+            log.Info($"The settings were not written back (read only for this user): {notWritten}");
+        }
         if (restoredFromBackup)
         {
             log.Warning($"Settings were unreadable or missing; restored from {Path.GetFileName(BackupFile(paths))}.");

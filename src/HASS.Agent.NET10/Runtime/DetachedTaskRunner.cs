@@ -111,7 +111,7 @@ internal static class DetachedTaskRunner
         RunSchtasks($"/delete /tn \"{taskName}\" /f", log, ignoreErrors: true);
     }
 
-    private static bool RunSchtasks(string arguments, FileLog log, bool ignoreErrors = false)
+    internal static bool RunSchtasks(string arguments, FileLog log, bool ignoreErrors = false)
     {
         try
         {

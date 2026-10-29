@@ -2034,7 +2034,7 @@ internal sealed class MainForm : Form
         page.Controls.Add(warning);
 
         // Tool picker view — one button per tool, each opening its own sub-view.
-        var toolsCard = MakeCard(page, 28, 116, 720, 436, S("Danger.Tools"));
+        var toolsCard = MakeCard(page, 28, 116, 720, 478, S("Danger.Tools"));
         var subCards = new List<Panel>();
 
         void ShowView(Panel? sub)
@@ -2102,14 +2102,15 @@ internal sealed class MainForm : Form
         // the docs all send people to "Danger Zone, Users of this PC". It was a button on the
         // Backup / restore view, where nobody looked for it.
         AddToolRow(5, "Access.Button", "Danger.UsersHint").Click += (_, _) => SettingsAccessForm.Show(this, _paths, _settings, _log);
-        var factoryBtn = AddToolRow(6, "Danger.FactoryReset", "Danger.FactoryResetHint");
+        AddToolRow(6, "Kiosk.Button", "Danger.KioskHint").Click += (_, _) => KioskForm.Show(this, _log);
+        var factoryBtn = AddToolRow(7, "Danger.FactoryReset", "Danger.FactoryResetHint");
         factoryBtn.ForeColor = Color.FromArgb(185, 28, 28);
         factoryBtn.Click += (_, _) => FactoryReset();
 
         // Beta update channel — persists immediately, no Save button needed.
         var betaCheck = new CheckBox
         {
-            Text = S("Danger.BetaUpdates"), Location = Pt(20, 340),
+            Text = S("Danger.BetaUpdates"), Location = Pt(20, 382),
             Size = Sz(680, 26), ForeColor = TextBody, Checked = _settings.BetaUpdatesEnabled
         };
         betaCheck.CheckedChanged += (_, _) =>
@@ -2128,7 +2129,7 @@ internal sealed class MainForm : Form
         // Fast sensors below 5 seconds — persists immediately too. The text wraps in the box.
         var fastCheck = new CheckBox
         {
-            Text = S("Danger.FastSensors"), Location = Pt(20, 372),
+            Text = S("Danger.FastSensors"), Location = Pt(20, 414),
             Size = Sz(680, 48), ForeColor = TextBody, Checked = _settings.FastSensorsUnlocked,
             TextAlign = ContentAlignment.TopLeft, CheckAlign = ContentAlignment.TopLeft
         };

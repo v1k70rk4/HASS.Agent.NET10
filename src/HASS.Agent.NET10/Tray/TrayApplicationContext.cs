@@ -98,11 +98,15 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
         }
     }
 
-    public TrayApplicationContext(CompanionSettings settings, AppPaths paths, FileLog log)
+    // Kiosk mode (KioskPolicy): the icon says so, and opens nothing and closes nothing.
+    private readonly bool _kiosk;
+
+    public TrayApplicationContext(CompanionSettings settings, AppPaths paths, FileLog log, bool kiosk = false)
     {
         _settings = settings;
         _paths = paths;
         _log = log;
+        _kiosk = kiosk;
         _uiInvoker.CreateControl();
         _ = _uiInvoker.Handle;
 
@@ -122,19 +126,22 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
         _notifyIcon = new NotifyIcon
         {
             Icon = LoadTrayIcon(),
-            Text = AppIdentity.DisplayName,
+            Text = kiosk ? $"{AppIdentity.DisplayName} - {Strings.Get("Kiosk.Tray")}" : AppIdentity.DisplayName,
             Visible = true,
-            ContextMenuStrip = BuildContextMenu()
+            ContextMenuStrip = kiosk ? null : BuildContextMenu()
         };
 
-        _notifyIcon.DoubleClick += (_, _) => OpenMainForm();
-        _notifyIcon.MouseClick += (_, e) =>
+        if (!kiosk)
         {
-            if (e.Button == MouseButtons.Left && _settings.WebViewOnTrayClick)
+            _notifyIcon.DoubleClick += (_, _) => OpenMainForm();
+            _notifyIcon.MouseClick += (_, e) =>
             {
-                ToggleDashboard();
-            }
-        };
+                if (e.Button == MouseButtons.Left && _settings.WebViewOnTrayClick)
+                {
+                    ToggleDashboard();
+                }
+            };
+        }
 
         // The WebView custom command: asked for on a connection thread, shown on the UI thread.
         SystemCommandService.WebViewHandler = (url, size) =>
@@ -160,6 +167,12 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
 
     public void ShowSetupRequired()
     {
+        if (_kiosk)
+        {
+            // Nothing a kiosk user could do about it.
+            return;
+        }
+
         _pendingBalloonAction = () => OpenMainForm(1);
         _notifyIcon.ShowBalloonTip(
             10_000,
@@ -282,6 +295,11 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
 
     private void OpenMainForm(int page = 0)
     {
+        if (_kiosk)
+        {
+            return;
+        }
+
         if (_mainForm is not null && !_mainForm.IsDisposed)
         {
             _mainForm.NavigateToPage(page);

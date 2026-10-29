@@ -19,6 +19,7 @@ description: Everything HASS.Agent .NET10 does for a Windows PC in Home Assistan
 | **Windows service** | The same program as a system service, for what should work with nobody logged in. | [Windows service](windows-service.md) |
 | **Updates from Home Assistant** | An update entity with a working Install button; silent when the service is installed; only installers signed by the publisher are run. | [Updates](updates.md) |
 | **Who may use it** | The settings, with the Home Assistant token and the commands, for every user of the PC or only for the ones you tick. | [Who may use it on this PC](users.md) |
+| **Kiosk mode** | The tray app runs for the users of a kiosk PC, who cannot open, change or close it; it comes back when it is closed. | [Kiosk mode](kiosk.md) |
 | **Danger Zone** | Opt-in toolbox: MQTT cleanup, live monitor, debug log, backup and restore, factory reset, fast sensors, beta updates. | [Danger Zone](danger-zone.md) |
 | **Connection** | MQTT, the Home Assistant WebSocket API, or both with automatic failover; a notification-only local HTTP API as a fallback. | [Connection modes](../connection/index.md) |
 

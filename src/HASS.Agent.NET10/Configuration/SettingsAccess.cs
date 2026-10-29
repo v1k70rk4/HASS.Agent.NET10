@@ -246,6 +246,20 @@ internal static class SettingsAccess
     }
 
     /// <summary>
+    /// The users known to be administrators of this PC: the local ones, and those from a domain
+    /// or Entra ID shown to be. Kiosk mode names them, as the full app is theirs anyway, and
+    /// their app runs without elevation, where only their own name opens the settings.
+    /// </summary>
+    public static IReadOnlyList<string> AdministratorUsers()
+    {
+        var (_, administrators) = AdministratorsGroup();
+        return LocalUsers().Where(user => TrySid(user) is { } sid && administrators.Contains(sid))
+            .Concat(DirectoryUsersByRole().Administrators)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    /// <summary>
     /// The users from a domain or Entra ID with a profile here, split by whether Windows shows
     /// them to be administrators of this PC: members of its Administrators group, by their own
     /// account or through a domain group in it (Domain Admins, say). The members of a domain
@@ -418,11 +432,37 @@ internal static class SettingsAccess
             ChangeMember(sid, add: false);
         }
 
-        SetFolderRule(configDirectory, wanted.Append(group));
+        SetFolderRule(configDirectory, wanted.Append(group), KioskFullApp());
     }
 
     /// <summary>Every user of the PC may use the settings again, as before.</summary>
-    public static void OpenToEveryone(string configDirectory) => SetFolderRule(configDirectory, [AuthenticatedUsers]);
+    public static void OpenToEveryone(string configDirectory) => SetFolderRule(configDirectory, [AuthenticatedUsers], KioskFullApp());
+
+    /// <summary>
+    /// Kiosk mode turned on (the users who keep the full app) or off (null): the users who may
+    /// use the settings stay the same, and only the ones in <paramref name="fullApp"/> can still
+    /// change them. Needs an administrator.
+    /// </summary>
+    public static void ApplyKiosk(string configDirectory, IReadOnlyCollection<SecurityIdentifier>? fullApp)
+    {
+        if (Directory.Exists(configDirectory))
+        {
+            MakeSafe(configDirectory);
+        }
+
+        var users = RestrictionState(configDirectory) switch
+        {
+            true => ExplicitUsers(configDirectory),
+            false => ExplicitUsers(configDirectory).Append(AuthenticatedUsers).Distinct().ToList(),
+            // Nobody knows who the folder is for: it is left as it is, and the caller is told.
+            null => throw new InvalidOperationException($"The rule of {configDirectory} could not be read; it was not changed."),
+        };
+        SetFolderRule(configDirectory, users, fullApp);
+    }
+
+    /// <summary>The users who keep the full app while kiosk mode is on; null while it is off.</summary>
+    private static IReadOnlyCollection<SecurityIdentifier>? KioskFullApp() =>
+        KioskPolicy.Load(KioskPolicy.DefaultPath)?.FullAppSids();
 
     /// <summary>
     /// After an update: a folder limited to some users stays as it is (files added later
@@ -443,7 +483,7 @@ internal static class SettingsAccess
             var limitedTo = ExplicitUsers(configDirectory);
             if (limitedTo.Count > 0)
             {
-                SetFolderRule(configDirectory, limitedTo);
+                SetFolderRule(configDirectory, limitedTo, KioskFullApp());
             }
 
             return;
@@ -497,7 +537,11 @@ internal static class SettingsAccess
     // it, but on the folder itself only list, read and create: they cannot delete, rename or
     // replace the folder the service writes into. Then the files under it lose any rule of
     // their own and inherit only that.
-    internal static void SetFolderRule(string configDirectory, IEnumerable<SecurityIdentifier> users)
+    // In kiosk mode (kioskFullApp given) only the users who keep the full app have that; the
+    // other users read: they list the folder and read what is in it, and create, change or
+    // delete nothing there. The ones who keep the full app get it by their own name, also when
+    // they are in the users only through a group.
+    internal static void SetFolderRule(string configDirectory, IEnumerable<SecurityIdentifier> users, IReadOnlyCollection<SecurityIdentifier>? kioskFullApp = null)
     {
         var notTakenOver = MakeSafe(configDirectory);
         const InheritanceFlags inherit = InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit;
@@ -505,10 +549,12 @@ internal static class SettingsAccess
         security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
         security.AddAccessRule(new FileSystemAccessRule(LocalSystem, FileSystemRights.FullControl, inherit, PropagationFlags.None, AccessControlType.Allow));
         security.AddAccessRule(new FileSystemAccessRule(Administrators, FileSystemRights.FullControl, inherit, PropagationFlags.None, AccessControlType.Allow));
-        foreach (var user in users.Distinct())
+        var everyone = users.Concat(kioskFullApp ?? []).Distinct();
+        foreach (var user in everyone)
         {
-            security.AddAccessRule(new FileSystemAccessRule(user, UsersOnTheFolder, InheritanceFlags.None, PropagationFlags.None, AccessControlType.Allow));
-            security.AddAccessRule(new FileSystemAccessRule(user, FileSystemRights.Modify | FileSystemRights.Synchronize, inherit, PropagationFlags.InheritOnly, AccessControlType.Allow));
+            var readOnly = kioskFullApp is not null && !kioskFullApp.Contains(user);
+            security.AddAccessRule(new FileSystemAccessRule(user, readOnly ? KioskUsersOnTheFolder : UsersOnTheFolder, InheritanceFlags.None, PropagationFlags.None, AccessControlType.Allow));
+            security.AddAccessRule(new FileSystemAccessRule(user, readOnly ? KioskUsersOnTheFolder : FileSystemRights.Modify | FileSystemRights.Synchronize, inherit, PropagationFlags.InheritOnly, AccessControlType.Allow));
         }
 
         var rule = security.GetSecurityDescriptorBinaryForm();
@@ -732,6 +778,9 @@ internal static class SettingsAccess
     internal const FileSystemRights UsersOnTheFolder =
         FileSystemRights.ReadAndExecute | FileSystemRights.CreateFiles | FileSystemRights.CreateDirectories | FileSystemRights.Synchronize;
 
+    /// <summary>What the kiosk users get on the settings folder and on what is in it: list and read.</summary>
+    internal const FileSystemRights KioskUsersOnTheFolder = FileSystemRights.ReadAndExecute | FileSystemRights.Synchronize;
+
     /// <summary>
     /// Before an administrator sets the folder's rule: it must be a real folder, owned by
     /// SYSTEM, the administrators or whoever is setting the rule, with no links in it.
@@ -936,7 +985,7 @@ internal static class SettingsAccess
     // a directory user whose name no longer resolves is listed. A name that does not resolve
     // throws: a user asked for on the command line must not be dropped in silence, and
     // RestrictTo resolves every name before it changes anything.
-    private static SecurityIdentifier Sid(string user) =>
+    internal static SecurityIdentifier Sid(string user) =>
         user.StartsWith("S-1-", StringComparison.Ordinal)
             ? new SecurityIdentifier(user)
             : (SecurityIdentifier)new NTAccount(user.Contains('\\') ? user : $"{Environment.MachineName}\\{user}").Translate(typeof(SecurityIdentifier));

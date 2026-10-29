@@ -115,6 +115,7 @@ nav:
       - Windows service: features/windows-service.md
       - Updates from Home Assistant: features/updates.md
       - Who may use it on this PC: features/users.md
+      - Kiosk mode: features/kiosk.md
       - Danger Zone: features/danger-zone.md
   - Commands:
       - commands/index.md

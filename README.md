@@ -105,6 +105,7 @@ During upgrades the installer stops the running tray app, stops the system servi
 | <a id="windows-service"></a>**Windows service** | The same program as a system service, for what should work with nobody logged in. | [Windows Service](docs/features/windows-service.md) |
 | <a id="updating-from-home-assistant"></a>**Updates from Home Assistant** | An update entity with a working Install button; silent when the service is installed; only installers signed by the publisher are run. | [Updating](docs/features/updates.md) |
 | **Who may use it** | The settings, with the Home Assistant token and the commands, for every user of the PC or only for the ones you tick. | [Who May Use It](docs/features/users.md) |
+| **Kiosk mode** | The tray app runs for the users of a kiosk PC, who cannot open, change or close it; it comes back when it is closed. | [Kiosk Mode](docs/features/kiosk.md) |
 | <a id="danger-zone"></a>**Danger Zone** | Opt-in toolbox: MQTT cleanup, live monitor, debug log, backup / restore, factory reset, beta updates. | [Danger Zone](docs/features/danger-zone.md) |
 | <a id="connection-modes"></a><a id="home-assistant-integration"></a>**Connection** | MQTT, the Home Assistant WebSocket API, or both with automatic failover; a notification-only local HTTP API as a fallback. | [Connection Modes](docs/connection/index.md) |
 
@@ -117,7 +118,7 @@ During upgrades the installer stops the running tray app, stops the system servi
 The full documentation is the website, **[v1k70rk4.github.io/HASS.Agent.NET10](https://v1k70rk4.github.io/HASS.Agent.NET10/)**, built from the pages under [`docs/`](docs/):
 
 - [Get started](docs/getting-started/index.md): install, the installer and winget, security and privacy, [coming from HASS.Agent](docs/getting-started/migrating.md)
-- [Features](docs/features/index.md): notifications, media player, dashboard popup, display and audio, hotkeys, Windows service, updates, who may use it, Danger Zone
+- [Features](docs/features/index.md): notifications, media player, dashboard popup, display and audio, hotkeys, Windows service, updates, who may use it, kiosk mode, Danger Zone
 - [Commands](docs/commands/index.md): system commands and [custom commands](docs/commands/custom.md), with the key names
 - [Sensors](docs/sensors/index.md): the built-in sensors, their [attributes](docs/sensors/attributes.md) and [polling profiles](docs/sensors/profiles.md), [custom sensors](docs/sensors/custom.md)
 - <a id="mqtt-topics"></a><a id="ha-api-websocket-events"></a><a id="local-http-api"></a><a id="windows-firewall"></a>[Connection](docs/connection/index.md): connection modes, [MQTT](docs/connection/mqtt.md), [HA API](docs/connection/ha-api.md), the [local HTTP API](docs/connection/local-api.md) and the firewall rule

@@ -53,6 +53,13 @@ internal static class Program
             return;
         }
 
+        // The kiosk task: at logon, when the app closed or crashed, and once a minute.
+        if (args.Any(arg => string.Equals(arg, "--kiosk-start", StringComparison.OrdinalIgnoreCase)))
+        {
+            StartForKiosk();
+            return;
+        }
+
         // The uninstaller: takes back what Windows notifications registered for this user.
         if (args.Any(arg => string.Equals(arg, "--unregister-notifications", StringComparison.OrdinalIgnoreCase)))
         {
@@ -78,13 +85,18 @@ internal static class Program
             return;
         }
 
+        // A kiosk user gets the tray app with nothing to open or close (KioskPolicy).
+        var kiosk = KioskPolicy.AppliesToCurrentUser();
+
         using var mutex = new Mutex(initiallyOwned: true, MutexName, out var isFirstInstance);
         if (!isFirstInstance)
         {
             // --quiet: relaunch watchdogs may race an already-restarted instance.
             // -ToastActivated: Windows starting the app for a pressed notification button;
             // the running instance has it already.
-            if (!args.Any(arg =>
+            // A kiosk user has the app started at logon twice (the kiosk task, and their own
+            // autostart if they had one) and has nothing to do with the note.
+            if (!kiosk && !args.Any(arg =>
                     string.Equals(arg, "--quiet", StringComparison.OrdinalIgnoreCase) ||
                     string.Equals(arg, "-ToastActivated", StringComparison.OrdinalIgnoreCase)))
             {
@@ -115,9 +127,37 @@ internal static class Program
         }
 
         var paths = AppPaths.Create();
+        if (kiosk)
+        {
+            // A kiosk user can only read the settings folder, the shared log there included:
+            // their app logs for them alone.
+            paths = paths with
+            {
+                LogFile = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    AppIdentity.ConfigurationDirectoryName,
+                    Path.GetFileName(paths.LogFile))
+            };
+        }
 
         using var log = new FileLog(paths.LogFile);
-        log.Info($"Starting {AppIdentity.DisplayName}.");
+        log.Info($"Starting {AppIdentity.DisplayName}{(kiosk ? " in kiosk mode" : string.Empty)}.");
+        var sessionEnding = false;
+        if (kiosk)
+        {
+            var user = $"{Environment.UserDomainName}\\{Environment.UserName}";
+            if (KioskRanInThisSession())
+            {
+                KioskEvents.Write(KioskEvents.CameBack, $"The kiosk tray app of {user} was started again after it closed.", log, System.Diagnostics.EventLogEntryType.Warning);
+            }
+            else
+            {
+                KioskEvents.Write(KioskEvents.Started, $"The kiosk tray app started for {user}.", log);
+            }
+
+            // Closed by a logoff or a shutdown, the app is not to be started again.
+            Microsoft.Win32.SystemEvents.SessionEnding += (_, _) => sessionEnding = true;
+        }
 
         // A translator's own language files, before the settings name a language: for this
         // Windows user only, never for the service.
@@ -149,23 +189,27 @@ internal static class Program
         // If an update ran, its one-shot scheduled tasks have already done their job by the
         // time we are up again. Clear any left behind (older versions never removed them).
         _ = Task.Run(() => DetachedUpdateLauncher.CleanUpLeftoverTasks(log));
+        // A kiosk user's app is started by the kiosk task, and their settings cannot be saved.
         try
         {
-            if (!settings.AutoStartOnLogin && StartupManager.IsEnabled())
+            if (!kiosk)
             {
-                settings.AutoStartOnLogin = true;
-                SettingsStore.Save(paths, settings);
-                log.Info("Adopted auto-start setting from registry (installer).");
-            }
+                if (!settings.AutoStartOnLogin && StartupManager.IsEnabled())
+                {
+                    settings.AutoStartOnLogin = true;
+                    SettingsStore.Save(paths, settings);
+                    log.Info("Adopted auto-start setting from registry (installer).");
+                }
 
-            StartupManager.SetEnabled(settings.AutoStartOnLogin);
+                StartupManager.SetEnabled(settings.AutoStartOnLogin);
+            }
         }
         catch (Exception ex)
         {
             log.Warning($"Unable to update startup registration: {ex.Message}");
         }
 
-        using var trayContext = new TrayApplicationContext(settings, paths, log);
+        using var trayContext = new TrayApplicationContext(settings, paths, log, kiosk);
         using var monitorPowerStateService = new MonitorPowerStateService();
         using var sessionPowerWatcher = new SessionPowerWatcher();
         using var audioEndpointService = new AudioEndpointService(log);
@@ -234,8 +278,10 @@ internal static class Program
             log.Info("Local API is off.");
         }
 
-        // Detect a completed update: the previous run was a different version.
-        if (settings.LastRunVersion != settings.SoftwareVersion)
+        // Detect a completed update: the previous run was a different version. A kiosk user
+        // cannot write the new one into the settings; a record of their own keeps the app,
+        // started again, from reporting the same update every time.
+        if (settings.LastRunVersion != settings.SoftwareVersion && !UpdateReportedByThisUser(settings.SoftwareVersion))
         {
             if (!string.IsNullOrEmpty(settings.LastRunVersion))
             {
@@ -244,7 +290,15 @@ internal static class Program
             }
 
             settings.LastRunVersion = settings.SoftwareVersion;
-            SettingsStore.Save(paths, settings);
+            try
+            {
+                SettingsStore.Save(paths, settings);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception)
+            {
+                RememberUpdateReported(settings.SoftwareVersion);
+                log.Info($"The version that ran was not written to the settings (read only for this user): {ex.Message}");
+            }
         }
 
         // The installer's note for the service about the version it replaced. With no
@@ -270,7 +324,8 @@ internal static class Program
             trayContext.ShowSetupRequired();
         }
 
-        if (settings.ShowStartupNotification)
+        // Nothing to see for a kiosk user, also after the app came back.
+        if (settings.ShowStartupNotification && !kiosk)
         {
             trayContext.ShowNotification(new NotificationPayload
             {
@@ -287,6 +342,104 @@ internal static class Program
         mqttService.StopAsync().GetAwaiter().GetResult();
         localApi.StopAsync().GetAwaiter().GetResult();
         log.Info($"Stopped {AppIdentity.DisplayName}.");
+
+        if (kiosk && !sessionEnding)
+        {
+            // The kiosk task starts the app again on this event, and its start must find the
+            // place free: the instance lock goes first, the connection and the port went above.
+            mutex.ReleaseMutex();
+            mutex.Dispose();
+            KioskEvents.Write(KioskEvents.Closed, $"The kiosk tray app of {Environment.UserDomainName}\\{Environment.UserName} was closed.", log, System.Diagnostics.EventLogEntryType.Warning);
+        }
+    }
+
+    /// <summary>
+    /// From the kiosk task: starts the tray app when the user running this is a kiosk user and
+    /// it is not running in this session. Started as a process of its own, not the task's, so
+    /// the task's time limit and End do not reach it. Anyone else is left alone.
+    /// </summary>
+    private static void StartForKiosk()
+    {
+        try
+        {
+            if (!KioskPolicy.AppliesToCurrentUser())
+            {
+                return;
+            }
+
+            if (Mutex.TryOpenExisting(MutexName, out var running))
+            {
+                running.Dispose();
+                return;
+            }
+
+            using var _ = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = Environment.ProcessPath ?? Application.ExecutablePath,
+                Arguments = "--quiet",
+                UseShellExecute = false,
+            });
+        }
+        catch
+        {
+            // The next trigger of the task tries again.
+        }
+    }
+
+    private const string UserKeyPath = @"Software\HASS.Agent.NET10";
+
+    /// <summary>
+    /// Whether the kiosk tray app already ran in this logon session, and marks it for the next
+    /// start: a volatile key, which Windows drops when the user logs off.
+    /// </summary>
+    private static bool KioskRanInThisSession()
+    {
+        try
+        {
+            // Not volatile itself: the other values of the app live there, and a volatile key
+            // takes no lasting one under it.
+            using var key = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(UserKeyPath);
+            using (var existing = key.OpenSubKey("KioskSession"))
+            {
+                if (existing is not null)
+                {
+                    return true;
+                }
+            }
+
+            using var created = key.CreateSubKey("KioskSession", writable: false, Microsoft.Win32.RegistryOptions.Volatile);
+            return false;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
+    private static bool UpdateReportedByThisUser(string version)
+    {
+        try
+        {
+            using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(UserKeyPath);
+            return key?.GetValue("UpdateReportedFor") is string reported && reported == version;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
+    private static void RememberUpdateReported(string version)
+    {
+        try
+        {
+            using var key = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(UserKeyPath);
+            key.SetValue("UpdateReportedFor", version);
+        }
+        catch (Exception)
+        {
+            // Then a restart reports it once more, which is all that is lost.
+        }
     }
 
     private static void TellOnceAboutLimitedAccess()
