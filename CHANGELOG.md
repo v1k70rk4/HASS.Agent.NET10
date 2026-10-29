@@ -2,6 +2,30 @@
 
 Every release of HASS.Agent .NET10, newest first. The downloads are on the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases).
 
+## 10.11.0-beta.1
+
+> **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered the beta, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.10.2**, below.
+
+The first beta of the next version, a bigger one: kiosk mode, German, and the .NET security update of October. Works with the Home Assistant integration **10.6.7** or newer. Signed release.
+
+**Kiosk mode**
+
+- **Kiosk mode**, for a PC where the sensors need the tray app but the person in front of the screen must not change anything. The users ticked in **Danger Zone → Kiosk mode** get only the tray icon, with *Kiosk mode* as its tooltip: no window, no menu, no **Exit**. Notifications, hotkeys and the pages Home Assistant opens with the WebView command work as before. The app starts when they log on and comes back when it is closed: at once when it closes or crashes, within a minute when it is ended in Task Manager. They can read the settings but not change them, and their app logs to a file of their own. An administrator cannot be a kiosk user. The kiosk users are the local group **HASS.Agent Kiosk**, which an administrator can also change with Windows' own tools or a domain's group policy; a user put in it gets kiosk mode from their next logon. No password: Windows' file permissions keep the settings, and a scheduled task brings the app back. Turning it on needs an administrator (UAC), or `HASS.Agent.NET10.exe --kiosk on USER [USER ...]` / `--kiosk off`. See [Kiosk mode](docs/features/kiosk.md). Requested in [#155](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/155).
+- **Setup pauses the kiosk task** while it replaces the files, and turns it back on at the end; uninstalling turns kiosk mode off.
+
+**Translations**
+
+- **German**, translated by @Schumey in [#150](https://github.com/v1k70rk4/HASS.Agent.NET10/pull/150), thank you! A Windows set to German picks it, or choose it under **UI language** on the General page. The kiosk mode texts are in English for now.
+
+**Also in this release**
+
+- **A finished update is reported by the service when it is installed**, also while a tray app runs: the service has every right, the tray app may have few. The version that last ran is one record for the PC now, which every user may write, so the app of a user who can only read the settings does not report the same update at every start.
+- **Settings that cannot be written back no longer stop the start**: they are used as read.
+
+**Security**
+
+- **Built on .NET 10.0.14** (SDK 10.0.403), the .NET security update of October, which fixes CVE-2026-111497, CVE-2026-114148, CVE-2026-102870 and CVE-2026-70197. The .NET runtime is inside the app and Windows Update does not patch it there, so this release is how the fixes reach it.
+
 ## 10.10.2
 
 A translation release: the app's texts in a file per language, with Simplified Chinese as the first language from a translator, a Drive space sensor with every drive by its letter, and an update check that says when it failed. Works with the Home Assistant integration **10.6.7** or newer; the Drive space sensor needs the integration **10.10.2**, out at the same time. Signed release.
