@@ -433,15 +433,17 @@ internal sealed class MainForm : Form
         card2.Controls.Add(copyBtn);
         y += 40;
 
-        card2.Controls.Add(new Label
+        // As wide as its text, and the box after it: "API-Schlüssel" did not fit a fixed width.
+        var apiKeyLabel = new Label
         {
             Text = S("General.ApiKey"), Location = Pt(20, y + 4),
-            Size = Sz(80, 22), ForeColor = TextBody
-        });
+            AutoSize = true, ForeColor = TextBody
+        };
+        card2.Controls.Add(apiKeyLabel);
         var apiKeyBox = new TextBox
         {
             ReadOnly = true,
-            Location = Pt(104, y), Size = Sz(400, 28),
+            Location = new Point(Math.Max(D(104), D(20) + apiKeyLabel.PreferredWidth + D(6)), D(y)), Size = Sz(400, 28),
             BackColor = PageBg, BorderStyle = BorderStyle.FixedSingle, Font = new Font("Consolas", 9F)
         };
         card2.Controls.Add(apiKeyBox);
@@ -1325,7 +1327,9 @@ internal sealed class MainForm : Form
         var powerHelp = new Label
         {
             Text = S("Mp.PowerHelp"), Location = Pt(20, 40), Size = Sz(560, 110),
-            ForeColor = TextMuted, Font = new Font("Segoe UI", 8.5F)
+            ForeColor = TextMuted, Font = new Font("Segoe UI", 8.5F),
+            // "Devices & services" is a menu of Home Assistant, not a keyboard shortcut.
+            UseMnemonic = false
         };
         card3.Controls.Add(powerHelp);
         FollowCardWidth(card3, powerHelp);
@@ -1890,8 +1894,9 @@ internal sealed class MainForm : Form
         };
         card2.Controls.Add(installBtn);
 
+        // Each after the one before it: the first one grows with a longer translation.
         var startBtn = MakeSecondaryButton(S("Service.Start"), 100, 36);
-        startBtn.Location = Pt(200, 48);
+        startBtn.Location = new Point(Math.Max(D(200), installBtn.Right + D(10)), installBtn.Top);
         startBtn.Click += (_, _) =>
         {
             CompanionServiceManager.RunElevated("--start-service", _log);
@@ -1902,7 +1907,7 @@ internal sealed class MainForm : Form
         card2.Controls.Add(startBtn);
 
         var stopBtn = MakeSecondaryButton(S("Service.Stop"), 100, 36);
-        stopBtn.Location = Pt(310, 48);
+        stopBtn.Location = new Point(startBtn.Right + D(10), installBtn.Top);
         stopBtn.Click += (_, _) =>
         {
             CompanionServiceManager.RunElevated("--stop-service", _log);
@@ -3608,7 +3613,19 @@ internal sealed class MainForm : Form
         };
         btn.FlatAppearance.BorderSize = 0;
         btn.FlatAppearance.MouseOverBackColor = BtnBlueHover;
+        FitToText(btn);
         return btn;
+    }
+
+    // At least wide enough for its text on one line: a longer translation broke a fixed width
+    // into a second line the button cut off ("Installieren / aktualisieren").
+    private void FitToText(Button btn)
+    {
+        var needed = TextRenderer.MeasureText(btn.Text, btn.Font).Width + D(20);
+        if (btn.Width < needed)
+        {
+            btn.Width = needed;
+        }
     }
 
     /// <summary>w and h are logical (96 DPI) pixels.</summary>
@@ -3623,6 +3640,7 @@ internal sealed class MainForm : Form
         btn.FlatAppearance.BorderColor = BorderClr;
         btn.FlatAppearance.BorderSize = 1;
         btn.FlatAppearance.MouseOverBackColor = PageBg;
+        FitToText(btn);
         return btn;
     }
 
