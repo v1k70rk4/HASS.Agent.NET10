@@ -2,6 +2,17 @@
 
 Every release of HASS.Agent .NET10, newest first. The downloads are on the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases).
 
+## 10.11.0-beta.2
+
+> **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered the beta, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.10.2**, below.
+
+The second beta of the next version: fixes found in German, a clearer kiosk mode window, and kiosk users who get their app back at once after an update. It is also there to try a live update on a PC in kiosk mode: with beta.1 and kiosk mode on, the update from Home Assistant pauses the kiosk task, replaces the files and starts the app again for the kiosk users. Works with the Home Assistant integration **10.6.7** or newer. Signed release.
+
+- **Kiosk users get their app back right after an update.** Setup ends the running apps, which leaves nothing in the event log for the kiosk task to start them on, so a kiosk user waited up to a minute for the task's next run. Setup now runs the task as soon as it turns it back on.
+- **The Kiosk mode window says why you and the administrators cannot be ticked**: it would lock your own app, and an administrator always keeps the full app. Your own row also shows whether you are a kiosk user: saving the list no longer takes a kiosk user out of the group when they open the window before their next logon.
+- **Longer translations fit.** A button is at least as wide as its text on one line: in German "Installieren / aktualisieren" on the Service page and "Auf GitHub mit einem Stern markieren" on the About page were cut off. The API key label on the General page is as wide as its text ("API-Schlüssel").
+- **"Devices & services" keeps its "&"** in the help of turning the PC on and off from Home Assistant, on the Media player page, in English and German: the label took it for a keyboard shortcut.
+
 ## 10.11.0-beta.1
 
 > **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered the beta, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.10.2**, below.
