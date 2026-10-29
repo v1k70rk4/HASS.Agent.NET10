@@ -24,7 +24,7 @@ The first beta of the next version, a bigger one: kiosk mode, German, and the .N
 
 **Security**
 
-- **Built on .NET 10.0.14** (SDK 10.0.403), the .NET security update of October, which fixes CVE-2026-111497, CVE-2026-114148, CVE-2026-102870 and CVE-2026-70197. The .NET runtime is inside the app and Windows Update does not patch it there, so this release is how the fixes reach it.
+- **Built on .NET 10.0.14** (SDK 10.0.403), the .NET security update of October. Its runtime, inside the app, fixes CVE-2026-111497 (Brotli decoder) and CVE-2026-70197 (SocketAsyncEventArgs), which the October 13 update did not fully fix. Windows Update does not patch the runtime inside the app, so this release is how the fixes reach it. The other two CVEs of the update are for the Linux tarball and the Blazor WebAssembly packages, which the app does not use.
 
 ## 10.10.2
 

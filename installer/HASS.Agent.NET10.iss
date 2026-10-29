@@ -291,33 +291,46 @@ end;
 const
   KioskTask = 'HASS.Agent.NET10\Kiosk';
 
-{ The kiosk task: 0 not there, 1 on, 2 turned off, -1 there but its state not known. Whether
-  it is there comes from its file under System32\Tasks, which Task Scheduler keeps for every
-  task: in every language of Windows, and without PowerShell, so a PC without kiosk mode
-  installs also where PowerShell is not allowed to run. Whether it is on comes from
-  PowerShell's ScheduledTasks module. }
+{ Text as UTF-16 little endian, the way Task Scheduler keeps its task files. }
+function Utf16(Text: AnsiString): AnsiString;
+var
+  I: Integer;
+begin
+  Result := '';
+  for I := 1 to Length(Text) do
+    Result := Result + Text[I] + #0;
+end;
+
+{ The kiosk task: 0 not there, 1 on, 2 turned off, -1 there but its state not known. Both
+  from its file under System32\Tasks, which Task Scheduler keeps for every task: no
+  PowerShell, and the same in every language of Windows. A task turned off has
+  <Enabled>false</Enabled> in its settings; one that is on has true there, or nothing. }
 function KioskTaskState(): Integer;
 var
-  ResultCode: Integer;
+  TaskFile: string;
+  Xml: AnsiString;
+  Settings: AnsiString;
+  First, Last: Integer;
 begin
-  if not FileExists(ExpandConstant('{sys}\Tasks\') + KioskTask) then
+  TaskFile := ExpandConstant('{sys}\Tasks\') + KioskTask;
+  if not FileExists(TaskFile) then
   begin
     Result := 0;
     exit;
   end;
 
   Result := -1;
-  if not Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
-      '-NoProfile -NonInteractive -Command "try { $t = Get-ScheduledTask -TaskPath ''\HASS.Agent.NET10\'' -TaskName ''Kiosk'' -ErrorAction Stop; '
-      + 'if ($t.Settings.Enabled) { exit 11 } else { exit 12 } } '
-      + 'catch { if ($_.CategoryInfo.Category -eq ''ObjectNotFound'') { exit 10 } else { exit 13 } }"',
-      '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+  if not LoadStringFromFile(TaskFile, Xml) then
     exit;
-  case ResultCode of
-    10: Result := 0;
-    11: Result := 1;
-    12: Result := 2;
-  end;
+  First := Pos(Utf16('<Settings>'), Xml);
+  Last := Pos(Utf16('</Settings>'), Xml);
+  if (First = 0) or (Last <= First) then
+    exit;
+  Settings := Copy(Xml, First, Last - First);
+  if Pos(Utf16('<Enabled>false</Enabled>'), Settings) > 0 then
+    Result := 2
+  else
+    Result := 1;
 end;
 
 { /DISABLE or /ENABLE on the kiosk task, tried three times a second apart. }
@@ -339,26 +352,27 @@ end;
 
 { In kiosk mode a closed tray app is started again at once: not while the files are replaced,
   or the old program would be running again. With no task, or one an administrator turned
-  off, there is nothing to do, and it is left as it is. A task whose state cannot be read is
-  taken for one that is on. A task that cannot be paused stops Setup before anything is
-  changed. DeinitializeSetup turns back on only what was paused here, also when the install
-  failed. }
+  off, there is nothing to do, and it is left as it is. A task that is on and cannot be
+  paused, or whose file cannot be read, stops Setup before anything is changed.
+  DeinitializeSetup turns back on only what was paused here, also when the install failed. }
 function PrepareToInstall(var NeedsRestart: Boolean): String;
-var
-  State: Integer;
 begin
   Result := '';
-  State := KioskTaskState();
-  if State = -1 then
-    Log('The state of the kiosk task could not be read; it is paused as one that is on.');
-  if (State = 1) or (State = -1) then
-  begin
-    KioskTaskDisabled := ChangeKioskTask('/DISABLE');
-    if not KioskTaskDisabled then
-    begin
-      Log('The kiosk task could not be paused; Setup stops before changing anything.');
-      Result := CustomMessage('KioskTaskNotDisabled');
-    end;
+  case KioskTaskState() of
+    1:
+      begin
+        KioskTaskDisabled := ChangeKioskTask('/DISABLE');
+        if not KioskTaskDisabled then
+        begin
+          Log('The kiosk task could not be paused; Setup stops before changing anything.');
+          Result := CustomMessage('KioskTaskNotDisabled');
+        end;
+      end;
+    -1:
+      begin
+        Log('The kiosk task''s file could not be read; Setup stops before changing anything.');
+        Result := CustomMessage('KioskTaskNotDisabled');
+      end;
   end;
 end;
 

@@ -179,7 +179,7 @@ No telemetry, analytics, or usage data is collected or transmitted.
 - **Kiosk mode**: the tray app runs for the users you tick, who cannot open, change or close it; it comes back when it is closed. See [Kiosk mode](docs/features/kiosk.md). Requested in [#155](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/155).
 - **German**, translated by @Schumey in [#150](https://github.com/v1k70rk4/HASS.Agent.NET10/pull/150).
 - **A finished update is reported by the service when it is installed**, and settings that cannot be written back no longer stop the start.
-- **Built on .NET 10.0.14**, with the .NET security fixes of October (CVE-2026-111497, CVE-2026-114148, CVE-2026-102870, CVE-2026-70197).
+- **Built on .NET 10.0.14**, with the .NET security fixes of October for the runtime inside the app (CVE-2026-111497, CVE-2026-70197).
 
 ### 10.10.2
 
