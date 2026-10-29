@@ -1128,15 +1128,28 @@ internal sealed class MqttCompanionService : IDisposable
 
                 if (_role == CompanionRuntimeRole.App && _settings.MqttMediaPlayerEnabled && _mediaSessionService is not null)
                 {
-                    await _mediaSessionService.StartAsync(
-                        PublishMediaStateAsync,
-                        // A cover that does not fit is published as "no artwork" rather than
-                        // not at all, or the previous track's cover would stay on the card.
-                        thumbnail => PublishRawAsync(
-                            $"hass.agent/media_player/{TopicId}/thumbnail",
-                            ThumbnailFits(thumbnail, _brokerMaximumPacketSize) ? thumbnail : null,
-                            retain: false),
-                        connectionCts.Token);
+                    try
+                    {
+                        await _mediaSessionService.StartAsync(
+                            PublishMediaStateAsync,
+                            // A cover that does not fit is published as "no artwork" rather than
+                            // not at all, or the previous track's cover would stay on the card.
+                            thumbnail => PublishRawAsync(
+                                $"hass.agent/media_player/{TopicId}/thumbnail",
+                                ThumbnailFits(thumbnail, _brokerMaximumPacketSize) ? thumbnail : null,
+                                retain: false),
+                            connectionCts.Token);
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    {
+                        // Windows hands the media sessions to a process only from an interactive
+                        // logon: started from a remote shell or a task without a desktop, the
+                        // request fails with "the specified service does not exist" (0x80070424).
+                        // That used to take the whole connection down and reconnect it every ten
+                        // seconds; the sensors and commands do not need the media player, so the
+                        // connection stays and the player is tried again on the next connect.
+                        _log.Warning($"The media player could not start, the rest keeps working: {ex.Message}");
+                    }
                 }
 
                 if (ShouldPublishSystemSensors() && _systemMetricsService is not null)
