@@ -87,24 +87,25 @@ internal sealed class MediaSessionService : IDisposable
         await _lifecycle.WaitAsync().ConfigureAwait(false);
         try
         {
+            // No monitor is not "nothing to do": a play_media command works without one, and
+            // when the monitor failed to start (no media sessions for this logon), a player
+            // and a turned-up announcement volume can still be there to put away.
             var cts = _cts;
-            if (cts is null)
+            if (cts is not null)
             {
-                return;
-            }
+                _cts = null;
+                await cts.CancelAsync();
 
-            _cts = null;
-            await cts.CancelAsync();
-
-            if (_worker is not null)
-            {
-                try
+                if (_worker is not null)
                 {
-                    await _worker;
-                }
-                catch (OperationCanceledException)
-                {
-                    // Expected during shutdown.
+                    try
+                    {
+                        await _worker;
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        // Expected during shutdown.
+                    }
                 }
             }
 
@@ -121,11 +122,14 @@ internal sealed class MediaSessionService : IDisposable
                 _soundGate.Release();
             }
             _sessionManager = null;
-            cts.Dispose();
+            cts?.Dispose();
             _worker = null;
             _publishThumbnail = null;
             _lastThumbnailHash = null;
-            _log.Info("Media session monitor stopped.");
+            if (cts is not null)
+            {
+                _log.Info("Media session monitor stopped.");
+            }
         }
         finally
         {
