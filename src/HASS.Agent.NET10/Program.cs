@@ -364,7 +364,9 @@ internal static class Program
     {
         try
         {
-            if (!KioskMode.AppliesToCurrentUser())
+            // A kiosk user the settings are limited away from would only get the app to stop
+            // again, once a minute.
+            if (!KioskMode.AppliesToCurrentUser() || !SettingsAccess.CurrentUserCanUse(AppPaths.ConfigDirectoryPath))
             {
                 return;
             }

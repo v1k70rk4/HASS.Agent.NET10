@@ -88,7 +88,7 @@ internal static class SettingsStore
         log.Info($"Loaded settings from {paths.SettingsFile}.");
         if (notWritten is not null)
         {
-            log.Info($"The settings were not written back (read only for this user): {notWritten}");
+            log.Info($"The settings were not written back; they are used as read: {notWritten}");
         }
         if (restoredFromBackup)
         {

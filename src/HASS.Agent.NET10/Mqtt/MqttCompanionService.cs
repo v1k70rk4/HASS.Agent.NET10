@@ -463,7 +463,10 @@ internal sealed class MqttCompanionService : IDisposable
         IReadOnlyList<string> others;
         try
         {
-            if (_settings.SettingsAccessDecided || File.Exists(marker) || SettingsAccess.IsRestricted(folder))
+            // A kiosk user's app cannot write the marker, so it would tell Home Assistant at every
+            // start; the choice is an administrator's, whose app tells it.
+            if (_settings.SettingsAccessDecided || File.Exists(marker) || SettingsAccess.IsRestricted(folder)
+                || KioskMode.AppliesToCurrentUser())
             {
                 return;
             }

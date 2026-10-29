@@ -106,8 +106,6 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDi
 
 [Registry]
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "HASS.Agent.NET10"; ValueData: """{app}\{#MyAppExeName}"""; Flags: uninsdeletevalue; Tasks: autostart
-; Made by the app (the version that last ran, which every user may write): removed with it.
-Root: HKLM64; Subkey: "SOFTWARE\HASS.Agent.NET10"; Flags: uninsdeletekey dontcreatekey
 
 [Run]
 Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=""{#MyAppName} Local API"""; Flags: runhidden waituntilterminated; StatusMsg: "{cm:StatusFirewall}"
@@ -424,6 +422,11 @@ begin
   if (CurUninstallStep = usPostUninstall) and (not UninstallSilent()) then
   begin
     if MsgBox(CustomMessage('UninstallSettings'), mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES then
+    begin
       DelTree(ExpandConstant('{commonappdata}\HASS.Agent.NET10'), True, True, True);
+      { The version that last ran (made by the app, which every user may write) goes with the
+        settings: kept with them, a reinstall reports the update from the right version. }
+      RegDeleteKeyIncludingSubkeys(HKLM64, 'SOFTWARE\HASS.Agent.NET10');
+    end;
   end;
 end;

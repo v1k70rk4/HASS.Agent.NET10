@@ -28,7 +28,7 @@ A user from a domain or Entra ID is given as `DOMAIN\user`. The exit code is 1 w
 
 ## The HASS.Agent Kiosk group
 
-The kiosk users are the members of a local group, **HASS.Agent Kiosk**, made when kiosk mode is first turned on and removed when it is turned off. An administrator can also add or remove members with Windows' own tools, or from a domain's group policy, for a row of kiosk PCs. Like any group membership, it counts from the user's next logon: a user just ticked gets kiosk mode when they log on again, and one just unticked gets the full app back then.
+The kiosk users are the members of a local group, **HASS.Agent Kiosk**, made when kiosk mode is first turned on and removed when it is turned off. An administrator can also add or remove members with Windows' own tools, or from a domain's group policy, for a row of kiosk PCs. Leave the administrators out of it: the app gives them the full app either way, but the group's deny on the settings folder would hold for them too, also as administrator. Like any group membership, it counts from the user's next logon: a user just ticked gets kiosk mode when they log on again, and one just unticked gets the full app back then.
 
 ## How it works
 
