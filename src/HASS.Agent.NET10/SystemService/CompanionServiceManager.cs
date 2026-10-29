@@ -312,16 +312,19 @@ internal static class CompanionServiceManager
                     return new ControlCommandResult(true, string.Format(S("Kiosk.On"), names));
                 }
                 case "off":
-                    KioskWatchdog.Remove(log);
                     if (KioskMode.GroupSid() is null)
                     {
-                        // Not on (the uninstaller asks either way): the folder keeps its rule.
+                        // Not on (the uninstaller asks either way): the folder keeps its rule,
+                        // and a task left behind goes.
+                        KioskWatchdog.Remove(log);
                         return new ControlCommandResult(true, S("Kiosk.Off"));
                     }
 
-                    // The group goes last: an off that failed half way is tried again in full.
+                    // The group goes after the rule, and the task after both: an off that failed
+                    // half way leaves kiosk mode working, and is tried again in full.
                     SettingsAccess.ApplyKiosk(paths.ConfigDirectory, kioskGroup: null);
                     SettingsAccess.RemoveKioskGroup();
+                    KioskWatchdog.Remove(log);
                     log.Info("Kiosk mode off.");
                     KioskEvents.Write(KioskEvents.TurnedOff, $"Kiosk mode turned off by {by}.", log);
                     return new ControlCommandResult(true, S("Kiosk.Off"));
