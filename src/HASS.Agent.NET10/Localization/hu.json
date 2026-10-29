@@ -489,7 +489,7 @@
     "Kiosk.Save": "Mentés",
     "Kiosk.TurnOff": "Kikapcsolás",
     "Kiosk.Administrator": "{0} (rendszergazda)",
-    "Kiosk.You": "{0} (te)",
+    "Kiosk.CannotTick": "Saját magadat ({0}) és rendszergazdát nem jelölhetsz be: a saját alkalmazásodat zárnád le, a rendszergazdáé pedig mindig a teljes alkalmazás.",
     "Kiosk.On": "A kioszk mód bekapcsolva: {0}. Mindegyikük a következő bejelentkezésétől kapja.",
     "Kiosk.NobodyTicked": "Jelölj be legalább egy felhasználót. A kioszk módot a Kikapcsolás kapcsolja ki.",
     "Kiosk.Off": "A kioszk mód kikapcsolva. Újra mindenki a teljes alkalmazást kapja.",

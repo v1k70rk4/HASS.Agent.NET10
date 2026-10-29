@@ -9,7 +9,7 @@ description: HASS.Agent .NET10 on a kiosk PC, where the sensors need the tray ap
 
 Some sensors need the tray app (the session, the screen, the media player, the notifications), and on a PC set up as a kiosk the person in front of the screen should not be able to open its window, change its settings or close it. Kiosk mode keeps the app running for them with nothing to touch:
 
-- The users ticked in **Danger Zone → Kiosk mode** are the kiosk users. An administrator cannot be one, and whoever has the window open cannot change their own tick, marked *(you)*: ticking yourself would lock your own app. So kiosk mode is set from an administrator's app, or from a user's app that is not the one to be locked.
+- The users ticked in **Danger Zone → Kiosk mode** are the kiosk users. You cannot tick yourself or an administrator, and a note under the list says so: ticking yourself would lock your own app, and an administrator always keeps the full app. So kiosk mode is set from an administrator's app, or from the app of a user who is not to be locked.
 - A kiosk user gets only the icon in the tray, with *Kiosk mode* as its tooltip: no window, no menu, no **Exit**. Notifications, hotkeys and the pages Home Assistant opens with the WebView command work as before.
 - The app starts when a kiosk user logs on, and comes back when it is closed: at once when it closes or crashes, within a minute when it is ended in Task Manager.
 - The kiosk users can read the settings but not change, replace or delete them, and they cannot add files to the settings folder. Their app logs to a file of their own, `%LOCALAPPDATA%\HASS.Agent.NET10\hass-agent-net10.log`, since the shared log is in that folder.
