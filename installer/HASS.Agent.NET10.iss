@@ -64,6 +64,8 @@ english.TaskAccessAll=Every user of this PC
 english.UninstallSettings=Remove the settings too?%n%nThey hold the Home Assistant token, the MQTT password and the API key. Keep them only if you will install HASS.Agent .NET10 again.
 english.AccessUserUnknown=Setup could not find out which user started it, so HASS.Agent .NET10 was limited to %1 only.%n%nIf that is not you, an administrator can add you in HASS.Agent: Danger Zone, Users of this PC.
 english.AccessFailed=HASS.Agent .NET10 could not be limited to the chosen users; every user of this PC can use it for now.%n%nIt can be set in HASS.Agent: Danger Zone, Users of this PC.
+english.KioskTaskNotDisabled=The kiosk mode task (HASS.Agent.NET10\Kiosk) could not be paused, so the files cannot be replaced safely. Nothing was changed. Try again, or turn kiosk mode off first.
+english.KioskTaskNotEnabled=The kiosk mode task (HASS.Agent.NET10\Kiosk) could not be turned back on. Until it is, the app does not come back for the kiosk users when it is closed.%n%nTurn it on in Task Scheduler, or save kiosk mode again in HASS.Agent: Danger Zone, Kiosk mode.
 
 hungarian.TaskAutostart=Automatikus indítás bejelentkezéskor
 hungarian.TaskGroupStartup=Indítás:
@@ -78,6 +80,8 @@ hungarian.TaskAccessAll=A gép minden felhasználója
 hungarian.UninstallSettings=A beállításokat is törlöd?%n%nBennük van a Home Assistant token, az MQTT jelszó és az API kulcs. Csak akkor tartsd meg őket, ha újra telepíted a HASS.Agent .NET10-et.
 hungarian.AccessUserUnknown=A telepítő nem tudta megállapítani, melyik felhasználó indította, ezért a HASS.Agent .NET10 csak %1 számára lett korlátozva.%n%nHa ez nem te vagy, egy rendszergazda felvehet a HASS.Agentben: Danger Zone, A gép felhasználói.
 hungarian.AccessFailed=A HASS.Agent .NET10-et nem sikerült a választott felhasználókra korlátozni; egyelőre a gép minden felhasználója használhatja.%n%nA HASS.Agentben beállítható: Danger Zone, A gép felhasználói.
+hungarian.KioskTaskNotDisabled=A kioszk mód feladatát (HASS.Agent.NET10\Kiosk) nem sikerült szüneteltetni, ezért a fájlokat nem lehet biztonságosan lecserélni. Nem változott semmi. Próbáld újra, vagy előbb kapcsold ki a kioszk módot.
+hungarian.KioskTaskNotEnabled=A kioszk mód feladatát (HASS.Agent.NET10\Kiosk) nem sikerült visszakapcsolni. Amíg nincs bekapcsolva, a kioszk-felhasználóknál bezárás után nem jön vissza az alkalmazás.%n%nKapcsold be a Feladatütemezőben, vagy mentsd el újra a kioszk módot a HASS.Agentben: Danger Zone, Kioszk mód.
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
@@ -286,6 +290,49 @@ begin
     RunHidden(ExpandConstant('{app}\{#MyAppExeName}'), '--settings-access keep --quiet');
 end;
 
+const
+  KioskTask = 'HASS.Agent.NET10\Kiosk';
+
+function KioskTaskExists(): Boolean;
+begin
+  Result := RunHidden(ExpandConstant('{sys}\schtasks.exe'), '/Query /TN "' + KioskTask + '"');
+end;
+
+{ /DISABLE or /ENABLE on the kiosk task, tried three times a second apart. }
+function ChangeKioskTask(Switch: string): Boolean;
+var
+  I: Integer;
+begin
+  Result := False;
+  for I := 1 to 3 do
+  begin
+    if RunHidden(ExpandConstant('{sys}\schtasks.exe'), '/Change /TN "' + KioskTask + '" ' + Switch) then
+    begin
+      Result := True;
+      exit;
+    end;
+    Sleep(1000);
+  end;
+end;
+
+{ In kiosk mode a closed tray app is started again at once: not while the files are replaced,
+  or the old program would be running again. With no task there is nothing to do; a task that
+  cannot be paused stops Setup before anything is changed. DeinitializeSetup turns it back on,
+  also when the install failed. }
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+begin
+  Result := '';
+  if KioskTaskExists() then
+  begin
+    KioskTaskDisabled := ChangeKioskTask('/DISABLE');
+    if not KioskTaskDisabled then
+    begin
+      Log('The kiosk task could not be paused; Setup stops before changing anything.');
+      Result := CustomMessage('KioskTaskNotDisabled');
+    end;
+  end;
+end;
+
 procedure StopInstalledService();
 begin
   RunHidden(ExpandConstant('{sys}\sc.exe'), 'stop "HASS.Agent.NET10.Service"');
@@ -313,9 +360,6 @@ begin
     PreviousVersion := ReadPreviousVersion();
     ExistingServiceInstalled := IsServiceInstalled();
     TrayWasRunning := IsTrayRunning();
-    { In kiosk mode a closed tray app is started again at once: not while the files are
-      replaced. Turned back on when Setup ends, also when it failed (no task, nothing to do). }
-    KioskTaskDisabled := RunHidden(ExpandConstant('{sys}\schtasks.exe'), '/Change /TN "HASS.Agent.NET10\Kiosk" /DISABLE');
     StopRunningTrayApp();
     if ExistingServiceInstalled then
     begin
@@ -360,9 +404,17 @@ end;
 
 procedure DeinitializeSetup();
 begin
-  { Whatever became of the install, the kiosk users get their app back from the task. }
+  { Whatever became of the install, the kiosk users get their app back from the task; when
+    the task cannot be turned on again, that is said, not left to be found out. }
   if KioskTaskDisabled then
-    RunHidden(ExpandConstant('{sys}\schtasks.exe'), '/Change /TN "HASS.Agent.NET10\Kiosk" /ENABLE');
+  begin
+    if not ChangeKioskTask('/ENABLE') then
+    begin
+      Log('The kiosk task could not be turned back on.');
+      if not WizardSilent() then
+        MsgBox(CustomMessage('KioskTaskNotEnabled'), mbError, MB_OK);
+    end;
+  end;
 end;
 
 { The settings stay after an uninstall unless the person asks otherwise: a reinstall finds
