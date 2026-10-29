@@ -443,12 +443,13 @@ internal static class SettingsAccess
     public static void OpenToEveryone(string configDirectory) => SetFolderRule(configDirectory, [AuthenticatedUsers], KioskMode.GroupSid());
 
     /// <summary>
-    /// Kiosk mode for these users: makes exactly them the members of the kiosk group (made now
-    /// if it is not there yet), and returns the group. Needs an administrator. An administrator
-    /// is refused: the group is denied changing the settings, and that would hold for them as
-    /// administrator too.
+    /// Kiosk mode for these users, the first step: checks them and makes the kiosk group if it
+    /// is not there yet, without changing who is in it. The members come last
+    /// (<see cref="SetKioskMembers"/>), once the folder rule and the task are in place. Needs an
+    /// administrator. An administrator is refused: the group is denied changing the settings,
+    /// and that would hold for them as administrator too.
     /// </summary>
-    public static SecurityIdentifier SetKioskUsers(IReadOnlyCollection<string> users)
+    public static (SecurityIdentifier Group, IReadOnlySet<SecurityIdentifier> Users) PrepareKioskGroup(IReadOnlyCollection<string> users)
     {
         var wanted = users.Select(Sid).ToHashSet();
         var (_, administrators) = AdministratorsGroup();
@@ -459,10 +460,11 @@ internal static class SettingsAccess
             throw new InvalidOperationException($"An administrator cannot be a kiosk user: {string.Join(", ", refused.Select(NameOf))}.");
         }
 
-        var group = EnsureGroup(KioskMode.GroupName, KioskMode.GroupComment);
-        SetMembers(KioskMode.GroupName, wanted);
-        return group;
+        return (EnsureGroup(KioskMode.GroupName, KioskMode.GroupComment), wanted);
     }
+
+    /// <summary>Makes exactly these the members of the kiosk group, as <see cref="SetMembers"/> does.</summary>
+    public static void SetKioskMembers(IReadOnlySet<SecurityIdentifier> users) => SetMembers(KioskMode.GroupName, users);
 
     /// <summary>Kiosk mode off: the kiosk group goes, with its members. Needs an administrator.</summary>
     public static void RemoveKioskGroup()

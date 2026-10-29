@@ -284,18 +284,31 @@ internal static class CompanionServiceManager
                 case "on" when users.Count > 0:
                 {
                     // Every name given must be someone, and no administrator; nothing changes otherwise.
-                    var group = SettingsAccess.SetKioskUsers(users);
+                    // The members come last: until the folder rule and the task are in place,
+                    // nobody new is a kiosk user.
+                    var (group, kioskUsers) = SettingsAccess.PrepareKioskGroup(users);
                     SettingsAccess.ApplyKiosk(paths.ConfigDirectory, group);
                     PrepareLastRunRecord(log);
-                    KioskEvents.Register();
-                    var names = string.Join(", ", users);
-                    log.Info($"Kiosk mode on for {names}.");
-                    KioskEvents.Write(KioskEvents.TurnedOn, $"Kiosk mode turned on by {by} for: {names}. Each of them gets it at their next logon.", log);
+                    try
+                    {
+                        KioskEvents.Register();
+                    }
+                    catch (Exception ex)
+                    {
+                        // Kiosk mode works without it; only its entries in the event log, and the
+                        // start at once after a close, wait for it.
+                        log.Warning($"Unable to register the event log source: {ex.Message}");
+                    }
+
                     if (!KioskWatchdog.Register(Environment.ProcessPath ?? Application.ExecutablePath, group, log))
                     {
                         return new ControlCommandResult(false, S("Kiosk.TaskFailed"));
                     }
 
+                    SettingsAccess.SetKioskMembers(kioskUsers);
+                    var names = string.Join(", ", users);
+                    log.Info($"Kiosk mode on for {names}.");
+                    KioskEvents.Write(KioskEvents.TurnedOn, $"Kiosk mode turned on by {by} for: {names}. Each of them gets it at their next logon.", log);
                     return new ControlCommandResult(true, string.Format(S("Kiosk.On"), names));
                 }
                 case "off":

@@ -285,7 +285,9 @@ internal static class Program
         var lastRun = LastRunRecord.Read() ?? settings.LastRunVersion;
         if (lastRun != settings.SoftwareVersion)
         {
-            if (CompanionServiceManager.IsRunning())
+            // With nothing recorded yet (a first install) there is no update to report, and
+            // the service records nothing then: the version is recorded here.
+            if (!string.IsNullOrEmpty(lastRun) && CompanionServiceManager.IsRunning())
             {
                 log.Info($"Updated from {lastRun} to {settings.SoftwareVersion}; the service tells Home Assistant.");
             }
