@@ -39,7 +39,9 @@ internal static partial class LastRunRecord
     {
         try
         {
-            using var key = Registry.LocalMachine.OpenSubKey(KeyPath, writable: true);
+            // Asking for no more than setting a value, which is what the users are given:
+            // "writable" asks for creating subkeys too, and the users are refused that.
+            using var key = Registry.LocalMachine.OpenSubKey(KeyPath, RegistryKeyPermissionCheck.ReadWriteSubTree, RegistryRights.SetValue);
             if (key is null)
             {
                 return false;

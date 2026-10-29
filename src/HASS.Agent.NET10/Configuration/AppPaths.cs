@@ -29,13 +29,21 @@ internal sealed record AppPaths(
         var settingsFile = Path.Combine(configDirectory, "settings.json");
         var legacyProgramDataSettingsFile = Path.Combine(legacyProgramDataDirectory, "settings.json");
         var legacySettingsFile = Path.Combine(legacyConfigDirectory, "settings.json");
-        if (!File.Exists(settingsFile) && File.Exists(legacyProgramDataSettingsFile))
+        try
         {
-            File.Copy(legacyProgramDataSettingsFile, settingsFile);
+            if (!File.Exists(settingsFile) && File.Exists(legacyProgramDataSettingsFile))
+            {
+                File.Copy(legacyProgramDataSettingsFile, settingsFile);
+            }
+            else if (!File.Exists(settingsFile) && File.Exists(legacySettingsFile))
+            {
+                File.Copy(legacySettingsFile, settingsFile);
+            }
         }
-        else if (!File.Exists(settingsFile) && File.Exists(legacySettingsFile))
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            File.Copy(legacySettingsFile, settingsFile);
+            // A user who may only read the settings folder (kiosk mode) starts without them;
+            // whoever may write there migrates them.
         }
 
         return new AppPaths(
