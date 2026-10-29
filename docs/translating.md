@@ -5,7 +5,7 @@ description: How to translate HASS.Agent .NET10 into a new language, try it in t
 
 # Translating the app
 
-The texts of the Windows app are in one JSON file per language, under [`src/HASS.Agent.NET10/Localization`](https://github.com/v1k70rk4/HASS.Agent.NET10/tree/main/src/HASS.Agent.NET10/Localization): `en.json` is English, `hu.json` Hungarian, `zh-Hans.json` Simplified Chinese. A new language is a new file next to them; nothing else in the code has to change. The app lists it on the General page under **UI language** (and **HA entity language**), and picks it by itself on a Windows set to one of its languages.
+The texts of the Windows app are in one JSON file per language, under [`src/HASS.Agent.NET10/Localization`](https://github.com/v1k70rk4/HASS.Agent.NET10/tree/main/src/HASS.Agent.NET10/Localization): `en.json` is English, `hu.json` Hungarian, `de.json` German, `zh-Hans.json` Simplified Chinese. A new language is a new file next to them; nothing else in the code has to change. The app lists it on the General page under **UI language** (and **HA entity language**), and picks it by itself on a Windows set to one of its languages.
 
 ## The file
 
