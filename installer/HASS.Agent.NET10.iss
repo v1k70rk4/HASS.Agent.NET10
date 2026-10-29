@@ -112,6 +112,8 @@ Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall add rule name=""{
 [UninstallRun]
 ; Removes the kiosk task and group, and gives the kiosk users their write access back.
 Filename: "{app}\{#MyAppExeName}"; Parameters: "--kiosk off --quiet"; Flags: runhidden waituntilterminated skipifdoesntexist
+; The task goes either way: an off that failed keeps it, and it would run a program that is gone.
+Filename: "{sys}\schtasks.exe"; Parameters: "/Delete /TN ""HASS.Agent.NET10\Kiosk"" /F"; Flags: runhidden waituntilterminated
 Filename: "{app}\{#MyAppExeName}"; Parameters: "--stop-service --quiet"; Flags: runhidden waituntilterminated skipifdoesntexist
 Filename: "{app}\{#MyAppExeName}"; Parameters: "--uninstall-service --quiet"; Flags: runhidden waituntilterminated skipifdoesntexist
 Filename: "{app}\{#MyAppExeName}"; Parameters: "--unregister-notifications"; Flags: runhidden waituntilterminated skipifdoesntexist
