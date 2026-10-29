@@ -448,7 +448,9 @@ end;
 procedure DeinitializeSetup();
 begin
   { Whatever became of the install, the kiosk users get their app back from the task; when
-    the task cannot be turned on again, that is said, not left to be found out. }
+    the task cannot be turned on again, that is said, not left to be found out. Once on, it
+    is run right away: Setup ended the kiosk users' apps, which leaves nothing in the event
+    log for the task to start them on, and the kiosk users would wait for its next minute. }
   if KioskTaskDisabled then
   begin
     if not ChangeKioskTask('/ENABLE') then
@@ -456,7 +458,9 @@ begin
       Log('The kiosk task could not be turned back on.');
       if not WizardSilent() then
         MsgBox(CustomMessage('KioskTaskNotEnabled'), mbError, MB_OK);
-    end;
+    end
+    else if not RunHidden(ExpandConstant('{sys}\schtasks.exe'), '/Run /TN "' + KioskTask + '"') then
+      Log('The kiosk task could not be run now; it starts the kiosk users'' apps within a minute.');
   end;
 end;
 
