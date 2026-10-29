@@ -40,10 +40,12 @@ internal sealed record AppPaths(
                 File.Copy(legacySettingsFile, settingsFile);
             }
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        catch (UnauthorizedAccessException) when (KioskMode.AppliesToCurrentUser())
         {
-            // A user who may only read the settings folder (kiosk mode) starts without them;
-            // whoever may write there migrates them.
+            // A kiosk user may only read the settings folder: their app starts without the
+            // settings and cannot write any in their place, so the migration waits for whoever
+            // may write there. For anyone else a failed copy still stops the start, as before,
+            // and is tried again next time instead of being replaced by defaults.
         }
 
         return new AppPaths(
