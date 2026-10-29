@@ -418,8 +418,8 @@ internal sealed class MqttCompanionService : IDisposable
     }
 
     /// <summary>
-    /// Called once the queued "updated to X" notification is dealt with: sent, or left to
-    /// the tray app. Until then whoever queued it should keep it for the next start.
+    /// Called once the queued "updated to X" notification is sent. Until then whoever
+    /// queued it should keep it for the next start.
     /// </summary>
     public Action? UpdateCompletionHandled { get; set; }
 
@@ -494,16 +494,6 @@ internal sealed class MqttCompanionService : IDisposable
         }
 
         _log.Info($"Told Home Assistant that every user of this PC may use the settings (users not known to be administrators: {string.Join(", ", others)}).");
-    }
-
-    /// <summary>A tray app runs: it reports the finished update itself.</summary>
-    private void LeaveUpdateNotificationToTrayApp()
-    {
-        if (_pendingUpdateCompletedFrom is not null)
-        {
-            _pendingUpdateCompletedFrom = null;
-            UpdateCompletionHandled?.Invoke();
-        }
     }
 
     /// <summary>
@@ -1104,14 +1094,16 @@ internal sealed class MqttCompanionService : IDisposable
                     await PublishPendingUpdateNotificationAsync();
                     await PublishSettingsAccessNoticeAsync();
                 }
-                else if (!IsTrayAppRunning())
-                {
-                    await PublishUpdateStateAsync();
-                    await PublishPendingUpdateNotificationAsync();
-                }
                 else
                 {
-                    LeaveUpdateNotificationToTrayApp();
+                    // The update entity is the tray app's while it runs; a finished update
+                    // is the service's to report either way.
+                    if (!IsTrayAppRunning())
+                    {
+                        await PublishUpdateStateAsync();
+                    }
+
+                    await PublishPendingUpdateNotificationAsync();
                 }
 
                 // Store connection state so RestartAsync can decide whether a
@@ -1338,14 +1330,16 @@ internal sealed class MqttCompanionService : IDisposable
             await PublishPendingUpdateNotificationAsync();
             await PublishSettingsAccessNoticeAsync();
         }
-        else if (!IsTrayAppRunning())
-        {
-            await PublishUpdateStateAsync(cancellationToken: wsCts.Token);
-            await PublishPendingUpdateNotificationAsync();
-        }
         else
         {
-            LeaveUpdateNotificationToTrayApp();
+            // The update entity is the tray app's while it runs; a finished update is the
+            // service's to report either way.
+            if (!IsTrayAppRunning())
+            {
+                await PublishUpdateStateAsync(cancellationToken: wsCts.Token);
+            }
+
+            await PublishPendingUpdateNotificationAsync();
         }
 
         // Start the receive loop (handles incoming commands).

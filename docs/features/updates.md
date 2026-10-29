@@ -12,7 +12,7 @@ When a new release is available, the app publishes an **update entity** to Home 
 <figcaption>The update entity with its Install button</figcaption>
 </figure>
 
-With the Windows service installed, the update is downloaded and applied **fully silently** (no UAC prompt), also when nobody is logged in; a tray app that was running comes back by itself when the installer is done. Without the service a UAC prompt appears on the PC. Home Assistant receives a **persistent notification** for the progress and the result, and the service reports a finished update also when nobody was logged in.
+With the Windows service installed, the update is downloaded and applied **fully silently** (no UAC prompt), also when nobody is logged in; a tray app that was running comes back by itself when the installer is done. Without the service a UAC prompt appears on the PC. Home Assistant receives a **persistent notification** for the progress and the result. A finished update is reported by the service when it is installed, also when nobody was logged in, and by the tray app when it is not.
 
 <figure class="shot" markdown>
 ![Update completed notification in Home Assistant](../images/ha-client-updated.png){ width="500" }

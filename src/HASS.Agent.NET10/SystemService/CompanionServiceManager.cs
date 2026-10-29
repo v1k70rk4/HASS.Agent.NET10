@@ -227,6 +227,7 @@ internal static class CompanionServiceManager
         var users = arguments.Skip(1).Where(user => !string.IsNullOrWhiteSpace(user)).ToList();
         var paths = AppPaths.Create();
         using var log = new FileLog(paths.LogFile);
+        PrepareLastRunRecord(log);
         try
         {
             switch (mode)
@@ -307,6 +308,7 @@ internal static class CompanionServiceManager
 
                     policy.Save(KioskPolicy.DefaultPath);
                     SettingsAccess.ApplyKiosk(paths.ConfigDirectory, policy.FullAppSids());
+                    PrepareLastRunRecord(log);
                     KioskEvents.Register();
                     var names = string.Join(", ", users.Concat(administrators).Distinct(StringComparer.OrdinalIgnoreCase));
                     log.Info($"Kiosk mode on; the full app stays with {names}.");
@@ -340,6 +342,20 @@ internal static class CompanionServiceManager
         {
             log.Warning($"Changing kiosk mode failed: {ex.Message}");
             return new ControlCommandResult(false, string.Format(S("Kiosk.Failed"), ex.Message));
+        }
+    }
+
+    // The PC's record of the version that last ran (LastRunRecord). Every install runs
+    // --settings-access as administrator, so the record is there from the first start on.
+    private static void PrepareLastRunRecord(FileLog log)
+    {
+        try
+        {
+            LastRunRecord.Prepare();
+        }
+        catch (Exception ex)
+        {
+            log.Warning($"Unable to prepare the record of the version that last ran: {ex.Message}");
         }
     }
 

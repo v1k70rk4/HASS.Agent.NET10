@@ -45,6 +45,16 @@ internal sealed class CompanionWindowsService : ServiceBase
 
         try
         {
+            try
+            {
+                // The PC's record of the version that last ran, which the tray apps write too.
+                LastRunRecord.Prepare();
+            }
+            catch (Exception ex)
+            {
+                _log.Warning($"Unable to prepare the record of the version that last ran: {ex.Message}");
+            }
+
             var settings = LoadSettings(_paths, _log);
             ApplyLanguage(settings);
             _updatedFrom = DetectCompletedUpdate(settings);
@@ -264,9 +274,11 @@ internal sealed class CompanionWindowsService : ServiceBase
 
     /// <summary>
     /// The version the service ran as before this start, when it differs from the current
-    /// one: an update was installed in between. The tray app reports a finished update when
-    /// it starts; on a PC nobody is logged in to there is no tray app, and the service is
-    /// the one that can tell Home Assistant the install went through.
+    /// one: an update was installed in between. The service tells Home Assistant, whether a
+    /// tray app runs or not: it has every right, and the tray app may have few (kiosk mode).
+    /// A tray app reports the update only while the service is not running; when it did,
+    /// the PC's record (LastRunRecord) already has this version, and there is nothing left
+    /// to report.
     /// The service's last version lives in a file of its own, so the service never has to
     /// write settings.json (the tray app owns that, and a write reloads the runtime).
     /// The new version is only recorded once the notification is dealt with, so a restart
@@ -284,6 +296,14 @@ internal sealed class CompanionWindowsService : ServiceBase
 
         _runningVersion = settings.SoftwareVersion;
         var versionFile = ServiceVersionFile(_paths);
+        if (LastRunRecord.Read() == settings.SoftwareVersion)
+        {
+            // Reported already: by a tray app while the service was not running, or by the
+            // service before a restart.
+            RecordServiceVersion();
+            return null;
+        }
+
         try
         {
             var installerNote = UpdatedFromFile(_paths);
@@ -329,13 +349,18 @@ internal sealed class CompanionWindowsService : ServiceBase
 
     private static string UpdatedFromFile(AppPaths paths) => Path.Combine(paths.ConfigDirectory, "updated-from");
 
-    /// <summary>The finished update was reported (or left to the tray app): this version is now the known one.</summary>
+    /// <summary>The finished update was reported: this version is now the known one, for the service and for the tray apps.</summary>
     private void RecordServiceVersion()
     {
         _updatedFrom = null;
         if (_paths is null)
         {
             return;
+        }
+
+        if (!LastRunRecord.TryWrite(_runningVersion))
+        {
+            _log?.Warning("Unable to write the record of the version that last ran; a tray app started without the service may report this update again.");
         }
 
         try

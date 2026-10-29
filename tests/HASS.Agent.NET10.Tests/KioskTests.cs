@@ -141,6 +141,20 @@ public class KioskTests : IDisposable
         Assert.Equal("""{"deviceName":"KIOSK-PC","port":0}""", File.ReadAllText(paths.SettingsFile));
     }
 
+    [Theory]
+    [InlineData("10.10.2", true)]
+    [InlineData("10.11.0-beta.1", true)]
+    [InlineData("10.11.0-beta.1+b89999e", true)]
+    [InlineData("", false)]
+    [InlineData("10.10", false)]
+    [InlineData("10.10.2 **click here**", false)]
+    [InlineData("10.10.2\n[link](http://example.com)", false)]
+    public void The_record_every_user_may_write_is_used_only_when_it_is_a_version(string text, bool used)
+    {
+        // A kiosk user writes it too, and it ends up in a notification in Home Assistant.
+        Assert.Equal(used, LastRunRecord.IsVersion(text));
+    }
+
     [Fact]
     public void The_kiosk_task_runs_for_every_user_at_logon_when_the_app_closes_and_every_minute()
     {

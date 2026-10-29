@@ -278,26 +278,26 @@ internal static class Program
             log.Info("Local API is off.");
         }
 
-        // Detect a completed update: the previous run was a different version. A kiosk user
-        // cannot write the new one into the settings; a record of their own keeps the app,
-        // started again, from reporting the same update every time.
-        if (settings.LastRunVersion != settings.SoftwareVersion && !UpdateReportedByThisUser(settings.SoftwareVersion))
+        // Detect a completed update: the previous run was a different version. The record is
+        // the PC's (LastRunRecord), which every user can write, a kiosk user too; the one in the
+        // settings is where versions before it kept it. A running service reports the update
+        // and writes the record itself: it has every right, this app may have few.
+        var lastRun = LastRunRecord.Read() ?? settings.LastRunVersion;
+        if (lastRun != settings.SoftwareVersion)
         {
-            if (!string.IsNullOrEmpty(settings.LastRunVersion))
+            if (CompanionServiceManager.IsRunning())
             {
-                log.Info($"Updated from {settings.LastRunVersion} to {settings.SoftwareVersion}.");
-                mqttService.NotifyUpdateCompleted(settings.LastRunVersion);
+                log.Info($"Updated from {lastRun} to {settings.SoftwareVersion}; the service tells Home Assistant.");
             }
+            else
+            {
+                if (!string.IsNullOrEmpty(lastRun))
+                {
+                    log.Info($"Updated from {lastRun} to {settings.SoftwareVersion}.");
+                    mqttService.NotifyUpdateCompleted(lastRun);
+                }
 
-            settings.LastRunVersion = settings.SoftwareVersion;
-            try
-            {
-                SettingsStore.Save(paths, settings);
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception)
-            {
-                RememberUpdateReported(settings.SoftwareVersion);
-                log.Info($"The version that ran was not written to the settings (read only for this user): {ex.Message}");
+                RecordLastRun(settings, paths, log);
             }
         }
 
@@ -416,29 +416,25 @@ internal static class Program
         }
     }
 
-    private static bool UpdateReportedByThisUser(string version)
+    /// <summary>
+    /// The version that runs now, in the PC's record. Without that record (a build put in
+    /// place by hand, with no install and no service to make it) in the settings, as before.
+    /// </summary>
+    private static void RecordLastRun(CompanionSettings settings, AppPaths paths, FileLog log)
     {
-        try
+        if (LastRunRecord.TryWrite(settings.SoftwareVersion))
         {
-            using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(UserKeyPath);
-            return key?.GetValue("UpdateReportedFor") is string reported && reported == version;
+            return;
         }
-        catch (Exception)
-        {
-            return false;
-        }
-    }
 
-    private static void RememberUpdateReported(string version)
-    {
+        settings.LastRunVersion = settings.SoftwareVersion;
         try
         {
-            using var key = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(UserKeyPath);
-            key.SetValue("UpdateReportedFor", version);
+            SettingsStore.Save(paths, settings);
         }
-        catch (Exception)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception)
         {
-            // Then a restart reports it once more, which is all that is lost.
+            log.Warning($"The version that ran could not be recorded; the next start reports the update again: {ex.Message}");
         }
     }
 
