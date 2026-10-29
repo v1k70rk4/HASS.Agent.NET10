@@ -291,9 +291,25 @@ end;
 const
   KioskTask = 'HASS.Agent.NET10\Kiosk';
 
-function KioskTaskExists(): Boolean;
+{ The kiosk task: 0 not there, 1 on, 2 turned off, -1 not known (the query failed). Asked
+  through PowerShell's ScheduledTasks module, which tells a missing task from a failed query
+  in every language of Windows; schtasks gives both the same exit code. }
+function KioskTaskState(): Integer;
+var
+  ResultCode: Integer;
 begin
-  Result := RunHidden(ExpandConstant('{sys}\schtasks.exe'), '/Query /TN "' + KioskTask + '"');
+  Result := -1;
+  if not Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
+      '-NoProfile -NonInteractive -Command "try { $t = Get-ScheduledTask -TaskPath ''\HASS.Agent.NET10\'' -TaskName ''Kiosk'' -ErrorAction Stop; '
+      + 'if ($t.Settings.Enabled) { exit 11 } else { exit 12 } } '
+      + 'catch { if ($_.CategoryInfo.Category -eq ''ObjectNotFound'') { exit 10 } else { exit 13 } }"',
+      '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+    exit;
+  case ResultCode of
+    10: Result := 0;
+    11: Result := 1;
+    12: Result := 2;
+  end;
 end;
 
 { /DISABLE or /ENABLE on the kiosk task, tried three times a second apart. }
@@ -314,20 +330,28 @@ begin
 end;
 
 { In kiosk mode a closed tray app is started again at once: not while the files are replaced,
-  or the old program would be running again. With no task there is nothing to do; a task that
-  cannot be paused stops Setup before anything is changed. DeinitializeSetup turns it back on,
-  also when the install failed. }
+  or the old program would be running again. With no task, or one an administrator turned
+  off, there is nothing to do, and it is left as it is. A task that is on and cannot be
+  paused, or whose state cannot be read, stops Setup before anything is changed.
+  DeinitializeSetup turns back on only what was paused here, also when the install failed. }
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 begin
   Result := '';
-  if KioskTaskExists() then
-  begin
-    KioskTaskDisabled := ChangeKioskTask('/DISABLE');
-    if not KioskTaskDisabled then
-    begin
-      Log('The kiosk task could not be paused; Setup stops before changing anything.');
-      Result := CustomMessage('KioskTaskNotDisabled');
-    end;
+  case KioskTaskState() of
+    1:
+      begin
+        KioskTaskDisabled := ChangeKioskTask('/DISABLE');
+        if not KioskTaskDisabled then
+        begin
+          Log('The kiosk task could not be paused; Setup stops before changing anything.');
+          Result := CustomMessage('KioskTaskNotDisabled');
+        end;
+      end;
+    -1:
+      begin
+        Log('The state of the kiosk task could not be read; Setup stops before changing anything.');
+        Result := CustomMessage('KioskTaskNotDisabled');
+      end;
   end;
 end;
 
