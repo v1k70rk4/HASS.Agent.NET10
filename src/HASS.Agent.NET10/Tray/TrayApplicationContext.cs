@@ -98,7 +98,7 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
         }
     }
 
-    // Kiosk mode (KioskPolicy): the icon says so, and opens nothing and closes nothing.
+    // Kiosk mode (KioskMode): the icon says so, and opens nothing and closes nothing.
     private readonly bool _kiosk;
 
     public TrayApplicationContext(CompanionSettings settings, AppPaths paths, FileLog log, bool kiosk = false)

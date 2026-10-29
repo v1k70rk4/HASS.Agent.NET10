@@ -247,8 +247,7 @@ internal static class SettingsAccess
 
     /// <summary>
     /// The users known to be administrators of this PC: the local ones, and those from a domain
-    /// or Entra ID shown to be. Kiosk mode names them, as the full app is theirs anyway, and
-    /// their app runs without elevation, where only their own name opens the settings.
+    /// or Entra ID shown to be. They cannot be kiosk users.
     /// </summary>
     public static IReadOnlyList<string> AdministratorUsers()
     {
@@ -411,39 +410,95 @@ internal static class SettingsAccess
     /// </summary>
     public static void RestrictTo(string configDirectory, IReadOnlyCollection<string> users)
     {
-        var group = EnsureGroup();
+        var group = EnsureGroup(GroupName, GroupComment);
         var wanted = users.Select(Sid).ToHashSet();
-        var current = GroupMemberSids(GroupName);
+        SetMembers(GroupName, wanted);
+        SetFolderRule(configDirectory, wanted.Append(group), KioskMode.GroupSid());
+    }
+
+    /// <summary>
+    /// Makes exactly these the members of the group. Only users left unticked are taken out: the
+    /// local accounts and the domain or Entra ID users with a profile, which is the list this was
+    /// chosen from. Someone an administrator added by other means (another group, an account
+    /// that never logged on here) is not in that list, so it stays a member. A directory user
+    /// whose name no longer resolves is listed by SID, and by that SID goes out as well.
+    /// </summary>
+    private static void SetMembers(string group, IReadOnlySet<SecurityIdentifier> wanted)
+    {
+        var current = GroupMemberSids(group);
         foreach (var sid in wanted.Except(current))
         {
-            ChangeMember(sid, add: true);
+            ChangeMember(group, sid, add: true);
         }
 
-        // Only users left unticked are taken out: the local accounts and the domain or Entra ID
-        // users with a profile, which is the list this was chosen from. Someone an administrator
-        // added by other means (another group, an account that never logged on here) is not in
-        // that list, so it stays a member.
-        // A directory user whose name no longer resolves is listed by SID, and by that SID
-        // goes out as well.
         var listed = LocalUsers().Concat(DirectoryUsersWithProfiles())
             .Select(TrySid).OfType<SecurityIdentifier>().ToHashSet();
         foreach (var sid in current.Except(wanted).Where(listed.Contains))
         {
-            ChangeMember(sid, add: false);
+            ChangeMember(group, sid, add: false);
         }
-
-        SetFolderRule(configDirectory, wanted.Append(group), KioskFullApp());
     }
 
     /// <summary>Every user of the PC may use the settings again, as before.</summary>
-    public static void OpenToEveryone(string configDirectory) => SetFolderRule(configDirectory, [AuthenticatedUsers], KioskFullApp());
+    public static void OpenToEveryone(string configDirectory) => SetFolderRule(configDirectory, [AuthenticatedUsers], KioskMode.GroupSid());
 
     /// <summary>
-    /// Kiosk mode turned on (the users who keep the full app) or off (null): the users who may
-    /// use the settings stay the same, and only the ones in <paramref name="fullApp"/> can still
-    /// change them. Needs an administrator.
+    /// Kiosk mode for these users: makes exactly them the members of the kiosk group (made now
+    /// if it is not there yet), and returns the group. Needs an administrator. An administrator
+    /// is refused: the group is denied changing the settings, and that would hold for them as
+    /// administrator too.
     /// </summary>
-    public static void ApplyKiosk(string configDirectory, IReadOnlyCollection<SecurityIdentifier>? fullApp)
+    public static SecurityIdentifier SetKioskUsers(IReadOnlyCollection<string> users)
+    {
+        var wanted = users.Select(Sid).ToHashSet();
+        var (_, administrators) = AdministratorsGroup();
+        var directoryAdministrators = DirectoryUsersByRole().Administrators.Select(TrySid).OfType<SecurityIdentifier>();
+        var refused = wanted.Where(sid => administrators.Contains(sid) || directoryAdministrators.Contains(sid)).ToList();
+        if (refused.Count > 0)
+        {
+            throw new InvalidOperationException($"An administrator cannot be a kiosk user: {string.Join(", ", refused.Select(NameOf))}.");
+        }
+
+        var group = EnsureGroup(KioskMode.GroupName, KioskMode.GroupComment);
+        SetMembers(KioskMode.GroupName, wanted);
+        return group;
+    }
+
+    /// <summary>Kiosk mode off: the kiosk group goes, with its members. Needs an administrator.</summary>
+    public static void RemoveKioskGroup()
+    {
+        var status = NetLocalGroupDel(null, KioskMode.GroupName);
+        if (status is not (0 or NerrGroupNotFound or ErrorNoSuchAlias))
+        {
+            throw new InvalidOperationException($"The local group \"{KioskMode.GroupName}\" could not be removed (error {status}).");
+        }
+    }
+
+    /// <summary>The members of the kiosk group, by name, the way the lists name users; empty when there is no group.</summary>
+    public static IReadOnlySet<string> KioskUsers() =>
+        GroupMemberSids(KioskMode.GroupName).Select(NameOf).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+    // Bare for a local account, DOMAIN\user otherwise, the SID when Windows cannot name it.
+    private static string NameOf(SecurityIdentifier sid)
+    {
+        try
+        {
+            var name = ((NTAccount)sid.Translate(typeof(NTAccount))).Value;
+            var machine = Environment.MachineName + "\\";
+            return name.StartsWith(machine, StringComparison.OrdinalIgnoreCase) ? name[machine.Length..] : name;
+        }
+        catch (Exception ex) when (ex is IdentityNotMappedException or SystemException)
+        {
+            return sid.Value;
+        }
+    }
+
+    /// <summary>
+    /// Kiosk mode turned on (the kiosk group) or off (null) on the settings folder: who may use
+    /// the settings stays the same, and the kiosk group is denied changing them. Needs an
+    /// administrator.
+    /// </summary>
+    public static void ApplyKiosk(string configDirectory, SecurityIdentifier? kioskGroup)
     {
         if (Directory.Exists(configDirectory))
         {
@@ -457,12 +512,8 @@ internal static class SettingsAccess
             // Nobody knows who the folder is for: it is left as it is, and the caller is told.
             null => throw new InvalidOperationException($"The rule of {configDirectory} could not be read; it was not changed."),
         };
-        SetFolderRule(configDirectory, users, fullApp);
+        SetFolderRule(configDirectory, users, kioskGroup);
     }
-
-    /// <summary>The users who keep the full app while kiosk mode is on; null while it is off.</summary>
-    private static IReadOnlyCollection<SecurityIdentifier>? KioskFullApp() =>
-        KioskPolicy.Load(KioskPolicy.DefaultPath)?.FullAppSids();
 
     /// <summary>
     /// After an update: a folder limited to some users stays as it is (files added later
@@ -483,7 +534,7 @@ internal static class SettingsAccess
             var limitedTo = ExplicitUsers(configDirectory);
             if (limitedTo.Count > 0)
             {
-                SetFolderRule(configDirectory, limitedTo, KioskFullApp());
+                SetFolderRule(configDirectory, limitedTo, KioskMode.GroupSid());
             }
 
             return;
@@ -537,11 +588,10 @@ internal static class SettingsAccess
     // it, but on the folder itself only list, read and create: they cannot delete, rename or
     // replace the folder the service writes into. Then the files under it lose any rule of
     // their own and inherit only that.
-    // In kiosk mode (kioskFullApp given) only the users who keep the full app have that; the
-    // other users read: they list the folder and read what is in it, and create, change or
-    // delete nothing there. The ones who keep the full app get it by their own name, also when
-    // they are in the users only through a group.
-    internal static void SetFolderRule(string configDirectory, IEnumerable<SecurityIdentifier> users, IReadOnlyCollection<SecurityIdentifier>? kioskFullApp = null)
+    // In kiosk mode (kioskGroup given) the kiosk group is denied, on the folder and on what is
+    // in it, everything that would change something there: the kiosk users only list and read,
+    // whatever else lets them in. A deny goes before every allow.
+    internal static void SetFolderRule(string configDirectory, IEnumerable<SecurityIdentifier> users, SecurityIdentifier? kioskGroup = null)
     {
         var notTakenOver = MakeSafe(configDirectory);
         const InheritanceFlags inherit = InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit;
@@ -549,12 +599,15 @@ internal static class SettingsAccess
         security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
         security.AddAccessRule(new FileSystemAccessRule(LocalSystem, FileSystemRights.FullControl, inherit, PropagationFlags.None, AccessControlType.Allow));
         security.AddAccessRule(new FileSystemAccessRule(Administrators, FileSystemRights.FullControl, inherit, PropagationFlags.None, AccessControlType.Allow));
-        var everyone = users.Concat(kioskFullApp ?? []).Distinct();
-        foreach (var user in everyone)
+        foreach (var user in users.Distinct())
         {
-            var readOnly = kioskFullApp is not null && !kioskFullApp.Contains(user);
-            security.AddAccessRule(new FileSystemAccessRule(user, readOnly ? KioskUsersOnTheFolder : UsersOnTheFolder, InheritanceFlags.None, PropagationFlags.None, AccessControlType.Allow));
-            security.AddAccessRule(new FileSystemAccessRule(user, readOnly ? KioskUsersOnTheFolder : FileSystemRights.Modify | FileSystemRights.Synchronize, inherit, PropagationFlags.InheritOnly, AccessControlType.Allow));
+            security.AddAccessRule(new FileSystemAccessRule(user, UsersOnTheFolder, InheritanceFlags.None, PropagationFlags.None, AccessControlType.Allow));
+            security.AddAccessRule(new FileSystemAccessRule(user, FileSystemRights.Modify | FileSystemRights.Synchronize, inherit, PropagationFlags.InheritOnly, AccessControlType.Allow));
+        }
+
+        if (kioskGroup is not null)
+        {
+            security.AddAccessRule(new FileSystemAccessRule(kioskGroup, KioskDenied, inherit, PropagationFlags.None, AccessControlType.Deny));
         }
 
         var rule = security.GetSecurityDescriptorBinaryForm();
@@ -778,8 +831,14 @@ internal static class SettingsAccess
     internal const FileSystemRights UsersOnTheFolder =
         FileSystemRights.ReadAndExecute | FileSystemRights.CreateFiles | FileSystemRights.CreateDirectories | FileSystemRights.Synchronize;
 
-    /// <summary>What the kiosk users get on the settings folder and on what is in it: list and read.</summary>
-    internal const FileSystemRights KioskUsersOnTheFolder = FileSystemRights.ReadAndExecute | FileSystemRights.Synchronize;
+    /// <summary>
+    /// What the kiosk group is denied on the settings folder and on what is in it: creating,
+    /// writing and deleting anything. Their files are not theirs (MakeSafe takes over what a
+    /// user owns), so they cannot change a rule either.
+    /// </summary>
+    internal const FileSystemRights KioskDenied =
+        FileSystemRights.WriteData | FileSystemRights.AppendData | FileSystemRights.WriteExtendedAttributes
+        | FileSystemRights.WriteAttributes | FileSystemRights.Delete | FileSystemRights.DeleteSubdirectoriesAndFiles;
 
     /// <summary>
     /// Before an administrator sets the folder's rule: it must be a real folder, owned by
@@ -957,23 +1016,24 @@ internal static class SettingsAccess
             .Distinct()
             .ToList();
 
-    private static SecurityIdentifier EnsureGroup()
+    private static SecurityIdentifier EnsureGroup(string name, string comment)
     {
-        var info = new LocalGroupInfo1 { Name = GroupName, Comment = GroupComment };
+        var info = new LocalGroupInfo1 { Name = name, Comment = comment };
         var status = NetLocalGroupAdd(null, 1, ref info, out _);
         if (status is not (0 or ErrorAliasExists or NerrGroupExists))
         {
-            throw new InvalidOperationException($"The local group \"{GroupName}\" could not be created (error {status}).");
+            throw new InvalidOperationException($"The local group \"{name}\" could not be created (error {status}).");
         }
 
-        return TryGroupSid() ?? throw new InvalidOperationException($"The local group \"{GroupName}\" was not found after creating it.");
+        return TryGroupSid(name) ?? throw new InvalidOperationException($"The local group \"{name}\" was not found after creating it.");
     }
 
-    private static SecurityIdentifier? TryGroupSid()
+    /// <summary>The SID of a local group of this PC; null when there is no such group.</summary>
+    internal static SecurityIdentifier? TryGroupSid(string name)
     {
         try
         {
-            return (SecurityIdentifier)new NTAccount(Environment.MachineName, GroupName).Translate(typeof(SecurityIdentifier));
+            return (SecurityIdentifier)new NTAccount(Environment.MachineName, name).Translate(typeof(SecurityIdentifier));
         }
         catch (IdentityNotMappedException)
         {
@@ -990,7 +1050,7 @@ internal static class SettingsAccess
             ? new SecurityIdentifier(user)
             : (SecurityIdentifier)new NTAccount(user.Contains('\\') ? user : $"{Environment.MachineName}\\{user}").Translate(typeof(SecurityIdentifier));
 
-    private static void ChangeMember(SecurityIdentifier sid, bool add)
+    private static void ChangeMember(string group, SecurityIdentifier sid, bool add)
     {
         var bytes = new byte[sid.BinaryLength];
         sid.GetBinaryForm(bytes, 0);
@@ -1000,11 +1060,11 @@ internal static class SettingsAccess
             Marshal.Copy(bytes, 0, sidPointer, bytes.Length);
             var member = new LocalGroupMembersInfo0 { Sid = sidPointer };
             var status = add
-                ? NetLocalGroupAddMembers(null, GroupName, 0, ref member, 1)
-                : NetLocalGroupDelMembers(null, GroupName, 0, ref member, 1);
+                ? NetLocalGroupAddMembers(null, group, 0, ref member, 1)
+                : NetLocalGroupDelMembers(null, group, 0, ref member, 1);
             if (status is not (0 or ErrorMemberInAlias or ErrorMemberNotInAlias))
             {
-                throw new InvalidOperationException($"{(add ? "Adding" : "Removing")} {sid} {(add ? "to" : "from")} \"{GroupName}\" failed (error {status}).");
+                throw new InvalidOperationException($"{(add ? "Adding" : "Removing")} {sid} {(add ? "to" : "from")} \"{group}\" failed (error {status}).");
             }
         }
         finally
@@ -1019,6 +1079,8 @@ internal static class SettingsAccess
     private const int AccountDisabled = 0x0002;
     private const int ErrorAliasExists = 1379;
     private const int NerrGroupExists = 2223;
+    private const int NerrGroupNotFound = 2220;
+    private const int ErrorNoSuchAlias = 1376;
     private const int ErrorMemberInAlias = 1378;
     private const int ErrorMemberNotInAlias = 1377;
     private const int LgIncludeIndirect = 0x1;
@@ -1048,6 +1110,9 @@ internal static class SettingsAccess
 
     [DllImport("netapi32.dll", CharSet = CharSet.Unicode)]
     private static extern int NetLocalGroupAdd(string? server, int level, ref LocalGroupInfo1 info, out int errorIndex);
+
+    [DllImport("netapi32.dll", CharSet = CharSet.Unicode)]
+    private static extern int NetLocalGroupDel(string? server, string group);
 
     [DllImport("netapi32.dll", CharSet = CharSet.Unicode)]
     private static extern int NetLocalGroupAddMembers(string? server, string group, int level, ref LocalGroupMembersInfo0 member, int count);

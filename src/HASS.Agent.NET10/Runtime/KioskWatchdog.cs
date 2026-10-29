@@ -1,32 +1,29 @@
 using System.Security;
+using System.Security.Principal;
 using System.Text;
 using HASS.Agent.Companion.Logging;
 
 namespace HASS.Agent.Companion.Runtime;
 
 /// <summary>
-/// The scheduled task that keeps the tray app running for the kiosk users. It runs the app
-/// with --kiosk-start in the session of every user who logs on, and the app starts the tray
-/// there when the user is a kiosk user and it is not running yet; for anyone else it does
-/// nothing. It runs at logon; when the app writes that it closed, and when Windows writes that
-/// it crashed, so it is back at once; and once a minute, for an app ended in Task Manager,
-/// which leaves no trace. Created by the app run as administrator, so the users cannot change
-/// or delete it.
+/// The scheduled task that keeps the tray app running for the kiosk users. It runs for the
+/// kiosk group (KioskMode), in the session of each member who is logged on, and runs the app
+/// with --kiosk-start, which starts the tray app when it is not running there yet. It runs at
+/// logon; when the app writes that it closed, and when Windows writes that it crashed, so it
+/// is back at once; and once a minute, for an app ended in Task Manager, which leaves no trace.
+/// Created by the app run as administrator, so the users cannot change or delete it.
 /// </summary>
 internal static class KioskWatchdog
 {
     public const string TaskName = @"HASS.Agent.NET10\Kiosk";
 
-    // BUILTIN\Users: every interactive user of the PC, also those from a domain or Entra ID.
-    private const string UsersGroup = "S-1-5-32-545";
-
-    public static bool Register(string executable, FileLog log)
+    public static bool Register(string executable, SecurityIdentifier kioskGroup, FileLog log)
     {
         var xmlPath = Path.Combine(Path.GetTempPath(), $"hass-agent-kiosk-{Guid.NewGuid():N}.xml");
         try
         {
             // schtasks only accepts the XML when the file encoding matches its declaration.
-            File.WriteAllText(xmlPath, TaskXml(executable, DateTime.Now), Encoding.Unicode);
+            File.WriteAllText(xmlPath, TaskXml(executable, kioskGroup, DateTime.Now), Encoding.Unicode);
             return DetachedTaskRunner.RunSchtasks($"/create /tn \"{TaskName}\" /xml \"{xmlPath}\" /f", log);
         }
         catch (Exception ex)
@@ -57,7 +54,7 @@ internal static class KioskWatchdog
         $"<Select Path=\"Application\">*[System[Provider[@Name='Application Error'] and EventID=1000]] and *[EventData[Data='{executableFileName}']]</Select>" +
         "</Query></QueryList>";
 
-    internal static string TaskXml(string executable, DateTime now) =>
+    internal static string TaskXml(string executable, SecurityIdentifier kioskGroup, DateTime now) =>
         "<?xml version=\"1.0\" encoding=\"UTF-16\"?>\n" +
         "<Task version=\"1.2\" xmlns=\"http://schemas.microsoft.com/windows/2004/02/mit/task\">\n" +
         "  <RegistrationInfo>\n" +
@@ -82,7 +79,7 @@ internal static class KioskWatchdog
         "  </Triggers>\n" +
         "  <Principals>\n" +
         "    <Principal id=\"Users\">\n" +
-        $"      <GroupId>{UsersGroup}</GroupId>\n" +
+        $"      <GroupId>{kioskGroup.Value}</GroupId>\n" +
         "      <RunLevel>LeastPrivilege</RunLevel>\n" +
         "    </Principal>\n" +
         "  </Principals>\n" +

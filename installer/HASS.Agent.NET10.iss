@@ -110,7 +110,7 @@ Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=
 Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall add rule name=""{#MyAppName} Local API"" dir=in action=allow protocol=TCP localport=5115 profile=private program=""{app}\{#MyAppExeName}"" enable=yes"; Flags: runhidden waituntilterminated; StatusMsg: "{cm:StatusFirewall}"
 
 [UninstallRun]
-; Removes the kiosk task and gives the kiosk users their write access back.
+; Removes the kiosk task and group, and gives the kiosk users their write access back.
 Filename: "{app}\{#MyAppExeName}"; Parameters: "--kiosk off --quiet"; Flags: runhidden waituntilterminated skipifdoesntexist
 Filename: "{app}\{#MyAppExeName}"; Parameters: "--stop-service --quiet"; Flags: runhidden waituntilterminated skipifdoesntexist
 Filename: "{app}\{#MyAppExeName}"; Parameters: "--uninstall-service --quiet"; Flags: runhidden waituntilterminated skipifdoesntexist
@@ -118,10 +118,8 @@ Filename: "{app}\{#MyAppExeName}"; Parameters: "--unregister-notifications"; Fla
 Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=""{#MyAppName} Local API"""; Flags: runhidden waituntilterminated
 
 [UninstallDelete]
-; Written by the app as administrator (what the Windows service may run, who keeps the
-; full app in kiosk mode), not by Setup.
+; Written by the app as administrator (what the Windows service may run), not by Setup.
 Type: files; Name: "{app}\service-policy.json"
-Type: files; Name: "{app}\kiosk.json"
 
 [Code]
 var

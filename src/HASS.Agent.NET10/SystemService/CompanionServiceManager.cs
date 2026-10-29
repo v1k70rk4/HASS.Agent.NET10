@@ -261,10 +261,9 @@ internal static class CompanionServiceManager
     }
 
     /// <summary>
-    /// "--kiosk on USER [USER ...]": kiosk mode, where these users keep the full app, and so
-    /// does every administrator (named in the policy too: their app runs without elevation,
-    /// where only their own name lets them change the settings); "--kiosk off": the full app
-    /// for every user again. Needs an administrator.
+    /// "--kiosk on USER [USER ...]": kiosk mode for these users, the members of the "HASS.Agent
+    /// Kiosk" group from then on (KioskMode); "--kiosk off": the full app for every user again,
+    /// and the group goes. Needs an administrator.
     /// </summary>
     private static ControlCommandResult ChangeKioskMode(IReadOnlyList<string> arguments)
     {
@@ -282,38 +281,17 @@ internal static class CompanionServiceManager
         {
             switch (mode)
             {
-                case "on":
+                case "on" when users.Count > 0:
                 {
-                    // Every name given must be someone: a misspelt one would quietly become a kiosk user.
-                    var fullApp = users.Select(SettingsAccess.Sid).ToList();
-                    var administrators = SettingsAccess.AdministratorUsers();
-                    foreach (var administrator in administrators)
-                    {
-                        try
-                        {
-                            fullApp.Add(SettingsAccess.Sid(administrator));
-                        }
-                        catch (Exception ex) when (ex is System.Security.Principal.IdentityNotMappedException or SystemException)
-                        {
-                            // An administrator from a domain that cannot be asked now keeps the
-                            // full app by the role anyway; only changing the settings waits.
-                        }
-                    }
-
-                    var policy = new KioskPolicy { FullApp = fullApp.Distinct().Select(sid => sid.Value).ToList() };
-                    if (!ProgramFolderIsProtected(Path.GetDirectoryName(KioskPolicy.DefaultPath)!))
-                    {
-                        log.Warning($"The kiosk policy is written next to {Environment.ProcessPath}, a folder users can write to; a kiosk user could remove it there.");
-                    }
-
-                    policy.Save(KioskPolicy.DefaultPath);
-                    SettingsAccess.ApplyKiosk(paths.ConfigDirectory, policy.FullAppSids());
+                    // Every name given must be someone, and no administrator; nothing changes otherwise.
+                    var group = SettingsAccess.SetKioskUsers(users);
+                    SettingsAccess.ApplyKiosk(paths.ConfigDirectory, group);
                     PrepareLastRunRecord(log);
                     KioskEvents.Register();
-                    var names = string.Join(", ", users.Concat(administrators).Distinct(StringComparer.OrdinalIgnoreCase));
-                    log.Info($"Kiosk mode on; the full app stays with {names}.");
-                    KioskEvents.Write(KioskEvents.TurnedOn, $"Kiosk mode turned on by {by}. The full app stays with: {names}.", log);
-                    if (!KioskWatchdog.Register(Environment.ProcessPath ?? Application.ExecutablePath, log))
+                    var names = string.Join(", ", users);
+                    log.Info($"Kiosk mode on for {names}.");
+                    KioskEvents.Write(KioskEvents.TurnedOn, $"Kiosk mode turned on by {by} for: {names}. Each of them gets it at their next logon.", log);
+                    if (!KioskWatchdog.Register(Environment.ProcessPath ?? Application.ExecutablePath, group, log))
                     {
                         return new ControlCommandResult(false, S("Kiosk.TaskFailed"));
                     }
@@ -322,15 +300,15 @@ internal static class CompanionServiceManager
                 }
                 case "off":
                     KioskWatchdog.Remove(log);
-                    if (!File.Exists(KioskPolicy.DefaultPath))
+                    if (KioskMode.GroupSid() is null)
                     {
                         // Not on (the uninstaller asks either way): the folder keeps its rule.
                         return new ControlCommandResult(true, S("Kiosk.Off"));
                     }
 
-                    // The policy goes last: an off that failed half way is tried again in full.
-                    SettingsAccess.ApplyKiosk(paths.ConfigDirectory, fullApp: null);
-                    File.Delete(KioskPolicy.DefaultPath);
+                    // The group goes last: an off that failed half way is tried again in full.
+                    SettingsAccess.ApplyKiosk(paths.ConfigDirectory, kioskGroup: null);
+                    SettingsAccess.RemoveKioskGroup();
                     log.Info("Kiosk mode off.");
                     KioskEvents.Write(KioskEvents.TurnedOff, $"Kiosk mode turned off by {by}.", log);
                     return new ControlCommandResult(true, S("Kiosk.Off"));

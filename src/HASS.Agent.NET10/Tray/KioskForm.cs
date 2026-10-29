@@ -8,16 +8,16 @@ using HASS.Agent.Companion.Runtime;
 namespace HASS.Agent.Companion.Tray;
 
 /// <summary>
-/// Kiosk mode, from the Danger Zone: who keeps the full app. Turning it on, changing the list
-/// and turning it off run the app as administrator (UAC) with --kiosk. The administrators keep
-/// the full app whatever is ticked, and so does whoever opened this.
+/// Kiosk mode, from the Danger Zone: who the kiosk users are (KioskMode). Turning it on,
+/// changing the list and turning it off run the app as administrator (UAC) with --kiosk. An
+/// administrator cannot be ticked, and neither can whoever opened this.
 /// </summary>
 internal sealed class KioskForm : Form
 {
     private readonly FileLog _log;
     private readonly CheckedListBox _users = new() { CheckOnClick = true, IntegralHeight = false, BorderStyle = BorderStyle.FixedSingle };
     private readonly List<string> _names = [];
-    private readonly HashSet<int> _alwaysFull = [];
+    private readonly HashSet<int> _neverKiosk = [];
 
     private KioskForm(FileLog log)
     {
@@ -39,7 +39,7 @@ internal sealed class KioskForm : Form
         var width = LogicalToDeviceUnits(480);
         var gap = LogicalToDeviceUnits(10);
 
-        var policy = KioskPolicy.Load(KioskPolicy.DefaultPath);
+        var on = KioskMode.GroupSid() is not null;
         var heading = new Label
         {
             AutoSize = true,
@@ -54,13 +54,13 @@ internal sealed class KioskForm : Form
             MaximumSize = new Size(width, 0),
             Margin = new Padding(0, 0, 0, gap),
             Text = Strings.Get("Kiosk.Text") + Environment.NewLine + Environment.NewLine
-                + Strings.Get(policy is null ? "Kiosk.NowOff" : "Kiosk.NowOn"),
+                + Strings.Get(on ? "Kiosk.NowOn" : "Kiosk.NowOff"),
         };
 
-        // The same users as the Users of this PC dialog lists, ticked when they keep the full
-        // app. An administrator is ticked for good, and so is whoever opened this: leaving
-        // yourself out would turn your own app into the kiosk one.
-        var fullApp = policy?.FullAppSids() ?? [];
+        // The same users as the Users of this PC dialog lists, ticked when they are kiosk
+        // users. An administrator cannot be one, and neither can whoever opened this: ticking
+        // yourself would turn your own app into the kiosk one.
+        var members = on ? SafeSet(SettingsAccess.KioskUsers) : new HashSet<string>();
         var administrators = SafeList(SettingsAccess.AdministratorUsers);
         var current = CurrentUserName;
         var listed = SafeList(SettingsAccess.LocalUsers)
@@ -75,22 +75,22 @@ internal sealed class KioskForm : Form
         foreach (var user in listed)
         {
             var administrator = administrators.Contains(user, StringComparer.OrdinalIgnoreCase);
-            var always = administrator || string.Equals(user, current, StringComparison.OrdinalIgnoreCase);
+            var never = administrator || string.Equals(user, current, StringComparison.OrdinalIgnoreCase);
             var index = _users.Items.Add(
                 administrator ? string.Format(Strings.Get("Kiosk.Administrator"), user) : user,
-                always || IsIn(user, fullApp));
+                !never && members.Contains(user));
             _names.Add(user);
-            if (always)
+            if (never)
             {
-                _alwaysFull.Add(index);
+                _neverKiosk.Add(index);
             }
         }
 
         _users.ItemCheck += (_, e) =>
         {
-            if (_alwaysFull.Contains(e.Index))
+            if (_neverKiosk.Contains(e.Index))
             {
-                e.NewValue = CheckState.Checked;
+                e.NewValue = CheckState.Unchecked;
             }
         };
         _users.Width = width;
@@ -117,7 +117,7 @@ internal sealed class KioskForm : Form
             return button;
         }
 
-        var turnOn = MakeButton(policy is null ? "Kiosk.TurnOn" : "Kiosk.Save", elevates: true);
+        var turnOn = MakeButton(on ? "Kiosk.Save" : "Kiosk.TurnOn", elevates: true);
         var close = MakeButton("Access.Close", elevates: false);
         close.DialogResult = DialogResult.Cancel;
         turnOn.Click += async (_, _) => await WhileWaitingAsync(TurnOnAsync);
@@ -132,7 +132,7 @@ internal sealed class KioskForm : Form
             Margin = Padding.Empty,
         };
         buttons.Controls.Add(close);
-        if (policy is not null)
+        if (on)
         {
             var turnOff = MakeButton("Kiosk.TurnOff", elevates: true);
             turnOff.Click += async (_, _) => await WhileWaitingAsync(TurnOffAsync);
@@ -176,15 +176,15 @@ internal sealed class KioskForm : Form
         }
     }
 
-    private static bool IsIn(string user, IReadOnlyList<System.Security.Principal.SecurityIdentifier> sids)
+    private static IReadOnlySet<string> SafeSet(Func<IReadOnlySet<string>> set)
     {
         try
         {
-            return sids.Contains(SettingsAccess.Sid(user));
+            return set();
         }
         catch (Exception)
         {
-            return false;
+            return new HashSet<string>();
         }
     }
 
@@ -197,12 +197,18 @@ internal sealed class KioskForm : Form
     private async Task TurnOnAsync()
     {
         var users = _users.CheckedIndices.Cast<int>().Select(index => _names[index]).ToList();
+        if (users.Count == 0)
+        {
+            MessageBox.Show(this, Strings.Get("Kiosk.NobodyTicked"), AppIdentity.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
         if (!await RunElevatedAsync("--kiosk on " + string.Join(' ', users.Select(Quote))))
         {
             return;
         }
 
-        if (KioskPolicy.Load(KioskPolicy.DefaultPath) is null)
+        if (KioskMode.GroupSid() is null)
         {
             MessageBox.Show(this, Strings.Get("Kiosk.NotChanged"), AppIdentity.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
@@ -220,7 +226,7 @@ internal sealed class KioskForm : Form
             return;
         }
 
-        if (KioskPolicy.Load(KioskPolicy.DefaultPath) is not null)
+        if (KioskMode.GroupSid() is not null)
         {
             MessageBox.Show(this, Strings.Get("Kiosk.NotChanged"), AppIdentity.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;

@@ -85,8 +85,8 @@ internal static class Program
             return;
         }
 
-        // A kiosk user gets the tray app with nothing to open or close (KioskPolicy).
-        var kiosk = KioskPolicy.AppliesToCurrentUser();
+        // A kiosk user gets the tray app with nothing to open or close (KioskMode).
+        var kiosk = KioskMode.AppliesToCurrentUser();
 
         using var mutex = new Mutex(initiallyOwned: true, MutexName, out var isFirstInstance);
         if (!isFirstInstance)
@@ -362,7 +362,7 @@ internal static class Program
     {
         try
         {
-            if (!KioskPolicy.AppliesToCurrentUser())
+            if (!KioskMode.AppliesToCurrentUser())
             {
                 return;
             }

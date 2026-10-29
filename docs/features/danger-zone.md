@@ -15,7 +15,7 @@ An opt-in maintenance and diagnostics toolbox. Enable it with the **Danger Zone*
 | **Live MQTT monitor** | Watches the `hass.agent/#` topics in real time with a payload preview: exactly what the app sends and receives. |
 | **Backup / restore** | Exports the settings to a portable JSON file and restores them from one. The secrets are left out: the DPAPI-protected MQTT password, HA API token and LibreHardwareMonitor password are machine-bound, and the local API key is made anew by the import when the API is on. |
 | **Users of this PC** | Who may use HASS.Agent on this PC: every user, or the ticked ones and the administrators. See [Who may use it on this PC](users.md). |
-| **Kiosk mode** | The tray app runs for the other users of the PC, who cannot open, change or close it. See [Kiosk mode](kiosk.md). |
+| **Kiosk mode** | The tray app runs for the ticked users, who cannot open, change or close it. See [Kiosk mode](kiosk.md). |
 | **Factory reset** | Deletes all settings after a double confirmation and restarts the app with a fresh serial number. |
 
 Two switches live here as well:
