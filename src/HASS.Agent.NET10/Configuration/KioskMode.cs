@@ -1,4 +1,3 @@
-using System.Runtime.InteropServices;
 using System.Security.Principal;
 
 namespace HASS.Agent.Companion.Configuration;
@@ -11,8 +10,10 @@ namespace HASS.Agent.Companion.Configuration;
 /// app shows nothing but "Kiosk mode" in the tray: no window, no menu, no Exit; the settings
 /// folder denies the group every change (SettingsAccess.SetFolderRule); and a scheduled task
 /// that runs for the group starts the app (KioskWatchdog). Kiosk mode is on while the group is
-/// there. An administrator is never a kiosk user. Like any group, a new member is one from
-/// their next logon.
+/// there. The group alone decides, an administrator in it gets the kiosk tray too: it hides the
+/// app from them, which is what a shared admin account on a kiosk PC asks for, and nothing
+/// more, since an administrator can take themselves out of the group. Like any group, a new
+/// member is one from their next logon.
 /// </summary>
 internal static class KioskMode
 {
@@ -22,7 +23,7 @@ internal static class KioskMode
     /// <summary>The kiosk group; null when kiosk mode is off.</summary>
     public static SecurityIdentifier? GroupSid() => SettingsAccess.TryGroupSid(GroupName);
 
-    /// <summary>Whether the user running this gets the kiosk tray: in the group by their logon, and no administrator.</summary>
+    /// <summary>Whether the user running this gets the kiosk tray: in the group by their logon.</summary>
     public static bool AppliesToCurrentUser()
     {
         try
@@ -33,7 +34,7 @@ internal static class KioskMode
             }
 
             using var identity = WindowsIdentity.GetCurrent();
-            return IsKioskUser(identity.Groups?.Contains(group) == true, IsAdministrator(identity));
+            return IsKioskUser(identity.Groups?.Contains(group) == true);
         }
         catch (Exception)
         {
@@ -42,29 +43,5 @@ internal static class KioskMode
         }
     }
 
-    internal static bool IsKioskUser(bool inGroup, bool administrator) => inGroup && !administrator;
-
-    /// <summary>
-    /// An administrator of this PC, also when the app runs without elevation: with UAC an
-    /// administrator gets a limited token, in which the Administrators group only denies, so
-    /// asking for the role would say no. The elevation type of the token says it either way;
-    /// without UAC there is one token, and the role is asked.
-    /// </summary>
-    internal static bool IsAdministrator(WindowsIdentity identity)
-    {
-        if (GetTokenInformation(identity.Token, TokenElevationType, out var type, sizeof(int), out _)
-            && type is TokenElevationTypeFull or TokenElevationTypeLimited)
-        {
-            return true;
-        }
-
-        return new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator);
-    }
-
-    private const int TokenElevationType = 18;
-    private const int TokenElevationTypeFull = 2;
-    private const int TokenElevationTypeLimited = 3;
-
-    [DllImport("advapi32.dll", SetLastError = true)]
-    private static extern bool GetTokenInformation(IntPtr token, int informationClass, out int information, int length, out int returned);
+    internal static bool IsKioskUser(bool inGroup) => inGroup;
 }

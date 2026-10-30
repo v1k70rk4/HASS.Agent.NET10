@@ -29,12 +29,11 @@ public class KioskTests : IDisposable
     }
 
     [Theory]
-    [InlineData(true, false, true)]    // in the group
-    [InlineData(true, true, false)]    // an administrator, in the group or not
-    [InlineData(false, false, false)]  // anyone else
-    public void Who_gets_the_kiosk_tray(bool inGroup, bool administrator, bool kiosk)
+    [InlineData(true, true)]    // in the group, an administrator too
+    [InlineData(false, false)]  // anyone else
+    public void Who_gets_the_kiosk_tray(bool inGroup, bool kiosk)
     {
-        Assert.Equal(kiosk, KioskMode.IsKioskUser(inGroup, administrator));
+        Assert.Equal(kiosk, KioskMode.IsKioskUser(inGroup));
     }
 
     [Fact]

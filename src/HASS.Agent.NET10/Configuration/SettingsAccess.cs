@@ -247,7 +247,8 @@ internal static class SettingsAccess
 
     /// <summary>
     /// The users known to be administrators of this PC: the local ones, and those from a domain
-    /// or Entra ID shown to be. They cannot be kiosk users.
+    /// or Entra ID shown to be. The Kiosk mode window marks them, since kiosk mode cannot keep
+    /// an administrator out, only hide the app from them.
     /// </summary>
     public static IReadOnlyList<string> AdministratorUsers()
     {
@@ -446,20 +447,12 @@ internal static class SettingsAccess
     /// Kiosk mode for these users, the first step: checks them and makes the kiosk group if it
     /// is not there yet, without changing who is in it. The members come last
     /// (<see cref="SetKioskMembers"/>), once the folder rule and the task are in place. Needs an
-    /// administrator. An administrator is refused: the group is denied changing the settings,
-    /// and that would hold for them as administrator too.
+    /// administrator. An administrator may be one: the group's deny on the settings folder holds
+    /// for them too, and they can undo all of it, which the window says before it is done.
     /// </summary>
     public static (SecurityIdentifier Group, IReadOnlySet<SecurityIdentifier> Users) PrepareKioskGroup(IReadOnlyCollection<string> users)
     {
         var wanted = users.Select(Sid).ToHashSet();
-        var (_, administrators) = AdministratorsGroup();
-        var directoryAdministrators = DirectoryUsersByRole().Administrators.Select(TrySid).OfType<SecurityIdentifier>();
-        var refused = wanted.Where(sid => administrators.Contains(sid) || directoryAdministrators.Contains(sid)).ToList();
-        if (refused.Count > 0)
-        {
-            throw new InvalidOperationException($"An administrator cannot be a kiosk user: {string.Join(", ", refused.Select(NameOf))}.");
-        }
-
         return (EnsureGroup(KioskMode.GroupName, KioskMode.GroupComment), wanted);
     }
 

@@ -9,15 +9,17 @@ namespace HASS.Agent.Companion.Tray;
 
 /// <summary>
 /// Kiosk mode, from the Danger Zone: who the kiosk users are (KioskMode). Turning it on,
-/// changing the list and turning it off run the app as administrator (UAC) with --kiosk. An
-/// administrator cannot be ticked, and whoever opened this cannot change their own tick; a
-/// note under the list says so.
+/// changing the list and turning it off run the app as administrator (UAC) with --kiosk.
+/// Whoever opened this cannot change their own tick; a note under the list says so. An
+/// administrator can be ticked, and is asked about first: kiosk mode only hides the app from
+/// them, it cannot keep them out.
 /// </summary>
 internal sealed class KioskForm : Form
 {
     private readonly FileLog _log;
     private readonly CheckedListBox _users = new() { CheckOnClick = true, IntegralHeight = false, BorderStyle = BorderStyle.FixedSingle };
     private readonly List<string> _names = [];
+    private readonly HashSet<string> _administrators = new(StringComparer.OrdinalIgnoreCase);
     // Rows that cannot be changed here, with the state they keep.
     private readonly Dictionary<int, CheckState> _locked = [];
 
@@ -60,12 +62,13 @@ internal sealed class KioskForm : Form
         };
 
         // The same users as the Users of this PC dialog lists, ticked when they are kiosk
-        // users. An administrator cannot be one, and whoever opened this cannot change their
-        // own: ticking yourself would turn your own app into the kiosk one. A note under the
-        // list says so. Both keep the tick they have: a kiosk user who opens this before their
-        // next logon (the app is the full one until then) stays one when the list is saved.
+        // users. Whoever opened this cannot change their own: ticking yourself would turn your
+        // own app into the kiosk one. A note under the list says so. The row keeps the tick it
+        // has: a kiosk user who opens this before their next logon (the app is the full one
+        // until then) stays one when the list is saved. An administrator is marked, and asked
+        // about when ticked (TurnOnAsync).
         var members = on ? SafeSet(SettingsAccess.KioskUsers) : new HashSet<string>();
-        var administrators = SafeList(SettingsAccess.AdministratorUsers);
+        _administrators.UnionWith(SafeList(SettingsAccess.AdministratorUsers));
         var current = CurrentUserName;
         var listed = SafeList(SettingsAccess.LocalUsers)
             .Concat(SafeList(SettingsAccess.DirectoryUsersWithProfiles).Where(user => !user.StartsWith("S-1-", StringComparison.Ordinal)))
@@ -78,14 +81,12 @@ internal sealed class KioskForm : Form
 
         foreach (var user in listed)
         {
-            var administrator = administrators.Contains(user, StringComparer.OrdinalIgnoreCase);
-            var you = string.Equals(user, current, StringComparison.OrdinalIgnoreCase);
-            var ticked = !administrator && members.Contains(user);
+            var ticked = members.Contains(user);
             var index = _users.Items.Add(
-                administrator ? string.Format(Strings.Get("Kiosk.Administrator"), user) : user,
+                _administrators.Contains(user) ? string.Format(Strings.Get("Kiosk.Administrator"), user) : user,
                 ticked);
             _names.Add(user);
-            if (administrator || you)
+            if (string.Equals(user, current, StringComparison.OrdinalIgnoreCase))
             {
                 _locked[index] = ticked ? CheckState.Checked : CheckState.Unchecked;
             }
@@ -214,6 +215,16 @@ internal sealed class KioskForm : Form
         if (users.Count == 0)
         {
             MessageBox.Show(this, Strings.Get("Kiosk.NobodyTicked"), AppIdentity.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
+        // An administrator ticked: kiosk mode hides the app from them, nothing more, and that
+        // is said before anything is done, so that nobody takes it for a lock.
+        var administrators = users.Where(_administrators.Contains).ToList();
+        if (administrators.Count > 0
+            && MessageBox.Show(this, string.Format(Strings.Get("Kiosk.AdminWarning"), string.Join(", ", administrators)), AppIdentity.DisplayName,
+                MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) != DialogResult.Yes)
+        {
             return;
         }
 
