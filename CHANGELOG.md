@@ -2,6 +2,15 @@
 
 Every release of HASS.Agent .NET10, newest first. The downloads are on the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases).
 
+## 10.11.0-beta.3
+
+> **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered the beta, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.10.2**, below.
+
+The third beta of the next version: an administrator can be a kiosk user too, and a media player that cannot start no longer takes the connection down. Works with the Home Assistant integration **10.6.7** or newer. Signed release.
+
+- **An administrator can be a kiosk user too.** Asked for in the [kiosk mode discussion](https://github.com/v1k70rk4/HASS.Agent.NET10/discussions/154): on some kiosk PCs the account in front of the screen is an administrator, and hiding the window and the menu from it is what is wanted. The **HASS.Agent Kiosk** group alone decides now: whoever is in it gets the kiosk tray, administrator or not, also when put there with Windows' own tools. The Kiosk mode window lets an administrator be ticked and asks first, since for them it is a cover, not a lock: it is theirs to undo, by leaving the group or turning kiosk mode off (`--kiosk off`), and the full app is back from the next logon. In the window you still cannot tick yourself; the command line lets you name yourself, on purpose.
+- **A media player that cannot start no longer takes the connection down.** On a PC without the Windows media features (an N edition without the Media Feature Pack, Windows Server), or an app started from a scheduled task without a desktop, the media player monitor failed and took the whole MQTT connection with it: it reconnected every ten seconds and the log only showed a Windows error. The sensors and commands stay up now, the log says the player is what failed, and it is tried again on the next connect.
+
 ## 10.11.0-beta.2
 
 > **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered the beta, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.10.2**, below.

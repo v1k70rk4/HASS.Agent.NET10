@@ -2,7 +2,7 @@
 
 ![Windows](https://img.shields.io/badge/Windows-10%202004%2B%20%7C%2011-0078D4?logo=windows&logoColor=white)
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet&logoColor=white)
-![Version](https://img.shields.io/badge/version-10.11.0--beta.2-orange)
+![Version](https://img.shields.io/badge/version-10.11.0--beta.3-orange)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-MQTT%20%7C%20WebSocket%20API-41BDF5?logo=homeassistant&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/15316/badge)](https://www.bestpractices.dev/projects/15316)
@@ -26,7 +26,7 @@ It is designed for Windows PCs you want to observe and control from Home Assista
 
 The .NET10 line starts at **version 10.0.0**. The classic client is a separate program: if you want to stay with it, it is still available from its own project, and the integration keeps a [`legacy` branch](https://github.com/v1k70rk4/HASS.Agent.NET10-Integration/tree/legacy) for it. Thinking about switching? See [Coming from HASS.Agent](docs/getting-started/migrating.md).
 
-> **Stable:** [10.10.2](https://github.com/v1k70rk4/HASS.Agent.NET10/releases/latest) &nbsp;·&nbsp; **Beta:** [10.11.0-beta.2](https://github.com/v1k70rk4/HASS.Agent.NET10/releases/tag/v10.11.0-beta.2) &nbsp;·&nbsp; [What changed](#what-changed) &nbsp;·&nbsp; [Full changelog](CHANGELOG.md)
+> **Stable:** [10.10.2](https://github.com/v1k70rk4/HASS.Agent.NET10/releases/latest) &nbsp;·&nbsp; **Beta:** [10.11.0-beta.3](https://github.com/v1k70rk4/HASS.Agent.NET10/releases/tag/v10.11.0-beta.3) &nbsp;·&nbsp; [What changed](#what-changed) &nbsp;·&nbsp; [Full changelog](CHANGELOG.md)
 
 ---
 
@@ -172,15 +172,16 @@ No telemetry, analytics, or usage data is collected or transmitted.
 
 ## What Changed
 
-### 10.11.0-beta.1–2
+### 10.11.0-beta.1–3
 
 > **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered the beta, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.10.2**, below.
 
-- **Kiosk mode**: the tray app runs for the users you tick, who cannot open, change or close it; it comes back when it is closed. See [Kiosk mode](docs/features/kiosk.md). Requested in [#155](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/155).
+- **Kiosk mode**: the tray app runs for the users you tick, who cannot open, change or close it; it comes back when it is closed. From beta.3 an administrator can be a kiosk user too: the window asks first, since for them it is a cover they can undo, not a lock. See [Kiosk mode](docs/features/kiosk.md). Requested in [#155](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/155).
+- **A media player that cannot start no longer takes the connection down** (a PC without the Windows media features, or an app started from a task without a desktop).
 - **German**, translated by @Schumey in [#150](https://github.com/v1k70rk4/HASS.Agent.NET10/pull/150).
 - **A finished update is reported by the service when it is installed**, and settings that cannot be written back no longer stop the start.
 - **Built on .NET 10.0.14**, with the .NET security fixes of October for the runtime inside the app (CVE-2026-111497, CVE-2026-70197).
-- **Kiosk users get their app back right after an update**, and the Kiosk mode window says why you and the administrators cannot be ticked.
+- **Kiosk users get their app back right after an update**, and the Kiosk mode window says why you cannot tick yourself.
 - **Longer translations fit**, and "Devices & services" keeps its "&".
 
 ### 10.10.2
