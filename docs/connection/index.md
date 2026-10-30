@@ -5,7 +5,7 @@ description: How HASS.Agent .NET10 connects to Home Assistant - MQTT, the WebSoc
 
 # Connection modes
 
-The Home Assistant side is the companion integration, [v1k70rk4/HASS.Agent.NET10-Integration](https://github.com/v1k70rk4/HASS.Agent.NET10-Integration), installed from HACS ([Get started](../getting-started/index.md)). It creates the Home Assistant entities from what the app advertises.
+The Home Assistant side is the companion integration, [v1k70rk4/HASS.Agent.NET10-Integration](https://github.com/v1k70rk4/HASS.Agent.NET10-Integration), installed from the Marketplace (HACS in Home Assistant before 2026.11; [Get started](../getting-started/index.md)). It creates the Home Assistant entities from what the app advertises.
 
 The app supports three connection modes. MQTT and the HA API can be used together: the HA API is then the automatic failover when the MQTT broker is unreachable.
 

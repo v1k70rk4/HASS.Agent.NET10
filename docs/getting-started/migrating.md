@@ -12,7 +12,7 @@ HASS.Agent .NET10 began as a fork of the classic client and is a separate progra
 ## What is the same
 
 - The purpose: Home Assistant notifications on the PC, the PC as a media player, sensors, commands, a web page in a popup window, and a service for what should work with nobody logged in.
-- MQTT as the main transport, and a companion integration installed through HACS.
+- MQTT as the main transport, and a companion integration installed through the Marketplace (HACS in Home Assistant before 2026.11).
 
 ## What is different
 
@@ -39,7 +39,7 @@ Before you switch, check that the sensors and commands you rely on have a counte
 
 1. **Take stock.** Note the sensors, commands and Quick Actions you use, and the automations and dashboards that refer to their entities.
 2. **On the PC, uninstall the classic client** and its Satellite Service. Do not run the two clients side by side on one PC.
-3. **In Home Assistant, remove the old device.** Under **Settings → Devices & services → MQTT**, open the PC's device and delete it; that also clears its retained discovery messages on the broker. Then remove the classic HASS.Agent integration entry, and remove the classic integration in HACS.
+3. **In Home Assistant, remove the old device.** Under **Settings → Devices & services → MQTT**, open the PC's device and delete it; that also clears its retained discovery messages on the broker. Then remove the classic HASS.Agent integration entry, and remove the classic integration in the Marketplace.
 4. **Install this integration and the app** as in [Get started](index.md), connect over MQTT or the HA API, and add the PC: on MQTT it turns up under **Discovered**; over the HA API the first PC is added by hand (**Add integration → HASS.Agent → HA API (WebSocket)**).
 5. **Set up sensors and commands.** Switch on the built-in sensors you want on the **Sensors** page and the commands on the **Capabilities** page, then add your custom ones. The editors have a **Test** button that shows what a sensor would report or runs a command right away.
 6. **Point automations and dashboards at the new entities.**

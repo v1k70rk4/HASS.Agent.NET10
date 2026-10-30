@@ -5,7 +5,7 @@ description: Installing HASS.Agent .NET10 on a Windows PC and its integration in
 
 # Get started
 
-Two pieces: the Home Assistant integration, from HACS, and the Windows app, from winget or the signed installer. Ten minutes, no editing of configuration files.
+Two pieces: the Home Assistant integration, from the Marketplace (HACS in Home Assistant before 2026.11), and the Windows app, from winget or the signed installer. Ten minutes, no editing of configuration files.
 
 ## Requirements
 
@@ -17,9 +17,9 @@ Windows versions older than Windows 10 2004 are intentionally blocked: the app t
 
 ## 1. Install the integration
 
-The integration is in the **HACS default store**, so no custom repository is needed: open HACS, search for **HASS.Agent** (or use the button), download it and restart Home Assistant.
+The integration is in the **Marketplace**, so no custom repository is needed: open **Settings → Marketplace** (HACS in the sidebar before 2026.11), search for **HASS.Agent** (or use the button), download it and restart Home Assistant.
 
-[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=v1k70rk4&repository=HASS.Agent.NET10-Integration&category=integration)
+[![Open your Home Assistant instance and open a repository in the Marketplace.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=v1k70rk4&repository=HASS.Agent.NET10-Integration&category=integration)
 
 If another HASS.Agent integration is installed, remove it first: both use the `hass_agent` domain, and Home Assistant can hold only one of them. [Coming from HASS.Agent](migrating.md) has the steps for a PC that ran the classic client.
 

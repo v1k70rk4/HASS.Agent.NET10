@@ -186,7 +186,7 @@ An app that can run commands on your PC and holds your Home Assistant token shou
 
 ??? question "How do I install it?"
 
-    Install the HASS.Agent integration from the HACS default store in Home Assistant, then run the signed installer on the PC and enable MQTT or the HA API in the settings. On MQTT the PC turns up in Home Assistant on its own; over the HA API the first PC is added from the integration's Add device dialog. [Get started](getting-started/index.md) has the steps.
+    Install the HASS.Agent integration from the Marketplace in Home Assistant (HACS before 2026.11), then run the signed installer on the PC and enable MQTT or the HA API in the settings. On MQTT the PC turns up in Home Assistant on its own; over the HA API the first PC is added from the integration's Add device dialog. [Get started](getting-started/index.md) has the steps.
 
 ??? question "Is it safe to give it my Home Assistant token?"
 
