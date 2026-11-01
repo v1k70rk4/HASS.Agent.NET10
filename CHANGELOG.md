@@ -2,18 +2,48 @@
 
 Every release of HASS.Agent .NET10, newest first. The downloads are on the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases).
 
-## 10.11.0-beta.3
+## 10.11.0
 
-> **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered the beta, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.10.2**, below.
+A bigger release: kiosk mode, for a PC where the person in front of the screen must not change anything; German, and the kiosk texts in Simplified Chinese; a media player that cannot start no longer takes the connection down; and the .NET security update of October. Works with the Home Assistant integration **10.6.7** or newer. Signed release.
+
+**Kiosk mode**
+
+- **Kiosk mode**, for a PC where the sensors need the tray app but the person in front of the screen must not change anything. The users ticked in **Danger Zone → Kiosk mode** get only the tray icon, with *Kiosk mode* as its tooltip: no window, no menu, no **Exit**. Notifications, hotkeys and the pages Home Assistant opens with the WebView command work as before. The app starts when they log on and comes back when it is closed: at once when it closes or crashes, within a minute when it is ended in Task Manager. They can read the settings but not change them, and their app logs to a file of their own. The kiosk users are the local group **HASS.Agent Kiosk**, which an administrator can also change with Windows' own tools or a domain's group policy; a user put in it gets kiosk mode from their next logon. No password: Windows' file permissions keep the settings, and a scheduled task brings the app back. Turning it on needs an administrator (UAC), or `HASS.Agent.NET10.exe --kiosk on USER [USER ...]` / `--kiosk off`. See [Kiosk mode](docs/features/kiosk.md). Requested in [#155](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/155).
+- **An administrator can be a kiosk user too.** Asked for in the [kiosk mode discussion](https://github.com/v1k70rk4/HASS.Agent.NET10/discussions/154): on some kiosk PCs the account in front of the screen is an administrator, and hiding the window and the menu from it is what is wanted. The **HASS.Agent Kiosk** group alone decides: whoever is in it gets the kiosk tray, administrator or not, also when put there with Windows' own tools. The Kiosk mode window lets an administrator be ticked and asks first, since for them it is a cover, not a lock: it is theirs to undo, by leaving the group or turning kiosk mode off (`--kiosk off`), and the full app is back from the next logon. In the window you cannot tick yourself, as it would lock your own app; the command line lets you name yourself, on purpose.
+- **Setup pauses the kiosk task** while it replaces the files, turns it back on at the end and runs it at once, so a kiosk user has their app back right after an update; uninstalling turns kiosk mode off.
+- **The Kiosk mode window shows whether you are a kiosk user**: saving the list no longer takes a kiosk user out of the group when they open the window before their next logon.
+
+**Translations**
+
+- **German**, translated by @Schumey in [#150](https://github.com/v1k70rk4/HASS.Agent.NET10/pull/150), thank you! A Windows set to German picks it, or choose it under **UI language** on the General page. The kiosk mode texts are in English for now.
+- **The kiosk mode texts in Simplified Chinese**, translated by @natsu-tsuki in [#164](https://github.com/v1k70rk4/HASS.Agent.NET10/pull/164), thank you! Kiosk mode is 终端模式 there.
+- **Longer translations fit.** A button is at least as wide as its text on one line: in German "Installieren / aktualisieren" on the Service page and "Auf GitHub mit einem Stern markieren" on the About page were cut off. The API key label on the General page is as wide as its text ("API-Schlüssel").
+- **"Devices & services" keeps its "&"** in the help of turning the PC on and off from Home Assistant, on the Media player page, in English and German: the label took it for a keyboard shortcut.
+
+**Also in this release**
+
+- **A media player that cannot start no longer takes the connection down.** On a PC without the Windows media features (an N edition without the Media Feature Pack, Windows Server), or an app started from a scheduled task without a desktop, the media player monitor failed and took the whole MQTT connection with it: it reconnected every ten seconds and the log only showed a Windows error. The sensors and commands stay up now, the log says the player is what failed, and it is tried again on the next connect.
+- **A finished update is reported by the service when it is installed**, also while a tray app runs: the service has every right, the tray app may have few. The version that last ran is one record for the PC now, which every user may write, so the app of a user who can only read the settings does not report the same update at every start.
+- **Settings that cannot be written back no longer stop the start**: they are used as read.
+
+**Security**
+
+- **Built on .NET 10.0.14** (SDK 10.0.403), the .NET security update of October. Its runtime, inside the app, fixes CVE-2026-111497 (Brotli decoder) and CVE-2026-70197 (SocketAsyncEventArgs), which the October 13 update did not fully fix. Windows Update does not patch the runtime inside the app, so this release is how the fixes reach it. The other two CVEs of the update are for the Linux tarball and the Blazor WebAssembly packages, which the app does not use.
+
+**The betas before it**, with their notes as they were:
+
+<details markdown="1">
+<summary><b>10.11.0-beta.3</b>: an administrator as a kiosk user, a media player that cannot start</summary>
 
 The third beta of the next version: an administrator can be a kiosk user too, and a media player that cannot start no longer takes the connection down. Works with the Home Assistant integration **10.6.7** or newer. Signed release.
 
 - **An administrator can be a kiosk user too.** Asked for in the [kiosk mode discussion](https://github.com/v1k70rk4/HASS.Agent.NET10/discussions/154): on some kiosk PCs the account in front of the screen is an administrator, and hiding the window and the menu from it is what is wanted. The **HASS.Agent Kiosk** group alone decides now: whoever is in it gets the kiosk tray, administrator or not, also when put there with Windows' own tools. The Kiosk mode window lets an administrator be ticked and asks first, since for them it is a cover, not a lock: it is theirs to undo, by leaving the group or turning kiosk mode off (`--kiosk off`), and the full app is back from the next logon. In the window you still cannot tick yourself; the command line lets you name yourself, on purpose.
 - **A media player that cannot start no longer takes the connection down.** On a PC without the Windows media features (an N edition without the Media Feature Pack, Windows Server), or an app started from a scheduled task without a desktop, the media player monitor failed and took the whole MQTT connection with it: it reconnected every ten seconds and the log only showed a Windows error. The sensors and commands stay up now, the log says the player is what failed, and it is tried again on the next connect.
 
-## 10.11.0-beta.2
+</details>
 
-> **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered the beta, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.10.2**, below.
+<details markdown="1">
+<summary><b>10.11.0-beta.2</b>: fixes found in German, a clearer kiosk window, kiosk apps back at once after an update</summary>
 
 The second beta of the next version: fixes found in German, a clearer kiosk mode window, and kiosk users who get their app back at once after an update. It is also there to try a live update on a PC in kiosk mode: with beta.1 and kiosk mode on, the update from Home Assistant pauses the kiosk task, replaces the files and starts the app again for the kiosk users. Works with the Home Assistant integration **10.6.7** or newer. Signed release.
 
@@ -22,9 +52,10 @@ The second beta of the next version: fixes found in German, a clearer kiosk mode
 - **Longer translations fit.** A button is at least as wide as its text on one line: in German "Installieren / aktualisieren" on the Service page and "Auf GitHub mit einem Stern markieren" on the About page were cut off. The API key label on the General page is as wide as its text ("API-Schlüssel").
 - **"Devices & services" keeps its "&"** in the help of turning the PC on and off from Home Assistant, on the Media player page, in English and German: the label took it for a keyboard shortcut.
 
-## 10.11.0-beta.1
+</details>
 
-> **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered the beta, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.10.2**, below.
+<details markdown="1">
+<summary><b>10.11.0-beta.1</b>: kiosk mode, German, .NET 10.0.14</summary>
 
 The first beta of the next version, a bigger one: kiosk mode, German, and the .NET security update of October. Works with the Home Assistant integration **10.6.7** or newer. Signed release.
 
@@ -45,6 +76,8 @@ The first beta of the next version, a bigger one: kiosk mode, German, and the .N
 **Security**
 
 - **Built on .NET 10.0.14** (SDK 10.0.403), the .NET security update of October. Its runtime, inside the app, fixes CVE-2026-111497 (Brotli decoder) and CVE-2026-70197 (SocketAsyncEventArgs), which the October 13 update did not fully fix. Windows Update does not patch the runtime inside the app, so this release is how the fixes reach it. The other two CVEs of the update are for the Linux tarball and the Blazor WebAssembly packages, which the app does not use.
+
+</details>
 
 ## 10.10.2
 
