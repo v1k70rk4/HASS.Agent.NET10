@@ -2,7 +2,7 @@
 
 ![Windows](https://img.shields.io/badge/Windows-10%202004%2B%20%7C%2011-0078D4?logo=windows&logoColor=white)
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet&logoColor=white)
-![Version](https://img.shields.io/badge/version-10.11.0--beta.3-orange)
+![Version](https://img.shields.io/badge/version-10.11.0-brightgreen)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-MQTT%20%7C%20WebSocket%20API-41BDF5?logo=homeassistant&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/15316/badge)](https://www.bestpractices.dev/projects/15316)
@@ -26,7 +26,7 @@ It is designed for Windows PCs you want to observe and control from Home Assista
 
 The .NET10 line starts at **version 10.0.0**. The classic client is a separate program: if you want to stay with it, it is still available from its own project, and the integration keeps a [`legacy` branch](https://github.com/v1k70rk4/HASS.Agent.NET10-Integration/tree/legacy) for it. Thinking about switching? See [Coming from HASS.Agent](docs/getting-started/migrating.md).
 
-> **Stable:** [10.10.2](https://github.com/v1k70rk4/HASS.Agent.NET10/releases/latest) &nbsp;·&nbsp; **Beta:** [10.11.0-beta.3](https://github.com/v1k70rk4/HASS.Agent.NET10/releases/tag/v10.11.0-beta.3) &nbsp;·&nbsp; [What changed](#what-changed) &nbsp;·&nbsp; [Full changelog](CHANGELOG.md)
+> **Stable:** [10.11.0](https://github.com/v1k70rk4/HASS.Agent.NET10/releases/latest) &nbsp;·&nbsp; [What changed](#what-changed) &nbsp;·&nbsp; [Full changelog](CHANGELOG.md)
 
 ---
 
@@ -172,19 +172,36 @@ No telemetry, analytics, or usage data is collected or transmitted.
 
 ## What Changed
 
-### 10.11.0-beta.1–3
+### 10.11.0
 
-> **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered the beta, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.10.2**, below.
+A bigger release: kiosk mode, for a PC where the person in front of the screen must not change anything; German, and the kiosk texts in Simplified Chinese; a media player that cannot start no longer takes the connection down; and the .NET security update of October. Works with the Home Assistant integration **10.6.7** or newer. Signed release.
 
-- **Kiosk mode**: the tray app runs for the users you tick, who cannot open, change or close it; it comes back when it is closed. From beta.3 an administrator can be a kiosk user too: the window asks first, since for them it is a cover they can undo, not a lock. See [Kiosk mode](docs/features/kiosk.md). Requested in [#155](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/155).
-- **A media player that cannot start no longer takes the connection down** (a PC without the Windows media features, or an app started from a task without a desktop).
-- **German**, translated by @Schumey in [#150](https://github.com/v1k70rk4/HASS.Agent.NET10/pull/150).
-- **A finished update is reported by the service when it is installed**, and settings that cannot be written back no longer stop the start.
-- **Built on .NET 10.0.14**, with the .NET security fixes of October for the runtime inside the app (CVE-2026-111497, CVE-2026-70197).
-- **Kiosk users get their app back right after an update**, and the Kiosk mode window says why you cannot tick yourself.
-- **Longer translations fit**, and "Devices & services" keeps its "&".
+**Kiosk mode**
 
-### 10.10.2
+- **Kiosk mode**, for a PC where the sensors need the tray app but the person in front of the screen must not change anything. The users ticked in **Danger Zone → Kiosk mode** get only the tray icon, with *Kiosk mode* as its tooltip: no window, no menu, no **Exit**. Notifications, hotkeys and the pages Home Assistant opens with the WebView command work as before. The app starts when they log on and comes back when it is closed: at once when it closes or crashes, within a minute when it is ended in Task Manager. They can read the settings but not change them, and their app logs to a file of their own. The kiosk users are the local group **HASS.Agent Kiosk**, which an administrator can also change with Windows' own tools or a domain's group policy; a user put in it gets kiosk mode from their next logon. No password: Windows' file permissions keep the settings, and a scheduled task brings the app back. Turning it on needs an administrator (UAC), or `HASS.Agent.NET10.exe --kiosk on USER [USER ...]` / `--kiosk off`. See [Kiosk mode](docs/features/kiosk.md). Requested in [#155](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/155).
+- **An administrator can be a kiosk user too.** Asked for in the [kiosk mode discussion](https://github.com/v1k70rk4/HASS.Agent.NET10/discussions/154): on some kiosk PCs the account in front of the screen is an administrator, and hiding the window and the menu from it is what is wanted. The **HASS.Agent Kiosk** group alone decides: whoever is in it gets the kiosk tray, administrator or not, also when put there with Windows' own tools. The Kiosk mode window lets an administrator be ticked and asks first, since for them it is a cover, not a lock: it is theirs to undo, by leaving the group or turning kiosk mode off (`--kiosk off`), and the full app is back from the next logon. In the window you cannot tick yourself, as it would lock your own app; the command line lets you name yourself, on purpose.
+- **Setup pauses the kiosk task** while it replaces the files, turns it back on at the end and runs it at once, so a kiosk user has their app back right after an update; uninstalling turns kiosk mode off.
+- **The Kiosk mode window shows whether you are a kiosk user**: saving the list no longer takes a kiosk user out of the group when they open the window before their next logon.
+
+**Translations**
+
+- **German**, translated by @Schumey in [#150](https://github.com/v1k70rk4/HASS.Agent.NET10/pull/150), thank you! A Windows set to German picks it, or choose it under **UI language** on the General page. The kiosk mode texts are in English for now.
+- **The kiosk mode texts in Simplified Chinese**, translated by @natsu-tsuki in [#164](https://github.com/v1k70rk4/HASS.Agent.NET10/pull/164), thank you! Kiosk mode is 终端模式 there.
+- **Longer translations fit.** A button is at least as wide as its text on one line: in German "Installieren / aktualisieren" on the Service page and "Auf GitHub mit einem Stern markieren" on the About page were cut off. The API key label on the General page is as wide as its text ("API-Schlüssel").
+- **"Devices & services" keeps its "&"** in the help of turning the PC on and off from Home Assistant, on the Media player page, in English and German: the label took it for a keyboard shortcut.
+
+**Also in this release**
+
+- **A media player that cannot start no longer takes the connection down.** On a PC without the Windows media features (an N edition without the Media Feature Pack, Windows Server), or an app started from a scheduled task without a desktop, the media player monitor failed and took the whole MQTT connection with it: it reconnected every ten seconds and the log only showed a Windows error. The sensors and commands stay up now, the log says the player is what failed, and it is tried again on the next connect.
+- **A finished update is reported by the service when it is installed**, also while a tray app runs: the service has every right, the tray app may have few. The version that last ran is one record for the PC now, which every user may write, so the app of a user who can only read the settings does not report the same update at every start.
+- **Settings that cannot be written back no longer stop the start**: they are used as read.
+
+**Security**
+
+- **Built on .NET 10.0.14** (SDK 10.0.403), the .NET security update of October. Its runtime, inside the app, fixes CVE-2026-111497 (Brotli decoder) and completes the fix of CVE-2026-70197 (SocketAsyncEventArgs), which the October 13 update did not fully address. Windows Update does not patch the runtime inside the app, so this release is how the fixes reach it. The other two CVEs of the update are for the Linux tarball and the Blazor WebAssembly packages, which the app does not use.
+
+<details>
+<summary><b>10.10.2</b></summary>
 
 A translation release: the app's texts in a file per language, with Simplified Chinese as the first language from a translator, a Drive space sensor with every drive by its letter, and an update check that says when it failed. Works with the Home Assistant integration **10.6.7** or newer; the Drive space sensor needs the integration **10.10.2**, out at the same time. Signed release.
 
@@ -206,59 +223,6 @@ A translation release: the app's texts in a file per language, with Simplified C
 
 - **An update check that fails says so.** When Home Assistant asked for an update and the app could not get the list of releases from GitHub, it answered that there was no update and wrote nothing to the log. That is what happened during a GitHub outage on 22 October, when GitHub answered with an empty list for hours. An install request from Home Assistant, the service's silent install and **Check for updates** on the About page now log why the check failed, and Home Assistant gets a notification that the update could not be checked. An empty answer is explained in the log, with GitHub's status page (https://www.githubstatus.com) to look at; the app itself still talks to GitHub's API only. When there is no newer release, or a release has no installer, the log says that too.
 - **Danger Zone: Users of this PC has a row of its own.** The note shown to a user who is left out, the notice in Home Assistant and the docs all send people to "Danger Zone, Users of this PC", but it was a button on the Backup / restore view. The Backup / restore view follows the window now: its note wraps and a button that does not fit goes below.
-
-<details>
-<summary><b>10.10.1 — hotfix</b> and <b>10.10.0</b></summary>
-
-### 10.10.1 — hotfix
-
-- **Fixed: on a domain-joined PC, administrators were reported to Home Assistant as users who are not.** Reported in [#119](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/119).
-
-### 10.10.0
-
-A feature release: a system health pack of sensors, fast sensors down to 1 second and a polling profile of your own per sensor, a Media player page with announcements that are heard, a name of your own above the notifications, a security round with its recheck, and a handful of fixes. Works with the Home Assistant integration **10.6.7** or newer; the announcements, the Drive health sensor, the device classes of custom sensors and the move of the two renamed sensor keys need the integration **10.10.0**, out at the same time (an older integration keeps the renamed sensors by their old keys). Signed release.
-
-**Sensors**
-
-- **Drive health**, a new built-in sensor from the Windows service: Windows' own verdict on the drives from their SMART data (`healthy`, `warning`, `unhealthy`, the worst of them as the value), with every drive in the attributes (`drives[N].name`, `health`, `temperature`, `temperature_max`, `power_on_hours`, `bus`, `media`) and the system drive's temperature as `temperature`, one attribute sensor away from a °C entity. NVMe drives report the temperature and its highest value, a SATA drive the temperature and the power-on hours when its controller passes them on, USB enclosures nothing; a field a drive does not report is left out. Service only, since reading it needs administrator rights. Needs the integration 10.10.0 or newer. Requested in [#107](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/107).
-- **Fast sensors down to 1 second.** The fast interval goes to 5 seconds on the Capabilities page (10 stays the default); the **Fast sensors below 5 seconds** switch on the Danger Zone page unlocks 1–4 seconds, with a note on what that means for the traffic and for Home Assistant's recorder, which writes a row at every change: a sensor you want every second but not in the history goes on the recorder's exclude list. Requested in [#108](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/108).
-- **The polling profile of a built-in sensor is yours to choose**: fast, normal or hourly in the Profile column of the Sensors page (GPU usage on fast, CPU usage on normal, whatever suits the PC); push-driven and startup sensors keep theirs. The three intervals stay global, the choice is which one a sensor follows. A custom attribute sensor on a faster profile refreshes the shared read at its own pace, while the built-in sensor still shows Home Assistant its value and attributes at its own: an hourly GPU usage stays hourly in the recorder even with an adapter's load wanted every second.
-- **A push event refreshes the push-driven sensors only.** A volume change, a lock or a media event used to re-read every fast and normal sensor along with it, so on a PC playing media the uptime, the GPU or the drive health arrived far more often than their profile says. Now such a read takes the push-driven sensors alone; the clock-driven ones keep their own pace. Uptime moved to the normal profile (every 60 seconds instead of every fast cycle): its value changes with every tick, so on the fast profile it wrote a new row to the recorder at every cycle for nothing.
-- **GPU usage per GPU.** On a PC with two GPUs (an integrated one and a graphics card) the sensor's value and its top-level `engines` and memory follow whichever GPU is busiest at each reading, so they could move from one to the other. Each entry of `adapters[N]` now has its own `usage`, `engines` (3D, video and the rest) and memory, so `gpu_usage.adapters[1].engines.3d` follows one card; `gpu_usage.name` says which GPU the main value follows. Requested in [#99](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/99). See [GPU usage with more than one GPU](docs/sensors/attributes.md).
-- **Gigabytes next to megabytes, and totals.** `memory_dedicated_gb`, `memory_shared_gb` and `adapters[N].memory_gb`, `memory_dedicated_gb`, `memory_shared_gb` on GPU usage, one decimal; the `_mb` attributes stay, so sensors built on them keep working. `memory_usage` has `total_gb`, `used_gb`, `available_gb`; both system drive sensors have `drive`, `total_gb`, `used_gb`, `free_gb`. Requested in [#107](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/107).
-- **Two sensor keys lost the unit in their name: `system_drive_free_gb` is `system_drive`, `memory_available_mb` is `memory_available`.** With the totals in the attributes a key with a unit in it read oddly: `system_drive_free_gb.total_gb`. Nothing changes in Home Assistant: the integration 10.10.0 moves the entity over to the new key, with its entity ID, its history and its statistics, and an older integration keeps its entity because the app still sends and advertises the old key next to the new one. An attribute sensor made on the old path follows the rename on its own. Raised in [#107](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/107).
-- **The attribute list follows this PC.** The Attributes button and the editor's list offer `adapters[1]`, `displays[1]`, `drives[1]` and so on for every item the sensor last reported, instead of `[0]` only; the second one's sensor gets a 2 after its name. An attribute sensor made from the list gets its unit (°C for temperatures, h for hours, GB / MB for memory, % for loads), and it can only be ticked for a role that reads its built-in sensor (the drive health for the service, the active window for the app).
-- **Custom sensors tell Home Assistant what they measure**: a unit of °C, GB, MB/s, h, W, V, A or MHz brings the matching device class (temperature, data size, data rate, duration, power, voltage, current, frequency), so a °C sensor shows as °F where that is the custom, history included, and the unit can be changed on the entity. Also for LibreHardwareMonitor sensors; per-app volumes from the list get % too. Needs the integration 10.10.0 or newer.
-- **Several rows at once on the Sensors page**: Shift and Ctrl pick several custom sensors, and **Remove** and **Test** work on all of them (removing more than one asks first). Custom commands and hotkeys get the multi-row **Remove** too.
-- **Fixed: LAN IP could show the address of a virtual adapter.** It took the first adapter Windows listed, often a VirtualBox, Hyper-V, WSL, Docker or VPN one. It now takes the adapter Windows routes through, and `network_address.addresses[N]` lists that one first, then those with a gateway, then the rest. A custom sensor on `addresses[0]` may therefore show another adapter than before: the real one. Reported in [#100](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/100).
-- **Fixed: Session locked went back to off a few seconds after locking.** The sensor took a locked session to be one whose input desktop the app cannot open. On Windows 11 the lock screen shows on the user's own desktop, so that was true only for a moment while the lock screen came up. It now reads the lock state Windows keeps for the session. Reported in [#96](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/96).
-- **Fixed: Logged in user was empty and Session state said *connected* on a PC used only over Remote Desktop.** Both read the console session, the PC's own screen, which shows the sign-in screen with nobody in it while you work over Remote Desktop. Now the console's session counts when someone is signed in there, otherwise the active Remote Desktop session, otherwise one that was disconnected without signing out.
-
-**Media player and notifications**
-
-- **A Media player page in the app.** The media player's switch moved there from Capabilities, with two things that were not there before: **Send the cover art to Home Assistant** (off, the entity shows no picture) and **Announcements**: a `play_media` action sent with `announce: true` (TTS, a doorbell sound) unmutes the PC and sets the announcement volume for it, pauses what was playing when you want that, and puts the volume, the mute and the playback back afterwards. On by default, because an announcement is meant to be heard; needs the integration 10.10.0 or newer, an older one plays it at the current volume as before. A pause or a stop from Home Assistant while the sound plays cuts it and puts everything back. The idea comes from a fork by @VorlonCD, thank you. The page also tells where turning the PC on and off from the media player is set up (the integration's options) and which of sleep, hibernate and shutdown this PC allows for it. See [Media player](docs/features/media-player.md).
-- **A name of your own above the notifications.** Under the notification style on the Capabilities page, tick **Custom name** and write the name the Windows notifications (and the app's own window) should show instead of *HASS.Agent .NET10*, for example to tell several PCs apart. One name for all notifications of the PC. Windows reads it again only once the app has no notifications left in the notification centre, so saving a changed name clears them. Asked for in [#101](https://github.com/v1k70rk4/HASS.Agent.NET10/discussions/101).
-
-**Security**
-
-From a security review of the app, the CodeRabbit remarks on it, and a recheck of what came out of it. Most of it is invisible.
-
-- **The local HTTP API is off by default.** It serves the integration's Local HTTP API mode only (notifications without MQTT or the HA API), yet every install listened on port 5115 with a key in its settings file. It is now a switch on the General page, under **Local HTTP API**, where the bind address and the port moved too: off, nothing listens and there is no key; on, the app makes a key and shows it. An install from before keeps it on, with its key, so a PC set up in Home Assistant with the Local HTTP API goes on working; turn it off on the General page when nothing uses it. The API also obeys the **Notifications** switch on the Capabilities page now, like the other two connections: with it off, `/notify` answers 403 and `/info` reports `notifications: false`. See [Local HTTP API](docs/connection/local-api.md).
-- **The settings export leaves out the local API key and the LibreHardwareMonitor password too**, next to the MQTT password and the HA API token it already left out; the import makes a new key when the API is on, the password is entered again.
-- **A message from the HA API larger than 1 MiB closes the connection** instead of being read into memory whole, fragment by fragment too; the MQTT side has had the same cap. Home Assistant's own messages are a few kilobytes.
-- **Writes into the settings folder never follow a link put under the file's name.** The log (which the Windows service writes as SYSTEM), the settings file, the device id, the service's version note and its policy, the MQTT packet dump of the Danger Zone and the notice marker are opened on the name itself through one handle: a link or a hard link found there is removed, the name only, and the file is made anew. Until now the log was appended by path, so a hard link made after the folder's rule was set would have taken the service's lines into another file.
-- **Who may use it: the rule is set file by file, and a file it could not be set on is reported.** Limiting the folder reset the rule of everything in it with `icacls`, which would also have rewritten the rule of a file elsewhere that a hard link in the folder named. The rule now goes through a handle on each file itself, and a link or a hard link found there goes, as a junction already did. A file with a rule of its own that keeps even an administrator out is opened with the restore privilege, and what still cannot be done is reported: the window shows the failure instead of success with the folder's rule alone.
-- **Who may use it: a PC with a domain or Entra ID user is not limited by an update on its own, and unticking such a user takes them out of the group.** The "every user is an administrator" decision counted the local accounts only; on a work PC the user who actually logs on is from the domain or from Entra ID, so an update could have limited the settings to the local administrators and shut that user out. The users with a profile from a domain or Entra ID now count as not known to be administrators: the update leaves the folder open, the app asks, and the question lists them as `DOMAIN\user` when Windows can name them. Unticking one takes them out of the group too; only local accounts were taken out before.
-- **Installer: "Only me" names the right user, or says that it could not.** The installer asked the user who started it for their name through its own temp folder, which belongs to the account Setup runs as; when an administrator's password was typed in, that is another account, the user could not write there, and the settings were limited to the administrator alone without a word. The name now goes through ProgramData, as `DOMAIN\user`, and when it still cannot be found the installer says whom the settings were limited to; a limit that fails is reported too, instead of being assumed.
-- **An administrator run says what became of it.** The service approval and the install button say when a run was not started because an earlier one is still going, when it is still going, and when it did not finish as asked, instead of promising a result that is not coming.
-- The CodeQL workflow's checkout no longer keeps the token in the working tree, as the other workflows already did not.
-
-**Fixes**
-
-- **Fixed: turning MQTT off while the HA API stays on left the app on MQTT.** Saving the MQTT page with the switch off, the app saw a connection that had not changed and kept it; only a restart of the app moved it to the HA API (the service, which starts fresh, went over at once). The app now says goodbye on the broker and starts again on the HA API alone.
-- **No more "Refusing to allow … to subscribe to event hass_agent_command" errors in Home Assistant's log after its restart.** A PC with a Home Assistant user of its own reconnected before the integration was loaded, found the integration's subscription missing and fell back to Home Assistant's own, which such a user may not use; Home Assistant logged the refusal, and the PC got in on its next attempt anyway. A user who is not an administrator is only ever set up with the newer integration, so the PC now just waits for the next attempt. An administrator's token keeps the fallback, for an integration older than 10.9.1.
-- **HA API page: the line under the token, "The token is of …, not an administrator", is no longer cut short** with a longer user name.
-- **Danger Zone: the note under "Fast sensors below 5 seconds" is shown in full in a narrow window**; the box had a fixed height and cut the sentence off.
 
 </details>
 
