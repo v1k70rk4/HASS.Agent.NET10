@@ -198,7 +198,7 @@ A bigger release: kiosk mode, for a PC where the person in front of the screen m
 
 **Security**
 
-- **Built on .NET 10.0.14** (SDK 10.0.403), the .NET security update of October. Its runtime, inside the app, fixes CVE-2026-111497 (Brotli decoder) and CVE-2026-70197 (SocketAsyncEventArgs), which the October 13 update did not fully fix. Windows Update does not patch the runtime inside the app, so this release is how the fixes reach it. The other two CVEs of the update are for the Linux tarball and the Blazor WebAssembly packages, which the app does not use.
+- **Built on .NET 10.0.14** (SDK 10.0.403), the .NET security update of October. Its runtime, inside the app, fixes CVE-2026-111497 (Brotli decoder) and completes the fix of CVE-2026-70197 (SocketAsyncEventArgs), which the October 13 update did not fully address. Windows Update does not patch the runtime inside the app, so this release is how the fixes reach it. The other two CVEs of the update are for the Linux tarball and the Blazor WebAssembly packages, which the app does not use.
 
 <details>
 <summary><b>10.10.2</b></summary>
