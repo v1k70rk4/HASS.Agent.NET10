@@ -2,6 +2,14 @@
 
 Every release of HASS.Agent .NET10, newest first. The downloads are on the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases).
 
+## 10.11.1-beta.1
+
+> **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered the beta, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.11.0**, below.
+
+A beta with one new language: Russian. Nothing else changed since 10.11.0. Works with the Home Assistant integration **10.6.7** or newer. Signed release.
+
+- **Russian**, translated by @vorlocsev in [#167](https://github.com/v1k70rk4/HASS.Agent.NET10/pull/167), thank you! A Windows set to Russian picks it, or choose it under **UI language** on the General page; the entity names in Home Assistant can be Russian too, under **HA entity language**. It has not run on a Russian Windows yet: a text that is cut off or reads oddly is worth an issue.
+
 ## 10.11.0
 
 A bigger release: kiosk mode, for a PC where the person in front of the screen must not change anything; German, and the kiosk texts in Simplified Chinese; a media player that cannot start no longer takes the connection down; and the .NET security update of October. Works with the Home Assistant integration **10.6.7** or newer. Signed release.
