@@ -756,10 +756,14 @@ internal static class ClassicImport
             return guid.ToString("N");
         }
 
+        // Every name the formats have: two items may share a friendly name and differ in the
+        // entity's.
         var key = string.Join('\n',
             "classic",
             GetString(item, "Type") ?? string.Empty,
-            DisplayName(item, string.Empty),
+            GetString(item, "FriendlyName") ?? string.Empty,
+            GetString(item, "Name") ?? string.Empty,
+            GetString(item, "EntityName") ?? string.Empty,
             GetString(item, "Query") ?? string.Empty,
             GetString(item, "Command") ?? string.Empty,
             string.Join(' ', GetStringArray(item, "Keys")),

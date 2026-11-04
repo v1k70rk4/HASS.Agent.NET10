@@ -2664,6 +2664,8 @@ internal sealed class MainForm : Form
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception)
         {
+            // Not asked, so not "asked once": the next opening tries again.
+            _settings.ClassicImportOffered = false;
             _log.Warning($"Not offering the classic HASS.Agent's settings: the settings cannot be saved ({ex.Message}).");
             return false;
         }

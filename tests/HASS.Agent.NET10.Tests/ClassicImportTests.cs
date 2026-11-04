@@ -208,14 +208,20 @@ public class ClassicImportTests
               { "Type": "CustomCommand", "Id": "00000000-0000-0000-0000-000000000000", "Name": "Empty id", "Command": "calc.exe" }
             ]
             """;
-        var sensors = """[ { "Type": "ProcessActiveSensor", "Name": "No id", "Query": "notepad" } ]""";
+        // The same friendly name and query, another entity name: two sensors.
+        var sensors = """
+            [
+              { "Type": "ProcessActiveSensor", "Name": "No id", "EntityName": "notepad_a", "Query": "notepad" },
+              { "Type": "ProcessActiveSensor", "Name": "No id", "EntityName": "notepad_b", "Query": "notepad" }
+            ]
+            """;
         var files = new ClassicFiles(null, sensors, commands, null, null, null);
 
         ClassicImport.Apply(files, settings);
         ClassicImport.Apply(files, settings);
 
         Assert.Equal(2, settings.CustomCommands.Count);
-        Assert.Single(settings.CustomSensors);
+        Assert.Equal(2, settings.CustomSensors.Count);
         // Different items, different ids.
         Assert.NotEqual(settings.CustomCommands[0].Id, settings.CustomCommands[1].Id);
     }

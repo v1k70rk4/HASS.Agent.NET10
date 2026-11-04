@@ -389,7 +389,8 @@ begin
     Sleep(2000);
     if IsTrayRunning() then
     begin
-      RunHidden(ExpandConstant('{sys}\taskkill.exe'), '/IM "{#MyAppExeName}" /T /F');
+      { The app alone: a program a custom command started for the user is not ours to end. }
+      RunHidden(ExpandConstant('{sys}\taskkill.exe'), '/IM "{#MyAppExeName}" /F');
     end;
   end;
 end;
@@ -478,16 +479,22 @@ begin
   { Right after the person confirmed the uninstall (usAppMutexCheck is the first step after
     the question; InitializeUninstall would come before it, and a No would find the app
     stopped): the same as before an install. The uninstaller closes nothing by itself, so the
-    running tray app kept its files, and in kiosk mode the task would start it again at once;
-    the task goes for good in [UninstallRun], so it is only paused here, never turned back on.
-    The kill reaches the app in every session, a kiosk user's too, since the uninstaller runs
-    as administrator. }
+    running tray app kept its files, and in kiosk mode the task would start it again at once:
+    the task is deleted here, before the apps are stopped (--kiosk off in [UninstallRun] does
+    not mind a task that is gone), or paused when it cannot be deleted. An uninstall cannot be
+    stopped from here; what is left is logged. The kill reaches the app in every session, a
+    kiosk user's too, since the uninstaller runs as administrator. }
   if CurUninstallStep = usAppMutexCheck then
   begin
-    if KioskTaskState() = 1 then
+    if KioskTaskState() <> 0 then
     begin
-      if not ChangeKioskTask('/DISABLE') then
-        Log('The kiosk task could not be paused; it is deleted later either way.');
+      if not RunHidden(ExpandConstant('{sys}\schtasks.exe'), '/Delete /TN "' + KioskTask + '" /F') then
+      begin
+        if ChangeKioskTask('/DISABLE') then
+          Log('The kiosk task could not be deleted; paused instead.')
+        else
+          Log('The kiosk task could be neither deleted nor paused; it may start the app again before the files are removed.');
+      end;
     end;
     StopRunningApps(IsServiceInstalled());
   end;
