@@ -161,8 +161,10 @@ internal static class ClassicImport
         }
 
         // The service's broker when the client gave none (MQTT off there, or no client
-        // settings at all): the service's sensors and commands need the connection too.
-        if (!target.MqttEnabled && serviceMqtt is { } mqtt)
+        // settings at all): the service's sensors and commands need the connection too. By
+        // what this import gave, not by what the app had: an app with MQTT already set up
+        // takes the classic settings over all the same.
+        if (!result.Mqtt && serviceMqtt is { } mqtt)
         {
             ApplyMqtt(mqtt, target, result);
         }

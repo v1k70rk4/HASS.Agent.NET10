@@ -261,7 +261,10 @@ public class ClassicImportTests
     [Fact]
     public void The_service_mqtt_settings_fill_in_for_a_client_without_mqtt()
     {
+        // An app with MQTT set up already takes the classic settings over all the same.
         var settings = NewSettings();
+        settings.MqttEnabled = true;
+        settings.MqttHost = "old.lan";
         var client = """{ "DeviceName": "PC", "MqttEnabled": false }""";
         var mqtt = """{ "MqttAddress": "broker.lan", "MqttPort": 1883, "MqttUsername": "svc", "MqttPassword": "pw" }""";
 
