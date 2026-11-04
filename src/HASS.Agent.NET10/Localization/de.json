@@ -46,10 +46,10 @@
       "Classic.Skipped",
       "Classic.ShowSkipped",
       "Classic.DoneMqtt",
-      "Classic.DoneMqttTokenLeft",
       "Classic.DoneHaApi",
       "Classic.AddInHaMqtt",
-      "Classic.AddInHaApi"
+      "Classic.AddInHaApi",
+      "Classic.DoneBoth"
     ]
   },
   "strings": {
@@ -126,8 +126,8 @@
     "Classic.DoneHeading": "Taken over from HASS.Agent",
     "Classic.Done": "Sensors: {0}, commands: {1}.",
     "Classic.DoneMqtt": "The MQTT connection came over, with its password kept protected on this PC.",
-    "Classic.DoneMqttTokenLeft": "The MQTT connection came over, with its password kept protected on this PC. The Home Assistant token of the classic client was not: with MQTT the PC does not need it, and it is most likely an administrator's. The HA API can be set up later with a user of the PC's own.",
     "Classic.DoneHaApi": "The PC connects over the HA API with the token of the classic client, kept protected on this PC. That token is most likely a Home Assistant administrator's: once the PC is connected, HASS.Agent offers to swap it for a user of the PC's own.",
+    "Classic.DoneBoth": "Both connections came over: MQTT with its password, and the HA API with the token of the classic client, kept protected on this PC. That token is most likely a Home Assistant administrator's: once the PC is connected, HASS.Agent offers to swap it for a user of the PC's own.",
     "Classic.AddInHaMqtt": "In Home Assistant the PC turns up as a new device: under Settings → Devices & services → Discovered, add it there. Then remove the classic client's old device under the MQTT integration, so the two do not sit side by side.",
     "Classic.AddInHaApi": "In Home Assistant add the PC by hand: Settings → Devices & services → Add integration → HASS.Agent → HA API (WebSocket). Then remove the classic client's old device under the MQTT integration, so the two do not sit side by side.",
     "Classic.WebSocket": "MQTT over WebSocket is not supported here: check the port on the MQTT page.",

@@ -2736,18 +2736,11 @@ internal sealed class MainForm : Form
     private void ShowClassicImportResult(ClassicImportResult result)
     {
         var lines = new List<string> { string.Format(S("Classic.Done"), result.Sensors.Count, result.Commands.Count) };
-        if (result.HaApi)
-        {
-            lines.Add(S("Classic.DoneHaApi"));
-        }
-        else if (result.Connection)
-        {
-            lines.Add(S(result.HaTokenLeft ? "Classic.DoneMqttTokenLeft" : "Classic.DoneMqtt"));
-        }
-
         if (result.Connection)
         {
-            lines.Add(S(result.HaApi ? "Classic.AddInHaApi" : "Classic.AddInHaMqtt"));
+            var mqtt = result.Mqtt;
+            lines.Add(S(mqtt && result.HaApi ? "Classic.DoneBoth" : result.HaApi ? "Classic.DoneHaApi" : "Classic.DoneMqtt"));
+            lines.Add(S(mqtt ? "Classic.AddInHaMqtt" : "Classic.AddInHaApi"));
         }
 
         if (result.WebSocketDropped)

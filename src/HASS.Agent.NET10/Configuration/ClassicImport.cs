@@ -28,11 +28,11 @@ internal sealed class ClassicImportResult
 {
     public bool Connection { get; set; }
 
+    /// <summary>The PC connects over MQTT, with the classic client's broker settings.</summary>
+    public bool Mqtt { get; set; }
+
     /// <summary>The PC connects over the HA API, with the classic client's token.</summary>
     public bool HaApi { get; set; }
-
-    /// <summary>The classic client had a Home Assistant token, and MQTT came over instead.</summary>
-    public bool HaTokenLeft { get; set; }
 
     public List<string> Sensors { get; } = [];
 
@@ -185,27 +185,19 @@ internal static class ClassicImport
             ApplyMqtt(settings, target, result);
         }
 
-        // The classic client used Home Assistant's API beside MQTT, for its notifications'
-        // actions and the Quick Actions, with a token that is as a rule an administrator's.
-        // Here the HA API is a whole connection, and a PC on MQTT needs none: its token is
-        // not kept, an administrator's token this app does not use has no place in its
-        // settings. A PC without MQTT connects with it, and is then offered a user of its own.
+        // The classic client used Home Assistant's API beside MQTT, with a token that is as a
+        // rule an administrator's. Here it is a whole connection, the second one next to MQTT:
+        // taken over as it is, and once the PC is connected the app offers to swap the token
+        // for a Home Assistant user of the PC's own (MainForm.OfferAfterNewTokenAsync).
         var hassUri = GetString(settings, "HassUri");
         var hassToken = GetString(settings, "HassToken");
         if (!string.IsNullOrWhiteSpace(hassUri) && !string.IsNullOrWhiteSpace(hassToken))
         {
-            if (target.MqttEnabled)
-            {
-                result.HaTokenLeft = true;
-            }
-            else
-            {
-                target.HaApiUrl = hassUri.Trim();
-                target.SetHaApiToken(hassToken.Trim());
-                target.HaApiEnabled = true;
-                result.Connection = true;
-                result.HaApi = true;
-            }
+            target.HaApiUrl = hassUri.Trim();
+            target.SetHaApiToken(hassToken.Trim());
+            target.HaApiEnabled = true;
+            result.Connection = true;
+            result.HaApi = true;
         }
 
         if (!string.IsNullOrWhiteSpace(GetString(settings, "HassClientCertificate")))
@@ -238,6 +230,7 @@ internal static class ClassicImport
         }
 
         result.Connection = true;
+        result.Mqtt = true;
         result.WebSocketDropped |= GetBool(settings, "MqttUseWebSocket") == true;
         result.CertificatesDropped |= !string.IsNullOrWhiteSpace(GetString(settings, "MqttRootCertificate"))
             || !string.IsNullOrWhiteSpace(GetString(settings, "MqttClientCertificate"));
