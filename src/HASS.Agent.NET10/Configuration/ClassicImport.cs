@@ -79,8 +79,8 @@ internal static class ClassicImport
         var service = FirstConfigDirectory(
             "servicemqttsettings.json",
             ReadRegistry(Registry.LocalMachine, ServiceRegistryKey, "InstallPath"),
-            Under(programFiles, "HASS.Agent", "Service"),
-            Under(programFilesX86, "HASS.Agent", "Service"),
+            Under(programFiles, "HASS.Agent Satellite Service", "Service"),
+            Under(programFilesX86, "HASS.Agent Satellite Service", "Service"),
             Under(programFiles, "LAB02 Research", "HASS.Agent Satellite Service"),
             Under(programFilesX86, "LAB02 Research", "HASS.Agent Satellite Service"));
 
