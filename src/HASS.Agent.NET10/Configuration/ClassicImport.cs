@@ -63,17 +63,20 @@ internal static class ClassicImport
         var client = FirstConfigDirectory(
             "appsettings.json",
             ReadRegistry(Registry.CurrentUser, ClientUninstallKey, "InstallLocation"),
-            Path.Combine(localAppData, "HASS.Agent", "Client"),
-            Path.Combine(appData, "LAB02 Research", "HASS.Agent"),
-            Path.Combine(localAppData, "LAB02 Research", "HASS.Agent"));
+            Under(localAppData, "HASS.Agent", "Client"),
+            Under(appData, "LAB02 Research", "HASS.Agent"),
+            Under(localAppData, "LAB02 Research", "HASS.Agent"));
 
+        // The service's folder is written by administrators only (Program Files, or a folder an
+        // administrator's install put in HKLM): what it holds may run in this app's service,
+        // once an administrator approves it there, as with anything else for the service.
         var service = FirstConfigDirectory(
             "servicemqttsettings.json",
             ReadRegistry(Registry.LocalMachine, ServiceRegistryKey, "InstallPath"),
-            Path.Combine(programFiles, "HASS.Agent", "Service"),
-            Path.Combine(programFilesX86, "HASS.Agent", "Service"),
-            Path.Combine(programFiles, "LAB02 Research", "HASS.Agent Satellite Service"),
-            Path.Combine(programFilesX86, "LAB02 Research", "HASS.Agent Satellite Service"));
+            Under(programFiles, "HASS.Agent", "Service"),
+            Under(programFilesX86, "HASS.Agent", "Service"),
+            Under(programFiles, "LAB02 Research", "HASS.Agent Satellite Service"),
+            Under(programFilesX86, "LAB02 Research", "HASS.Agent Satellite Service"));
 
         return new ClassicInstall(client, service);
     }
@@ -113,15 +116,21 @@ internal static class ClassicImport
 
         try
         {
-            if (!ServiceController.GetServices().Any(service => service.ServiceName.Equals(ClassicServiceName, StringComparison.OrdinalIgnoreCase)))
+            var services = ServiceController.GetServices();
+            try
             {
-                return false;
+                var classic = services.FirstOrDefault(service => service.ServiceName.Equals(ClassicServiceName, StringComparison.OrdinalIgnoreCase));
+                return classic is not null && classic.Status != ServiceControllerStatus.Stopped;
             }
-
-            using var controller = new ServiceController(ClassicServiceName);
-            return controller.Status != ServiceControllerStatus.Stopped;
+            finally
+            {
+                foreach (var service in services)
+                {
+                    service.Dispose();
+                }
+            }
         }
-        catch (Exception)
+        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception)
         {
             return false;
         }
@@ -643,7 +652,12 @@ internal static class ClassicImport
             string key;
             if (character == '{')
             {
-                // "{}}" and "{{}" name the braces themselves.
+                // "{}}" and "{{}" name the braces themselves; a brace at the very end closes nothing.
+                if (index + 2 > text.Length)
+                {
+                    return false;
+                }
+
                 var close = text.IndexOf('}', index + 2);
                 if (close < 0)
                 {
@@ -680,6 +694,13 @@ internal static class ClassicImport
             {
                 key = character.ToString();
                 index++;
+            }
+
+            // SendKeys typed a capital letter as such; here a letter is a key, so the shift
+            // that makes it a capital is said.
+            if (key.Length == 1 && char.IsAsciiLetterUpper(key[0]) && !modifiers.Contains("shift"))
+            {
+                modifiers.Add("shift");
             }
 
             key = key switch
@@ -780,7 +801,10 @@ internal static class ClassicImport
     {
         foreach (var directory in installDirectories)
         {
-            if (string.IsNullOrWhiteSpace(directory))
+            // A folder that is not there gives an empty special folder (Program Files (x86) on
+            // a 32-bit Windows), and the registry may hold anything: only a full path is looked
+            // at, never one relative to wherever this app was started from.
+            if (string.IsNullOrWhiteSpace(directory) || !Path.IsPathRooted(directory) || directory.IndexOfAny(Path.GetInvalidPathChars()) >= 0)
             {
                 continue;
             }
@@ -795,6 +819,10 @@ internal static class ClassicImport
         return null;
     }
 
+    /// <summary>A path under a special folder, or null when Windows has no such folder.</summary>
+    private static string? Under(string specialFolder, params string[] parts) =>
+        string.IsNullOrWhiteSpace(specialFolder) ? null : Path.Combine([specialFolder, .. parts]);
+
     private static string? ReadRegistry(RegistryKey root, string path, string name)
     {
         try
@@ -802,7 +830,7 @@ internal static class ClassicImport
             using var key = root.OpenSubKey(path);
             return key?.GetValue(name) as string;
         }
-        catch (Exception)
+        catch (Exception ex) when (ex is System.Security.SecurityException or IOException or UnauthorizedAccessException)
         {
             return null;
         }

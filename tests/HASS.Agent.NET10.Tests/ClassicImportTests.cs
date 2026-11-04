@@ -240,6 +240,8 @@ public class ClassicImportTests
     [InlineData(new[] { "{F5}", "~" }, "f5 enter")]
     [InlineData(new[] { "a,b" }, "a comma b")]
     [InlineData(new[] { "{+}" }, "plus")]
+    [InlineData(new[] { "Ab" }, "shift+a b")]
+    [InlineData(new[] { "+A" }, "shift+a")]
     public void Send_keys_notation_is_converted(string[] keys, string expected)
     {
         Assert.Equal(expected, ClassicImport.ConvertSendKeys(keys));
@@ -250,6 +252,8 @@ public class ClassicImportTests
     [InlineData("^(ac)")]
     [InlineData("{NOSUCHKEY}")]
     [InlineData("^")]
+    [InlineData("a{")]
+    [InlineData("{")]
     public void Send_keys_without_a_counterpart_are_left_out(string keys)
     {
         Assert.Null(ClassicImport.ConvertSendKeys([keys]));
