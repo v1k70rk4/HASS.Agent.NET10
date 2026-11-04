@@ -1,5 +1,7 @@
 using System.Diagnostics;
+using System.Security.Cryptography;
 using System.ServiceProcess;
+using System.Text;
 using System.Text.Json;
 using HASS.Agent.Companion.Runtime;
 using HASS.Agent.Companion.SystemCommands;
@@ -743,11 +745,26 @@ internal static class ClassicImport
         return type;
     }
 
+    /// <summary>
+    /// The classic item's own id, or one made from what it is, so that the same item gives the
+    /// same id on every import and is not added twice (the duplicate check is by id).
+    /// </summary>
     private static string ClassicId(JsonElement item)
     {
-        return GetString(item, "Id") is { } id && Guid.TryParse(id, out var guid) && guid != Guid.Empty
-            ? guid.ToString("N")
-            : Guid.NewGuid().ToString("N");
+        if (GetString(item, "Id") is { } id && Guid.TryParse(id, out var guid) && guid != Guid.Empty)
+        {
+            return guid.ToString("N");
+        }
+
+        var key = string.Join('\n',
+            "classic",
+            GetString(item, "Type") ?? string.Empty,
+            DisplayName(item, string.Empty),
+            GetString(item, "Query") ?? string.Empty,
+            GetString(item, "Command") ?? string.Empty,
+            string.Join(' ', GetStringArray(item, "Keys")),
+            GetInt(item, "KeyCode")?.ToString() ?? string.Empty);
+        return new Guid(SHA256.HashData(Encoding.UTF8.GetBytes(key)).AsSpan(0, 16)).ToString("N");
     }
 
     private static JsonElement? Parse(string? json)

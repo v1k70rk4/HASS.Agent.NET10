@@ -2662,7 +2662,7 @@ internal sealed class MainForm : Form
         {
             SettingsStore.Save(_paths, _settings);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception)
         {
             _log.Warning($"Not offering the classic HASS.Agent's settings: the settings cannot be saved ({ex.Message}).");
             return false;

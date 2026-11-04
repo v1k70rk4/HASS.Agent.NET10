@@ -394,6 +394,18 @@ begin
   end;
 end;
 
+{ The service first: it runs the same executable, so the kill that ends a tray app that
+  stayed would end the service too, without its shutdown (the offline announcement). }
+procedure StopRunningApps(ServiceInstalled: Boolean);
+begin
+  if ServiceInstalled then
+  begin
+    StopInstalledService();
+    Sleep(2000);
+  end;
+  StopRunningTrayApp();
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   ResultCode: Integer;
@@ -403,12 +415,7 @@ begin
     PreviousVersion := ReadPreviousVersion();
     ExistingServiceInstalled := IsServiceInstalled();
     TrayWasRunning := IsTrayRunning();
-    StopRunningTrayApp();
-    if ExistingServiceInstalled then
-    begin
-      StopInstalledService();
-      Sleep(1500);
-    end;
+    StopRunningApps(ExistingServiceInstalled);
 
     { Destructive, so never in silent mode: unattended updates (from Home
       Assistant or in-app) must not wipe settings under any circumstances. }
@@ -464,32 +471,27 @@ begin
   end;
 end;
 
-{ Before the uninstaller looks for files in use: the same as before an install. The tray app
-  has no window to close, so Windows' Restart Manager cannot stop it, and in kiosk mode the
-  task would start it again at once; the task goes for good in [UninstallRun], so it is only
-  paused here, never turned back on. The service is stopped before its uninstall as well.
-  The kill reaches the app in every session, a kiosk user's too, since the uninstaller runs
-  as administrator. }
-function InitializeUninstall(): Boolean;
-begin
-  Result := True;
-  if KioskTaskState() = 1 then
-  begin
-    if not ChangeKioskTask('/DISABLE') then
-      Log('The kiosk task could not be paused; it is deleted later either way.');
-  end;
-  StopRunningTrayApp();
-  if IsServiceInstalled() then
-  begin
-    StopInstalledService();
-    Sleep(1500);
-  end;
-end;
-
 { The settings stay after an uninstall unless the person asks otherwise: a reinstall finds
   them again. Asked, not assumed, since they hold the tokens; never in a silent uninstall. }
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
+  { Right after the person confirmed the uninstall (usAppMutexCheck is the first step after
+    the question; InitializeUninstall would come before it, and a No would find the app
+    stopped): the same as before an install. The uninstaller closes nothing by itself, so the
+    running tray app kept its files, and in kiosk mode the task would start it again at once;
+    the task goes for good in [UninstallRun], so it is only paused here, never turned back on.
+    The kill reaches the app in every session, a kiosk user's too, since the uninstaller runs
+    as administrator. }
+  if CurUninstallStep = usAppMutexCheck then
+  begin
+    if KioskTaskState() = 1 then
+    begin
+      if not ChangeKioskTask('/DISABLE') then
+        Log('The kiosk task could not be paused; it is deleted later either way.');
+    end;
+    StopRunningApps(IsServiceInstalled());
+  end;
+
   if (CurUninstallStep = usPostUninstall) and (not UninstallSilent()) then
   begin
     if MsgBox(CustomMessage('UninstallSettings'), mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES then

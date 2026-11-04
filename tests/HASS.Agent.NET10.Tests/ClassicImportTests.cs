@@ -199,6 +199,28 @@ public class ClassicImportTests
     }
 
     [Fact]
+    public void An_item_without_an_id_gets_the_same_one_every_time()
+    {
+        var settings = NewSettings();
+        var commands = """
+            [
+              { "Type": "CustomCommand", "Name": "No id", "Command": "notepad.exe" },
+              { "Type": "CustomCommand", "Id": "00000000-0000-0000-0000-000000000000", "Name": "Empty id", "Command": "calc.exe" }
+            ]
+            """;
+        var sensors = """[ { "Type": "ProcessActiveSensor", "Name": "No id", "Query": "notepad" } ]""";
+        var files = new ClassicFiles(null, sensors, commands, null, null, null);
+
+        ClassicImport.Apply(files, settings);
+        ClassicImport.Apply(files, settings);
+
+        Assert.Equal(2, settings.CustomCommands.Count);
+        Assert.Single(settings.CustomSensors);
+        // Different items, different ids.
+        Assert.NotEqual(settings.CustomCommands[0].Id, settings.CustomCommands[1].Id);
+    }
+
+    [Fact]
     public void The_lab02_format_is_read_too()
     {
         var settings = NewSettings();

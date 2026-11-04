@@ -7,7 +7,7 @@ description: "Coming from HASS.Agent: what is the same in HASS.Agent .NET10, wha
 
 This page is for people who run the classic HASS.Agent, the [LAB02 original](https://github.com/LAB02-Research/HASS.Agent) or its [community continuation](https://github.com/hass-agent/HASS.Agent), and are thinking about HASS.Agent .NET10.
 
-HASS.Agent .NET10 began as a fork of the classic client and is a separate program now. It follows the same idea, but it does not share the Home Assistant entities with it, so switching is not an upgrade; the settings of the classic client it can take over. The classic client is maintained by its community; if it does what you need, there is nothing wrong with staying.
+HASS.Agent .NET10 began as a fork of the classic client and is a separate program now. It follows the same idea, but it does not share the Home Assistant entities with it, so switching is not an upgrade, though the app can take over the classic client's settings. The classic client is maintained by its community; if it does what you need, there is nothing wrong with staying.
 
 ## What is the same
 
