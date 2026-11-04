@@ -51,6 +51,9 @@ internal sealed class CompanionSettings
     /// <summary>"Don't ask again" on the offer of a Home Assistant user of this PC's own.</summary>
     public bool HaApiOwnUserDeclined { get; set; }
 
+    /// <summary>Taking over the classic HASS.Agent's settings was offered once (or done): not offered again.</summary>
+    public bool ClassicImportOffered { get; set; }
+
     /// <summary>Version of the previous run — used to detect a completed update on startup.</summary>
     public string LastRunVersion { get; set; } = string.Empty;
 

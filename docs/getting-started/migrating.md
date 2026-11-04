@@ -1,13 +1,13 @@
 ---
 title: Coming from HASS.Agent
-description: "Coming from HASS.Agent: what is the same in HASS.Agent .NET10, what is different, what does not carry over, and how to switch step by step."
+description: "Coming from HASS.Agent: what is the same in HASS.Agent .NET10, what is different, which settings it takes over, what does not carry over, and how to switch step by step."
 ---
 
 # Coming from HASS.Agent
 
 This page is for people who run the classic HASS.Agent, the [LAB02 original](https://github.com/LAB02-Research/HASS.Agent) or its [community continuation](https://github.com/hass-agent/HASS.Agent), and are thinking about HASS.Agent .NET10.
 
-HASS.Agent .NET10 began as a fork of the classic client and is a separate program now. It follows the same idea, but it shares neither the settings nor the Home Assistant entities with it, so switching is a fresh setup and not an upgrade. The classic client is maintained by its community; if it does what you need, there is nothing wrong with staying.
+HASS.Agent .NET10 began as a fork of the classic client and is a separate program now. It follows the same idea, but it does not share the Home Assistant entities with it, so switching is not an upgrade; the settings of the classic client it can take over. The classic client is maintained by its community; if it does what you need, there is nothing wrong with staying.
 
 ## What is the same
 
@@ -29,21 +29,33 @@ HASS.Agent .NET10 began as a fork of the classic client and is a separate progra
 
 Before you switch, check that the sensors and commands you rely on have a counterpart in the pages linked above. The classic client has sensor and command types this one does not have.
 
+## What comes over
+
+When the app finds the classic client's settings (for the Windows user it runs as) and has no connection set up yet, it offers to take them over the first time its window opens. Later the **Import from HASS.Agent** button in the [Danger Zone](../features/danger-zone.md), under **Backup / restore**, does the same. The classic install is only read, nothing is changed there.
+
+- **The connection:** the MQTT broker, port, TLS, user name and password, and the Home Assistant address and token. The password and the token are stored protected, like every secret here. A PC that had MQTT keeps MQTT, and the HA API is only filled in; without MQTT the HA API is switched on.
+- **The device name.**
+- **Sensors** with a built-in counterpart are switched on: CPU, memory and GPU load, active window, last boot, logged-in user(s), session state, webcam and microphone in use, monitor power, volume and audio, battery, network, storage, displays, Windows updates, last active. *Process active*, *Service state* and *PowerShell* sensors become [custom sensors](../sensors/custom.md), with their update interval turned into the nearest polling profile.
+- **Commands:** lock, sleep, hibernate, log off, shutdown, restart, monitor sleep and the volume commands switch on the [system commands](../commands/index.md). *Custom* and *PowerShell* commands, *Key* and *Multiple keys*, *Launch URL* and *WebView* become [custom commands](../commands/custom.md), and the media play/pause, next and previous commands become key presses. A custom command that needs cmd (its own commands such as `start`, pipes, redirection) still runs through `cmd /C`, as it did.
+- **The Satellite Service's** sensors and commands come over as well, set to run in the service. What needs the user's desktop (key presses, addresses, windows) goes to the tray app instead.
+
+What has no counterpart is listed by name at the end: Quick Actions, WMI and performance counter sensors, named-window, Bluetooth, location and printer sensors, setting the volume or the audio device, switching desktops, and the like. MQTT over WebSocket and certificate files do not come over either.
+
 ## What does not carry over
 
-- **Settings.** Nothing is imported from the classic client. Sensors, commands and connection settings are set up again.
 - **Entities.** The PC appears in Home Assistant as a new device with new entities. Automations, scripts and dashboards that name the old entities have to be pointed at the new ones, and the history stays with the old entities.
 - **The integration.** Both integrations use the `hass_agent` domain, so Home Assistant can hold only one of them, and this one does not talk to the classic client: a classic client is not added, and a notice under **Settings → Repairs** says why. With several PCs on one Home Assistant, switch them together. A PC left on the classic client keeps its MQTT sensors and commands, but loses its notifications and its media player, which need the classic integration.
 
 ## Switching, step by step
 
-1. **Take stock.** Note the sensors, commands and Quick Actions you use, and the automations and dashboards that refer to their entities.
-2. **On the PC, uninstall the classic client** and its Satellite Service. Do not run the two clients side by side on one PC.
-3. **In Home Assistant, remove the old device.** Under **Settings → Devices & services → MQTT**, open the PC's device and delete it; that also clears its retained discovery messages on the broker. Then remove the classic HASS.Agent integration entry, and remove the classic integration in the Marketplace (in HACS before 2026.11).
-4. **Install this integration and the app** as in [Get started](index.md), connect over MQTT or the HA API, and add the PC: on MQTT it turns up under **Discovered**; over the HA API the first PC is added by hand (**Add integration → HASS.Agent → HA API (WebSocket)**).
-5. **Set up sensors and commands.** Switch on the built-in sensors you want on the **Sensors** page and the commands on the **Capabilities** page, then add your custom ones. The editors have a **Test** button that shows what a sensor would report or runs a command right away.
-6. **Point automations and dashboards at the new entities.**
-7. **Check for leftovers.** The [Danger Zone](../features/danger-zone.md)'s MQTT maintenance lists the retained HASS.Agent messages on the broker and deletes the ones you select.
+1. **Take stock.** Note the automations and dashboards that refer to the classic client's entities, and the Quick Actions you use.
+2. **Install the app** as in [Get started](index.md), while the classic client is still on the PC, and take over its settings when the app offers it (see [What comes over](#what-comes-over)).
+3. **On the PC, uninstall the classic client** and its Satellite Service. Do not run the two clients side by side on one PC.
+4. **In Home Assistant, remove the old device.** Under **Settings → Devices & services → MQTT**, open the PC's device and delete it; that also clears its retained discovery messages on the broker. Then remove the classic HASS.Agent integration entry, and remove the classic integration in the Marketplace (in HACS before 2026.11).
+5. **Install this integration** as in [Get started](index.md) and add the PC: on MQTT it turns up under **Discovered**; over the HA API the first PC is added by hand (**Add integration → HASS.Agent → HA API (WebSocket)**).
+6. **Check sensors and commands.** What came over is on the **Sensors** and **Capabilities** pages; add what the import listed as not taken over, if this app has something close to it. The editors have a **Test** button that shows what a sensor would report or runs a command right away.
+7. **Point automations and dashboards at the new entities.**
+8. **Check for leftovers.** The [Danger Zone](../features/danger-zone.md)'s MQTT maintenance lists the retained HASS.Agent messages on the broker and deletes the ones you select.
 
 ## Going back
 

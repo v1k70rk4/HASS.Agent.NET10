@@ -135,6 +135,13 @@ internal static class SettingsStore
         }
     }
 
+    /// <summary>A copy to change, so a failed change leaves the settings in use as they were.</summary>
+    public static CompanionSettings Clone(CompanionSettings settings)
+    {
+        return JsonSerializer.Deserialize<CompanionSettings>(Serialize(settings), JsonOptions)
+            ?? throw new InvalidDataException("The settings could not be copied.");
+    }
+
     public static void Save(AppPaths paths, CompanionSettings settings)
     {
         settings.Normalize();
