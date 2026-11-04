@@ -498,6 +498,11 @@ begin
       { The version that last ran (made by the app, which every user may write) goes with the
         settings: kept with them, a reinstall reports the update from the right version. }
       RegDeleteKeyIncludingSubkeys(HKLM64, 'SOFTWARE\HASS.Agent.NET10');
+      { The group that said who may use the settings (SettingsAccess) is about those settings:
+        with them gone it would only name users of a program that is not there. Kept with the
+        settings otherwise, so a reinstall finds the same users allowed. The program is gone
+        by now, so Windows' own tool does it; a group that is not there is no error. }
+      RunHidden(ExpandConstant('{sys}\net.exe'), 'localgroup "HASS.Agent Users" /delete');
     end;
   end;
 end;
