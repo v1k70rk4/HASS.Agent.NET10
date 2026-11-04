@@ -192,8 +192,24 @@ internal sealed class MainForm : Form
         // administrator's token works from anywhere Home Assistant can be reached, and the swap is
         // one click; limiting the settings (against the other users of this PC) needs an
         // administrator, and comes the next time if the first question was asked.
+        // A PC coming from the classic HASS.Agent hears about taking over its settings before
+        // anything else: what follows only makes sense once the PC is set up.
         Shown += (_, _) => BeginInvoke(async () =>
         {
+            if (OfferOwnUserWhenConnected)
+            {
+                // Opened right after the classic client's settings came over: the PC may well
+                // connect with an administrator's token, which is known once it is connected.
+                OfferOwnUserWhenConnected = false;
+                await OfferAfterNewTokenAsync();
+                return;
+            }
+
+            if (await OfferClassicImportAsync())
+            {
+                return;
+            }
+
             if (!await OfferOwnHaUserAsync())
             {
                 SettingsAccessForm.AskOnceIfOpen(this, _paths, _settings, _log);
@@ -212,6 +228,14 @@ internal sealed class MainForm : Form
     }
 
     public void NavigateToPage(int index) => SelectPage(index);
+
+    /// <summary>
+    /// Set by the tray when the window is opened by a restart after a change of the connection
+    /// (the classic import): the offer of a Home Assistant user of the PC's own waits for the
+    /// connection instead of asking the first probe.
+    /// </summary>
+    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+    public bool OfferOwnUserWhenConnected { get; set; }
 
     // ── DPI helpers ────────────────────────────────────────────────
     // All layout values in this file are authored at 96 DPI (100%).
@@ -2523,6 +2547,11 @@ internal sealed class MainForm : Form
         importBtn.Click += async (_, _) => await ImportSettingsAsync();
         card.Controls.Add(importBtn);
 
+        var classicBtn = MakeSecondaryButton(S("Danger.ImportClassic"), 210, 32);
+        classicBtn.Location = Pt(456, 128);
+        classicBtn.Click += async (_, _) => await ImportClassicAsync(null, confirmed: false);
+        card.Controls.Add(classicBtn);
+
         // The note was a fixed box and the buttons sat side by side whatever the width, so in a
         // narrow window the end of the sentence and the last button were cut off.
         card.Layout += (_, _) =>
@@ -2533,12 +2562,18 @@ internal sealed class MainForm : Form
                 TextFormatFlags.WordBreak | TextFormatFlags.TextBoxControl).Height;
             note.Size = new Size(width, Math.Max(D(18), height));
 
-            var top = note.Bottom + D(8);
-            exportBtn.Location = new Point(D(20), top);
-            var besides = exportBtn.Right + D(8);
-            importBtn.Location = besides + importBtn.Width <= card.ClientSize.Width - D(20)
-                ? new Point(besides, top)
-                : new Point(D(20), exportBtn.Bottom + D(8));
+            // The buttons in a row, the next one below when it does not fit.
+            var location = new Point(D(20), note.Bottom + D(8));
+            foreach (var button in new[] { exportBtn, importBtn, classicBtn })
+            {
+                if (location.X > D(20) && location.X + button.Width > card.ClientSize.Width - D(20))
+                {
+                    location = new Point(D(20), location.Y + button.Height + D(8));
+                }
+
+                button.Location = location;
+                location = new Point(button.Right + D(8), location.Y);
+            }
         };
 
         return card;
@@ -2600,6 +2635,153 @@ internal sealed class MainForm : Form
         {
             MessageBox.Show(string.Format(S("Danger.Error"), ex.Message), AppIdentity.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
+    }
+
+    /// <summary>
+    /// A PC with the classic HASS.Agent's settings and no connection set up here yet: offers,
+    /// once, to take them over. Later the Danger Zone's button does the same.
+    /// </summary>
+    /// <returns>Whether the question was asked.</returns>
+    private async Task<bool> OfferClassicImportAsync()
+    {
+        if (_settings.ClassicImportOffered || _settings.MqttEnabled || _settings.HaApiEnabled || IsDisposed)
+        {
+            return false;
+        }
+
+        var install = ClassicImport.Find();
+        if (!install.Exists)
+        {
+            return false;
+        }
+
+        // Asked once, whatever the answer. Settings this user cannot write could not take an
+        // import either: then not asked at all.
+        _settings.ClassicImportOffered = true;
+        try
+        {
+            SettingsStore.Save(_paths, _settings);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception)
+        {
+            // Not asked, so not "asked once": the next opening tries again.
+            _settings.ClassicImportOffered = false;
+            _log.Warning($"Not offering the classic HASS.Agent's settings: the settings cannot be saved ({ex.Message}).");
+            return false;
+        }
+
+        var take = new TaskDialogButton(S("Classic.Import"));
+        var skip = new TaskDialogButton(S("Classic.NotNow"));
+        var page = new TaskDialogPage
+        {
+            Caption = AppIdentity.DisplayName,
+            Heading = S("Classic.Heading"),
+            Text = S("Classic.Offer"),
+            Icon = TaskDialogIcon.Information,
+            Buttons = { take, skip },
+            DefaultButton = take,
+        };
+
+        if (TaskDialog.ShowDialog(this, page) == take)
+        {
+            await ImportClassicAsync(install, confirmed: true);
+        }
+
+        return true;
+    }
+
+    private async Task ImportClassicAsync(ClassicInstall? install, bool confirmed)
+    {
+        install ??= ClassicImport.Find();
+        if (!install.Exists)
+        {
+            MessageBox.Show(S("Classic.NotFound"), AppIdentity.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
+        if (!confirmed && MessageBox.Show(
+                S("Classic.Confirm"),
+                S("Danger.Title"),
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning,
+                MessageBoxDefaultButton.Button2) != DialogResult.Yes)
+        {
+            return;
+        }
+
+        try
+        {
+            var settings = SettingsStore.Clone(_settings);
+            var result = ClassicImport.Apply(ClassicImport.Read(install), settings);
+            if (!result.Connection && result.Sensors.Count == 0 && result.Commands.Count == 0 && result.Skipped.Count == 0)
+            {
+                MessageBox.Show(S("Classic.Empty"), AppIdentity.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            settings.ClassicImportOffered = true;
+            SettingsStore.Save(_paths, settings);
+            _log.Info($"Took over the classic HASS.Agent's settings: {result.Sensors.Count} sensors, {result.Commands.Count} commands, " +
+                $"connection {(result.Connection ? "yes" : "no")}, left out: {(result.Skipped.Count == 0 ? "nothing" : string.Join(", ", result.Skipped))}.");
+            await ServiceApproval.RequestIfNeededAsync(this, settings, _log);
+            ShowClassicImportResult(result);
+            // Back with the window open: what came over is there to see, and a PC on the HA
+            // API hears about a user of its own once it is connected.
+            RestartApplication(openWindow: true);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(string.Format(S("Danger.Error"), ex.Message), AppIdentity.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    private void ShowClassicImportResult(ClassicImportResult result)
+    {
+        var lines = new List<string> { string.Format(S("Classic.Done"), result.Sensors.Count, result.Commands.Count) };
+        if (result.Connection)
+        {
+            var mqtt = result.Mqtt;
+            lines.Add(S(mqtt && result.HaApi ? "Classic.DoneBoth" : result.HaApi ? "Classic.DoneHaApi" : "Classic.DoneMqtt"));
+            lines.Add(S(mqtt ? "Classic.AddInHaMqtt" : "Classic.AddInHaApi"));
+        }
+
+        if (result.WebSocketDropped)
+        {
+            lines.Add(S("Classic.WebSocket"));
+        }
+
+        if (result.CertificatesDropped)
+        {
+            lines.Add(S("Classic.Certificates"));
+        }
+
+        if (ClassicImport.IsRunning())
+        {
+            lines.Add(S("Classic.StillRunning"));
+        }
+
+        lines.Add(S("Classic.Restart"));
+
+        var page = new TaskDialogPage
+        {
+            Caption = AppIdentity.DisplayName,
+            Heading = S("Classic.DoneHeading"),
+            Text = string.Join("\n\n", lines),
+            Icon = TaskDialogIcon.ShieldSuccessGreenBar,
+            Buttons = { TaskDialogButton.OK },
+        };
+
+        if (result.Skipped.Count > 0)
+        {
+            page.Expander = new TaskDialogExpander
+            {
+                Text = S("Classic.Skipped") + "\n" + string.Join("\n", result.Skipped.Select(item => "• " + item)),
+                CollapsedButtonText = string.Format(S("Classic.ShowSkipped"), result.Skipped.Count),
+                Position = TaskDialogExpanderPosition.AfterFootnote,
+            };
+        }
+
+        TaskDialog.ShowDialog(this, page);
     }
 
     private void FactoryReset()
@@ -2746,14 +2928,15 @@ internal sealed class MainForm : Form
         }
     }
 
-    private static void RestartApplication()
+    private static void RestartApplication(bool openWindow = false)
     {
         // The single-instance mutex is still held while this process exits,
         // so relaunch after a short delay from a detached shell.
+        var arguments = openWindow ? " --open-window" : string.Empty;
         Process.Start(new ProcessStartInfo
         {
             FileName = SystemTools.InSystem32("cmd.exe"),
-            Arguments = $"/c timeout /t 2 /nobreak >nul & start \"\" \"{Application.ExecutablePath}\"",
+            Arguments = $"/c timeout /t 2 /nobreak >nul & start \"\" \"{Application.ExecutablePath}\"{arguments}",
             WindowStyle = ProcessWindowStyle.Hidden,
             CreateNoWindow = true,
             UseShellExecute = false

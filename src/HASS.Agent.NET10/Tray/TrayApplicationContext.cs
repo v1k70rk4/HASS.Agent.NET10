@@ -165,6 +165,19 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
         };
     }
 
+    /// <summary>
+    /// The window right at the start (--open-window): after a restart that changed the
+    /// connection, with the offer of a Home Assistant user of the PC's own once it is connected.
+    /// </summary>
+    public void OpenMainFormAtStart()
+    {
+        OpenMainForm();
+        if (_mainForm is not null)
+        {
+            _mainForm.OfferOwnUserWhenConnected = true;
+        }
+    }
+
     public void ShowSetupRequired()
     {
         if (_kiosk)

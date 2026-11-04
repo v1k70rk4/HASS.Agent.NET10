@@ -1,5 +1,5 @@
 ﻿#ifndef MyAppVersion
-#define MyAppVersion "10.11.1-beta.1"
+#define MyAppVersion "10.12.0-beta.1"
 #endif
 
 ; The file version resource takes numbers only: a pre-release ("10.9.0-beta.1") keeps its
@@ -389,9 +389,22 @@ begin
     Sleep(2000);
     if IsTrayRunning() then
     begin
-      RunHidden(ExpandConstant('{sys}\taskkill.exe'), '/IM "{#MyAppExeName}" /T /F');
+      { The app alone: a program a custom command started for the user is not ours to end. }
+      RunHidden(ExpandConstant('{sys}\taskkill.exe'), '/IM "{#MyAppExeName}" /F');
     end;
   end;
+end;
+
+{ The service first: it runs the same executable, so the kill that ends a tray app that
+  stayed would end the service too, without its shutdown (the offline announcement). }
+procedure StopRunningApps(ServiceInstalled: Boolean);
+begin
+  if ServiceInstalled then
+  begin
+    StopInstalledService();
+    Sleep(2000);
+  end;
+  StopRunningTrayApp();
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
@@ -403,12 +416,7 @@ begin
     PreviousVersion := ReadPreviousVersion();
     ExistingServiceInstalled := IsServiceInstalled();
     TrayWasRunning := IsTrayRunning();
-    StopRunningTrayApp();
-    if ExistingServiceInstalled then
-    begin
-      StopInstalledService();
-      Sleep(1500);
-    end;
+    StopRunningApps(ExistingServiceInstalled);
 
     { Destructive, so never in silent mode: unattended updates (from Home
       Assistant or in-app) must not wipe settings under any circumstances. }
@@ -468,6 +476,29 @@ end;
   them again. Asked, not assumed, since they hold the tokens; never in a silent uninstall. }
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
+  { Right after the person confirmed the uninstall (usAppMutexCheck is the first step after
+    the question; InitializeUninstall would come before it, and a No would find the app
+    stopped): the same as before an install. The uninstaller closes nothing by itself, so the
+    running tray app kept its files, and in kiosk mode the task would start it again at once:
+    the task is deleted here, before the apps are stopped (--kiosk off in [UninstallRun] does
+    not mind a task that is gone), or paused when it cannot be deleted. An uninstall cannot be
+    stopped from here; what is left is logged. The kill reaches the app in every session, a
+    kiosk user's too, since the uninstaller runs as administrator. }
+  if CurUninstallStep = usAppMutexCheck then
+  begin
+    if KioskTaskState() <> 0 then
+    begin
+      if not RunHidden(ExpandConstant('{sys}\schtasks.exe'), '/Delete /TN "' + KioskTask + '" /F') then
+      begin
+        if ChangeKioskTask('/DISABLE') then
+          Log('The kiosk task could not be deleted; paused instead.')
+        else
+          Log('The kiosk task could be neither deleted nor paused; it may start the app again before the files are removed.');
+      end;
+    end;
+    StopRunningApps(IsServiceInstalled());
+  end;
+
   if (CurUninstallStep = usPostUninstall) and (not UninstallSilent()) then
   begin
     if MsgBox(CustomMessage('UninstallSettings'), mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES then
@@ -476,6 +507,11 @@ begin
       { The version that last ran (made by the app, which every user may write) goes with the
         settings: kept with them, a reinstall reports the update from the right version. }
       RegDeleteKeyIncludingSubkeys(HKLM64, 'SOFTWARE\HASS.Agent.NET10');
+      { The group that said who may use the settings (SettingsAccess) is about those settings:
+        with them gone it would only name users of a program that is not there. Kept with the
+        settings otherwise, so a reinstall finds the same users allowed. The program is gone
+        by now, so Windows' own tool does it; a group that is not there is no error. }
+      RunHidden(ExpandConstant('{sys}\net.exe'), 'localgroup "HASS.Agent Users" /delete');
     end;
   end;
 end;
