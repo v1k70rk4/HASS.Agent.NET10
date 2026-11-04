@@ -259,6 +259,20 @@ public class ClassicImportTests
     }
 
     [Fact]
+    public void The_service_mqtt_settings_fill_in_for_a_client_without_mqtt()
+    {
+        var settings = NewSettings();
+        var client = """{ "DeviceName": "PC", "MqttEnabled": false }""";
+        var mqtt = """{ "MqttAddress": "broker.lan", "MqttPort": 1883, "MqttUsername": "svc", "MqttPassword": "pw" }""";
+
+        var result = ClassicImport.Apply(new ClassicFiles(client, null, null, mqtt, null, null), settings);
+
+        Assert.True(settings.MqttEnabled);
+        Assert.Equal("broker.lan", settings.MqttHost);
+        Assert.True(result.Mqtt);
+    }
+
+    [Fact]
     public void Broken_files_import_nothing()
     {
         var settings = NewSettings();
