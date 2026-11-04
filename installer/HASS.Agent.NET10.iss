@@ -464,6 +464,28 @@ begin
   end;
 end;
 
+{ Before the uninstaller looks for files in use: the same as before an install. The tray app
+  has no window to close, so Windows' Restart Manager cannot stop it, and in kiosk mode the
+  task would start it again at once; the task goes for good in [UninstallRun], so it is only
+  paused here, never turned back on. The service is stopped before its uninstall as well.
+  The kill reaches the app in every session, a kiosk user's too, since the uninstaller runs
+  as administrator. }
+function InitializeUninstall(): Boolean;
+begin
+  Result := True;
+  if KioskTaskState() = 1 then
+  begin
+    if not ChangeKioskTask('/DISABLE') then
+      Log('The kiosk task could not be paused; it is deleted later either way.');
+  end;
+  StopRunningTrayApp();
+  if IsServiceInstalled() then
+  begin
+    StopInstalledService();
+    Sleep(1500);
+  end;
+end;
+
 { The settings stay after an uninstall unless the person asks otherwise: a reinstall finds
   them again. Asked, not assumed, since they hold the tokens; never in a silent uninstall. }
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
