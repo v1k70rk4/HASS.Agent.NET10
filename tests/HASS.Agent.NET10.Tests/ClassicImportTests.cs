@@ -92,20 +92,29 @@ public class ClassicImportTests
         Assert.Equal(string.Empty, settings.MqttPassword);
         Assert.False(settings.MqttRetainDiscovery);
 
-        // Kept ready, but MQTT is the connection the PC had.
-        Assert.Equal("http://homeassistant.local:8123", settings.HaApiUrl);
-        Assert.Equal("token-123", settings.GetHaApiToken());
+        // MQTT is the connection the PC had: the classic client's token, an administrator's as
+        // a rule, is not kept for an API the PC does not use.
         Assert.False(settings.HaApiEnabled);
+        Assert.Equal(string.Empty, settings.HaApiUrl);
+        Assert.Equal(string.Empty, settings.GetHaApiToken());
+        Assert.True(result.HaTokenLeft);
+        Assert.False(result.HaApi);
     }
 
     [Fact]
     public void A_pc_without_mqtt_gets_the_ha_api()
     {
         var settings = NewSettings();
-        ClassicImport.Apply(new ClassicFiles(AppSettings.Replace("\"MqttEnabled\": true", "\"MqttEnabled\": false"), null, null, null, null, null), settings);
+        var result = ClassicImport.Apply(new ClassicFiles(AppSettings.Replace("\"MqttEnabled\": true", "\"MqttEnabled\": false"), null, null, null, null, null), settings);
 
         Assert.False(settings.MqttEnabled);
         Assert.True(settings.HaApiEnabled);
+        Assert.Equal("http://homeassistant.local:8123", settings.HaApiUrl);
+        Assert.Equal("token-123", settings.GetHaApiToken());
+        Assert.Equal(string.Empty, settings.HaApiToken);
+        Assert.True(result.Connection);
+        Assert.True(result.HaApi);
+        Assert.False(result.HaTokenLeft);
     }
 
     [Fact]

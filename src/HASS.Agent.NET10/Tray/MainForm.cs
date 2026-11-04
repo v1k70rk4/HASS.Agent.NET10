@@ -196,6 +196,15 @@ internal sealed class MainForm : Form
         // anything else: what follows only makes sense once the PC is set up.
         Shown += (_, _) => BeginInvoke(async () =>
         {
+            if (OfferOwnUserWhenConnected)
+            {
+                // Opened right after the classic client's settings came over: the PC may well
+                // connect with an administrator's token, which is known once it is connected.
+                OfferOwnUserWhenConnected = false;
+                await OfferAfterNewTokenAsync();
+                return;
+            }
+
             if (await OfferClassicImportAsync())
             {
                 return;
@@ -219,6 +228,14 @@ internal sealed class MainForm : Form
     }
 
     public void NavigateToPage(int index) => SelectPage(index);
+
+    /// <summary>
+    /// Set by the tray when the window is opened by a restart after a change of the connection
+    /// (the classic import): the offer of a Home Assistant user of the PC's own waits for the
+    /// connection instead of asking the first probe.
+    /// </summary>
+    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+    public bool OfferOwnUserWhenConnected { get; set; }
 
     // ── DPI helpers ────────────────────────────────────────────────
     // All layout values in this file are authored at 96 DPI (100%).
@@ -2706,7 +2723,9 @@ internal sealed class MainForm : Form
                 $"connection {(result.Connection ? "yes" : "no")}, left out: {(result.Skipped.Count == 0 ? "nothing" : string.Join(", ", result.Skipped))}.");
             await ServiceApproval.RequestIfNeededAsync(this, settings, _log);
             ShowClassicImportResult(result);
-            RestartApplication();
+            // Back with the window open: what came over is there to see, and a PC on the HA
+            // API hears about a user of its own once it is connected.
+            RestartApplication(openWindow: true);
         }
         catch (Exception ex)
         {
@@ -2717,9 +2736,18 @@ internal sealed class MainForm : Form
     private void ShowClassicImportResult(ClassicImportResult result)
     {
         var lines = new List<string> { string.Format(S("Classic.Done"), result.Sensors.Count, result.Commands.Count) };
+        if (result.HaApi)
+        {
+            lines.Add(S("Classic.DoneHaApi"));
+        }
+        else if (result.Connection)
+        {
+            lines.Add(S(result.HaTokenLeft ? "Classic.DoneMqttTokenLeft" : "Classic.DoneMqtt"));
+        }
+
         if (result.Connection)
         {
-            lines.Add(S("Classic.DoneConnection"));
+            lines.Add(S(result.HaApi ? "Classic.AddInHaApi" : "Classic.AddInHaMqtt"));
         }
 
         if (result.WebSocketDropped)
@@ -2905,14 +2933,15 @@ internal sealed class MainForm : Form
         }
     }
 
-    private static void RestartApplication()
+    private static void RestartApplication(bool openWindow = false)
     {
         // The single-instance mutex is still held while this process exits,
         // so relaunch after a short delay from a detached shell.
+        var arguments = openWindow ? " --open-window" : string.Empty;
         Process.Start(new ProcessStartInfo
         {
             FileName = SystemTools.InSystem32("cmd.exe"),
-            Arguments = $"/c timeout /t 2 /nobreak >nul & start \"\" \"{Application.ExecutablePath}\"",
+            Arguments = $"/c timeout /t 2 /nobreak >nul & start \"\" \"{Application.ExecutablePath}\"{arguments}",
             WindowStyle = ProcessWindowStyle.Hidden,
             CreateNoWindow = true,
             UseShellExecute = false

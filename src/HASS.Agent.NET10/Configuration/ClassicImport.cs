@@ -28,6 +28,12 @@ internal sealed class ClassicImportResult
 {
     public bool Connection { get; set; }
 
+    /// <summary>The PC connects over the HA API, with the classic client's token.</summary>
+    public bool HaApi { get; set; }
+
+    /// <summary>The classic client had a Home Assistant token, and MQTT came over instead.</summary>
+    public bool HaTokenLeft { get; set; }
+
     public List<string> Sensors { get; } = [];
 
     public List<string> Commands { get; } = [];
@@ -179,21 +185,27 @@ internal static class ClassicImport
             ApplyMqtt(settings, target, result);
         }
 
-        // The classic client used Home Assistant's API for its notifications' actions and the
-        // Quick Actions. Here it is a whole connection: kept ready, switched on only for a PC
-        // that had no MQTT.
+        // The classic client used Home Assistant's API beside MQTT, for its notifications'
+        // actions and the Quick Actions, with a token that is as a rule an administrator's.
+        // Here the HA API is a whole connection, and a PC on MQTT needs none: its token is
+        // not kept, an administrator's token this app does not use has no place in its
+        // settings. A PC without MQTT connects with it, and is then offered a user of its own.
         var hassUri = GetString(settings, "HassUri");
         var hassToken = GetString(settings, "HassToken");
         if (!string.IsNullOrWhiteSpace(hassUri) && !string.IsNullOrWhiteSpace(hassToken))
         {
-            target.HaApiUrl = hassUri.Trim();
-            target.SetHaApiToken(hassToken.Trim());
-            if (!mqttEnabled)
+            if (target.MqttEnabled)
             {
-                target.HaApiEnabled = true;
+                result.HaTokenLeft = true;
             }
-
-            result.Connection = true;
+            else
+            {
+                target.HaApiUrl = hassUri.Trim();
+                target.SetHaApiToken(hassToken.Trim());
+                target.HaApiEnabled = true;
+                result.Connection = true;
+                result.HaApi = true;
+            }
         }
 
         if (!string.IsNullOrWhiteSpace(GetString(settings, "HassClientCertificate")))

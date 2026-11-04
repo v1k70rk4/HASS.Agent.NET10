@@ -338,6 +338,11 @@ internal static class Program
             });
         }
 
+        if (args.Any(arg => string.Equals(arg, "--open-window", StringComparison.OrdinalIgnoreCase)))
+        {
+            trayContext.OpenMainFormAtStart();
+        }
+
         Application.Run(trayContext);
         exitRegistration.Unregister(null);
 
