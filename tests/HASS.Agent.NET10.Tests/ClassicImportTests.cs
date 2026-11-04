@@ -227,6 +227,55 @@ public class ClassicImportTests
     }
 
     [Fact]
+    public void The_same_id_for_something_else_is_another_item()
+    {
+        var settings = NewSettings();
+        var client = """[ { "Type": "CustomCommand", "Id": "0b9c6a8e-7777-4c2a-9e7c-000000000001", "Name": "Who", "Command": "whoami.exe" } ]""";
+        var service = """[ { "Type": "CustomCommand", "Id": "0b9c6a8e-7777-4c2a-9e7c-000000000001", "Name": "Host", "Command": "hostname.exe" } ]""";
+        var files = new ClassicFiles(null, null, client, null, null, service);
+
+        ClassicImport.Apply(files, settings);
+        ClassicImport.Apply(files, settings);
+
+        Assert.Equal(2, settings.CustomCommands.Count);
+        var who = settings.CustomCommands.Single(command => command.Command == "whoami.exe");
+        var host = settings.CustomCommands.Single(command => command.Command == "hostname.exe");
+        Assert.True(who.TrayApp);
+        Assert.False(who.Service);
+        Assert.True(host.Service);
+        Assert.False(host.TrayApp);
+    }
+
+    [Fact]
+    public void A_low_integrity_command_is_left_out_with_the_reason()
+    {
+        var settings = NewSettings();
+        var commands = """[ { "Type": "CustomCommand", "Id": "0b9c6a8e-8888-4c2a-9e7c-000000000001", "Name": "Careful", "Command": "tool.exe", "RunAsLowIntegrity": true } ]""";
+
+        var result = ClassicImport.Apply(new ClassicFiles(null, null, commands, null, null, null), settings);
+
+        Assert.Empty(settings.CustomCommands);
+        Assert.Contains("Careful (CustomCommand, low integrity)", result.Skipped);
+    }
+
+    [Fact]
+    public void The_connection_the_classic_client_did_not_have_is_switched_off()
+    {
+        // An app with MQTT set up, and a classic client on the HA API alone: the connection
+        // is replaced, not added to.
+        var settings = NewSettings();
+        settings.MqttEnabled = true;
+        settings.MqttHost = "old.lan";
+        var client = AppSettings.Replace("\"MqttEnabled\": true", "\"MqttEnabled\": false");
+
+        var result = ClassicImport.Apply(new ClassicFiles(client, null, null, null, null, null), settings);
+
+        Assert.True(result.Connection);
+        Assert.False(settings.MqttEnabled);
+        Assert.True(settings.HaApiEnabled);
+    }
+
+    [Fact]
     public void The_lab02_format_is_read_too()
     {
         var settings = NewSettings();

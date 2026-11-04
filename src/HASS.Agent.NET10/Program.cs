@@ -303,20 +303,16 @@ internal static class Program
             }
         }
 
-        // The installer's note for the service about the version it replaced. With no
-        // service installed nobody else reads it, and it must not sit there until a
-        // service is installed some day and reports an update from long ago.
+        // The installer's note for the service about the version it replaced, as the versions
+        // before 10.12 left it: a file, which nobody reads any more (the note is a registry
+        // value now, and the installer leaves it only for a PC with the service).
         try
         {
-            var installerNote = Path.Combine(paths.ConfigDirectory, "updated-from");
-            if (File.Exists(installerNote) && !CompanionServiceManager.IsInstalled())
-            {
-                File.Delete(installerNote);
-            }
+            File.Delete(Path.Combine(paths.ConfigDirectory, "updated-from"));
         }
         catch (Exception ex)
         {
-            log.Warning($"Unable to remove the installer's update note: {ex.Message}");
+            log.Warning($"Unable to remove the installer's old update note: {ex.Message}");
         }
 
         mqttService.Start();

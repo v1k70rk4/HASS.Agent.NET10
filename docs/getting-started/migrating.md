@@ -39,7 +39,7 @@ When the app finds the classic client's settings (for the Windows user it runs a
 - **Commands:** lock, sleep, hibernate, log off, shutdown, restart, monitor sleep and the volume commands switch on the [system commands](../commands/index.md). *Custom* and *PowerShell* commands, *Key* and *Multiple keys*, *Launch URL* and *WebView* become [custom commands](../commands/custom.md), and the media play/pause, next and previous commands become key presses. A custom command that needs cmd (its own commands such as `start`, pipes, redirection) still runs through `cmd /C`, as it did.
 - **The Satellite Service's** sensors and commands come over as well, set to run in the service. What needs the user's desktop (key presses, addresses, windows) goes to the tray app instead.
 
-What has no counterpart is listed by name at the end: Quick Actions, WMI and performance counter sensors, named-window, Bluetooth, location and printer sensors, setting the volume or the audio device, switching desktops, and the like. MQTT over WebSocket and certificate files do not come over either.
+What has no counterpart is listed by name at the end: Quick Actions, WMI and performance counter sensors, named-window, Bluetooth, location and printer sensors, setting the volume or the audio device, switching desktops, and the like, and a custom command set to run with low integrity (this app has no such mode, so it is not let loose). MQTT over WebSocket and certificate files do not come over either. A connection the classic client did not have is switched off here, so the import replaces the connection rather than adding to it.
 
 ## What does not carry over
 

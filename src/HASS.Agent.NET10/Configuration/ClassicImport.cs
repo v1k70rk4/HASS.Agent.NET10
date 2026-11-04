@@ -58,7 +58,8 @@ internal static class ClassicImport
     // folder the user picked instead of the default one.
     private const string ClientUninstallKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\{7BBED458-609B-4D13-AD9E-4FF219DF8644}_is1";
     private const string ServiceRegistryKey = @"SOFTWARE\HASSAgent\SatelliteService";
-    private const string ClassicServiceName = "hass.agent.svc";
+    private const string Lab02ServiceRegistryKey = @"SOFTWARE\LAB02Research\HASSAgent\SatelliteService";
+    private static readonly string[] ClassicServiceNames = ["hass.agent.svc", "HASS.Agent Satellite Service"];
     private const string ClassicProcessName = "HASS.Agent";
 
     public static ClassicInstall Find()
@@ -67,6 +68,7 @@ internal static class ClassicImport
         var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
         var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
         var programFilesX86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
+        var programData = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
 
         var client = FirstConfigDirectory(
             "appsettings.json",
@@ -78,11 +80,15 @@ internal static class ClassicImport
         // The service's folder is written by administrators only (Program Files, or a folder an
         // administrator's install put in HKLM): what it holds may run in this app's service,
         // once an administrator approves it there, as with anything else for the service.
+        // The community service, then the LAB02 one: its own key, and its folders in the
+        // order its client looked for them (ProgramData first).
         var service = FirstConfigDirectory(
             "servicemqttsettings.json",
             ReadRegistry(Registry.LocalMachine, ServiceRegistryKey, "InstallPath"),
             Under(programFiles, "HASS.Agent Satellite Service", "Service"),
             Under(programFilesX86, "HASS.Agent Satellite Service", "Service"),
+            ReadRegistry(Registry.LocalMachine, Lab02ServiceRegistryKey, "InstallPath"),
+            Under(programData, "LAB02 Research", "HASS.Agent Satellite Service"),
             Under(programFiles, "LAB02 Research", "HASS.Agent Satellite Service"),
             Under(programFilesX86, "LAB02 Research", "HASS.Agent Satellite Service"));
 
@@ -127,8 +133,9 @@ internal static class ClassicImport
             var services = ServiceController.GetServices();
             try
             {
-                var classic = services.FirstOrDefault(service => service.ServiceName.Equals(ClassicServiceName, StringComparison.OrdinalIgnoreCase));
-                return classic is not null && classic.Status != ServiceControllerStatus.Stopped;
+                return services.Any(service =>
+                    ClassicServiceNames.Contains(service.ServiceName, StringComparer.OrdinalIgnoreCase)
+                    && service.Status != ServiceControllerStatus.Stopped);
             }
             finally
             {
@@ -167,6 +174,14 @@ internal static class ClassicImport
         if (!result.Mqtt && serviceMqtt is { } mqtt)
         {
             ApplyMqtt(mqtt, target, result);
+        }
+
+        // The connection is replaced, as the offer says: what the classic client did not
+        // have is off, also when this app had it set up before (a second import).
+        if (result.Connection)
+        {
+            target.MqttEnabled = result.Mqtt;
+            target.HaApiEnabled = result.HaApi;
         }
 
         ApplySensors(files.Sensors, service: false, target, result);
@@ -305,6 +320,14 @@ internal static class ClassicImport
 
             var id = ClassicId(item);
             var existing = target.CustomSensors.FirstOrDefault(sensor => sensor.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
+            if (existing is not null && !SameSensor(existing, customType, parameter))
+            {
+                // The same id for something else (the client's and the service's lists are
+                // kept apart, and the id was copied): an item of its own.
+                id = DerivedId(id, customType, parameter);
+                existing = target.CustomSensors.FirstOrDefault(sensor => sensor.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
+            }
+
             if (existing is not null)
             {
                 // The same item in the client and the service: one sensor for both.
@@ -407,6 +430,15 @@ internal static class ClassicImport
                 continue;
             }
 
+            // The classic client could run a custom command with low integrity, kept from
+            // writing most of the user's files; this app has no such mode, and a command
+            // meant to be held back is not let loose without a word.
+            if (GetBool(item, "RunAsLowIntegrity") == true)
+            {
+                result.Skipped.Add($"{name} ({type}, low integrity)");
+                continue;
+            }
+
             var converted = ConvertCommand(item, type);
             if (converted is null)
             {
@@ -416,6 +448,12 @@ internal static class ClassicImport
 
             var id = ClassicId(item);
             var existing = target.CustomCommands.FirstOrDefault(command => command.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
+            if (existing is not null && !SameCommand(existing, converted))
+            {
+                id = DerivedId(id, converted.Type, converted.Command, converted.Arguments);
+                existing = target.CustomCommands.FirstOrDefault(command => command.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
+            }
+
             if (existing is not null)
             {
                 existing.Service |= service && !existing.NeedsUserSession;
@@ -754,6 +792,19 @@ internal static class ClassicImport
     /// The classic item's own id, or one made from what it is, so that the same item gives the
     /// same id on every import and is not added twice (the duplicate check is by id).
     /// </summary>
+    private static bool SameSensor(CustomSensorDefinition existing, string type, string parameter) =>
+        existing.Type.Equals(type, StringComparison.OrdinalIgnoreCase)
+        && existing.Parameter.Equals(parameter, StringComparison.OrdinalIgnoreCase);
+
+    private static bool SameCommand(CustomCommandDefinition existing, CustomCommandDefinition converted) =>
+        existing.Type.Equals(converted.Type, StringComparison.OrdinalIgnoreCase)
+        && existing.Command.Equals(converted.Command, StringComparison.OrdinalIgnoreCase)
+        && existing.Arguments.Equals(converted.Arguments, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>An id of its own for an item that shares its id with another: the same every time.</summary>
+    private static string DerivedId(string id, params string[] parts) =>
+        new Guid(SHA256.HashData(Encoding.UTF8.GetBytes(string.Join('\n', [id, .. parts]))).AsSpan(0, 16)).ToString("N");
+
     private static string ClassicId(JsonElement item)
     {
         if (GetString(item, "Id") is { } id && Guid.TryParse(id, out var guid) && guid != Guid.Empty)
