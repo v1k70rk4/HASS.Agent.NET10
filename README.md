@@ -2,7 +2,7 @@
 
 ![Windows](https://img.shields.io/badge/Windows-10%202004%2B%20%7C%2011-0078D4?logo=windows&logoColor=white)
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet&logoColor=white)
-![Version](https://img.shields.io/badge/version-10.11.1--beta.1-orange)
+![Version](https://img.shields.io/badge/version-10.12.0--beta.1-orange)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-MQTT%20%7C%20WebSocket%20API-41BDF5?logo=homeassistant&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/15316/badge)](https://www.bestpractices.dev/projects/15316)
@@ -26,7 +26,7 @@ It is designed for Windows PCs you want to observe and control from Home Assista
 
 The .NET10 line starts at **version 10.0.0**. The classic client is a separate program: if you want to stay with it, it is still available from its own project, and the integration keeps a [`legacy` branch](https://github.com/v1k70rk4/HASS.Agent.NET10-Integration/tree/legacy) for it. Thinking about switching? See [Coming from HASS.Agent](docs/getting-started/migrating.md).
 
-> **Stable:** [10.11.0](https://github.com/v1k70rk4/HASS.Agent.NET10/releases/latest) &nbsp;·&nbsp; **Beta:** [10.11.1-beta.1](https://github.com/v1k70rk4/HASS.Agent.NET10/releases/tag/v10.11.1-beta.1) &nbsp;·&nbsp; [What changed](#what-changed) &nbsp;·&nbsp; [Full changelog](CHANGELOG.md)
+> **Stable:** [10.11.0](https://github.com/v1k70rk4/HASS.Agent.NET10/releases/latest) &nbsp;·&nbsp; **Beta:** [10.12.0-beta.1](https://github.com/v1k70rk4/HASS.Agent.NET10/releases/tag/v10.12.0-beta.1) &nbsp;·&nbsp; [What changed](#what-changed) &nbsp;·&nbsp; [Full changelog](CHANGELOG.md)
 
 ---
 
@@ -172,11 +172,16 @@ No telemetry, analytics, or usage data is collected or transmitted.
 
 ## What Changed
 
-### 10.11.1-beta.1
+### 10.12.0-beta.1
 
 > **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered the beta, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.11.0**, below.
 
-- **Russian**, translated by @vorlocsev in [#167](https://github.com/v1k70rk4/HASS.Agent.NET10/pull/167), thank you! A Windows set to Russian picks it, or choose it under **UI language** on the General page; the entity names in Home Assistant can be Russian too, under **HA entity language**. It has not run on a Russian Windows yet: a text that is cut off or reads oddly is worth an issue.
+A beta for people coming from the classic HASS.Agent: the app takes over its settings. With it, an uninstaller that stops the app, and Russian, from 10.11.1-beta.1. Works with the Home Assistant integration **10.6.7** or newer; the notice in Home Assistant for a PC on the old client is fixed in the integration **10.12.0-beta.1**. Signed release.
+
+- **Coming from the classic HASS.Agent? Its settings come over.** When the app finds the classic client's settings on the PC (the LAB02 original or the community one, the tray client and the Satellite Service) and has no connection set up yet, it offers once, when its window opens, to take them over; the Danger Zone's new **Import from HASS.Agent** button does the same later. What comes over: the MQTT and HA API connection with their secrets kept protected, the device name, the sensors with a built-in counterpart, process, service and PowerShell sensors as custom ones, the system commands, and custom, PowerShell, key, URL and popup window commands. What has no counterpart here is listed by name at the end. The classic client's token is an administrator's as a rule: once the PC is connected, the app offers to swap it for a user of the PC's own. The classic install is only read. See [Coming from HASS.Agent](docs/getting-started/migrating.md).
+- **Fixed: the uninstaller could not stop the tray app** and left its files behind. It only had Windows' Restart Manager, which cannot close a program with no window, and in kiosk mode the task started the app again at once. The uninstaller now does what Setup does before an install: pauses the kiosk task, asks the app to exit, ends it if it stays, and stops the service. This is the uninstaller of this version onwards; removing an older version still needs the app closed by hand.
+- **Removing the settings at uninstall removes the "HASS.Agent Users" group too.** It says who may use those settings; kept with them otherwise, so a reinstall finds the same users allowed.
+- **Russian**, translated by @vorlocsev in [#167](https://github.com/v1k70rk4/HASS.Agent.NET10/pull/167), thank you! Out first in 10.11.1-beta.1: a Windows set to Russian picks it, or choose it under **UI language** on the General page; the entity names in Home Assistant can be Russian too, under **HA entity language**. A text that is cut off or reads oddly is worth an issue.
 
 ### 10.11.0
 
