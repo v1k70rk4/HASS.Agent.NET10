@@ -247,6 +247,18 @@ public class ClassicImportTests
     }
 
     [Fact]
+    public void A_command_that_differs_in_a_letters_case_is_another_command()
+    {
+        var settings = NewSettings();
+        var client = """[ { "Type": "PowershellCommand", "Id": "0b9c6a8e-9999-4c2a-9e7c-000000000001", "Name": "A", "Command": "Write-Output 'Hello'" } ]""";
+        var service = """[ { "Type": "PowershellCommand", "Id": "0b9c6a8e-9999-4c2a-9e7c-000000000001", "Name": "B", "Command": "Write-Output 'hello'" } ]""";
+
+        ClassicImport.Apply(new ClassicFiles(null, null, client, null, null, service), settings);
+
+        Assert.Equal(2, settings.CustomCommands.Count);
+    }
+
+    [Fact]
     public void A_low_integrity_command_is_left_out_with_the_reason()
     {
         var settings = NewSettings();

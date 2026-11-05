@@ -319,12 +319,13 @@ internal static class ClassicImport
             }
 
             var id = ClassicId(item);
+            var profile = SensorPollingProfiles.ToKey(ProfileFor(GetInt(item, "UpdateInterval")));
             var existing = target.CustomSensors.FirstOrDefault(sensor => sensor.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
-            if (existing is not null && !SameSensor(existing, customType, parameter))
+            if (existing is not null && !SameSensor(existing, customType, parameter, profile))
             {
                 // The same id for something else (the client's and the service's lists are
                 // kept apart, and the id was copied): an item of its own.
-                id = DerivedId(id, customType, parameter);
+                id = DerivedId(id, customType, parameter, profile);
                 existing = target.CustomSensors.FirstOrDefault(sensor => sensor.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
             }
 
@@ -343,7 +344,7 @@ internal static class ClassicImport
                 Type = customType,
                 Name = name,
                 Parameter = parameter,
-                PollingProfile = SensorPollingProfiles.ToKey(ProfileFor(GetInt(item, "UpdateInterval"))),
+                PollingProfile = profile,
                 Enabled = true,
                 Service = service,
                 TrayApp = !service,
@@ -792,14 +793,17 @@ internal static class ClassicImport
     /// The classic item's own id, or one made from what it is, so that the same item gives the
     /// same id on every import and is not added twice (the duplicate check is by id).
     /// </summary>
-    private static bool SameSensor(CustomSensorDefinition existing, string type, string parameter) =>
+    // What runs is compared as it is (a script differs in a letter's case too); only the
+    // type's key is not.
+    private static bool SameSensor(CustomSensorDefinition existing, string type, string parameter, string profile) =>
         existing.Type.Equals(type, StringComparison.OrdinalIgnoreCase)
-        && existing.Parameter.Equals(parameter, StringComparison.OrdinalIgnoreCase);
+        && existing.Parameter.Equals(parameter, StringComparison.Ordinal)
+        && existing.PollingProfile.Equals(profile, StringComparison.OrdinalIgnoreCase);
 
     private static bool SameCommand(CustomCommandDefinition existing, CustomCommandDefinition converted) =>
         existing.Type.Equals(converted.Type, StringComparison.OrdinalIgnoreCase)
-        && existing.Command.Equals(converted.Command, StringComparison.OrdinalIgnoreCase)
-        && existing.Arguments.Equals(converted.Arguments, StringComparison.OrdinalIgnoreCase);
+        && existing.Command.Equals(converted.Command, StringComparison.Ordinal)
+        && existing.Arguments.Equals(converted.Arguments, StringComparison.Ordinal);
 
     /// <summary>An id of its own for an item that shares its id with another: the same every time.</summary>
     private static string DerivedId(string id, params string[] parts) =>

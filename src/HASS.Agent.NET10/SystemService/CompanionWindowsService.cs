@@ -295,6 +295,9 @@ internal sealed class CompanionWindowsService : ServiceBase
         }
 
         _runningVersion = settings.SoftwareVersion;
+        // The files of the versions before 10.12 go at every start, whichever way the
+        // bookkeeping below ends; what the version file said is kept for the fallback.
+        var legacyVersion = TakeLegacyVersionFile(_paths);
         if (LastRunRecord.Read() == settings.SoftwareVersion)
         {
             // Reported already: by a tray app while the service was not running, or by the
@@ -314,9 +317,9 @@ internal sealed class CompanionWindowsService : ServiceBase
 
             UpdateMarkers.ClearUpdatedFrom();
 
-            // The file of the versions before 10.12 is read once more, as a version only,
-            // then it is gone; before any record, the tray app's is the best there is.
-            var previous = UpdateMarkers.ReadServiceVersion() ?? ReadLegacyVersionFile(_paths) ?? settings.LastRunVersion;
+            // Before any record of the service's own, the old file's version, then the tray
+            // app's: the best there is.
+            var previous = UpdateMarkers.ReadServiceVersion() ?? legacyVersion ?? settings.LastRunVersion;
             if (previous == settings.SoftwareVersion)
             {
                 return null;
@@ -344,7 +347,7 @@ internal sealed class CompanionWindowsService : ServiceBase
     /// content when it is a version, and the file goes either way, with the installer's old
     /// "updated-from" note, which is not read at all (every user could write both).
     /// </summary>
-    private static string? ReadLegacyVersionFile(AppPaths paths)
+    private static string? TakeLegacyVersionFile(AppPaths paths)
     {
         var versionFile = Path.Combine(paths.ConfigDirectory, "service-version");
         string? version = null;
