@@ -1,4 +1,5 @@
 using System.ServiceProcess;
+using System.Text;
 using System.Text.Json;
 using HASS.Agent.Companion.Configuration;
 using HASS.Agent.Companion.Http;
@@ -344,8 +345,10 @@ internal sealed class CompanionWindowsService : ServiceBase
 
     /// <summary>
     /// The "service-version" file the versions before 10.12 kept in the settings folder: its
-    /// content when it is a version, and the file goes either way, with the installer's old
-    /// "updated-from" note, which is not read at all (every user could write both).
+    /// content when it is a version (no more than a version's length is read: every user
+    /// could write the file, and a version is at most 64 characters), put in the registry
+    /// before the file goes, so a restart cannot lose it; the file goes either way, with the
+    /// installer's old "updated-from" note, which is not read at all.
     /// </summary>
     private static string? TakeLegacyVersionFile(AppPaths paths)
     {
@@ -355,11 +358,34 @@ internal sealed class CompanionWindowsService : ServiceBase
         {
             if (File.Exists(versionFile))
             {
-                var text = File.ReadAllText(versionFile).Trim();
-                version = LastRunRecord.IsVersion(text) ? text : null;
+                var buffer = new byte[65];
+                int read;
+                using (var stream = new FileStream(versionFile, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                {
+                    read = stream.Read(buffer, 0, buffer.Length);
+                }
+
+                if (read <= 64)
+                {
+                    var text = Encoding.UTF8.GetString(buffer, 0, read).Trim('\uFEFF', ' ', '\r', '\n', '\t');
+                    version = LastRunRecord.IsVersion(text) ? text : null;
+                }
+
+                if (version is not null && UpdateMarkers.ReadServiceVersion() is null)
+                {
+                    UpdateMarkers.WriteServiceVersion(version);
+                }
+
                 File.Delete(versionFile);
             }
+        }
+        catch (Exception)
+        {
+            // Left as it is: read again at the next start.
+        }
 
+        try
+        {
             File.Delete(Path.Combine(paths.ConfigDirectory, "updated-from"));
         }
         catch (Exception)
