@@ -86,9 +86,14 @@ internal static class ClassicImport
         // order its client looked for them (ProgramData first). Under ProgramData any user
         // may make a folder, so that one counts only when administrators own it, and its
         // config folder too, and nobody else may write either: what a user planted there, or
-        // may change there, is not the service's.
+        // may change there, is not the service's. The vendor's folder above it is held to
+        // less (an install's parent folder keeps the ProgramData rules, under which every
+        // user makes files), but nobody else may remove or replace it either: else the path
+        // could point at something else once it was checked.
+        var lab02Vendor = Under(programData, "LAB02 Research");
         var lab02ProgramData = Under(programData, "LAB02 Research", "HASS.Agent Satellite Service");
-        var lab02ProgramDataTrusted = lab02ProgramData is not null
+        var lab02ProgramDataTrusted = lab02Vendor is not null && lab02ProgramData is not null
+            && IsAdministratorHeld(lab02Vendor)
             && IsAdministratorControlled(lab02ProgramData)
             && IsAdministratorControlled(Path.Combine(lab02ProgramData, "config"));
         var service = FirstConfigDirectory(
@@ -925,10 +930,14 @@ internal static class ClassicImport
         new(WellKnownSidType.LocalSystemSid, null),
     ];
 
-    private const FileSystemRights WriteRights =
-        FileSystemRights.WriteData | FileSystemRights.AppendData | FileSystemRights.WriteAttributes
-        | FileSystemRights.WriteExtendedAttributes | FileSystemRights.Delete | FileSystemRights.DeleteSubdirectoriesAndFiles
+    // What lets a folder be removed, renamed, or given other rights or an owner.
+    private const FileSystemRights ReplaceRights =
+        FileSystemRights.Delete | FileSystemRights.DeleteSubdirectoriesAndFiles
         | FileSystemRights.ChangePermissions | FileSystemRights.TakeOwnership;
+
+    private const FileSystemRights WriteRights =
+        ReplaceRights | FileSystemRights.WriteData | FileSystemRights.AppendData
+        | FileSystemRights.WriteAttributes | FileSystemRights.WriteExtendedAttributes;
 
     /// <summary>
     /// Whether a folder is the administrators' (or SYSTEM's) and no rule lets anyone else
@@ -936,7 +945,19 @@ internal static class ClassicImport
     /// made and kept to itself, not what a user put there or may change. A folder that
     /// inherits the usual ProgramData rules (every user makes files there) is not.
     /// </summary>
-    internal static bool IsAdministratorControlled(string directory)
+    internal static bool IsAdministratorControlled(string directory) =>
+        IsAdministrators(directory, WriteRights, inEffectOnly: false);
+
+    /// <summary>
+    /// Whether a folder is the administrators' (or SYSTEM's) and no rule in effect on it
+    /// lets anyone else remove, rename or take it: the folder an install's own sits in,
+    /// which keeps the ProgramData rules (every user makes files there), so what is in it
+    /// is not vouched for, only that the folder stays what and where it is.
+    /// </summary>
+    internal static bool IsAdministratorHeld(string directory) =>
+        IsAdministrators(directory, ReplaceRights, inEffectOnly: true);
+
+    private static bool IsAdministrators(string directory, FileSystemRights rights, bool inEffectOnly)
     {
         try
         {
@@ -951,10 +972,13 @@ internal static class ClassicImport
                 return false;
             }
 
+            // A rule that is there only to be inherited by what is made in the folder gives
+            // nothing on the folder itself.
             return !security.GetAccessRules(includeExplicit: true, includeInherited: true, typeof(SecurityIdentifier))
                 .Cast<FileSystemAccessRule>()
                 .Any(rule => rule.AccessControlType == AccessControlType.Allow
-                    && (rule.FileSystemRights & WriteRights) != 0
+                    && (!inEffectOnly || (rule.PropagationFlags & PropagationFlags.InheritOnly) == 0)
+                    && (rule.FileSystemRights & rights) != 0
                     && (rule.IdentityReference is not SecurityIdentifier sid || !TrustedWriters.Contains(sid)));
         }
         catch (Exception)

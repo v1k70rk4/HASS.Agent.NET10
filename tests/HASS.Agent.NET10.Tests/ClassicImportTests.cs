@@ -260,6 +260,7 @@ public class ClassicImportTests
             new DirectoryInfo(directory).SetAccessControl(security);
 
             Assert.False(ClassicImport.IsAdministratorControlled(directory));
+            Assert.False(ClassicImport.IsAdministratorHeld(directory));
         }
         finally
         {
@@ -267,6 +268,7 @@ public class ClassicImportTests
         }
 
         Assert.False(ClassicImport.IsAdministratorControlled(Path.Combine(directory, "not-there")));
+        Assert.False(ClassicImport.IsAdministratorHeld(Path.Combine(directory, "not-there")));
     }
 
     [Fact]
