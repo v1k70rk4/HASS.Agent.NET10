@@ -247,6 +247,29 @@ public class ClassicImportTests
     }
 
     [Fact]
+    public void A_folder_a_user_made_is_not_the_administrators()
+    {
+        // A folder of the user's own, under the profile: not administrator-controlled.
+        var directory = Path.Combine(Path.GetTempPath(), "hass-agent-test-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var security = new DirectoryInfo(directory).GetAccessControl();
+            using var identity = System.Security.Principal.WindowsIdentity.GetCurrent();
+            security.SetOwner(identity.User!);
+            new DirectoryInfo(directory).SetAccessControl(security);
+
+            Assert.False(ClassicImport.IsAdministratorControlled(directory));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+
+        Assert.False(ClassicImport.IsAdministratorControlled(Path.Combine(directory, "not-there")));
+    }
+
+    [Fact]
     public void A_command_that_differs_in_a_letters_case_is_another_command()
     {
         var settings = NewSettings();

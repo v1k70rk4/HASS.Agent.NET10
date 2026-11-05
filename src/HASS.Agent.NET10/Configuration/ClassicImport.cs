@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using System.Security.Cryptography;
 using System.ServiceProcess;
 using System.Text;
@@ -81,14 +83,17 @@ internal static class ClassicImport
         // administrator's install put in HKLM): what it holds may run in this app's service,
         // once an administrator approves it there, as with anything else for the service.
         // The community service, then the LAB02 one: its own key, and its folders in the
-        // order its client looked for them (ProgramData first).
+        // order its client looked for them (ProgramData first). Under ProgramData any user
+        // may make a folder, so that one counts only when administrators own it and no user
+        // may write it: what a user planted there is not the service's.
+        var lab02ProgramData = Under(programData, "LAB02 Research", "HASS.Agent Satellite Service");
         var service = FirstConfigDirectory(
             "servicemqttsettings.json",
             ReadRegistry(Registry.LocalMachine, ServiceRegistryKey, "InstallPath"),
             Under(programFiles, "HASS.Agent Satellite Service", "Service"),
             Under(programFilesX86, "HASS.Agent Satellite Service", "Service"),
             ReadRegistry(Registry.LocalMachine, Lab02ServiceRegistryKey, "InstallPath"),
-            Under(programData, "LAB02 Research", "HASS.Agent Satellite Service"),
+            lab02ProgramData is not null && IsAdministratorControlled(lab02ProgramData) ? lab02ProgramData : null,
             Under(programFiles, "LAB02 Research", "HASS.Agent Satellite Service"),
             Under(programFilesX86, "LAB02 Research", "HASS.Agent Satellite Service"));
 
@@ -323,10 +328,11 @@ internal static class ClassicImport
             var id = ClassicId(item);
             var profile = SensorPollingProfiles.ToKey(ProfileFor(GetInt(item, "UpdateInterval")));
             var existing = target.CustomSensors.FirstOrDefault(sensor => sensor.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
-            if (existing is not null && !SameSensor(existing, customType, parameter, profile))
+            while (existing is not null && !SameSensor(existing, customType, parameter, profile))
             {
                 // The same id for something else (the client's and the service's lists are
-                // kept apart, and the id was copied): an item of its own.
+                // kept apart, and the id was copied): an item of its own. Again, should the
+                // derived id be taken by something else too.
                 id = DerivedId(id, customType, parameter, profile);
                 existing = target.CustomSensors.FirstOrDefault(sensor => sensor.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
             }
@@ -451,7 +457,7 @@ internal static class ClassicImport
 
             var id = ClassicId(item);
             var existing = target.CustomCommands.FirstOrDefault(command => command.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
-            if (existing is not null && !SameCommand(existing, converted))
+            while (existing is not null && !SameCommand(existing, converted))
             {
                 id = DerivedId(id, converted.Type, converted.Command, converted.Arguments);
                 existing = target.CustomCommands.FirstOrDefault(command => command.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
@@ -905,6 +911,56 @@ internal static class ClassicImport
         }
 
         return null;
+    }
+
+    private static readonly SecurityIdentifier[] Administrators =
+    [
+        new(WellKnownSidType.BuiltinAdministratorsSid, null),
+        new(WellKnownSidType.LocalSystemSid, null),
+    ];
+
+    private static readonly SecurityIdentifier[] EveryUser =
+    [
+        new(WellKnownSidType.BuiltinUsersSid, null),
+        new(WellKnownSidType.AuthenticatedUserSid, null),
+        new(WellKnownSidType.WorldSid, null),
+        new(WellKnownSidType.InteractiveSid, null),
+    ];
+
+    private const FileSystemRights WriteRights =
+        FileSystemRights.WriteData | FileSystemRights.AppendData | FileSystemRights.WriteAttributes
+        | FileSystemRights.WriteExtendedAttributes | FileSystemRights.Delete | FileSystemRights.ChangePermissions | FileSystemRights.TakeOwnership;
+
+    /// <summary>
+    /// Whether a folder is the administrators' (or SYSTEM's) and no rule lets every user write
+    /// it: what an installer run as administrator made, not what a user put there.
+    /// </summary>
+    internal static bool IsAdministratorControlled(string directory)
+    {
+        try
+        {
+            if (!Directory.Exists(directory))
+            {
+                return false;
+            }
+
+            var security = new DirectoryInfo(directory).GetAccessControl();
+            if (security.GetOwner(typeof(SecurityIdentifier)) is not SecurityIdentifier owner || !Administrators.Contains(owner))
+            {
+                return false;
+            }
+
+            return !security.GetAccessRules(includeExplicit: true, includeInherited: true, typeof(SecurityIdentifier))
+                .Cast<FileSystemAccessRule>()
+                .Any(rule => rule.AccessControlType == AccessControlType.Allow
+                    && rule.IdentityReference is SecurityIdentifier sid
+                    && EveryUser.Contains(sid)
+                    && (rule.FileSystemRights & WriteRights) != 0);
+        }
+        catch (Exception)
+        {
+            return false;
+        }
     }
 
     /// <summary>A path under a special folder, or null when Windows has no such folder.</summary>
