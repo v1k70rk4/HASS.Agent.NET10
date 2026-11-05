@@ -177,7 +177,9 @@ internal static class ClassicImport
         }
 
         // The connection is replaced, as the offer says: what the classic client did not
-        // have is off, also when this app had it set up before (a second import).
+        // have is off, also when this app had it set up before (a second import). A classic
+        // client with no connection at all brings nothing to replace it with, and the one
+        // this app has stays: nothing is taken away for nothing.
         if (result.Connection)
         {
             target.MqttEnabled = result.Mqtt;

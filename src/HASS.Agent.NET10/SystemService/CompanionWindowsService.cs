@@ -362,7 +362,9 @@ internal sealed class CompanionWindowsService : ServiceBase
                 int read;
                 using (var stream = new FileStream(versionFile, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
                 {
-                    read = stream.Read(buffer, 0, buffer.Length);
+                    // The whole file, or the first 65 bytes of a longer one: a short read
+                    // must not pass a prefix off as the file.
+                    read = stream.ReadAtLeast(buffer, buffer.Length, throwOnEndOfStream: false);
                 }
 
                 if (read <= 64)
