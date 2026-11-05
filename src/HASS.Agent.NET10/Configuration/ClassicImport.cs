@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using System.Security.Cryptography;
 using System.ServiceProcess;
 using System.Text;
@@ -58,7 +60,8 @@ internal static class ClassicImport
     // folder the user picked instead of the default one.
     private const string ClientUninstallKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\{7BBED458-609B-4D13-AD9E-4FF219DF8644}_is1";
     private const string ServiceRegistryKey = @"SOFTWARE\HASSAgent\SatelliteService";
-    private const string ClassicServiceName = "hass.agent.svc";
+    private const string Lab02ServiceRegistryKey = @"SOFTWARE\LAB02Research\HASSAgent\SatelliteService";
+    private static readonly string[] ClassicServiceNames = ["hass.agent.svc", "HASS.Agent Satellite Service"];
     private const string ClassicProcessName = "HASS.Agent";
 
     public static ClassicInstall Find()
@@ -67,6 +70,7 @@ internal static class ClassicImport
         var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
         var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
         var programFilesX86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
+        var programData = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
 
         var client = FirstConfigDirectory(
             "appsettings.json",
@@ -78,11 +82,27 @@ internal static class ClassicImport
         // The service's folder is written by administrators only (Program Files, or a folder an
         // administrator's install put in HKLM): what it holds may run in this app's service,
         // once an administrator approves it there, as with anything else for the service.
+        // The community service, then the LAB02 one: its own key, and its folders in the
+        // order its client looked for them (ProgramData first). Under ProgramData any user
+        // may make a folder, so that one counts only when administrators own it, and its
+        // config folder too, and nobody else may write either: what a user planted there, or
+        // may change there, is not the service's. The vendor's folder above it is held to
+        // less (an install's parent folder keeps the ProgramData rules, under which every
+        // user makes files), but nobody else may remove or replace it either: else the path
+        // could point at something else once it was checked.
+        var lab02Vendor = Under(programData, "LAB02 Research");
+        var lab02ProgramData = Under(programData, "LAB02 Research", "HASS.Agent Satellite Service");
+        var lab02ProgramDataTrusted = lab02Vendor is not null && lab02ProgramData is not null
+            && IsAdministratorHeld(lab02Vendor)
+            && IsAdministratorControlled(lab02ProgramData)
+            && IsAdministratorControlled(Path.Combine(lab02ProgramData, "config"));
         var service = FirstConfigDirectory(
             "servicemqttsettings.json",
             ReadRegistry(Registry.LocalMachine, ServiceRegistryKey, "InstallPath"),
             Under(programFiles, "HASS.Agent Satellite Service", "Service"),
             Under(programFilesX86, "HASS.Agent Satellite Service", "Service"),
+            ReadRegistry(Registry.LocalMachine, Lab02ServiceRegistryKey, "InstallPath"),
+            lab02ProgramDataTrusted ? lab02ProgramData : null,
             Under(programFiles, "LAB02 Research", "HASS.Agent Satellite Service"),
             Under(programFilesX86, "LAB02 Research", "HASS.Agent Satellite Service"));
 
@@ -127,8 +147,9 @@ internal static class ClassicImport
             var services = ServiceController.GetServices();
             try
             {
-                var classic = services.FirstOrDefault(service => service.ServiceName.Equals(ClassicServiceName, StringComparison.OrdinalIgnoreCase));
-                return classic is not null && classic.Status != ServiceControllerStatus.Stopped;
+                return services.Any(service =>
+                    ClassicServiceNames.Contains(service.ServiceName, StringComparer.OrdinalIgnoreCase)
+                    && service.Status != ServiceControllerStatus.Stopped);
             }
             finally
             {
@@ -167,6 +188,16 @@ internal static class ClassicImport
         if (!result.Mqtt && serviceMqtt is { } mqtt)
         {
             ApplyMqtt(mqtt, target, result);
+        }
+
+        // The connection is replaced, as the offer says: what the classic client did not
+        // have is off, also when this app had it set up before (a second import). A classic
+        // client with no connection at all brings nothing to replace it with, and the one
+        // this app has stays: nothing is taken away for nothing.
+        if (result.Connection)
+        {
+            target.MqttEnabled = result.Mqtt;
+            target.HaApiEnabled = result.HaApi;
         }
 
         ApplySensors(files.Sensors, service: false, target, result);
@@ -304,7 +335,17 @@ internal static class ClassicImport
             }
 
             var id = ClassicId(item);
+            var profile = SensorPollingProfiles.ToKey(ProfileFor(GetInt(item, "UpdateInterval")));
             var existing = target.CustomSensors.FirstOrDefault(sensor => sensor.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
+            while (existing is not null && !SameSensor(existing, customType, parameter, profile))
+            {
+                // The same id for something else (the client's and the service's lists are
+                // kept apart, and the id was copied): an item of its own. Again, should the
+                // derived id be taken by something else too.
+                id = DerivedId(id, customType, parameter, profile);
+                existing = target.CustomSensors.FirstOrDefault(sensor => sensor.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
+            }
+
             if (existing is not null)
             {
                 // The same item in the client and the service: one sensor for both.
@@ -320,7 +361,7 @@ internal static class ClassicImport
                 Type = customType,
                 Name = name,
                 Parameter = parameter,
-                PollingProfile = SensorPollingProfiles.ToKey(ProfileFor(GetInt(item, "UpdateInterval"))),
+                PollingProfile = profile,
                 Enabled = true,
                 Service = service,
                 TrayApp = !service,
@@ -407,6 +448,15 @@ internal static class ClassicImport
                 continue;
             }
 
+            // The classic client could run a custom command with low integrity, kept from
+            // writing most of the user's files; this app has no such mode, and a command
+            // meant to be held back is not let loose without a word.
+            if (GetBool(item, "RunAsLowIntegrity") == true)
+            {
+                result.Skipped.Add($"{name} ({type}, low integrity)");
+                continue;
+            }
+
             var converted = ConvertCommand(item, type);
             if (converted is null)
             {
@@ -416,6 +466,12 @@ internal static class ClassicImport
 
             var id = ClassicId(item);
             var existing = target.CustomCommands.FirstOrDefault(command => command.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
+            while (existing is not null && !SameCommand(existing, converted))
+            {
+                id = DerivedId(id, converted.Type, converted.Command, converted.Arguments);
+                existing = target.CustomCommands.FirstOrDefault(command => command.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
+            }
+
             if (existing is not null)
             {
                 existing.Service |= service && !existing.NeedsUserSession;
@@ -754,6 +810,22 @@ internal static class ClassicImport
     /// The classic item's own id, or one made from what it is, so that the same item gives the
     /// same id on every import and is not added twice (the duplicate check is by id).
     /// </summary>
+    // What runs is compared as it is (a script differs in a letter's case too); only the
+    // type's key is not.
+    private static bool SameSensor(CustomSensorDefinition existing, string type, string parameter, string profile) =>
+        existing.Type.Equals(type, StringComparison.OrdinalIgnoreCase)
+        && existing.Parameter.Equals(parameter, StringComparison.Ordinal)
+        && existing.PollingProfile.Equals(profile, StringComparison.OrdinalIgnoreCase);
+
+    private static bool SameCommand(CustomCommandDefinition existing, CustomCommandDefinition converted) =>
+        existing.Type.Equals(converted.Type, StringComparison.OrdinalIgnoreCase)
+        && existing.Command.Equals(converted.Command, StringComparison.Ordinal)
+        && existing.Arguments.Equals(converted.Arguments, StringComparison.Ordinal);
+
+    /// <summary>An id of its own for an item that shares its id with another: the same every time.</summary>
+    private static string DerivedId(string id, params string[] parts) =>
+        new Guid(SHA256.HashData(Encoding.UTF8.GetBytes(string.Join('\n', [id, .. parts]))).AsSpan(0, 16)).ToString("N");
+
     private static string ClassicId(JsonElement item)
     {
         if (GetString(item, "Id") is { } id && Guid.TryParse(id, out var guid) && guid != Guid.Empty)
@@ -848,6 +920,71 @@ internal static class ClassicImport
         }
 
         return null;
+    }
+
+    // The only writers an administrator's install leaves on its folders; anyone else with a
+    // write right makes the folder theirs too, whoever they are.
+    private static readonly SecurityIdentifier[] TrustedWriters =
+    [
+        new(WellKnownSidType.BuiltinAdministratorsSid, null),
+        new(WellKnownSidType.LocalSystemSid, null),
+    ];
+
+    // What lets a folder be removed, renamed, or given other rights or an owner.
+    private const FileSystemRights ReplaceRights =
+        FileSystemRights.Delete | FileSystemRights.DeleteSubdirectoriesAndFiles
+        | FileSystemRights.ChangePermissions | FileSystemRights.TakeOwnership;
+
+    private const FileSystemRights WriteRights =
+        ReplaceRights | FileSystemRights.WriteData | FileSystemRights.AppendData
+        | FileSystemRights.WriteAttributes | FileSystemRights.WriteExtendedAttributes;
+
+    /// <summary>
+    /// Whether a folder is the administrators' (or SYSTEM's) and no rule lets anyone else
+    /// write it, change what is in it or take it: what an installer run as administrator
+    /// made and kept to itself, not what a user put there or may change. A folder that
+    /// inherits the usual ProgramData rules (every user makes files there) is not.
+    /// </summary>
+    internal static bool IsAdministratorControlled(string directory) =>
+        IsAdministrators(directory, WriteRights, inEffectOnly: false);
+
+    /// <summary>
+    /// Whether a folder is the administrators' (or SYSTEM's) and no rule in effect on it
+    /// lets anyone else remove, rename or take it: the folder an install's own sits in,
+    /// which keeps the ProgramData rules (every user makes files there), so what is in it
+    /// is not vouched for, only that the folder stays what and where it is.
+    /// </summary>
+    internal static bool IsAdministratorHeld(string directory) =>
+        IsAdministrators(directory, ReplaceRights, inEffectOnly: true);
+
+    private static bool IsAdministrators(string directory, FileSystemRights rights, bool inEffectOnly)
+    {
+        try
+        {
+            if (!Directory.Exists(directory))
+            {
+                return false;
+            }
+
+            var security = new DirectoryInfo(directory).GetAccessControl();
+            if (security.GetOwner(typeof(SecurityIdentifier)) is not SecurityIdentifier owner || !TrustedWriters.Contains(owner))
+            {
+                return false;
+            }
+
+            // A rule that is there only to be inherited by what is made in the folder gives
+            // nothing on the folder itself.
+            return !security.GetAccessRules(includeExplicit: true, includeInherited: true, typeof(SecurityIdentifier))
+                .Cast<FileSystemAccessRule>()
+                .Any(rule => rule.AccessControlType == AccessControlType.Allow
+                    && (!inEffectOnly || (rule.PropagationFlags & PropagationFlags.InheritOnly) == 0)
+                    && (rule.FileSystemRights & rights) != 0
+                    && (rule.IdentityReference is not SecurityIdentifier sid || !TrustedWriters.Contains(sid)));
+        }
+        catch (Exception)
+        {
+            return false;
+        }
     }
 
     /// <summary>A path under a special folder, or null when Windows has no such folder.</summary>

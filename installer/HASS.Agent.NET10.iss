@@ -433,10 +433,20 @@ begin
   begin
     EnsureConfigDirectoryPermissions();
 
-    { Before the service starts: it reads this file on start and removes it once the
-      update is reported. }
-    if (PreviousVersion <> '') and (PreviousVersion <> '{#MyAppVersion}') then
-      SaveStringToFile(ExpandConstant('{commonappdata}\HASS.Agent.NET10\updated-from'), PreviousVersion, False);
+    { Before the service starts: it reads this note on start and removes it once the
+      update is reported. A value of the app's key under HKLM, which only administrators
+      and SYSTEM may write (a file in the settings folder, which every user may write,
+      could be a link, and the note would be written through it). Only for a PC with the
+      service, which is the one that reads it: it must not wait for a service installed
+      some day and report an update from long ago. }
+    if (PreviousVersion <> '') and (PreviousVersion <> '{#MyAppVersion}')
+       and (ExistingServiceInstalled or WizardIsTaskSelected('installservice')) then
+    begin
+      { The files are in place by now, so a note that could not be written is logged, not
+        made into a failed install: at worst this one update goes unreported. }
+      if not RegWriteStringValue(HKLM64, 'SOFTWARE\HASS.Agent.NET10', 'UpdatedFrom', PreviousVersion) then
+        Log('The note of the version this install replaced could not be written; the service may not report this update.');
+    end;
 
     { Installing the service keeps what an administrator approved for it before
       (service-policy.json next to the program), so an update keeps everything working.

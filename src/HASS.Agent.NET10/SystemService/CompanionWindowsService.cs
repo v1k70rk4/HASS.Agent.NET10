@@ -1,4 +1,5 @@
 using System.ServiceProcess;
+using System.Text;
 using System.Text.Json;
 using HASS.Agent.Companion.Configuration;
 using HASS.Agent.Companion.Http;
@@ -279,13 +280,13 @@ internal sealed class CompanionWindowsService : ServiceBase
     /// A tray app reports the update only while the service is not running; when it did,
     /// the PC's record (LastRunRecord) already has this version, and there is nothing left
     /// to report.
-    /// The service's last version lives in a file of its own, so the service never has to
-    /// write settings.json (the tray app owns that, and a write reloads the runtime).
-    /// The new version is only recorded once the notification is dealt with, so a restart
-    /// while Home Assistant is unreachable does not lose it.
-    /// The installer's own note (the "updated-from" file) comes first: it names the version
-    /// it replaced whatever that version was, also one that predates this bookkeeping, or
-    /// one installed again after a newer one had already been recorded here.
+    /// The service's last version lives in a value of its own (UpdateMarkers), so the service
+    /// never has to write settings.json (the tray app owns that, and a write reloads the
+    /// runtime). The new version is only recorded once the notification is dealt with, so a
+    /// restart while Home Assistant is unreachable does not lose it.
+    /// The installer's own note (UpdatedFrom) comes first: it names the version it replaced
+    /// whatever that version was, also one that predates this bookkeeping, or one installed
+    /// again after a newer one had already been recorded here.
     /// </summary>
     private string? DetectCompletedUpdate(CompanionSettings settings)
     {
@@ -295,7 +296,9 @@ internal sealed class CompanionWindowsService : ServiceBase
         }
 
         _runningVersion = settings.SoftwareVersion;
-        var versionFile = ServiceVersionFile(_paths);
+        // The files of the versions before 10.12 go at every start, whichever way the
+        // bookkeeping below ends; what the version file said is kept for the fallback.
+        var legacyVersion = TakeLegacyVersionFile(_paths);
         if (LastRunRecord.Read() == settings.SoftwareVersion)
         {
             // Reported already: by a tray app while the service was not running, or by the
@@ -306,23 +309,18 @@ internal sealed class CompanionWindowsService : ServiceBase
 
         try
         {
-            var installerNote = UpdatedFromFile(_paths);
-            if (File.Exists(installerNote))
+            var replaced = UpdateMarkers.ReadUpdatedFrom();
+            if (replaced is not null && replaced != settings.SoftwareVersion)
             {
-                var replaced = File.ReadAllText(installerNote).Trim();
-                if (replaced.Length > 0 && replaced != settings.SoftwareVersion)
-                {
-                    _log?.Info($"Service updated from {replaced} to {settings.SoftwareVersion} (installer).");
-                    return replaced;
-                }
-
-                File.Delete(installerNote);
+                _log?.Info($"Service updated from {replaced} to {settings.SoftwareVersion} (installer).");
+                return replaced;
             }
 
-            // Before this file existed, the tray app's record is the best there is.
-            var previous = File.Exists(versionFile)
-                ? File.ReadAllText(versionFile).Trim()
-                : settings.LastRunVersion;
+            UpdateMarkers.ClearUpdatedFrom();
+
+            // Before any record of the service's own, the old file's version, then the tray
+            // app's: the best there is.
+            var previous = UpdateMarkers.ReadServiceVersion() ?? legacyVersion ?? settings.LastRunVersion;
             if (previous == settings.SoftwareVersion)
             {
                 return null;
@@ -331,7 +329,7 @@ internal sealed class CompanionWindowsService : ServiceBase
             if (string.IsNullOrEmpty(previous))
             {
                 // Nothing to compare with: a first install, nothing to report.
-                SafeFiles.WriteAllText(versionFile, settings.SoftwareVersion);
+                UpdateMarkers.WriteServiceVersion(settings.SoftwareVersion);
                 return null;
             }
 
@@ -345,9 +343,60 @@ internal sealed class CompanionWindowsService : ServiceBase
         }
     }
 
-    private static string ServiceVersionFile(AppPaths paths) => Path.Combine(paths.ConfigDirectory, "service-version");
+    /// <summary>
+    /// The "service-version" file the versions before 10.12 kept in the settings folder: its
+    /// content when it is a version (no more than a version's length is read: every user
+    /// could write the file, and a version is at most 64 characters), put in the registry
+    /// before the file goes, so a restart cannot lose it; the file goes either way, with the
+    /// installer's old "updated-from" note, which is not read at all.
+    /// </summary>
+    private static string? TakeLegacyVersionFile(AppPaths paths)
+    {
+        var versionFile = Path.Combine(paths.ConfigDirectory, "service-version");
+        string? version = null;
+        try
+        {
+            if (File.Exists(versionFile))
+            {
+                var buffer = new byte[65];
+                int read;
+                using (var stream = new FileStream(versionFile, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                {
+                    // The whole file, or the first 65 bytes of a longer one: a short read
+                    // must not pass a prefix off as the file.
+                    read = stream.ReadAtLeast(buffer, buffer.Length, throwOnEndOfStream: false);
+                }
 
-    private static string UpdatedFromFile(AppPaths paths) => Path.Combine(paths.ConfigDirectory, "updated-from");
+                if (read <= 64)
+                {
+                    var text = Encoding.UTF8.GetString(buffer, 0, read).Trim('\uFEFF', ' ', '\r', '\n', '\t');
+                    version = LastRunRecord.IsVersion(text) ? text : null;
+                }
+
+                if (version is not null && UpdateMarkers.ReadServiceVersion() is null)
+                {
+                    UpdateMarkers.WriteServiceVersion(version);
+                }
+
+                File.Delete(versionFile);
+            }
+        }
+        catch (Exception)
+        {
+            // Left as it is: read again at the next start.
+        }
+
+        try
+        {
+            File.Delete(Path.Combine(paths.ConfigDirectory, "updated-from"));
+        }
+        catch (Exception)
+        {
+            // Left as it is.
+        }
+
+        return version;
+    }
 
     /// <summary>The finished update was reported: this version is now the known one, for the service and for the tray apps.</summary>
     private void RecordServiceVersion()
@@ -365,8 +414,8 @@ internal sealed class CompanionWindowsService : ServiceBase
 
         try
         {
-            SafeFiles.WriteAllText(ServiceVersionFile(_paths), _runningVersion);
-            File.Delete(UpdatedFromFile(_paths));
+            UpdateMarkers.WriteServiceVersion(_runningVersion);
+            UpdateMarkers.ClearUpdatedFrom();
         }
         catch (Exception ex)
         {
