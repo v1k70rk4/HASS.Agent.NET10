@@ -125,6 +125,7 @@ internal sealed class WebViewForm : Form
 
             // The zoom the page was last shown at comes back as the browser's default (the
             // level Ctrl+0 returns to), and a zoom the user sets is kept for the next time.
+            // The store is the app's one, shared with every other open web view.
             var zoom = WebViewZoom.ForUser(_log);
             if (zoom.Get(_url) is { } level)
             {

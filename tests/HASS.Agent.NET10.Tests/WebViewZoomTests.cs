@@ -25,6 +25,14 @@ public class WebViewZoomTests : IDisposable
     }
 
     [Fact]
+    public void Every_web_view_of_the_app_shares_one_store()
+    {
+        // Two windows with their own copies would write over each other's change; the
+        // app's store is one, however many windows ask for it. Nothing is written here.
+        Assert.Same(WebViewZoom.ForUser(null), WebViewZoom.ForUser(null));
+    }
+
+    [Fact]
     public void The_default_zoom_is_forgotten_and_an_empty_file_goes()
     {
         var zoom = new WebViewZoom(File);

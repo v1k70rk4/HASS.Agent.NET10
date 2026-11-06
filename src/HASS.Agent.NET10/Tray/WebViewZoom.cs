@@ -18,6 +18,8 @@ internal sealed class WebViewZoom
     public const double Maximum = 5.0;
 
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
+    private static readonly Lock UserLock = new();
+    private static WebViewZoom? _user;
 
     private readonly string _path;
     private readonly FileLog? _log;
@@ -30,16 +32,32 @@ internal sealed class WebViewZoom
         Load();
     }
 
-    /// <summary>The file of the Windows user running the app, beside the browser profile.</summary>
-    public static WebViewZoom ForUser(FileLog? log) => new(
-        Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            AppIdentity.ConfigurationDirectoryName,
-            "webview-zoom.json"),
-        log);
+    /// <summary>
+    /// The levels of the Windows user running the app, in a file beside the browser profile.
+    /// One store for the whole app: every open web view saves into the same levels, so a
+    /// window does not write a copy from before another window's change over that change.
+    /// </summary>
+    public static WebViewZoom ForUser(FileLog? log)
+    {
+        lock (UserLock)
+        {
+            return _user ??= new(
+                Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    AppIdentity.ConfigurationDirectoryName,
+                    "webview-zoom.json"),
+                log);
+        }
+    }
 
     /// <summary>The zoom the page was last shown at, or null when it was not zoomed.</summary>
-    public double? Get(string url) => _levels.TryGetValue(url, out var level) ? level : null;
+    public double? Get(string url)
+    {
+        lock (_levels)
+        {
+            return _levels.TryGetValue(url, out var level) ? level : null;
+        }
+    }
 
     /// <summary>Keeps the page's zoom; the default (1.0) is forgotten rather than kept.</summary>
     public void Set(string url, double zoom)
@@ -50,20 +68,23 @@ internal sealed class WebViewZoom
         }
 
         zoom = Math.Round(zoom, 4);
-        bool changed;
-        if (zoom == 1.0)
+        lock (_levels)
         {
-            changed = _levels.Remove(url);
-        }
-        else
-        {
-            changed = !_levels.TryGetValue(url, out var current) || current != zoom;
-            _levels[url] = zoom;
-        }
+            bool changed;
+            if (zoom == 1.0)
+            {
+                changed = _levels.Remove(url);
+            }
+            else
+            {
+                changed = !_levels.TryGetValue(url, out var current) || current != zoom;
+                _levels[url] = zoom;
+            }
 
-        if (changed)
-        {
-            Save();
+            if (changed)
+            {
+                Save();
+            }
         }
     }
 
