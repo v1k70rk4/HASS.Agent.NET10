@@ -180,7 +180,7 @@ The second beta of 10.12.0: the dashboard popup keeps its zoom. Everything from 
 
 **New since beta.1**
 
-- **The dashboard popup opens at the zoom it was last shown at.** A zoom set with Ctrl+scroll (or Ctrl and plus or minus) was gone when the popup closed: the popup makes a new browser each time it opens, and the browser keeps a zoom set this way only for the page it is on. The app keeps the level now, by address and per Windows user, and gives it back to the browser as its default zoom when the page opens again. Ctrl+0 returns to that level rather than to 100%, so 100% is a Ctrl+minus away. A page opened with the WebView command keeps its zoom the same way, each address on its own. Reported in [#171](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/171).
+- **The dashboard popup opens at the zoom it was last shown at.** A zoom set with Ctrl+scroll (or Ctrl and plus or minus) was gone when the popup closed: the popup makes a new browser each time it opens, and the browser keeps a zoom set this way only for the page it is on. The app keeps the level now, by address and per Windows user, and gives it back to the browser as its default zoom when the page opens again. Ctrl+0 returns to that level rather than to 100%; 100% is a step or two away with Ctrl+plus or Ctrl+minus. A page opened with the WebView command keeps its zoom the same way, each address on its own. Reported in [#171](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/171).
 
 **From beta.1**
 
