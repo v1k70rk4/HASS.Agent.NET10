@@ -2,6 +2,16 @@
 
 Every release of HASS.Agent .NET10, newest first. The downloads are on the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases).
 
+## 10.12.0-beta.2
+
+> **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered the beta, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.11.0**, below.
+
+The second beta of 10.12.0: the dashboard popup keeps its zoom. Everything from beta.1 is in it. Works with the Home Assistant integration **10.6.7** or newer; there is no new integration with this one, the integration **10.12.0-beta.1** stays. Signed release.
+
+- **The dashboard popup opens at the zoom it was last shown at.** A zoom set with Ctrl+scroll (or Ctrl and plus or minus) was gone when the popup closed: the popup makes a new browser each time it opens, and the browser keeps a zoom set this way only for the page it is on. The app keeps the level now, by address and per Windows user, and gives it back to the browser as its default zoom when the page opens again. Ctrl+0 returns to that level rather than to 100%; 100% is a step or two away with Ctrl+plus or Ctrl+minus. A page opened with the WebView command keeps its zoom the same way, each address on its own. Reported in [#171](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/171).
+
+Beta.1, below, is in it: the classic client's settings taken over, the uninstaller that stops the app, the service's update notes in the registry, and Russian.
+
 ## 10.12.0-beta.1
 
 > **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered the beta, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.11.0**, below.
