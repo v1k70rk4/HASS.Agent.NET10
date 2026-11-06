@@ -123,6 +123,16 @@ internal sealed class WebViewForm : Form
                 }
             };
 
+            // The zoom the page was last shown at comes back as the browser's default (the
+            // level Ctrl+0 returns to), and a zoom the user sets is kept for the next time.
+            var zoom = WebViewZoom.ForUser(_log);
+            if (zoom.Get(_url) is { } level)
+            {
+                _webView.ZoomFactor = level;
+            }
+
+            _webView.ZoomFactorChanged += (_, _) => zoom.Set(_url, _webView.ZoomFactor);
+
             _webView.CoreWebView2.Navigate(_url);
         }
         catch (Exception ex)
