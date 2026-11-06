@@ -12,7 +12,7 @@ A Home Assistant dashboard, or any web page, in a small window above the tray. S
 <figcaption>Custom commands, dashboard popup and hotkeys on the Capabilities page</figcaption>
 </figure>
 
-A dashboard made for it works best: a narrow one with the lights, the thermostat and the cameras you want at hand, in Home Assistant's own **kiosk** or **panel** view so the sidebar stays out of the way. The login is kept per Windows user, so Home Assistant asks for it once.
+A dashboard made for it works best: a narrow one with the lights, the thermostat and the cameras you want at hand, in Home Assistant's own **kiosk** or **panel** view so the sidebar stays out of the way. The login is kept per Windows user, so Home Assistant asks for it once. So is the zoom: a level set with Ctrl+scroll (or Ctrl and plus or minus) is there again the next time the popup opens, by address, and Ctrl+0 returns to it.
 
 There is a matching custom command type, **Popup window (WebView)**, that shows a page in a window of its own, for example a camera when the doorbell rings; see [Custom commands](../commands/custom.md).
 
