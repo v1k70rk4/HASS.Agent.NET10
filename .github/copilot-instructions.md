@@ -44,5 +44,5 @@ This repository is HASS.Agent .NET10, a Windows client for Home Assistant: one e
 
 ## Documentation and texts
 
-- The README is short: installation, the feature table, links. Details live under `docs/`, one folder per area. The changelog is `CHANGELOG.md`, newest first, and the README repeats only the latest release.
+- The README is short: installation, the feature table, links. Details live under `docs/`, one folder per area. The changelog is `CHANGELOG.md`, newest first, and the README's What Changed section repeats the latest stable release open, with the one before it folded in a `<details>` block (and the running beta above it, when there is one); older ones are only in the changelog.
 - Texts the user sees, the docs and the changelog are plain English, written for the person using the app, not for the developer. Short sentences, no marketing, no AI-sounding filler.
