@@ -2,9 +2,29 @@
 
 Every release of HASS.Agent .NET10, newest first. The downloads are on the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases).
 
-## 10.12.0-beta.2
+## 10.12.0
 
-> **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered the beta, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.11.0**, below.
+A release for people coming from the classic HASS.Agent: the app takes over its settings. With it, the dashboard popup keeps its zoom, an uninstaller that stops the app, the service's update notes in the registry, and Russian. Works with the Home Assistant integration **10.6.7** or newer; the notice in Home Assistant for a PC on the old client is fixed in the integration **10.12.0**, out at the same time. Built on the same .NET 10.0.14 as 10.11.0. Signed release.
+
+**Coming from the classic HASS.Agent**
+
+- **Coming from the classic HASS.Agent? Its settings come over.** When the app finds the classic client's settings on the PC (the LAB02 original or the community one, the tray client and the Satellite Service) and has no connection set up yet, it offers once, when its window opens, to take them over; the Danger Zone's new **Import from HASS.Agent** button does the same later. What comes over: the MQTT and HA API connection with their secrets kept protected, the device name, the sensors with a built-in counterpart, process, service and PowerShell sensors as custom ones, the system commands, and custom, PowerShell, key, URL and popup window commands. What has no counterpart here is listed by name at the end. The classic client's token is an administrator's as a rule: once the PC is connected, the app offers to swap it for a user of the PC's own. The classic install is only read. See [Coming from HASS.Agent](docs/getting-started/migrating.md).
+
+**Translations**
+
+- **Russian**, translated by @vorlocsev in [#167](https://github.com/v1k70rk4/HASS.Agent.NET10/pull/167), thank you! A Windows set to Russian picks it, or choose it under **UI language** on the General page; the entity names in Home Assistant can be Russian too, under **HA entity language**. A text that is cut off or reads oddly is worth an issue.
+
+**Also in this release**
+
+- **The dashboard popup opens at the zoom it was last shown at.** A zoom set with Ctrl+scroll (or Ctrl and plus or minus) was gone when the popup closed: the popup makes a new browser each time it opens, and the browser keeps a zoom set this way only for the page it is on. The app keeps the level now, by address and per Windows user, and gives it back to the browser as its default zoom when the page opens again. Ctrl+0 returns to that level rather than to 100%; 100% is a step or two away with Ctrl+plus or Ctrl+minus. A page opened with the WebView command keeps its zoom the same way, each address on its own. Reported in [#171](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/171).
+- **Fixed: the uninstaller could not stop the tray app** and left its files behind. It only had Windows' Restart Manager, which cannot close a program with no window, and in kiosk mode the task started the app again at once. The uninstaller now does what Setup does before an install: pauses the kiosk task, asks the app to exit, ends it if it stays, and stops the service. This is the uninstaller of this version onwards; removing an older version still needs the app closed by hand.
+- **Removing the settings at uninstall removes the "HASS.Agent Users" group too.** It says who may use those settings; kept with them otherwise, so a reinstall finds the same users allowed.
+- **The service's update notes moved to the registry.** The version the installer replaced, and the version the service last reported, were files in the settings folder, which every user of the PC may write; they are values of the app's key under HKLM now, which only administrators and SYSTEM may write, and are taken only when they look like a version. The old files are removed once.
+
+**The betas before it**, with their notes as they were:
+
+<details markdown="1">
+<summary><b>10.12.0-beta.2</b>: the dashboard popup keeps its zoom</summary>
 
 The second beta of 10.12.0: the dashboard popup keeps its zoom. Everything from beta.1 is in it. Works with the Home Assistant integration **10.6.7** or newer; there is no new integration with this one, the integration **10.12.0-beta.1** stays. Signed release.
 
@@ -12,9 +32,10 @@ The second beta of 10.12.0: the dashboard popup keeps its zoom. Everything from 
 
 Beta.1, below, is in it: the classic client's settings taken over, the uninstaller that stops the app, the service's update notes in the registry, and Russian.
 
-## 10.12.0-beta.1
+</details>
 
-> **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered the beta, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.11.0**, below.
+<details markdown="1">
+<summary><b>10.12.0-beta.1</b>: the classic client's settings taken over, an uninstaller that stops the app, the update notes in the registry</summary>
 
 A beta for people coming from the classic HASS.Agent: the app takes over its settings. With it, an uninstaller that stops the app, and Russian, from 10.11.1-beta.1. Works with the Home Assistant integration **10.6.7** or newer; the notice in Home Assistant for a PC on the old client is fixed in the integration **10.12.0-beta.1**. Signed release.
 
@@ -24,13 +45,16 @@ A beta for people coming from the classic HASS.Agent: the app takes over its set
 - **The service's update notes moved to the registry.** The version the installer replaced, and the version the service last reported, were files in the settings folder, which every user of the PC may write; they are values of the app's key under HKLM now, which only administrators and SYSTEM may write, and are taken only when they look like a version. The old files are removed once.
 - **Russian**, translated by @vorlocsev in [#167](https://github.com/v1k70rk4/HASS.Agent.NET10/pull/167), thank you! Out first in 10.11.1-beta.1: a Windows set to Russian picks it, or choose it under **UI language** on the General page; the entity names in Home Assistant can be Russian too, under **HA entity language**. A text that is cut off or reads oddly is worth an issue.
 
-## 10.11.1-beta.1
+</details>
 
-> **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered the beta, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.11.0**, below.
+<details markdown="1">
+<summary><b>10.11.1-beta.1</b>: Russian</summary>
 
 A beta with one new language: Russian. Nothing else changed since 10.11.0. Works with the Home Assistant integration **10.6.7** or newer. Signed release.
 
 - **Russian**, translated by @vorlocsev in [#167](https://github.com/v1k70rk4/HASS.Agent.NET10/pull/167), thank you! A Windows set to Russian picks it, or choose it under **UI language** on the General page; the entity names in Home Assistant can be Russian too, under **HA entity language**. It has not run on a Russian Windows yet: a text that is cut off or reads oddly is worth an issue.
+
+</details>
 
 ## 10.11.0
 

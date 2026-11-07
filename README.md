@@ -2,7 +2,7 @@
 
 ![Windows](https://img.shields.io/badge/Windows-10%202004%2B%20%7C%2011-0078D4?logo=windows&logoColor=white)
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet&logoColor=white)
-![Version](https://img.shields.io/badge/version-10.12.0--beta.2-orange)
+![Version](https://img.shields.io/badge/version-10.12.0-brightgreen)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-MQTT%20%7C%20WebSocket%20API-41BDF5?logo=homeassistant&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/15316/badge)](https://www.bestpractices.dev/projects/15316)
@@ -26,7 +26,7 @@ It is designed for Windows PCs you want to observe and control from Home Assista
 
 The .NET10 line starts at **version 10.0.0**. The classic client is a separate program: if you want to stay with it, it is still available from its own project, and the integration keeps a [`legacy` branch](https://github.com/v1k70rk4/HASS.Agent.NET10-Integration/tree/legacy) for it. Thinking about switching? See [Coming from HASS.Agent](docs/getting-started/migrating.md).
 
-> **Stable:** [10.11.0](https://github.com/v1k70rk4/HASS.Agent.NET10/releases/latest) &nbsp;·&nbsp; **Beta:** [10.12.0-beta.2](https://github.com/v1k70rk4/HASS.Agent.NET10/releases/tag/v10.12.0-beta.2) &nbsp;·&nbsp; [What changed](#what-changed) &nbsp;·&nbsp; [Full changelog](CHANGELOG.md)
+> **Stable:** [10.12.0](https://github.com/v1k70rk4/HASS.Agent.NET10/releases/latest) &nbsp;·&nbsp; [What changed](#what-changed) &nbsp;·&nbsp; [Full changelog](CHANGELOG.md)
 
 ---
 
@@ -172,25 +172,27 @@ No telemetry, analytics, or usage data is collected or transmitted.
 
 ## What Changed
 
-### 10.12.0-beta.2
+### 10.12.0
 
-> **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered the beta, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.11.0**, below.
+A release for people coming from the classic HASS.Agent: the app takes over its settings. With it, the dashboard popup keeps its zoom, an uninstaller that stops the app, the service's update notes in the registry, and Russian. Works with the Home Assistant integration **10.6.7** or newer; the notice in Home Assistant for a PC on the old client is fixed in the integration **10.12.0**, out at the same time. Built on the same .NET 10.0.14 as 10.11.0. Signed release.
 
-The second beta of 10.12.0: the dashboard popup keeps its zoom. Everything from beta.1 is in it. Works with the Home Assistant integration **10.6.7** or newer; there is no new integration with this one, the integration **10.12.0-beta.1** stays. Signed release.
-
-**New since beta.1**
-
-- **The dashboard popup opens at the zoom it was last shown at.** A zoom set with Ctrl+scroll (or Ctrl and plus or minus) was gone when the popup closed: the popup makes a new browser each time it opens, and the browser keeps a zoom set this way only for the page it is on. The app keeps the level now, by address and per Windows user, and gives it back to the browser as its default zoom when the page opens again. Ctrl+0 returns to that level rather than to 100%; 100% is a step or two away with Ctrl+plus or Ctrl+minus. A page opened with the WebView command keeps its zoom the same way, each address on its own. Reported in [#171](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/171).
-
-**From beta.1**
+**Coming from the classic HASS.Agent**
 
 - **Coming from the classic HASS.Agent? Its settings come over.** When the app finds the classic client's settings on the PC (the LAB02 original or the community one, the tray client and the Satellite Service) and has no connection set up yet, it offers once, when its window opens, to take them over; the Danger Zone's new **Import from HASS.Agent** button does the same later. What comes over: the MQTT and HA API connection with their secrets kept protected, the device name, the sensors with a built-in counterpart, process, service and PowerShell sensors as custom ones, the system commands, and custom, PowerShell, key, URL and popup window commands. What has no counterpart here is listed by name at the end. The classic client's token is an administrator's as a rule: once the PC is connected, the app offers to swap it for a user of the PC's own. The classic install is only read. See [Coming from HASS.Agent](docs/getting-started/migrating.md).
+
+**Translations**
+
+- **Russian**, translated by @vorlocsev in [#167](https://github.com/v1k70rk4/HASS.Agent.NET10/pull/167), thank you! A Windows set to Russian picks it, or choose it under **UI language** on the General page; the entity names in Home Assistant can be Russian too, under **HA entity language**. A text that is cut off or reads oddly is worth an issue.
+
+**Also in this release**
+
+- **The dashboard popup opens at the zoom it was last shown at.** A zoom set with Ctrl+scroll (or Ctrl and plus or minus) was gone when the popup closed: the popup makes a new browser each time it opens, and the browser keeps a zoom set this way only for the page it is on. The app keeps the level now, by address and per Windows user, and gives it back to the browser as its default zoom when the page opens again. Ctrl+0 returns to that level rather than to 100%; 100% is a step or two away with Ctrl+plus or Ctrl+minus. A page opened with the WebView command keeps its zoom the same way, each address on its own. Reported in [#171](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/171).
 - **Fixed: the uninstaller could not stop the tray app** and left its files behind. It only had Windows' Restart Manager, which cannot close a program with no window, and in kiosk mode the task started the app again at once. The uninstaller now does what Setup does before an install: pauses the kiosk task, asks the app to exit, ends it if it stays, and stops the service. This is the uninstaller of this version onwards; removing an older version still needs the app closed by hand.
 - **Removing the settings at uninstall removes the "HASS.Agent Users" group too.** It says who may use those settings; kept with them otherwise, so a reinstall finds the same users allowed.
 - **The service's update notes moved to the registry.** The version the installer replaced, and the version the service last reported, were files in the settings folder, which every user of the PC may write; they are values of the app's key under HKLM now, which only administrators and SYSTEM may write, and are taken only when they look like a version. The old files are removed once.
-- **Russian**, translated by @vorlocsev in [#167](https://github.com/v1k70rk4/HASS.Agent.NET10/pull/167), thank you! Out first in 10.11.1-beta.1: a Windows set to Russian picks it, or choose it under **UI language** on the General page; the entity names in Home Assistant can be Russian too, under **HA entity language**. A text that is cut off or reads oddly is worth an issue.
 
-### 10.11.0
+<details>
+<summary><b>10.11.0</b></summary>
 
 A bigger release: kiosk mode, for a PC where the person in front of the screen must not change anything; German, and the kiosk texts in Simplified Chinese; a media player that cannot start no longer takes the connection down; and the .NET security update of October. Works with the Home Assistant integration **10.6.7** or newer. Signed release.
 
@@ -217,30 +219,6 @@ A bigger release: kiosk mode, for a PC where the person in front of the screen m
 **Security**
 
 - **Built on .NET 10.0.14** (SDK 10.0.403), the .NET security update of October. Its runtime, inside the app, fixes CVE-2026-111497 (Brotli decoder) and completes the fix of CVE-2026-70197 (SocketAsyncEventArgs), which the October 13 update did not fully address. Windows Update does not patch the runtime inside the app, so this release is how the fixes reach it. The other two CVEs of the update are for the Linux tarball and the Blazor WebAssembly packages, which the app does not use.
-
-<details>
-<summary><b>10.10.2</b></summary>
-
-A translation release: the app's texts in a file per language, with Simplified Chinese as the first language from a translator, a Drive space sensor with every drive by its letter, and an update check that says when it failed. Works with the Home Assistant integration **10.6.7** or newer; the Drive space sensor needs the integration **10.10.2**, out at the same time. Signed release.
-
-**Sensors**
-
-- **Drive space**, a new built-in sensor: the space on every drive with a letter, fixed ones (USB disks included) and removable ones with something in them, keyed by the letter in the attributes: `drive_space.D.free_gb`, `D.used_gb`, `D.total_gb`, `D.used_percent`, `D.free_percent`, `D.label`, `D.file_system`, `D.removable`. A sensor made on D: stays on D: however many USB sticks come and go. The value is how full the system drive is, always that one, and `system` says which letter it is. The Attributes button makes the sensors for every drive, named with the letter. Network drives are left out. The custom **Disk free space** type is no longer offered for a new sensor; one made before keeps working. Needs the integration 10.10.2 or newer. Requested in [#143](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/143).
-
-**Translations**
-
-- **Translations in a file per language.** The texts of the app are in `en.json` and `hu.json` now, instead of C# code. A new language is a new file: it shows in the language lists, and a Windows set to that language picks it. A translator can try a language without building the app: a file in `%LOCALAPPDATA%\HASS.Agent.NET10\languages` is read by the tray app of that Windows user, checked against English first (a text with other `{0}`-style placeholders than the English one, or a stray brace, is left out, and the app keeps what it had for it: the built-in translation, or English). See [Translating the app](docs/translating.md).
-- **Simplified Chinese.** 中文(简体), translated by @natsu-tsuki in [#132](https://github.com/v1k70rk4/HASS.Agent.NET10/pull/132), [#140](https://github.com/v1k70rk4/HASS.Agent.NET10/pull/140) and [#147](https://github.com/v1k70rk4/HASS.Agent.NET10/pull/147), thank you! A Windows set to Chinese picks it, or choose it under **UI language** on the General page.
-- **A `todo` list in a language file's header**, the keys waiting for the translator: new texts in English, and texts put together from the translator's own words for them to check. See [Translating the app](docs/translating.md).
-- **Key press commands take full-width punctuation.** A Chinese or Japanese input method writes `ctrl+c，ctrl+v` with a full-width comma, which made one combination with an unknown key of it. `，`, `、` and the ideographic space now separate combinations like a space or a comma, and `＋` joins keys like `+`, in key press commands and in the hotkey editor.
-- **A longer translation is not cut off.** A check box whose text is longer than the English one wraps, with the box at its first line, instead of ending at the edge of the card; the fast sensors box on the Danger Zone page sits at the first line of its text too.
-- **Texts that were English in every language can be translated**: the Tray / Service columns of the system commands, the sensors and the custom commands, and the state and start type on the Service page, which showed Windows' own `Running` and `START_TYPE : 2 AUTO_START`.
-- **No English left on a Hungarian app.** The note shown to a user the settings are limited away from is in the language of Windows, as that user cannot read the settings that name the app's language; the last messages written into the code (already running, settings not loaded, Local API not started, why an administrator run did not go as asked) come from the language files; and the Hungarian texts no longer say "tray app" or "service" in English.
-
-**Also in this release**
-
-- **An update check that fails says so.** When Home Assistant asked for an update and the app could not get the list of releases from GitHub, it answered that there was no update and wrote nothing to the log. That is what happened during a GitHub outage on 22 October, when GitHub answered with an empty list for hours. An install request from Home Assistant, the service's silent install and **Check for updates** on the About page now log why the check failed, and Home Assistant gets a notification that the update could not be checked. An empty answer is explained in the log, with GitHub's status page (https://www.githubstatus.com) to look at; the app itself still talks to GitHub's API only. When there is no newer release, or a release has no installer, the log says that too.
-- **Danger Zone: Users of this PC has a row of its own.** The note shown to a user who is left out, the notice in Home Assistant and the docs all send people to "Danger Zone, Users of this PC", but it was a button on the Backup / restore view. The Backup / restore view follows the window now: its note wraps and a button that does not fit goes below.
 
 </details>
 
