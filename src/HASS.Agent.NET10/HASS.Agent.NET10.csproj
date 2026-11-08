@@ -18,6 +18,11 @@
     <Authors>v1k70rk4</Authors>
     <Description>Modern .NET 10 Windows client for the HASS.Agent Home Assistant integration.</Description>
     <Copyright>MIT</Copyright>
+    <!-- The frameworks are the ones named here (WinForms, ASP.NET Core), not the ones a package
+         asks for. System.Reactive (under Sendspin.SDK, through Zeroconf) asks for WPF in its
+         Windows build, and a self-contained publish then carried all of WPF: 58 MB of an exe
+         that uses none of it. Nothing here reaches a WPF type of Rx (its dispatcher scheduler). -->
+    <DisableTransitiveFrameworkReferences>true</DisableTransitiveFrameworkReferences>
   </PropertyGroup>
 
   <ItemGroup>
