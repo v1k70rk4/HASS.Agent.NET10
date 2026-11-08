@@ -29,6 +29,12 @@ internal sealed class HomeAssistantLink : IDisposable
     private Thread? _holder;
 
     public HomeAssistantLink(string configDirectory, FileLog log)
+        : this(configDirectory, log, names: null)
+    {
+    }
+
+    /// <summary>With <paramref name="names"/>, a suffix on the objects' names: a test's own, apart from the PC's apps.</summary>
+    internal HomeAssistantLink(string configDirectory, FileLog log, string? names)
     {
         _log = log;
         try
@@ -40,8 +46,8 @@ internal sealed class HomeAssistantLink : IDisposable
                 turnSecurity.AddAccessRule(new MutexAccessRule(participant, MutexRights.FullControl, AccessControlType.Allow));
             }
 
-            _turn = MutexAcl.Create(initiallyOwned: false, TurnName, out _, turnSecurity);
-            _signal = EventWaitHandleAcl.Create(false, EventResetMode.ManualReset, SignalName, out _, EventSecurity(participants));
+            _turn = MutexAcl.Create(initiallyOwned: false, TurnName + names, out _, turnSecurity);
+            _signal = EventWaitHandleAcl.Create(false, EventResetMode.ManualReset, SignalName + names, out _, EventSecurity(participants));
             new Thread(Watch) { IsBackground = true, Name = "HASS.Agent session role" }.Start();
         }
         catch (Exception ex)
@@ -97,19 +103,19 @@ internal sealed class HomeAssistantLink : IDisposable
 
     /// <summary>
     /// Takes the turn, waiting for the app that has it to stop and let go. False when it is not
-    /// this app's: the other did not let go in time (it hangs), or there is no telling (the
-    /// mutex could not be made or waited for). An app that died with the turn has let go as far
-    /// as Windows is concerned. What the caller does with a false rests on how sure it is of
-    /// its session (<see cref="SessionRole.MayConnect"/>).
+    /// this app's: the other did not let go in time (it hangs), the wait was called off (the
+    /// app is leaving), or there is no telling (the mutex could not be made or waited for). An
+    /// app that died with the turn has let go as far as Windows is concerned. What the caller
+    /// does with a false rests on how sure it is of its session (<see cref="SessionRole.MayConnect"/>).
     /// </summary>
-    public bool Take()
+    public bool Take(CancellationToken cancellation = default)
     {
         if (_letGo is not null)
         {
             return true;
         }
 
-        if (_turn is null)
+        if (_turn is null || cancellation.IsCancellationRequested)
         {
             return false;
         }
@@ -122,7 +128,7 @@ internal sealed class HomeAssistantLink : IDisposable
             bool owned;
             try
             {
-                owned = _turn.WaitOne(TakeTimeout);
+                owned = WaitHandle.WaitAny([_turn, cancellation.WaitHandle], TakeTimeout) == 0;
             }
             catch (AbandonedMutexException)
             {
@@ -161,7 +167,11 @@ internal sealed class HomeAssistantLink : IDisposable
         holder.Start();
         if (!taken.Task.GetAwaiter().GetResult())
         {
-            _log.Warning("The other app of this PC did not let the connection go in time.");
+            if (!cancellation.IsCancellationRequested)
+            {
+                _log.Warning("The other app of this PC did not let the connection go in time.");
+            }
+
             return false;
         }
 

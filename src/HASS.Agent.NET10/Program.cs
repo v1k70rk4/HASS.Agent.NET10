@@ -246,6 +246,9 @@ internal static class Program
         using var localApi = new LocalApiServer(settings, trayContext, log);
         using var link = new HomeAssistantLink(paths.ConfigDirectory, log);
         using var presence = new SessionPresence(paths.ConfigDirectory, log);
+        // Set at exit: a handover under way then (a wait for the other app's turn) is called off,
+        // and does not start the connection into a shutdown.
+        using var exiting = new CancellationTokenSource();
 
         // One tray app of the PC talks to Home Assistant: the one in the session that stands for
         // the PC (SessionRole). Another user's app waits, and takes over on a switch of users.
@@ -313,7 +316,15 @@ internal static class Program
                 // this session stands for the PC), and this one waits for it to stop and let
                 // go, so the broker never sees the two at once.
                 link.Signal();
-                var turnTaken = await Task.Run(link.Take);
+                var turnTaken = await Task.Run(() => link.Take(exiting.Token));
+                if (exiting.IsCancellationRequested)
+                {
+                    // The app is on its way out: nothing starts now, and a turn just got goes back.
+                    link.LetGo();
+                    linked = false;
+                    return;
+                }
+
                 if (!SessionRole.MayConnect(verdict, turnTaken, turnDenied))
                 {
                     // A claim made on which apps run (the sessions unknown), and the turn not
@@ -587,6 +598,7 @@ internal static class Program
         Application.Run(trayContext);
         exitRegistration.Unregister(null);
 
+        exiting.Cancel();
         if (!roleAtStart.Wait(AppRestart.RoleLeaveTimeout))
         {
             log.Warning("The start of the connection was still under way at exit.");

@@ -304,6 +304,38 @@ public class UserSessionTests
     }
 
     [Fact]
+    public void A_wait_for_the_turn_is_called_off_when_the_app_leaves()
+    {
+        // One app holds the turn; another, waiting for it, is told to leave: its wait ends at
+        // once with no turn (not after the 15 s it would give the holder), so nothing of it
+        // connects into the shutdown. The turn, let go later, is free for the next app.
+        var folder = Directory.CreateTempSubdirectory("hass-agent-turn-").FullName;
+        try
+        {
+            var log = new FileLog(Path.Combine(folder, "log.txt"));
+            var names = $".test-{Guid.NewGuid():N}";
+            using var holder = new HomeAssistantLink(folder, log, names);
+            using var waiter = new HomeAssistantLink(folder, log, names);
+            Assert.True(holder.Take(TestContext.Current.CancellationToken));
+
+            using var leaving = new CancellationTokenSource();
+            leaving.CancelAfter(200);
+            var watch = Stopwatch.StartNew();
+            Assert.False(waiter.Take(leaving.Token));
+            Assert.True(watch.Elapsed < TimeSpan.FromSeconds(5), $"the wait took {watch.Elapsed}");
+            // Already leaving: no wait at all.
+            Assert.False(waiter.Take(leaving.Token));
+
+            holder.LetGo();
+            Assert.True(waiter.Take(TestContext.Current.CancellationToken));
+        }
+        finally
+        {
+            try { Directory.Delete(folder, recursive: true); } catch { }
+        }
+    }
+
+    [Fact]
     public void The_handover_is_open_to_those_who_may_use_the_settings()
     {
         // The handover's named objects carry the settings folder's rule (who may use the app on
