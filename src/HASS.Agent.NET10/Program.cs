@@ -318,6 +318,9 @@ internal static class Program
                     if (reload == SettingsReload.Changed)
                     {
                         trayContext.SettingsReloaded();
+                        // The player read the file itself at the switch; a read of its own that
+                        // failed then is made good here (applying unchanged settings does nothing).
+                        _ = Task.Run(() => ApplySendspinAsync(sendspinPlayer, log));
                     }
                     else if (reload == SettingsReload.Failed)
                     {
@@ -338,10 +341,10 @@ internal static class Program
                     return;
                 }
 
-                if (turnTaken && !SessionRole.Evaluate().Talks)
+                if (!SessionRole.Evaluate().Talks)
                 {
-                    // The users switched while this app waited for the turn: another session
-                    // stands for the PC now. The turn goes back, and that session's app takes it.
+                    // The users switched while this app waited for the turn (got or not): another
+                    // session stands for the PC now. A turn got goes back, and that session's app takes it.
                     link.LetGo();
                     linked = false;
                     SessionRole.WaitingForAnotherSession = true;
@@ -639,7 +642,7 @@ internal static class Program
         exiting.Cancel();
         var leaveWatch = System.Diagnostics.Stopwatch.StartNew();
         if (!roleAtStart.Wait(AppRestart.RoleLeaveTimeout)
-            || !linkLock.Wait(AppRestart.RoleLeaveTimeout - leaveWatch.Elapsed < TimeSpan.Zero ? TimeSpan.Zero : AppRestart.RoleLeaveTimeout - leaveWatch.Elapsed))
+            || !linkLock.Wait(Remaining(AppRestart.RoleLeaveTimeout, leaveWatch.Elapsed)))
         {
             log.Warning("The start of the connection was still under way at exit.");
         }
@@ -686,6 +689,13 @@ internal static class Program
             // The kiosk task starts the app again on this event.
             KioskEvents.Write(KioskEvents.Closed, $"The kiosk tray app of {Environment.UserDomainName}\\{Environment.UserName} was closed.", log, System.Diagnostics.EventLogEntryType.Warning);
         }
+    }
+
+    /// <summary>What is left of <paramref name="bound"/> after <paramref name="spent"/>, never below zero.</summary>
+    internal static TimeSpan Remaining(TimeSpan bound, TimeSpan spent)
+    {
+        var left = bound - spent;
+        return left < TimeSpan.Zero ? TimeSpan.Zero : left;
     }
 
     // The restart's new instance waits for the old one to leave; an old one that died without

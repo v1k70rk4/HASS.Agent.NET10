@@ -310,6 +310,9 @@ public class UserSessionTests
         // The new instance waits on the mutex for the old one to leave; every bounded step of
         // the leave (the player's goodbye, the connection's stop) adds up to less than that.
         Assert.True(AppRestart.PlayerLeaveTimeout + AppRestart.ConnectionLeaveTimeout + AppRestart.RoleLeaveTimeout < AppRestart.WaitForTheOneBefore);
+        // The rest of a bound already spent is zero, never a negative wait (which a wait refuses).
+        Assert.Equal(TimeSpan.Zero, Program.Remaining(TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(6)));
+        Assert.Equal(TimeSpan.FromSeconds(2), Program.Remaining(TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(3)));
     }
 
     [Fact]
