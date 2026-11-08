@@ -9,6 +9,7 @@ using Sendspin.SDK.Client;
 using Sendspin.SDK.Connection;
 using Sendspin.SDK.Connection.Noise;
 using Sendspin.SDK.Models;
+using Sendspin.SDK.Protocol.Messages;
 using Sendspin.SDK.Synchronization;
 
 namespace HASS.Agent.Companion.Media.Sendspin;
@@ -67,6 +68,12 @@ internal sealed record SendspinStatus(
 /// session at the PC's own screen (the console) plays. Another user's session, or one over Remote
 /// Desktop, stays quiet, so there are never two players of one PC, and the sound comes out of the
 /// PC's speakers. A switch of users moves the player to the new console session.
+///
+/// How the player says goodbye matters to Music Assistant: after "restart" it keeps the player
+/// warm and takes it back when it connects again (or connects to it again itself), and the group
+/// plays on; after "shutdown" the player is gone at once, and a group it led stops. So a stop that
+/// the player comes back from (a user switch, a change of its settings) says restart, and only
+/// turning it off or closing the app says shutdown.
 ///
 /// The SDK does the protocol, the clock sync and the decoding; this class starts and stops it by
 /// the settings, keeps a status for the settings window and turns the player down while an
@@ -161,7 +168,7 @@ internal sealed class SendspinPlayerService : IAsyncDisposable
                 return;
             }
 
-            await StopSessionAsync().ConfigureAwait(false);
+            await StopSessionAsync(wanted.Enabled ? GoodbyeReasons.Restart : GoodbyeReasons.Shutdown).ConfigureAwait(false);
             _running = wanted;
             if (!wanted.Enabled)
             {
@@ -171,6 +178,7 @@ internal sealed class SendspinPlayerService : IAsyncDisposable
 
             if (!wanted.AtConsole)
             {
+                _log.Info("Sendspin: not the session at the PC's screen; the player is left to the one that is.");
                 SetStatus(new SendspinStatus(SendspinState.NotAtConsole));
                 return;
             }
@@ -266,7 +274,7 @@ internal sealed class SendspinPlayerService : IAsyncDisposable
         try
         {
             _disposed = true;
-            await StopSessionAsync().ConfigureAwait(false);
+            await StopSessionAsync(GoodbyeReasons.Shutdown).ConfigureAwait(false);
         }
         finally
         {
@@ -355,7 +363,7 @@ internal sealed class SendspinPlayerService : IAsyncDisposable
                 return;
             }
 
-            await StopSessionAsync().ConfigureAwait(false);
+            await StopSessionAsync(GoodbyeReasons.Restart).ConfigureAwait(false);
             _running = config;
             await StartSessionAsync(config).ConfigureAwait(false);
         }
@@ -369,8 +377,8 @@ internal sealed class SendspinPlayerService : IAsyncDisposable
         }
     });
 
-    // Caller holds _transition.
-    private async Task StopSessionAsync()
+    // Caller holds _transition. The goodbye is what Music Assistant hears (see the class notes).
+    private async Task StopSessionAsync(string goodbye)
     {
         var session = _session;
         _session = null;
@@ -382,7 +390,7 @@ internal sealed class SendspinPlayerService : IAsyncDisposable
 
         try
         {
-            await session.DisposeAsync().ConfigureAwait(false);
+            await session.DisposeAsync(goodbye).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -579,7 +587,10 @@ internal sealed class SendspinPlayerService : IAsyncDisposable
             }
         }
 
-        public async ValueTask DisposeAsync()
+        public ValueTask DisposeAsync() => DisposeAsync(GoodbyeReasons.Shutdown);
+
+        /// <param name="goodbye">What the server is told: restart when the player comes back, shutdown otherwise.</param>
+        public async ValueTask DisposeAsync(string goodbye)
         {
             _cts.Cancel();
             if (_connectLoop is not null)
@@ -593,6 +604,9 @@ internal sealed class SendspinPlayerService : IAsyncDisposable
                 _host.ServerDisconnected -= OnServerDisconnected;
                 _host.GroupStateChanged -= OnGroupStateChanged;
                 _host.PairingCompleted -= OnPairingCompleted;
+                // Before the dispose, which says "shutdown" to whatever is still connected: after
+                // restart the server connects to the PC again by itself once the listener is back.
+                try { await _host.DisconnectAllAsync(goodbye).ConfigureAwait(false); } catch { }
                 await _host.DisposeAsync().ConfigureAwait(false);
             }
 
@@ -601,7 +615,7 @@ internal sealed class SendspinPlayerService : IAsyncDisposable
                 _client.ConnectionStateChanged -= OnConnectionStateChanged;
                 _client.GroupStateChanged -= OnGroupStateChanged;
                 _client.PairingCompleted -= OnPairingCompleted;
-                try { await _client.DisconnectAsync("shutdown").ConfigureAwait(false); } catch { }
+                try { await _client.DisconnectAsync(goodbye).ConfigureAwait(false); } catch { }
                 await _client.DisposeAsync().ConfigureAwait(false);
             }
 
