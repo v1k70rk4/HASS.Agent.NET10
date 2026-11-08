@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text;
 using HASS.Agent.Companion.Configuration;
 using HASS.Agent.Companion.Localization;
@@ -27,6 +28,7 @@ public class SendspinTests : IDisposable
     public void Dispose()
     {
         SendspinStorage.DirectoryOverride = null;
+        SendspinStorage.BeforeFinalMove = null;
         SendspinPlayerService.IsAtConsole = _isAtConsole;
         Strings.Language = Strings.English;
         try { Directory.Delete(_folder, recursive: true); } catch { }
@@ -215,6 +217,43 @@ public class SendspinTests : IDisposable
 
         await putBack;
         Assert.Single(records);
+    }
+
+    [Fact]
+    public void A_replace_that_takes_longer_than_the_reader_waits_still_shows_the_old_records()
+    {
+        // The writer is slow between its two renames, longer than a reader looks again: the
+        // reader finds the old file under the name it was put aside with, not an empty store.
+        var store = new ProtectedPairingRecordStore(SendspinStorage.PairingFile);
+        store.Upsert(new PairingRecord(Enumerable.Range(1, 32).Select(i => (byte)i).ToArray(), PskCategory.LongTerm, "server-1"));
+        var aside = $"{SendspinStorage.PairingFile}.{Environment.ProcessId}.{Guid.NewGuid():N}{SendspinStorage.AsideSuffix}";
+        File.Move(SendspinStorage.PairingFile, aside);
+
+        var watch = Stopwatch.StartNew();
+        var records = new ProtectedPairingRecordStore(SendspinStorage.PairingFile).List();
+
+        Assert.Single(records);
+        Assert.Equal("server-1", records[0].ServerId);
+        Assert.True(watch.ElapsedMilliseconds < 2000, "the reader should not wait out its retries once it has the aside file");
+        Assert.Null(SendspinStorage.ReadShared(Path.Combine(SendspinStorage.Directory, "none.bin")));
+    }
+
+    [Fact]
+    public void A_replace_that_fails_and_cannot_put_the_old_file_back_keeps_it()
+    {
+        // The new file cannot take the name, and the old one cannot go back under it either
+        // (something took the name meanwhile): the old file stays aside, the new one is cleared.
+        var store = new ProtectedPairingRecordStore(SendspinStorage.PairingFile);
+        store.Upsert(new PairingRecord(Enumerable.Range(1, 32).Select(i => (byte)i).ToArray(), PskCategory.LongTerm, "server-1"));
+        var oldContent = File.ReadAllBytes(SendspinStorage.PairingFile);
+        SendspinStorage.BeforeFinalMove = name => Directory.CreateDirectory(name);
+
+        Assert.ThrowsAny<IOException>(() => store.Upsert(new PairingRecord(Enumerable.Range(1, 32).Select(i => (byte)(i + 100)).ToArray(), PskCategory.LongTerm, "server-2")));
+
+        var kept = Directory.GetFiles(SendspinStorage.Directory, $"pairing.bin.*{SendspinStorage.AsideSuffix}");
+        Assert.Single(kept);
+        Assert.Equal(oldContent, File.ReadAllBytes(kept[0]));
+        Assert.Empty(Directory.GetFiles(SendspinStorage.Directory, "pairing.bin.*.tmp"));
     }
 
     [Fact]

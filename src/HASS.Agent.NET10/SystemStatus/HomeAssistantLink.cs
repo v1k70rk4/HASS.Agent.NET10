@@ -51,15 +51,21 @@ internal sealed class HomeAssistantLink : IDisposable
     public event EventHandler? RoleChangeSignaled;
 
     /// <summary>
-    /// Takes the turn, waiting for the app that has it to stop and let go. False when it did not
-    /// in time (it hangs, or died without letting go): the caller connects all the same, as it
-    /// would without this class.
+    /// Takes the turn, waiting for the app that has it to stop and let go. False when it is not
+    /// this app's: the other did not let go in time (it hangs, or died without letting go), or
+    /// there is no telling (the semaphore could not be made or waited for). What the caller
+    /// does then rests on how sure it is of its session (<see cref="SessionRole.MayConnect"/>).
     /// </summary>
     public bool Take()
     {
-        if (_turn is null || _held)
+        if (_held)
         {
             return true;
+        }
+
+        if (_turn is null)
+        {
+            return false;
         }
 
         try
@@ -69,7 +75,7 @@ internal sealed class HomeAssistantLink : IDisposable
         catch (Exception ex)
         {
             _log.Warning($"Unable to wait for the other app of this PC to let the connection go: {ex.Message}");
-            return true;
+            return false;
         }
 
         if (!_held)

@@ -97,7 +97,7 @@ internal static class SendspinStorage
 
         var stamp = $"{Environment.ProcessId}.{Guid.NewGuid():N}";
         var temp = $"{path}.{stamp}.tmp";
-        var aside = $"{path}.{stamp}.old";
+        var aside = $"{path}.{stamp}{AsideSuffix}";
         var movedAside = false;
         try
         {
@@ -113,6 +113,7 @@ internal static class SendspinStorage
                 movedAside = true;
             }
 
+            BeforeFinalMove?.Invoke(path);
             MoveWithRetry(temp, path);
             movedAside = false;
         }
@@ -148,6 +149,12 @@ internal static class SendspinStorage
     }
 
     // A slower reader, or a scanner, holds the file for a moment: tried again a few times.
+    /// <summary>The end of the name the old file is put aside under while a replace runs.</summary>
+    internal const string AsideSuffix = ".old";
+
+    /// <summary>Tests only: runs just before the new file takes the name.</summary>
+    internal static Action<string>? BeforeFinalMove { get; set; }
+
     private static void MoveWithRetry(string from, string to)
     {
         for (var attempt = 1; ; attempt++)
@@ -182,9 +189,10 @@ internal static class SendspinStorage
 
     /// <summary>
     /// The file, read so that another app may replace it meanwhile (the reader keeps the old
-    /// one), or null when there is none. A replace by another app has the name empty for an
-    /// instant, between its two renames: a name found empty is looked at again for a moment
-    /// before it counts as no file.
+    /// one), or null when there is none. A replace by another app has the name empty between
+    /// its two renames, with the old file put aside next to it: a name found empty is read
+    /// from the aside file, the content of a moment ago, and looked at again for a moment
+    /// before it counts as no file. So a read-only app too never takes a replace for an empty store.
     /// </summary>
     internal static byte[]? ReadShared(string path)
     {
@@ -192,19 +200,53 @@ internal static class SendspinStorage
         {
             try
             {
-                using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-                using var buffer = new MemoryStream();
-                stream.CopyTo(buffer);
-                return buffer.ToArray();
-            }
-            catch (FileNotFoundException) when (attempt < 10)
-            {
-                Thread.Sleep(20);
+                return ReadWhole(path);
             }
             catch (FileNotFoundException)
             {
-                return null;
+                if (ReadAside(path) is { } aside)
+                {
+                    return aside;
+                }
+
+                if (attempt >= 10)
+                {
+                    return null;
+                }
+
+                Thread.Sleep(20);
             }
+        }
+    }
+
+    private static byte[] ReadWhole(string path)
+    {
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        using var buffer = new MemoryStream();
+        stream.CopyTo(buffer);
+        return buffer.ToArray();
+    }
+
+    // The old file of a replace in progress (the newest, should a crashed one have left its own),
+    // or null when there is none or it went while being read.
+    private static byte[]? ReadAside(string path)
+    {
+        try
+        {
+            var folder = Path.GetDirectoryName(path)!;
+            var newest = System.IO.Directory.EnumerateFiles(folder, $"{Path.GetFileName(path)}.*{AsideSuffix}")
+                .Select(file => new FileInfo(file))
+                .OrderByDescending(file => file.LastWriteTimeUtc)
+                .FirstOrDefault();
+            return newest is null ? null : ReadWhole(newest.FullName);
+        }
+        catch (IOException)
+        {
+            return null;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return null;
         }
     }
 

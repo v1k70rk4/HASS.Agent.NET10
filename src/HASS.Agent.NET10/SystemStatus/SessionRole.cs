@@ -46,6 +46,15 @@ internal static class SessionRole
             : new SessionVerdict(true, Provisional: true);
     }
 
+    /// <summary>
+    /// Whether an app with <paramref name="verdict"/> connects, given whether it got the turn
+    /// (the PC's one connection, <c>HomeAssistantLink.Take</c>). A final verdict connects either
+    /// way: the sessions alone named this one, and a turn not got means the other app hangs or
+    /// the turn cannot be told. A provisional one rests on which apps run, which two apps may
+    /// both see wrongly; it connects only with the turn in hand, and is asked again otherwise.
+    /// </summary>
+    internal static bool MayConnect(SessionVerdict verdict, bool turnTaken) => turnTaken || !verdict.Provisional;
+
     /// <summary>For the General page: another session's app has the connection.</summary>
     public static bool WaitingForAnotherSession { get; set; }
 

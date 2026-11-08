@@ -305,11 +305,12 @@ internal static class Program
                 // this session stands for the PC), and this one waits for it to stop and let
                 // go, so the broker never sees the two at once.
                 link.Signal();
-                if (!await Task.Run(link.Take) && verdict.Provisional)
+                if (!SessionRole.MayConnect(verdict, turnTaken: await Task.Run(link.Take)))
                 {
-                    // A claim made on which apps run (the sessions unknown), and another app
-                    // holds the turn: that one talks, this one waits and asks again later.
-                    log.Info("Another app of this PC holds the connection; this one waits.");
+                    // A claim made on which apps run (the sessions unknown), and the turn not
+                    // this app's (another holds it, or there is no telling): this one waits and
+                    // asks again later.
+                    log.Info("Another app of this PC may hold the connection; this one waits.");
                     linked = false;
                     SessionRole.WaitingForAnotherSession = true;
                     trayContext.RefreshSessionRole();
@@ -558,15 +559,15 @@ internal static class Program
         Application.Run(trayContext);
         exitRegistration.Unregister(null);
 
-        // First: Music Assistant hears the player leave instead of finding it gone. Bounded: the
-        // instance of a restart waits 30 s for this one to leave, and a goodbye that hangs must
-        // not keep it waiting.
+        // First: Music Assistant hears the player leave instead of finding it gone. Every step of
+        // the leave is bounded (AppRestart): the instance of a restart waits for this one to go,
+        // and a goodbye or a stop that hangs must not keep it waiting past that.
         try
         {
             var leaving = sendspinPlayer.DisposeAsync(comingBack: AppRestart.Pending).AsTask();
-            if (!leaving.Wait(TimeSpan.FromSeconds(10)))
+            if (!leaving.Wait(AppRestart.PlayerLeaveTimeout))
             {
-                log.Warning("Sendspin: the player did not stop within 10 s; leaving without its goodbye.");
+                log.Warning($"Sendspin: the player did not stop within {AppRestart.PlayerLeaveTimeout.TotalSeconds:0} s; leaving without its goodbye.");
             }
         }
         catch (Exception ex)
@@ -574,8 +575,19 @@ internal static class Program
             log.Warning($"Sendspin: the player did not stop cleanly: {(ex as AggregateException)?.InnerException?.Message ?? ex.Message}");
         }
 
-        mqttService.StopAsync().GetAwaiter().GetResult();
-        localApi.StopAsync().GetAwaiter().GetResult();
+        try
+        {
+            var stopping = Task.WhenAll(mqttService.StopAsync(), localApi.StopAsync());
+            if (!stopping.Wait(AppRestart.ConnectionLeaveTimeout))
+            {
+                log.Warning($"The connection did not stop within {AppRestart.ConnectionLeaveTimeout.TotalSeconds:0} s; leaving.");
+            }
+        }
+        catch (Exception ex)
+        {
+            log.Warning($"The connection did not stop cleanly: {(ex as AggregateException)?.InnerException?.Message ?? ex.Message}");
+        }
+
         log.Info($"Stopped {AppIdentity.DisplayName}.");
 
         if (kiosk && !sessionEnding)
@@ -594,7 +606,7 @@ internal static class Program
     {
         try
         {
-            return mutex.WaitOne(TimeSpan.FromSeconds(30));
+            return mutex.WaitOne(AppRestart.WaitForTheOneBefore);
         }
         catch (AbandonedMutexException)
         {

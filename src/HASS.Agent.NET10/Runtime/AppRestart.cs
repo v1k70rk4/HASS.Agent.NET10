@@ -8,6 +8,15 @@ namespace HASS.Agent.Companion.Runtime;
 /// </summary>
 internal static class AppRestart
 {
+    /// <summary>How long the restart's new instance waits for the one before to leave.</summary>
+    public static readonly TimeSpan WaitForTheOneBefore = TimeSpan.FromSeconds(30);
+
+    /// <summary>How long the leaving instance gives the Sendspin player for its goodbye.</summary>
+    public static readonly TimeSpan PlayerLeaveTimeout = TimeSpan.FromSeconds(10);
+
+    /// <summary>How long the leaving instance gives the connection (MQTT, Local API) to stop.</summary>
+    public static readonly TimeSpan ConnectionLeaveTimeout = TimeSpan.FromSeconds(10);
+
     private static volatile bool _pending;
 
     public static bool Pending

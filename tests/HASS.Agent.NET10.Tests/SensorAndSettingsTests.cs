@@ -1,3 +1,4 @@
+using HASS.Agent.Companion.Runtime;
 using HASS.Agent.Companion.Configuration;
 using HASS.Agent.Companion.Logging;
 using HASS.Agent.Companion.Media;
@@ -271,6 +272,27 @@ public class UserSessionTests
         // An app that knows only its own session (the list always holds it) talks: it is alone as far as it can tell.
         Assert.True(SessionRole.Decide(null, current: 11, new HashSet<uint> { 11 }).Talks);
         Assert.Equal(-1, SystemMetricsService.ChooseUserSession([], consoleId: 1));
+    }
+
+    [Fact]
+    public void A_provisional_claim_connects_only_with_the_turn_in_hand()
+    {
+        // Two apps that each see only themselves both claim the connection provisionally; the
+        // PC's one turn decides, and an app that cannot tell whose turn it is waits.
+        var provisional = new SessionVerdict(Talks: true, Provisional: true);
+        Assert.True(SessionRole.MayConnect(provisional, turnTaken: true));
+        Assert.False(SessionRole.MayConnect(provisional, turnTaken: false));
+        // A final verdict (the sessions named this one) connects even when the turn cannot be told.
+        var final = new SessionVerdict(Talks: true, Provisional: false);
+        Assert.True(SessionRole.MayConnect(final, turnTaken: false));
+    }
+
+    [Fact]
+    public void The_leave_of_a_restart_stays_under_what_the_new_instance_waits()
+    {
+        // The new instance waits on the mutex for the old one to leave; every bounded step of
+        // the leave (the player's goodbye, the connection's stop) adds up to less than that.
+        Assert.True(AppRestart.PlayerLeaveTimeout + AppRestart.ConnectionLeaveTimeout < AppRestart.WaitForTheOneBefore);
     }
 }
 
