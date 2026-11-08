@@ -4,6 +4,7 @@ using System.Windows.Forms;
 using HASS.Agent.Companion.Configuration;
 using HASS.Agent.Companion.Http;
 using HASS.Agent.Companion.Logging;
+using HASS.Agent.Companion.Media.Sendspin;
 using HASS.Agent.Companion.Mqtt;
 using HASS.Agent.Companion.Networking;
 using HASS.Agent.Companion.Localization;
@@ -37,6 +38,9 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
 
     /// <summary>A hotkey from the settings was pressed.</summary>
     public event EventHandler<HotkeyDefinition>? HotkeyPressed;
+
+    /// <summary>Set by Program: the Sendspin player, for its status and pairing token on the Media player page.</summary>
+    public SendspinPlayerService? SendspinPlayer { get; set; }
 
     /// <summary>Set by Program to the MQTT service's discovery republish. Used by the Danger Zone.</summary>
     public Func<Task<bool>>? DiscoveryRepublishHandler { get; set; }
@@ -327,6 +331,7 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
         _mainForm.DashboardPreviewHandler = ShowDashboard;
         _mainForm.HaTokenProbe = () => HaTokenProbe?.Invoke() ?? (null, false);
         _mainForm.HaUserProvisioner = HaUserProvisioner;
+        _mainForm.SendspinPlayer = SendspinPlayer;
         _mainForm.SettingsSaved += (_, _) =>
         {
             _hotkeys.Apply(_settings.Hotkeys);

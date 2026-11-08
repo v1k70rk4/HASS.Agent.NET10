@@ -2,6 +2,7 @@ using HASS.Agent.Companion.Configuration;
 using HASS.Agent.Companion.Http;
 using HASS.Agent.Companion.Logging;
 using HASS.Agent.Companion.Media;
+using HASS.Agent.Companion.Media.Sendspin;
 using HASS.Agent.Companion.Mqtt;
 using HASS.Agent.Companion.Networking;
 using HASS.Agent.Companion.Runtime;
@@ -214,6 +215,10 @@ internal static class Program
         using var sessionPowerWatcher = new SessionPowerWatcher();
         using var audioEndpointService = new AudioEndpointService(log);
         using var mediaSessionService = new MediaSessionService(log, audioEndpointService, settings);
+        // The Sendspin player of Music Assistant: off unless turned on, tray app only.
+        var sendspinPlayer = new SendspinPlayerService(settings, log);
+        mediaSessionService.AnnouncementActiveChanged += (_, active) => sendspinPlayer.SetAnnouncementActive(active);
+        trayContext.SendspinPlayer = sendspinPlayer;
         using var systemMetricsService = new SystemMetricsService(log, monitorPowerStateService, audioEndpointService);
         using var systemCommandService = new SystemCommandService(log, audioEndpointService);
         using var mqttService = new MqttCompanionService(
@@ -242,6 +247,7 @@ internal static class Program
         {
             log.Info("Settings saved from UI.");
             _ = Task.Run(() => mqttService.RestartAsync());
+            _ = Task.Run(() => ApplySendspinAsync(sendspinPlayer, log));
             _ = Task.Run(async () =>
             {
                 try
@@ -316,6 +322,7 @@ internal static class Program
         }
 
         mqttService.Start();
+        _ = Task.Run(() => ApplySendspinAsync(sendspinPlayer, log));
 
         if (!settings.MqttEnabled && !settings.HaApiEnabled)
         {
@@ -342,6 +349,16 @@ internal static class Program
         Application.Run(trayContext);
         exitRegistration.Unregister(null);
 
+        // First: Music Assistant hears the player leave instead of finding it gone.
+        try
+        {
+            sendspinPlayer.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            log.Warning($"Sendspin: the player did not stop cleanly: {ex.Message}");
+        }
+
         mqttService.StopAsync().GetAwaiter().GetResult();
         localApi.StopAsync().GetAwaiter().GetResult();
         log.Info($"Stopped {AppIdentity.DisplayName}.");
@@ -353,6 +370,18 @@ internal static class Program
             mutex.ReleaseMutex();
             mutex.Dispose();
             KioskEvents.Write(KioskEvents.Closed, $"The kiosk tray app of {Environment.UserDomainName}\\{Environment.UserName} was closed.", log, System.Diagnostics.EventLogEntryType.Warning);
+        }
+    }
+
+    private static async Task ApplySendspinAsync(SendspinPlayerService player, FileLog log)
+    {
+        try
+        {
+            await player.ApplySettingsAsync();
+        }
+        catch (Exception ex)
+        {
+            log.Error(ex, "Sendspin: unable to apply the settings.");
         }
     }
 

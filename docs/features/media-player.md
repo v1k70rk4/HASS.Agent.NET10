@@ -69,6 +69,50 @@ data:
 
 The idea comes from a fork by @VorlonCD.
 
+## Sendspin player (Music Assistant)
+
+> From 10.13.0. Needs Music Assistant 2.10.7 or newer.
+
+The PC can be a player of [Music Assistant](https://music-assistant.io/) over [Sendspin](https://www.sendspin-audio.com/), its protocol for synchronized audio: it plays what Music Assistant sends it, in sync with the other players of its group, in another room, on a speaker, on another PC. This is apart from the media player above, which shows and controls what plays on the PC. In Music Assistant the PC is a player like the others, and Home Assistant gets it from Music Assistant's integration as Music Assistant's own media player, not from this one.
+
+It is off until you turn it on, in the **Sendspin player (Music Assistant)** card on the **Media player** page:
+
+1. Tick **Use this PC as a Sendspin player**, and press **Save**.
+2. **Player name**: the name in Music Assistant, the device name when left empty.
+3. **Output**: **Windows default**, which follows the default when it changes, or a device of its own by name.
+4. Pair it. The player shows up in Music Assistant on its own, and Music Assistant asks for its pairing token. **Copy pairing token** puts it on the clipboard; paste it there.
+
+The status line under the settings says what the player is doing: waiting for Music Assistant, connected, not paired yet, playing (what, and on which output), or what is in the way.
+
+### Connecting
+
+- **Music Assistant finds this PC on the network** (the default): the PC announces itself on the local network (mDNS) and Music Assistant connects to it on port 8928. Setup lets the app through the Windows firewall for this, on private networks only, the same way as the [Local API](../connection/local-api.md). A network set to *Public* in Windows keeps it out.
+- **Connect to this Music Assistant**: the PC connects to the address you give: the host or IP address of Music Assistant (`192.168.1.10`), with a port when it is not 8927 (`192.168.1.10:8927`), or a whole `ws://` address. For a network where the PC is not found (another subnet, a VPN, mDNS filtered out).
+
+### Pairing
+
+The connection is encrypted, and Music Assistant only plays to a player it is paired with. The pairing token carries the player's key and a secret of its own; once paired, it is not needed again. **New token** makes another one; the old one no longer pairs, and a Music Assistant already paired stays paired.
+
+The player's keys and its pairings belong to the Windows user, in `%LOCALAPPDATA%\HASS.Agent.NET10\sendspin`, protected for that user. They are not in the settings, so a backup restored on another PC does not make a second PC with the same player. On a PC used by several Windows users, each is a player of their own in Music Assistant; while one user's app has the player, the other's says the port is in use.
+
+### Sound
+
+- **The volume** Music Assistant sets is the player's own, not the volume of Windows: what else plays on the PC stays as it is.
+- **An output that goes away** (a headset unplugged, a device disabled, a TV that drops its HDMI audio) is no error: the player moves to the default, or waits for its own device and goes on when it is back, and stays in its group meanwhile. With no output at all, the status says so. A TV that is only switched off usually keeps its HDMI audio, and the player plays on into it.
+- **An announcement** of the app (see above) silences the player while it plays, when *Pause what is playing* is on, and turns it down otherwise; the group plays on.
+
+### When it does not work
+
+| Status | What to do |
+|---|---|
+| Waiting for Music Assistant to connect | Music Assistant has not found the PC: check that the network is *Private* in Windows, or use **Connect to this Music Assistant**. |
+| Connected, but not paired yet | Paste the pairing token in Music Assistant. |
+| This Music Assistant is too old | Update Music Assistant to 2.10.7 or newer. |
+| Port 8928 is in use | The player of another Windows user's app, or another Sendspin player on the PC (such as Sendspin for Windows), has it. |
+| No output device | Windows has no output to play on; the player goes on when one is back. |
+
+Short gaps with a radio station come from the stream itself: the player fills a gap in what the server sends with silence, so that it stays in time with the others. With the verbose log on ([Danger Zone](danger-zone.md) → **Debug log**), the log of the app shows each one.
+
 ## In Home Assistant
 
 The player is one entity of the PC's device, with the cover art on its card, and `media_player.play_media` takes a URL of any audio file the PC can fetch, besides the TTS. [Entities](../integration/entities.md) lists what the integration creates.

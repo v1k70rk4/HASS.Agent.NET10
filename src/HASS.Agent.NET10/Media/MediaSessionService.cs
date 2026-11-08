@@ -35,6 +35,9 @@ internal sealed class MediaSessionService : IDisposable
     private sealed record AnnouncementRestore(int Volume, bool Muted, GlobalSystemMediaTransportControlsSession? PausedSession);
     private AnnouncementRestore? _announcementRestore;
 
+    /// <summary>An announcement starts (true) or is over (false): the Sendspin player is turned down meanwhile.</summary>
+    public event EventHandler<bool>? AnnouncementActiveChanged;
+
     // Starting a sound, its end and a stop each change the current player and the saved
     // state together; one at a time, so that the end of an earlier sound cannot undo the
     // announcement of the one that replaced it.
@@ -612,6 +615,9 @@ internal sealed class MediaSessionService : IDisposable
             }
 
             _announcementRestore = new AnnouncementRestore(_audioEndpoint.GetVolume(), _audioEndpoint.GetMuted(), paused);
+
+            // Before the volume goes up: the Sendspin player would be as loud as the announcement.
+            AnnouncementActiveChanged?.Invoke(this, true);
         }
 
         _audioEndpoint.SetMuted(false);
@@ -643,6 +649,11 @@ internal sealed class MediaSessionService : IDisposable
         catch (Exception ex)
         {
             _log.Warning($"Unable to undo the announcement's changes: {ex.Message}");
+        }
+        finally
+        {
+            // After the volume is back, also when putting it back failed: the player must not stay silent.
+            AnnouncementActiveChanged?.Invoke(this, false);
         }
     }
 

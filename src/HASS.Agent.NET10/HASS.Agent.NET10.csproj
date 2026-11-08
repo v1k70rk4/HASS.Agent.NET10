@@ -40,6 +40,9 @@
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4258.31" />
     <PackageReference Include="MQTTnet" Version="5.1.0.1559" />
     <PackageReference Include="NAudio" Version="2.3.0" />
+    <!-- The Sendspin player (Media/Sendspin). Pinned: a major version of the SDK follows the
+         protocol and has broken its API before, so it is taken up on purpose, not by a range. -->
+    <PackageReference Include="Sendspin.SDK" Version="10.1.0" />
     <PackageReference Include="System.Management" Version="10.0.0" />
     <PackageReference Include="System.ServiceProcess.ServiceController" Version="10.0.0" />
   </ItemGroup>
