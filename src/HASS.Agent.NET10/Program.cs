@@ -614,12 +614,15 @@ internal static class Program
 
         log.Info($"Stopped {AppIdentity.DisplayName}.");
 
+        // The place is free from here: the instance of a restart, and the kiosk task, wait on
+        // this lock, and the disposals that follow (the services stop again, the Local API
+        // among them) may still hang on a stop that did not finish in its time above.
+        mutex.ReleaseMutex();
+        mutex.Dispose();
+
         if (kiosk && !sessionEnding)
         {
-            // The kiosk task starts the app again on this event, and its start must find the
-            // place free: the instance lock goes first, the connection and the port went above.
-            mutex.ReleaseMutex();
-            mutex.Dispose();
+            // The kiosk task starts the app again on this event.
             KioskEvents.Write(KioskEvents.Closed, $"The kiosk tray app of {Environment.UserDomainName}\\{Environment.UserName} was closed.", log, System.Diagnostics.EventLogEntryType.Warning);
         }
     }
