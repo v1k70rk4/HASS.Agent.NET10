@@ -263,7 +263,14 @@ internal sealed class SendspinPlayerService : IAsyncDisposable
         }
     }
 
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync() => DisposeAsync(comingBack: false);
+
+    /// <param name="comingBack">
+    /// The app exits to be started again (an update, a deploy): the player says restart, and
+    /// Music Assistant keeps its place in its group for it. Otherwise it says shutdown, and a
+    /// group it was in lets it go.
+    /// </param>
+    public async ValueTask DisposeAsync(bool comingBack)
     {
         if (_settingsFile is not null)
         {
@@ -274,7 +281,7 @@ internal sealed class SendspinPlayerService : IAsyncDisposable
         try
         {
             _disposed = true;
-            await StopSessionAsync(GoodbyeReasons.Shutdown).ConfigureAwait(false);
+            await StopSessionAsync(comingBack ? GoodbyeReasons.Restart : GoodbyeReasons.Shutdown).ConfigureAwait(false);
         }
         finally
         {

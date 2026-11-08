@@ -111,10 +111,17 @@ internal static class Program
             return;
         }
 
+        // --exit comes from Setup and from the deploy of a build, which start the app again:
+        // the Sendspin player then says it is coming back, and keeps its place in its group.
+        var exitRequested = false;
         using var exitEvent = new EventWaitHandle(false, EventResetMode.AutoReset, ExitEventName);
         var exitRegistration = ThreadPool.RegisterWaitForSingleObject(
             exitEvent,
-            (_, _) => Application.Exit(),
+            (_, _) =>
+            {
+                exitRequested = true;
+                Application.Exit();
+            },
             state: null,
             Timeout.InfiniteTimeSpan,
             executeOnlyOnce: false);
@@ -353,7 +360,7 @@ internal static class Program
         // First: Music Assistant hears the player leave instead of finding it gone.
         try
         {
-            sendspinPlayer.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            sendspinPlayer.DisposeAsync(comingBack: exitRequested).AsTask().GetAwaiter().GetResult();
         }
         catch (Exception ex)
         {

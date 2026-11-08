@@ -102,6 +102,7 @@ Only the app in the session at the PC's own screen plays: another user's session
 - **The volume** Music Assistant sets is the player's own, not the volume of Windows: what else plays on the PC stays as it is.
 - **An output that goes away** (a headset unplugged, a device disabled, a TV that drops its HDMI audio) is no error: the player moves to the default, or waits for its own device and goes on when it is back, and stays in its group meanwhile. With no output at all, the status says so. A TV that is only switched off usually keeps its HDMI audio, and the player plays on into it.
 - **An announcement** of the app (see above) silences the player while it plays, when *Pause what is playing* is on, and turns it down otherwise; the group plays on.
+- **A user switch** at the PC's screen hands the player over to the new session within a few seconds, and the group plays on. An update of the app does the same. Closing the app, or turning the player off, takes the PC out of its group in Music Assistant, and a group it led stops; add it to the group again when it is back.
 
 ### When it does not work
 
