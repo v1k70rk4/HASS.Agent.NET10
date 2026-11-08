@@ -231,6 +231,13 @@ public class UserSessionTests
         Assert.False(SessionRole.Decide(null, current: 9, new HashSet<uint> { 7, 9 }).Talks);
         Assert.True(SessionRole.Decide(null, current: 9, new HashSet<uint>()).Talks);
         Assert.True(SessionRole.Decide(null, current: 9, new HashSet<uint>()).Provisional);
+
+        // Two apps that both see each other's session agree on one of them, whichever asks.
+        var seen = new HashSet<uint> { 4, 11 };
+        Assert.True(SessionRole.Decide(null, current: 4, seen).Talks);
+        Assert.False(SessionRole.Decide(null, current: 11, seen).Talks);
+        // An app that knows only its own session (the list always holds it) talks: it is alone as far as it can tell.
+        Assert.True(SessionRole.Decide(null, current: 11, new HashSet<uint> { 11 }).Talks);
         Assert.Equal(-1, SystemMetricsService.ChooseUserSession([], consoleId: 1));
     }
 }

@@ -149,7 +149,21 @@ public class SendspinTests : IDisposable
         var store = new ProtectedPairingRecordStore(SendspinStorage.PairingFile);
         var psk = Enumerable.Range(1, 32).Select(i => (byte)(i * 3)).ToArray();
         store.Upsert(new PairingRecord(psk, PskCategory.LongTerm, "server-1"));
-        File.SetAttributes(SendspinStorage.PairingFile, FileAttributes.ReadOnly);
+
+        // The folder as a kiosk user has it: readable, but nothing may be made, written or
+        // removed in it. A deny rule for this very account, taken off again afterwards.
+        var me = System.Security.Principal.WindowsIdentity.GetCurrent().User!;
+        var folder = new DirectoryInfo(SendspinStorage.Directory);
+        var deny = new System.Security.AccessControl.FileSystemAccessRule(
+            me,
+            System.Security.AccessControl.FileSystemRights.CreateFiles | System.Security.AccessControl.FileSystemRights.WriteData
+                | System.Security.AccessControl.FileSystemRights.Delete | System.Security.AccessControl.FileSystemRights.DeleteSubdirectoriesAndFiles,
+            System.Security.AccessControl.InheritanceFlags.ContainerInherit | System.Security.AccessControl.InheritanceFlags.ObjectInherit,
+            System.Security.AccessControl.PropagationFlags.None,
+            System.Security.AccessControl.AccessControlType.Deny);
+        var security = folder.GetAccessControl();
+        security.AddAccessRule(deny);
+        folder.SetAccessControl(security);
         try
         {
             store.Upsert(new PairingRecord(psk, PskCategory.LongTerm, "server-1", DateTimeOffset.UtcNow));
@@ -159,10 +173,27 @@ public class SendspinTests : IDisposable
         }
         finally
         {
-            File.SetAttributes(SendspinStorage.PairingFile, FileAttributes.Normal);
+            security = folder.GetAccessControl();
+            security.RemoveAccessRule(deny);
+            folder.SetAccessControl(security);
         }
 
         Assert.Single(new ProtectedPairingRecordStore(SendspinStorage.PairingFile).List());
+    }
+
+    [Fact]
+    public void The_pairing_file_is_replaced_while_another_app_reads_it()
+    {
+        // Another session's app reads the file the way the store does, with the sharing that
+        // lets a replace through; Windows would otherwise refuse the replace while it is open.
+        var store = new ProtectedPairingRecordStore(SendspinStorage.PairingFile);
+        store.Upsert(new PairingRecord(Enumerable.Range(1, 32).Select(i => (byte)i).ToArray(), PskCategory.LongTerm, "server-1"));
+        using (new FileStream(SendspinStorage.PairingFile, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+        {
+            store.Upsert(new PairingRecord(Enumerable.Range(1, 32).Select(i => (byte)(i + 100)).ToArray(), PskCategory.LongTerm, "server-2"));
+        }
+
+        Assert.Equal(2, new ProtectedPairingRecordStore(SendspinStorage.PairingFile).List().Count);
     }
 
     [Fact]

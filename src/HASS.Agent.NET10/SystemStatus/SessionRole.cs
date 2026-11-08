@@ -50,26 +50,36 @@ internal static class SessionRole
     public static bool WaitingForAnotherSession { get; set; }
 
     // The sessions with a tray app of this program in them, the service's session 0 left out.
+    // This app's own session is always among them, so the list is never empty: two apps that
+    // both see the others pick the same lowest session, and one that sees none but itself
+    // talks, which is right when it is alone.
     private static HashSet<uint> SessionsWithTrayApp()
     {
-        var sessions = new HashSet<uint>();
-        var name = Process.GetCurrentProcess().ProcessName;
-        foreach (var process in Process.GetProcessesByName(name))
+        var current = Process.GetCurrentProcess();
+        var sessions = new HashSet<uint> { (uint)current.SessionId };
+        try
         {
-            using (process)
+            foreach (var process in Process.GetProcessesByName(current.ProcessName))
             {
-                try
+                using (process)
                 {
-                    if (process.SessionId != 0)
+                    try
                     {
-                        sessions.Add((uint)process.SessionId);
+                        if (process.SessionId != 0)
+                        {
+                            sessions.Add((uint)process.SessionId);
+                        }
+                    }
+                    catch (Exception)
+                    {
+                        // Gone, or not ours to look at.
                     }
                 }
-                catch (Exception)
-                {
-                    // Gone, or not ours to look at.
-                }
             }
+        }
+        catch (Exception)
+        {
+            // The processes could not be listed: this session alone is known.
         }
 
         return sessions;

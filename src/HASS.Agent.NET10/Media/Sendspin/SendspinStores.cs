@@ -95,24 +95,26 @@ internal static class SendspinStorage
             throw new IOException($"{folder.FullName} is a link, not a folder of the player's own.");
         }
 
-        var temp = $"{path}.{Environment.ProcessId}.{Guid.NewGuid():N}.tmp";
+        var stamp = $"{Environment.ProcessId}.{Guid.NewGuid():N}";
+        var temp = $"{path}.{stamp}.tmp";
+        var aside = $"{path}.{stamp}.old";
+        var movedAside = false;
         try
         {
             SafeFiles.WriteAllBytes(temp, content);
-            // Another app of the PC may be reading the file this moment; it reads with the
-            // sharing that lets this replace it, and a slower reader is given a few more tries.
-            for (var attempt = 1; ; attempt++)
+
+            // Another app of the PC may be reading the file this moment. Windows lets no one
+            // write over a file that is open, but a reader that shares deletion (ReadShared)
+            // lets it be renamed: the old file is put aside, the new one takes its name, and the
+            // old one goes once the reader is done with it. A failed step puts the old one back.
+            if (File.Exists(path))
             {
-                try
-                {
-                    File.Move(temp, path, overwrite: true);
-                    break;
-                }
-                catch (IOException) when (attempt < 10)
-                {
-                    Thread.Sleep(20);
-                }
+                MoveWithRetry(path, aside);
+                movedAside = true;
             }
+
+            MoveWithRetry(temp, path);
+            movedAside = false;
         }
         catch (Win32Exception ex) when (ex.NativeErrorCode == 5)
         {
@@ -121,7 +123,30 @@ internal static class SendspinStorage
         }
         finally
         {
+            if (movedAside && !File.Exists(path))
+            {
+                try { File.Move(aside, path); } catch { }
+            }
+
+            try { File.Delete(aside); } catch { }
             try { File.Delete(temp); } catch { }
+        }
+    }
+
+    // A slower reader, or a scanner, holds the file for a moment: tried again a few times.
+    private static void MoveWithRetry(string from, string to)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                File.Move(from, to);
+                return;
+            }
+            catch (IOException) when (attempt < 10)
+            {
+                Thread.Sleep(20);
+            }
         }
     }
 
