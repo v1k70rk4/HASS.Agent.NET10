@@ -77,6 +77,38 @@ public class SendspinTests : IDisposable
     }
 
     [Fact]
+    public void A_disconnect_after_a_reconnect_shows_what_the_handshake_said()
+    {
+        // The SDK reports a legacy server met on a reconnect only through the disconnected event;
+        // without the fix the status stayed at "connecting", and the SDK was no longer trying.
+        var legacy = new ConnectionStateChangedEventArgs
+        {
+            OldState = ConnectionState.Reconnecting,
+            NewState = ConnectionState.Disconnected,
+            Exception = new SendspinHandshakeException(HandshakeFailureKind.LegacyServer, "aiosendspin 6"),
+        };
+        Assert.Equal(SendspinState.ServerTooOld, SendspinPlayerService.StateForConnectionChange(legacy, SendspinState.Connecting, paired: true));
+
+        var pairingGone = new ConnectionStateChangedEventArgs
+        {
+            NewState = ConnectionState.Disconnected,
+            Exception = new SendspinHandshakeException(HandshakeFailureKind.PairingStateDiverged),
+        };
+        Assert.Equal(SendspinState.NeedsPairing, SendspinPlayerService.StateForConnectionChange(pairingGone, SendspinState.Connected, paired: true));
+
+        // A plain drop while connected: connecting again. One while already waiting for a
+        // pairing, or given up: nothing new to say.
+        var dropped = new ConnectionStateChangedEventArgs { NewState = ConnectionState.Disconnected };
+        Assert.Equal(SendspinState.Connecting, SendspinPlayerService.StateForConnectionChange(dropped, SendspinState.Connected, paired: true));
+        Assert.Null(SendspinPlayerService.StateForConnectionChange(dropped, SendspinState.NeedsPairing, paired: false));
+        Assert.Null(SendspinPlayerService.StateForConnectionChange(dropped, SendspinState.ServerTooOld, paired: true));
+
+        var connected = new ConnectionStateChangedEventArgs { NewState = ConnectionState.Connected };
+        Assert.Equal(SendspinState.Connected, SendspinPlayerService.StateForConnectionChange(connected, SendspinState.Connecting, paired: true));
+        Assert.Equal(SendspinState.NeedsPairing, SendspinPlayerService.StateForConnectionChange(connected, SendspinState.Connecting, paired: false));
+    }
+
+    [Fact]
     public void The_identity_stays_the_same_across_starts()
     {
         // The player's id is its public key: a new one each start would unpair it from every server.

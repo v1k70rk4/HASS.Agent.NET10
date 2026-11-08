@@ -327,6 +327,21 @@ internal sealed class SendspinPlayerService : IAsyncDisposable
         return builder.Uri;
     }
 
+    /// <summary>
+    /// What a change of the connection means to the status, or null when it means nothing new.
+    /// A handshake that failed for good after a reconnect (the server replaced by an older one,
+    /// a pairing gone) comes as a Disconnected with the exception: the SDK stops trying, and
+    /// says so only here.
+    /// </summary>
+    internal static SendspinState? StateForConnectionChange(ConnectionStateChangedEventArgs e, SendspinState current, bool paired) => e.NewState switch
+    {
+        ConnectionState.Connected => paired ? SendspinState.Connected : SendspinState.NeedsPairing,
+        ConnectionState.Connecting or ConnectionState.Handshaking or ConnectionState.Reconnecting => SendspinState.Connecting,
+        ConnectionState.Disconnected when e.Exception is SendspinHandshakeException handshake => StateForHandshakeFailure(handshake.Kind),
+        ConnectionState.Disconnected when current is not (SendspinState.ServerTooOld or SendspinState.NeedsPairing or SendspinState.Failed) => SendspinState.Connecting,
+        _ => null
+    };
+
     /// <summary>What a handshake that failed for good means to the status; the SDK stops trying after each but ConnectionClosed.</summary>
     internal static SendspinState StateForHandshakeFailure(HandshakeFailureKind kind) => kind switch
     {
@@ -778,45 +793,32 @@ internal sealed class SendspinPlayerService : IAsyncDisposable
 
         private void OnConnectionStateChanged(object? sender, ConnectionStateChangedEventArgs e)
         {
-            switch (e.NewState)
+            if (e.NewState == ConnectionState.Connected)
             {
-                case ConnectionState.Connected:
-                    _serverName = _client?.ServerName;
-                    Update(_client?.TrustLevel == SendspinTrustLevel.Paired ? SendspinState.Connected : SendspinState.NeedsPairing);
-                    break;
-                case ConnectionState.Connecting or ConnectionState.Handshaking or ConnectionState.Reconnecting:
-                    _group = null;
-                    Update(SendspinState.Connecting);
-                    break;
-                case ConnectionState.Disconnected:
-                    _group = null;
-                    if (e.Exception is SendspinHandshakeException handshake)
-                    {
-                        // A handshake that failed for good after a reconnect (the server replaced by
-                        // an older one, a pairing gone): the SDK stops trying, and says so only here.
-                        OnHandshakeFailed(handshake);
-                    }
-                    else if (_link is not (SendspinState.ServerTooOld or SendspinState.NeedsPairing or SendspinState.Failed))
-                    {
-                        Update(SendspinState.Connecting);
-                    }
-
-                    break;
+                _serverName = _client?.ServerName;
             }
-        }
-
-        private void OnHandshakeFailed(SendspinHandshakeException handshake)
-        {
-            var state = StateForHandshakeFailure(handshake.Kind);
-            switch (state)
+            else
             {
-                case SendspinState.ServerTooOld:
-                    Log.Warning("Sendspin: the server is older than the encrypted Sendspin protocol; Music Assistant 2.10.7 or newer is needed.");
-                    break;
-                case SendspinState.Failed:
-                    Log.Warning($"Sendspin: the server refused the player ({handshake.Kind}): {handshake.Message}");
-                    _detail = handshake.Message;
-                    break;
+                _group = null;
+            }
+
+            if (StateForConnectionChange(e, _link, _client?.TrustLevel == SendspinTrustLevel.Paired) is not { } state)
+            {
+                return;
+            }
+
+            if (e.Exception is SendspinHandshakeException handshake)
+            {
+                switch (state)
+                {
+                    case SendspinState.ServerTooOld:
+                        Log.Warning("Sendspin: the server is older than the encrypted Sendspin protocol; Music Assistant 2.10.7 or newer is needed.");
+                        break;
+                    case SendspinState.Failed:
+                        Log.Warning($"Sendspin: the server refused the player ({handshake.Kind}): {handshake.Message}");
+                        _detail = handshake.Message;
+                        break;
+                }
             }
 
             Update(state);
