@@ -353,6 +353,25 @@ internal sealed class SendspinPlayerService : IAsyncDisposable
         _ => null
     };
 
+    /// <summary>How long the player waits before it dials again after a handshake that failed for good.</summary>
+    internal static TimeSpan RedialAfter(HandshakeFailureKind kind) => kind switch
+    {
+        HandshakeFailureKind.LegacyServer => TimeSpan.FromMinutes(5),
+        HandshakeFailureKind.PairingRequired or HandshakeFailureKind.PairingStateDiverged => TimeSpan.FromSeconds(15),
+        _ => TimeSpan.FromSeconds(30)
+    };
+
+    /// <summary>
+    /// Whether a change of the connection is the SDK giving up its own reconnects: a handshake
+    /// that failed for good (a pairing gone, the server replaced by an older one). The player
+    /// then dials again itself, as at its start, so that a pairing made later in Music Assistant
+    /// is taken without a restart. A connection closed by the network is not one: the SDK keeps
+    /// trying those.
+    /// </summary>
+    internal static bool SdkGaveUp(ConnectionStateChangedEventArgs e) =>
+        e.NewState == ConnectionState.Disconnected
+        && e.Exception is SendspinHandshakeException { Kind: not HandshakeFailureKind.ConnectionClosed };
+
     /// <summary>What a handshake that failed for good means to the status; the SDK stops trying after each but ConnectionClosed.</summary>
     internal static SendspinState StateForHandshakeFailure(HandshakeFailureKind kind) => kind switch
     {
@@ -611,6 +630,8 @@ internal sealed class SendspinPlayerService : IAsyncDisposable
         private SendspinClientService? _client;
         private SendspinWasapiOutput? _output;
         private Task? _connectLoop;
+        private Uri? _dialed;
+        private readonly object _loopGate = new();
 
         private SendspinState _link = SendspinState.Starting;
         private string? _serverName;
@@ -674,7 +695,12 @@ internal sealed class SendspinPlayerService : IAsyncDisposable
                 _client.GroupStateChanged += OnGroupStateChanged;
                 _client.PairingCompleted += OnPairingCompleted;
                 Update(SendspinState.Connecting);
-                _connectLoop = Task.Run(() => ConnectLoopAsync(uri, _cts.Token));
+                _dialed = uri;
+                lock (_loopGate)
+                {
+                    _connectLoop = Task.Run(() => ConnectLoopAsync(uri, TimeSpan.Zero, _cts.Token));
+                }
+
                 Log.Info($"Sendspin: player \"{_config.Name}\" connects to {uri}.");
                 return;
             }
@@ -722,9 +748,15 @@ internal sealed class SendspinPlayerService : IAsyncDisposable
         public async ValueTask DisposeAsync(string goodbye)
         {
             _cts.Cancel();
-            if (_connectLoop is not null)
+            Task? loop;
+            lock (_loopGate)
             {
-                try { await _connectLoop.ConfigureAwait(false); } catch { }
+                loop = _connectLoop;
+            }
+
+            if (loop is not null)
+            {
+                try { await loop.ConfigureAwait(false); } catch { }
             }
 
             if (_host is not null)
@@ -773,8 +805,20 @@ internal sealed class SendspinPlayerService : IAsyncDisposable
             return output;
         }
 
-        private async Task ConnectLoopAsync(Uri uri, CancellationToken token)
+        private async Task ConnectLoopAsync(Uri uri, TimeSpan firstWait, CancellationToken token)
         {
+            if (firstWait > TimeSpan.Zero)
+            {
+                try
+                {
+                    await Task.Delay(firstWait, token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
+            }
+
             while (!token.IsCancellationRequested)
             {
                 TimeSpan wait;
@@ -793,19 +837,19 @@ internal sealed class SendspinPlayerService : IAsyncDisposable
                 {
                     Update(SendspinState.ServerTooOld);
                     Log.Warning($"Sendspin: {uri} is older than the encrypted Sendspin protocol; Music Assistant 2.10.7 or newer is needed.");
-                    wait = TimeSpan.FromMinutes(5);
+                    wait = RedialAfter(ex.Kind);
                 }
                 catch (SendspinHandshakeException ex) when (ex.Kind is HandshakeFailureKind.PairingRequired or HandshakeFailureKind.PairingStateDiverged)
                 {
                     Update(SendspinState.NeedsPairing);
-                    wait = TimeSpan.FromSeconds(15);
+                    wait = RedialAfter(ex.Kind);
                 }
                 catch (SendspinHandshakeException ex)
                 {
                     _detail = ex.Message;
                     Update(SendspinState.Failed);
                     Log.Warning($"Sendspin: {uri} refused the player ({ex.Kind}): {ex.Message}");
-                    wait = TimeSpan.FromSeconds(30);
+                    wait = RedialAfter(ex.Kind);
                 }
                 catch (TimeoutException)
                 {
@@ -861,6 +905,22 @@ internal sealed class SendspinPlayerService : IAsyncDisposable
             }
 
             Update(state);
+
+            // A reconnect of the SDK's that failed for good (the pairing changed in Music
+            // Assistant, the server replaced) ends its tries, after the loop of the start had
+            // returned: the player dials again itself, so a new pairing is taken without a
+            // restart or a save.
+            if (SdkGaveUp(e) && e.Exception is SendspinHandshakeException gaveUp && _dialed is { } uri && !_cts.IsCancellationRequested)
+            {
+                lock (_loopGate)
+                {
+                    if (_connectLoop is null || _connectLoop.IsCompleted)
+                    {
+                        Log.Info($"Sendspin: dialing {uri} again in {RedialAfter(gaveUp.Kind).TotalSeconds:0} s.");
+                        _connectLoop = Task.Run(() => ConnectLoopAsync(uri, RedialAfter(gaveUp.Kind), _cts.Token));
+                    }
+                }
+            }
         }
 
         private void OnServerConnected(object? sender, ConnectedServerInfo info)

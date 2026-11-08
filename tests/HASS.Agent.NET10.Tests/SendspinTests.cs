@@ -80,6 +80,31 @@ public class SendspinTests : IDisposable
     }
 
     [Fact]
+    public void A_pairing_lost_on_a_reconnect_makes_the_player_dial_again_itself()
+    {
+        // The SDK stops its own reconnects after a handshake that failed for good; the player
+        // dials again then, after the wait of that failure. A closed connection is the SDK's to retry.
+        var diverged = new ConnectionStateChangedEventArgs
+        {
+            OldState = ConnectionState.Reconnecting,
+            NewState = ConnectionState.Disconnected,
+            Exception = new SendspinHandshakeException(HandshakeFailureKind.PairingStateDiverged, "diverged")
+        };
+        Assert.True(SendspinPlayerService.SdkGaveUp(diverged));
+        Assert.Equal(TimeSpan.FromSeconds(15), SendspinPlayerService.RedialAfter(HandshakeFailureKind.PairingStateDiverged));
+        Assert.Equal(TimeSpan.FromMinutes(5), SendspinPlayerService.RedialAfter(HandshakeFailureKind.LegacyServer));
+
+        var closed = new ConnectionStateChangedEventArgs
+        {
+            OldState = ConnectionState.Connected,
+            NewState = ConnectionState.Disconnected,
+            Exception = new SendspinHandshakeException(HandshakeFailureKind.ConnectionClosed, "closed")
+        };
+        Assert.False(SendspinPlayerService.SdkGaveUp(closed));
+        Assert.False(SendspinPlayerService.SdkGaveUp(new ConnectionStateChangedEventArgs { OldState = ConnectionState.Connected, NewState = ConnectionState.Disconnected }));
+    }
+
+    [Fact]
     public void A_disconnect_after_a_reconnect_shows_what_the_handshake_said()
     {
         // The SDK reports a legacy server met on a reconnect only through the disconnected event;
