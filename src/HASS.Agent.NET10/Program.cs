@@ -244,7 +244,8 @@ internal static class Program
             CompanionRuntimeRole.App,
             log);
         using var localApi = new LocalApiServer(settings, trayContext, log);
-        using var link = new HomeAssistantLink(log);
+        using var link = new HomeAssistantLink(paths.ConfigDirectory, log);
+        using var presence = new SessionPresence(paths.ConfigDirectory, log);
 
         // One tray app of the PC talks to Home Assistant: the one in the session that stands for
         // the PC (SessionRole). Another user's app waits, and takes over on a switch of users.
@@ -262,10 +263,12 @@ internal static class Program
                 var verdict = SessionRole.Evaluate();
                 SessionRole.WaitingForAnotherSession = !verdict.Talks;
                 trayContext.RefreshSessionRole();
-                if (verdict.Provisional)
+                if (verdict.Provisional || !verdict.Talks)
                 {
                     // Decided by which apps run (the console's user has none, or the sessions
                     // could not be listed): asked again, the app at the console may be starting.
+                    // Waiting: asked again too, the app that talks may be closed by hand, with
+                    // no switch of users to tell of it, and this one takes over then.
                     ArmRoleRecheck();
                 }
 
@@ -297,8 +300,12 @@ internal static class Program
                 if (!startup)
                 {
                     log.Info("This session stands for the PC now: connecting to Home Assistant.");
-                    // The app that talked until now may have saved other connection settings.
-                    SettingsStore.ReloadInto(paths, settings, log);
+                    // The app that talked until now may have saved other connection settings;
+                    // a settings window open here shows the old ones, and is opened again.
+                    if (SettingsStore.ReloadInto(paths, settings, log))
+                    {
+                        trayContext.SettingsReloaded();
+                    }
                 }
 
                 // The app that talked until now is told to ask again (it may not know yet that
@@ -528,10 +535,22 @@ internal static class Program
             log.Warning($"Unable to remove the installer's old update note: {ex.Message}");
         }
 
-        // On a pool thread: the main thread waits for it here, before the message loop runs, and
-        // a continuation posted to that loop (the wait for the other app's turn) would never
-        // run. The status it refreshes goes through BeginInvoke, and no form is open yet.
-        Task.Run(() => ApplySessionRoleAsync(startup: true)).GetAwaiter().GetResult();
+        // Off the main thread and not waited for: the wait for another app's turn (up to 15 s)
+        // must not hold the message loop, nor the window asked for at start. Waited for at exit,
+        // bounded, so that the stop finds the start done. The status it refreshes goes through
+        // BeginInvoke.
+        var roleAtStart = Task.Run(async () =>
+        {
+            try
+            {
+                await ApplySessionRoleAsync(startup: true);
+            }
+            catch (Exception ex)
+            {
+                log.Error(ex, "Unable to start the connection to Home Assistant.");
+                trayContext.ShowStartupError(ex);
+            }
+        });
         _ = Task.Run(() => ApplySendspinAsync(sendspinPlayer, log));
 
         if (!settings.MqttEnabled && !settings.HaApiEnabled)
@@ -558,6 +577,11 @@ internal static class Program
 
         Application.Run(trayContext);
         exitRegistration.Unregister(null);
+
+        if (!roleAtStart.Wait(AppRestart.RoleLeaveTimeout))
+        {
+            log.Warning("The start of the connection was still under way at exit.");
+        }
 
         // First: Music Assistant hears the player leave instead of finding it gone. Every step of
         // the leave is bounded (AppRestart): the instance of a restart waits for this one to go,

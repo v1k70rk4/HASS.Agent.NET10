@@ -17,6 +17,9 @@ internal static class AppRestart
     /// <summary>How long the leaving instance gives the connection (MQTT, Local API) to stop.</summary>
     public static readonly TimeSpan ConnectionLeaveTimeout = TimeSpan.FromSeconds(10);
 
+    /// <summary>How long the leaving instance waits for a start of the connection still under way.</summary>
+    public static readonly TimeSpan RoleLeaveTimeout = TimeSpan.FromSeconds(5);
+
     private static volatile bool _pending;
 
     public static bool Pending

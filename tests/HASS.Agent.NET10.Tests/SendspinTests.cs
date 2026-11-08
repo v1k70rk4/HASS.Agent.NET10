@@ -29,6 +29,7 @@ public class SendspinTests : IDisposable
     {
         SendspinStorage.DirectoryOverride = null;
         SendspinStorage.BeforeFinalMove = null;
+        SendspinStorage.WhenNameMissing = null;
         SendspinPlayerService.IsAtConsole = _isAtConsole;
         Strings.Language = Strings.English;
         try { Directory.Delete(_folder, recursive: true); } catch { }
@@ -199,24 +200,38 @@ public class SendspinTests : IDisposable
     }
 
     [Fact]
-    public async Task A_read_during_another_app_s_replace_still_finds_the_records()
+    public void A_read_during_another_app_s_replace_still_finds_the_records()
     {
-        // Between the replace's two renames the name is empty for an instant: a reader that
-        // hits it waits a moment instead of taking the player for unpaired.
+        // The name is empty at the reader's first look (the instant between the replace's two
+        // renames) and back at its second: the reader looks again instead of taking the player
+        // for unpaired. The file is put back from the reader's own first look, so nothing
+        // hangs on timing.
         var store = new ProtectedPairingRecordStore(SendspinStorage.PairingFile);
         store.Upsert(new PairingRecord(Enumerable.Range(1, 32).Select(i => (byte)i).ToArray(), PskCategory.LongTerm, "server-1"));
-        var aside = SendspinStorage.PairingFile + ".test-aside";
-        File.Move(SendspinStorage.PairingFile, aside);
-        var putBack = Task.Run(async () =>
+        var elsewhere = SendspinStorage.PairingFile + ".test-elsewhere";
+        File.Move(SendspinStorage.PairingFile, elsewhere);
+        var looks = 0;
+        SendspinStorage.WhenNameMissing = _ =>
         {
-            await Task.Delay(60, TestContext.Current.CancellationToken);
-            File.Move(aside, SendspinStorage.PairingFile);
-        }, TestContext.Current.CancellationToken);
+            looks++;
+            File.Move(elsewhere, SendspinStorage.PairingFile);
+        };
 
         var records = new ProtectedPairingRecordStore(SendspinStorage.PairingFile).List();
 
-        await putBack;
+        Assert.Equal(1, looks);
         Assert.Single(records);
+    }
+
+    [Fact]
+    public void A_store_folder_not_made_yet_counts_as_no_keys_not_a_failure()
+    {
+        // A kiosk app may be up before any app that may write has made the folder: no identity
+        // and no pairings, to be looked for again later, not a failed player.
+        SendspinStorage.DirectoryOverride = Path.Combine(_folder, "not-yet");
+        Assert.Null(new ProtectedSendspinIdentityStore(SendspinStorage.IdentityFile).Load());
+        Assert.Empty(new ProtectedPairingRecordStore(SendspinStorage.PairingFile).List());
+        Assert.Null(SendspinStorage.ReadShared(SendspinStorage.PairingFile));
     }
 
     [Fact]

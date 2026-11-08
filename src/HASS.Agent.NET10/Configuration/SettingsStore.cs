@@ -20,7 +20,7 @@ internal static class SettingsStore
     /// (another user's session) may have saved them since this one read them. A file that
     /// cannot be read leaves the instance as it is.
     /// </summary>
-    public static void ReloadInto(AppPaths paths, CompanionSettings target, FileLog log)
+    public static bool ReloadInto(AppPaths paths, CompanionSettings target, FileLog log)
     {
         CompanionSettings fresh;
         try
@@ -30,9 +30,10 @@ internal static class SettingsStore
         catch (Exception ex)
         {
             log.Warning($"Unable to read the settings again: {ex.Message}");
-            return;
+            return false;
         }
 
+        var before = JsonSerializer.Serialize(target, JsonOptions);
         foreach (var property in typeof(CompanionSettings).GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance))
         {
             if (property.CanWrite && property.GetIndexParameters().Length == 0
@@ -41,6 +42,8 @@ internal static class SettingsStore
                 property.SetValue(target, property.GetValue(fresh));
             }
         }
+
+        return JsonSerializer.Serialize(target, JsonOptions) != before;
     }
 
     public static CompanionSettings LoadOrCreate(AppPaths paths, FileLog log)

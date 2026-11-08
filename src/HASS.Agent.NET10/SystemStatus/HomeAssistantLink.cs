@@ -6,11 +6,13 @@ namespace HASS.Agent.Companion.SystemStatus;
 
 /// <summary>
 /// The handover of the Home Assistant connection between the tray apps of one PC, across their
-/// sessions. A named semaphore of one is held by the app that talks: the next one takes it
+/// sessions. A named mutex, the turn, is held by the app that talks: the next one takes it
 /// before it connects, and gets it once the first has stopped and let go, so the two never
-/// overlap (the broker would see one take the other's session over). A named event tells every
-/// app of the PC to ask again which session stands for it, when one comes up that should talk.
-/// Both are made so that every user of the PC may use them; an app that cannot make or open them
+/// overlap (the broker would see one take the other's session over). An app that dies with the
+/// turn leaves the mutex abandoned, and Windows hands it to the next taker. A named event tells
+/// every app of the PC to ask again which session stands for it, when one comes up that should
+/// talk. Both are open to the users who may use the settings of this PC (the settings folder's
+/// rule, <see cref="Participants"/>) and to nobody else; an app that cannot make or open them
 /// goes without, as before this class.
 /// </summary>
 internal sealed class HomeAssistantLink : IDisposable
@@ -20,25 +22,26 @@ internal sealed class HomeAssistantLink : IDisposable
     private static readonly TimeSpan TakeTimeout = TimeSpan.FromSeconds(15);
 
     private readonly FileLog _log;
-    private readonly Semaphore? _turn;
+    private readonly Mutex? _turn;
     private readonly EventWaitHandle? _signal;
     private readonly ManualResetEvent _stop = new(false);
-    private bool _held;
+    private ManualResetEventSlim? _letGo;
+    private Thread? _holder;
 
-    public HomeAssistantLink(FileLog log)
+    public HomeAssistantLink(string configDirectory, FileLog log)
     {
         _log = log;
         try
         {
-            var users = new SecurityIdentifier(WellKnownSidType.AuthenticatedUserSid, null);
-            var turnSecurity = new SemaphoreSecurity();
-            turnSecurity.AddAccessRule(new SemaphoreAccessRule(users, SemaphoreRights.FullControl, AccessControlType.Allow));
-            _turn = SemaphoreAcl.Create(1, 1, TurnName, out _, turnSecurity);
+            var participants = Participants(configDirectory);
+            var turnSecurity = new MutexSecurity();
+            foreach (var participant in participants)
+            {
+                turnSecurity.AddAccessRule(new MutexAccessRule(participant, MutexRights.FullControl, AccessControlType.Allow));
+            }
 
-            var signalSecurity = new EventWaitHandleSecurity();
-            signalSecurity.AddAccessRule(new EventWaitHandleAccessRule(users, EventWaitHandleRights.FullControl, AccessControlType.Allow));
-            _signal = EventWaitHandleAcl.Create(false, EventResetMode.ManualReset, SignalName, out _, signalSecurity);
-
+            _turn = MutexAcl.Create(initiallyOwned: false, TurnName, out _, turnSecurity);
+            _signal = EventWaitHandleAcl.Create(false, EventResetMode.ManualReset, SignalName, out _, EventSecurity(participants));
             new Thread(Watch) { IsBackground = true, Name = "HASS.Agent session role" }.Start();
         }
         catch (Exception ex)
@@ -51,14 +54,57 @@ internal sealed class HomeAssistantLink : IDisposable
     public event EventHandler? RoleChangeSignaled;
 
     /// <summary>
+    /// The identities that may use the settings of this PC, read from the settings folder's
+    /// rule (<see cref="Configuration.SettingsAccess"/>): they may take part in the handover,
+    /// nobody else. Every signed-in user when the folder's rule cannot be read.
+    /// </summary>
+    internal static IReadOnlyList<SecurityIdentifier> Participants(string configDirectory)
+    {
+        try
+        {
+            var allowed = new DirectoryInfo(configDirectory)
+                .GetAccessControl(AccessControlSections.Access)
+                .GetAccessRules(includeExplicit: true, includeInherited: true, typeof(SecurityIdentifier))
+                .OfType<FileSystemAccessRule>()
+                .Where(rule => rule.AccessControlType == AccessControlType.Allow && (rule.FileSystemRights & FileSystemRights.ReadData) != 0)
+                .Select(rule => (SecurityIdentifier)rule.IdentityReference)
+                .Distinct()
+                .ToList();
+            if (allowed.Count > 0)
+            {
+                return allowed;
+            }
+        }
+        catch (Exception)
+        {
+            // No folder yet, or not ours to read: every signed-in user, as the folder is by default.
+        }
+
+        return [new SecurityIdentifier(WellKnownSidType.AuthenticatedUserSid, null)];
+    }
+
+    /// <summary>The rule for a named event of the handover: the participants, in full.</summary>
+    internal static EventWaitHandleSecurity EventSecurity(IReadOnlyList<SecurityIdentifier> participants)
+    {
+        var security = new EventWaitHandleSecurity();
+        foreach (var participant in participants)
+        {
+            security.AddAccessRule(new EventWaitHandleAccessRule(participant, EventWaitHandleRights.FullControl, AccessControlType.Allow));
+        }
+
+        return security;
+    }
+
+    /// <summary>
     /// Takes the turn, waiting for the app that has it to stop and let go. False when it is not
-    /// this app's: the other did not let go in time (it hangs, or died without letting go), or
-    /// there is no telling (the semaphore could not be made or waited for). What the caller
-    /// does then rests on how sure it is of its session (<see cref="SessionRole.MayConnect"/>).
+    /// this app's: the other did not let go in time (it hangs), or there is no telling (the
+    /// mutex could not be made or waited for). An app that died with the turn has let go as far
+    /// as Windows is concerned. What the caller does with a false rests on how sure it is of
+    /// its session (<see cref="SessionRole.MayConnect"/>).
     /// </summary>
     public bool Take()
     {
-        if (_held)
+        if (_letGo is not null)
         {
             return true;
         }
@@ -68,41 +114,74 @@ internal sealed class HomeAssistantLink : IDisposable
             return false;
         }
 
-        try
+        // A mutex is let go by the thread that took it: a thread of its own holds it until told.
+        var taken = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var letGo = new ManualResetEventSlim(false);
+        var holder = new Thread(() =>
         {
-            _held = _turn.WaitOne(TakeTimeout);
-        }
-        catch (Exception ex)
+            bool owned;
+            try
+            {
+                owned = _turn.WaitOne(TakeTimeout);
+            }
+            catch (AbandonedMutexException)
+            {
+                // The app that held the turn died without letting go: the turn is this one's.
+                owned = true;
+            }
+            catch (Exception ex)
+            {
+                _log.Warning($"Unable to wait for the other app of this PC to let the connection go: {ex.Message}");
+                owned = false;
+            }
+
+            taken.SetResult(owned);
+            if (!owned)
+            {
+                return;
+            }
+
+            letGo.Wait();
+            try
+            {
+                _turn.ReleaseMutex();
+            }
+            catch (Exception)
+            {
+                // Disposed with the app, or not owned any more: let go either way.
+            }
+
+            letGo.Dispose();
+        })
         {
-            _log.Warning($"Unable to wait for the other app of this PC to let the connection go: {ex.Message}");
+            IsBackground = true,
+            Name = "HASS.Agent connection turn"
+        };
+
+        holder.Start();
+        if (!taken.Task.GetAwaiter().GetResult())
+        {
+            _log.Warning("The other app of this PC did not let the connection go in time.");
             return false;
         }
 
-        if (!_held)
-        {
-            _log.Warning("The other app of this PC did not let the connection go in time; connecting all the same.");
-        }
-
-        return _held;
+        _letGo = letGo;
+        _holder = holder;
+        return true;
     }
 
     /// <summary>Lets the turn go, once the connection is stopped.</summary>
     public void LetGo()
     {
-        if (_turn is null || !_held)
+        var letGo = Interlocked.Exchange(ref _letGo, null);
+        if (letGo is null)
         {
             return;
         }
 
-        _held = false;
-        try
-        {
-            _turn.Release();
-        }
-        catch (SemaphoreFullException)
-        {
-            // Let go already, by a release that did not count.
-        }
+        letGo.Set();
+        _holder?.Join(TimeSpan.FromSeconds(2));
+        _holder = null;
     }
 
     /// <summary>Tells every app of the PC to ask again which session stands for it: a pulse of the event.</summary>

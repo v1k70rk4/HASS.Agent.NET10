@@ -58,10 +58,11 @@ internal static class SessionRole
     /// <summary>For the General page: another session's app has the connection.</summary>
     public static bool WaitingForAnotherSession { get; set; }
 
-    // The sessions with a tray app of this program in them, the service's session 0 left out.
-    // This app's own session is always among them, so the list is never empty: two apps that
-    // both see the others pick the same lowest session, and one that sees none but itself
-    // talks, which is right when it is alone.
+    // The sessions with a tray app of this program that takes part (SessionPresence), the
+    // service's session 0 left out; an app that only shows the note about the limited settings
+    // leaves no mark and does not count, so nobody waits for it. This app's own session is
+    // always among them, so the list is never empty: two apps that both see the others pick the
+    // same lowest session, and one that sees none but itself talks, which is right when it is alone.
     private static HashSet<uint> SessionsWithTrayApp()
     {
         var current = Process.GetCurrentProcess();
@@ -74,7 +75,7 @@ internal static class SessionRole
                 {
                     try
                     {
-                        if (process.SessionId != 0)
+                        if (process.SessionId != 0 && SessionPresence.Exists((uint)process.SessionId))
                         {
                             sessions.Add((uint)process.SessionId);
                         }

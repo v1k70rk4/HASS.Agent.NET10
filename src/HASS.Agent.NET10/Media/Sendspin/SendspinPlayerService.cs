@@ -154,10 +154,12 @@ internal sealed class SendspinPlayerService : IAsyncDisposable
             // A player that could not start (the port taken, no keys this account may write, a
             // failure, not the session at the screen) is tried again on a save of the same
             // settings: whatever was in the way may be gone by now.
-            // ServerTooOld and NeedsPairing after a reconnect are final for the SDK (it stops
-            // trying): a save starts the connection again once the server is updated or paired.
+            // ServerTooOld waits five minutes between its tries: a save tries at once, for a
+            // server updated meanwhile. NeedsPairing is not stuck: the server is connected and
+            // waits for the token (a restart would break the pairing off), or is dialed again
+            // in 15 s by the connect loop.
             var stuck = Status.State is SendspinState.PortInUse or SendspinState.ReadOnly or SendspinState.Failed
-                or SendspinState.NotAtConsole or SendspinState.ServerTooOld or SendspinState.NeedsPairing;
+                or SendspinState.NotAtConsole or SendspinState.ServerTooOld;
             if (wanted == _running && !stuck)
             {
                 return;
@@ -475,7 +477,13 @@ internal sealed class SendspinPlayerService : IAsyncDisposable
         }
         catch (Exception ex)
         {
+            // The settings file unreadable for the moment, or the start failed: tried again
+            // later all the same, as long as this player is still the one blocked.
             _log.Warning($"Sendspin: trying the player again failed: {ex.Message}");
+            if (!_disposed && _session == session && Status.State == blocked)
+            {
+                RetryWhileBlocked(session, blocked);
+            }
         }
         finally
         {

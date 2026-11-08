@@ -48,6 +48,32 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
         }
     }
 
+    /// <summary>
+    /// Another user's app saved other settings, and this one took them over at a handover: a
+    /// settings window open here shows the old ones, so it is opened again on its page, with
+    /// the new ones, and the user is told what became of what was not saved in it.
+    /// </summary>
+    public void SettingsReloaded()
+    {
+        if (_uiInvoker.IsDisposed)
+        {
+            return;
+        }
+
+        _uiInvoker.BeginInvoke(() =>
+        {
+            if (_mainForm is not { IsDisposed: false } form)
+            {
+                return;
+            }
+
+            var page = form.CurrentPage;
+            form.Close();
+            OpenMainForm(page);
+            ShowNotification(new NotificationPayload { Title = AppIdentity.DisplayName, Message = Strings.Get("General.SettingsReloaded") });
+        });
+    }
+
     /// <summary>Set by Program: the Sendspin player, for its status and pairing token on the Media player page.</summary>
     public SendspinPlayerService? SendspinPlayer { get; set; }
 

@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Security.Principal;
 using HASS.Agent.Companion.Runtime;
 using HASS.Agent.Companion.Configuration;
 using HASS.Agent.Companion.Logging;
@@ -228,7 +230,7 @@ public class UserSessionTests
             });
 
             var inUse = new CompanionSettings { MqttHost = "broker.old", MqttPort = 1883, LocalApiEnabled = false, Port = 5115 };
-            SettingsStore.ReloadInto(paths, inUse, log);
+            Assert.True(SettingsStore.ReloadInto(paths, inUse, log));
 
             Assert.Equal("broker.new", inUse.MqttHost);
             Assert.Equal(8883, inUse.MqttPort);
@@ -236,6 +238,8 @@ public class UserSessionTests
             Assert.True(inUse.LocalApiEnabled);
             Assert.Equal(5200, inUse.Port);
             Assert.True(inUse.SendspinEnabled);
+            // Nothing new in the file: no reload to open the settings window again for.
+            Assert.False(SettingsStore.ReloadInto(paths, inUse, log));
         }
         finally
         {
@@ -292,7 +296,35 @@ public class UserSessionTests
     {
         // The new instance waits on the mutex for the old one to leave; every bounded step of
         // the leave (the player's goodbye, the connection's stop) adds up to less than that.
-        Assert.True(AppRestart.PlayerLeaveTimeout + AppRestart.ConnectionLeaveTimeout < AppRestart.WaitForTheOneBefore);
+        Assert.True(AppRestart.PlayerLeaveTimeout + AppRestart.ConnectionLeaveTimeout + AppRestart.RoleLeaveTimeout < AppRestart.WaitForTheOneBefore);
+    }
+
+    [Fact]
+    public void The_handover_is_open_to_those_who_may_use_the_settings()
+    {
+        // The handover's named objects carry the settings folder's rule (who may use the app on
+        // this PC); with no folder to read, every signed-in user may take part. An app marks its
+        // session as one that runs the app, for the election; a session without the mark runs none.
+        var folder = Directory.CreateTempSubdirectory("hass-agent-link-").FullName;
+        try
+        {
+            Assert.NotEmpty(HomeAssistantLink.Participants(folder));
+            var fallback = HomeAssistantLink.Participants(Path.Combine(folder, "missing"));
+            Assert.Single(fallback);
+            Assert.Equal(new SecurityIdentifier(WellKnownSidType.AuthenticatedUserSid, null), fallback[0]);
+
+            var log = new FileLog(Path.Combine(folder, "log.txt"));
+            using (new SessionPresence(folder, log))
+            {
+                Assert.True(SessionPresence.Exists((uint)Process.GetCurrentProcess().SessionId));
+            }
+
+            Assert.False(SessionPresence.Exists(uint.MaxValue - 7));
+        }
+        finally
+        {
+            try { Directory.Delete(folder, recursive: true); } catch { }
+        }
     }
 }
 

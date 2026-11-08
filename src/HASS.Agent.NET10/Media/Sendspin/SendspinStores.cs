@@ -155,6 +155,9 @@ internal static class SendspinStorage
     /// <summary>Tests only: runs just before the new file takes the name.</summary>
     internal static Action<string>? BeforeFinalMove { get; set; }
 
+    /// <summary>Tests only: runs when a read finds the name empty, before it looks again.</summary>
+    internal static Action<string>? WhenNameMissing { get; set; }
+
     private static void MoveWithRetry(string from, string to)
     {
         for (var attempt = 1; ; attempt++)
@@ -193,6 +196,7 @@ internal static class SendspinStorage
     /// its two renames, with the old file put aside next to it: a name found empty is read
     /// from the aside file, the content of a moment ago, and looked at again for a moment
     /// before it counts as no file. So a read-only app too never takes a replace for an empty store.
+    /// No folder yet (a kiosk app up before any app that may write) is no file either.
     /// </summary>
     internal static byte[]? ReadShared(string path)
     {
@@ -202,8 +206,9 @@ internal static class SendspinStorage
             {
                 return ReadWhole(path);
             }
-            catch (FileNotFoundException)
+            catch (IOException ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
             {
+                WhenNameMissing?.Invoke(path);
                 if (ReadAside(path) is { } aside)
                 {
                     return aside;

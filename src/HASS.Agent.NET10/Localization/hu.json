@@ -43,6 +43,7 @@
     "General.MqttDisabledWarning": "Az MQTT nincs beállítva. Ha van MQTT brokered, érdemes azt is bekapcsolni.",
     "General.ServiceNotInstalledWarning": "A Windows szolgáltatás nincs telepítve vagy nem fut, ezért a szolgáltatás oldali parancsok, szenzorok és a csendes frissítés nem működnek.",
     "General.OtherSessionTalks": "A gépet most egy másik felhasználó munkamenete képviseli: az ő HASS.Agentje beszél a Home Assistanttal, ez itt addig vár. Az itt mentett beállításokat a következő indulásakor veszi át.",
+    "General.SettingsReloaded": "Egy másik felhasználó HASS.Agentje más beállításokat mentett, és ez átvette őket: a beállítások ablaka ezekkel nyílt meg újra. Ami benne nem volt elmentve, az elveszett.",
     "Danger.Title": "Veszélyes terület",
     "Danger.Tools": "Eszközök",
     "Danger.MqttMaintenance": "MQTT karbantartás",

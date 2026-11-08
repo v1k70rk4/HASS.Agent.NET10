@@ -264,6 +264,9 @@ internal sealed class MainForm : Form
 
     public void NavigateToPage(int index) => SelectPage(index);
 
+    /// <summary>The page shown, for a window opened again in its place.</summary>
+    public int CurrentPage { get; private set; }
+
     /// <summary>
     /// Set by the tray when the window is opened by a restart after a change of the connection
     /// (the classic import): the offer of a Home Assistant user of the PC's own waits for the
@@ -381,6 +384,7 @@ internal sealed class MainForm : Form
         }
         for (var i = 0; i < _pages.Count; i++)
             _pages[i].Visible = i == index;
+        CurrentPage = index;
     }
 
     // ── Bottom bar ─────────────────────────────────────────────────
@@ -1598,7 +1602,7 @@ internal sealed class MainForm : Form
         };
     }
 
-    private void CopySendspinToken(bool rotate)
+    private async void CopySendspinToken(bool rotate)
     {
         if (rotate && MessageBox.Show(S("Mp.SendspinNewTokenConfirm"), AppIdentity.DisplayName,
                 MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
@@ -1609,7 +1613,23 @@ internal sealed class MainForm : Form
         try
         {
             var player = _sendspinPlayer ?? new SendspinPlayerService(_settings, _log);
-            var token = rotate ? player.RotatePairingToken() : player.GetPairingToken();
+            // Off the UI thread: the token's lock may be another app's for up to five seconds.
+            string token;
+            UseWaitCursor = true;
+            try
+            {
+                token = await Task.Run(() => rotate ? player.RotatePairingToken() : player.GetPairingToken());
+            }
+            finally
+            {
+                UseWaitCursor = false;
+            }
+
+            if (IsDisposed)
+            {
+                return;
+            }
+
             Clipboard.SetText(token);
             MessageBox.Show(S("Mp.SendspinTokenCopied"), AppIdentity.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Information);
         }

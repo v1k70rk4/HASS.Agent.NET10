@@ -78,7 +78,8 @@
       "Mp.SendspinTokenFailed",
       "Mp.SendspinNotConsole",
       "Mp.SendspinReadOnly",
-      "General.OtherSessionTalks"
+      "General.OtherSessionTalks",
+      "General.SettingsReloaded"
     ]
   },
   "strings": {
@@ -118,6 +119,7 @@
     "General.MqttDisabledWarning": "MQTT ist nicht eingerichtet. Wenn du einen MQTT-Broker hast, solltest du MQTT aktivieren.",
     "General.ServiceNotInstalledWarning": "Der Windows-Dienst ist nicht installiert oder läuft nicht, daher funktionieren dienstseitige Befehle, Sensoren und stille Updates nicht.",
     "General.OtherSessionTalks": "Another user's session stands for this PC now: their HASS.Agent talks to Home Assistant, and this one waits. Settings saved here reach it when it starts next.",
+    "General.SettingsReloaded": "Another user's HASS.Agent saved other settings, and this one took them over: the settings window was opened again with them. What was not saved in it is gone.",
     "Danger.Title": "Gefahrenzone",
     "Danger.Tools": "Werkzeuge",
     "Danger.MqttMaintenance": "MQTT-Wartung",
