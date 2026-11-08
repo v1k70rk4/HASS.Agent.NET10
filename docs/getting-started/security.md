@@ -31,6 +31,8 @@ Starting with 10.6.8, the release assets (`HASS.Agent.NET10-Setup-<version>.exe`
 | SHA-1 thumbprint | `0C09522639318AF1069507568599DFC5B7F86EE4` |
 | Timestamp | `time.certum.pl` (the signature stays valid after the certificate expires) |
 
+From 10.13.0 the native libraries beside the program that come unsigned from their makers (`libsodium.dll`, for the Sendspin player) are signed with it too; those signed by their makers (the WebView2 loader, the ASP.NET Core module: Microsoft) keep the maker's signature.
+
 To check a download, open its **Properties → Digital Signatures** tab, or with the Windows SDK:
 
 ```powershell

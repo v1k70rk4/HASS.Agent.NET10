@@ -367,6 +367,21 @@ if ($signing) {
     Write-Host "[sign] using $SignScript" -ForegroundColor Cyan
     Invoke-SignScript $fullPath
     Assert-Signed $fullPath
+
+    # The release layout has native libraries next to the exe. Those signed by their makers (WebView2Loader, the
+    # ASP.NET Core module: Microsoft) stay as they are; one that comes unsigned (libsodium, under the Sendspin
+    # player) is signed here, before the installer and the zip take it, so nothing unsigned is installed in
+    # Program Files. A signature that is there but broken is not papered over: the build stops.
+    if ($Tag) {
+        foreach ($dll in Get-ChildItem -Path $Output -Filter *.dll -File -Recurse) {
+            $status = (Get-AuthenticodeSignature -FilePath $dll.FullName).Status
+            if ($status -eq 'Valid') { continue }
+            if ($status -ne 'NotSigned') { throw "Signature on $($dll.FullName) is $status - refusing to sign over it." }
+            Write-Host "[sign] $($dll.Name) (came unsigned)" -ForegroundColor Cyan
+            Invoke-SignScript $dll.FullName
+            Assert-Signed $dll.FullName
+        }
+    }
 }
 
 # --- Release assets: signed installer (+ uninstaller) and the zip, CI file names ----------------------------------
