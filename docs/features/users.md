@@ -27,4 +27,10 @@ HASS.Agent.NET10.exe --settings-access everyone
 
 A user from a domain or Entra ID is given as `DOMAIN\user`. The exit code is 1 when the change could not be made, also when the folder took the rule but a file in it did not; the message names the file.
 
+## Several users signed in at once
+
+> From 10.13.0.
+
+Every Windows user signed in has a tray app of their own, and the PC is one device in Home Assistant, so one app talks to it and the others wait: the one in the session at the PC's screen, or, on a PC used over Remote Desktop only, the active session's. A switch of users hands the connection over within a few seconds, and the General page of a waiting app says that it waits. Settings saved in a waiting app reach the connected one when it starts next. The Windows service is not part of this: it runs once for the PC.
+
 What is at stake is named in the question itself: the MQTT password opens the whole broker, and the Home Assistant token can do whatever its user can. [Security and privacy](../getting-started/security.md) has the rest.

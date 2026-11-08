@@ -6,6 +6,7 @@ using System.Windows.Forms;
 using HASS.Agent.Companion.Configuration;
 using HASS.Agent.Companion.Localization;
 using HASS.Agent.Companion.Logging;
+using HASS.Agent.Companion.Media.Sendspin;
 using HASS.Agent.Companion.Mqtt;
 using HASS.Agent.Companion.Networking;
 using HASS.Agent.Companion.Runtime;
@@ -55,6 +56,7 @@ internal sealed class MainForm : Form
     private readonly ComboBox _haLangCombo = new() { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly Label _generalNotConfiguredError = new();
     private readonly Label _generalServiceWarning = new();
+    private readonly Label _generalOtherSessionInfo = new();
     private Control? _generalDeviceCard;
     private Control? _generalNetworkCard;
     private Control? _generalFilesCard;
@@ -98,6 +100,15 @@ internal sealed class MainForm : Form
     private readonly CheckBox _announceVolumeEnabled = new();
     private readonly NumericUpDown _announceVolume = new() { Minimum = 1, Maximum = 100, Increment = 5 };
     private readonly CheckBox _announcePausesMedia = new();
+    private readonly CheckBox _sendspinEnabled = new();
+    private readonly TextBox _sendspinName = new() { MaxLength = CompanionSettings.MaxSendspinNameLength };
+    private readonly ComboBox _sendspinDevice = new() { DropDownStyle = ComboBoxStyle.DropDownList };
+    private readonly RadioButton _sendspinFound = new();
+    private readonly RadioButton _sendspinConnect = new();
+    private readonly TextBox _sendspinServer = new() { PlaceholderText = "192.168.1.10" };
+    private readonly Label _sendspinState = new();
+    private readonly List<Control> _sendspinControls = [];
+    private SendspinPlayerService? _sendspinPlayer;
     private readonly Label _powerCommandsState = new();
     private readonly CheckBox _capSensorsService = new();
     private readonly CheckBox _capSensorsApp = new();
@@ -144,6 +155,29 @@ internal sealed class MainForm : Form
     [System.ComponentModel.Browsable(false)]
     [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
     public Func<(HaTokenUser? User, bool CanProvision)>? HaTokenProbe { get; set; }
+
+    /// <summary>Wired by TrayApplicationContext: the Sendspin player, whose status the Media player page shows.</summary>
+    [System.ComponentModel.Browsable(false)]
+    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+    public SendspinPlayerService? SendspinPlayer
+    {
+        get => _sendspinPlayer;
+        set
+        {
+            if (_sendspinPlayer is not null)
+            {
+                _sendspinPlayer.StatusChanged -= OnSendspinStatusChanged;
+            }
+
+            _sendspinPlayer = value;
+            if (value is not null)
+            {
+                value.StatusChanged += OnSendspinStatusChanged;
+            }
+
+            RefreshSendspinStatus();
+        }
+    }
 
     /// <summary>Wired by TrayApplicationContext: a Home Assistant user of this PC's own and its token.</summary>
     [System.ComponentModel.Browsable(false)]
@@ -221,6 +255,7 @@ internal sealed class MainForm : Form
 
         FormClosed += (_, _) =>
         {
+            SendspinPlayer = null;
             _debugTimer.Stop();
             _ = _liveMonitor?.StopAsync();
             _liveMonitor = null;
@@ -228,6 +263,9 @@ internal sealed class MainForm : Form
     }
 
     public void NavigateToPage(int index) => SelectPage(index);
+
+    /// <summary>The page shown, for a window opened again in its place.</summary>
+    public int CurrentPage { get; private set; }
 
     /// <summary>
     /// Set by the tray when the window is opened by a restart after a change of the connection
@@ -346,6 +384,7 @@ internal sealed class MainForm : Form
         }
         for (var i = 0; i < _pages.Count; i++)
             _pages[i].Visible = i == index;
+        CurrentPage = index;
     }
 
     // ── Bottom bar ─────────────────────────────────────────────────
@@ -392,8 +431,14 @@ internal sealed class MainForm : Form
             "⚠  " + S("General.ServiceNotInstalledWarning"),
             Color.FromArgb(255, 243, 224),
             Color.FromArgb(180, 60, 0));
+        ConfigureStatusLabel(
+            _generalOtherSessionInfo,
+            "ℹ  " + S("General.OtherSessionTalks"),
+            Color.FromArgb(227, 242, 253),
+            Color.FromArgb(13, 71, 161));
         page.Controls.Add(_generalNotConfiguredError);
         page.Controls.Add(_generalServiceWarning);
+        page.Controls.Add(_generalOtherSessionInfo);
         page.Layout += (_, _) => LayoutGeneralStatusMessages();
 
         var card1 = MakeCard(page, 28, 64, 720, 252, S("General.Device"));
@@ -931,7 +976,26 @@ internal sealed class MainForm : Form
     {
         _generalNotConfiguredError.Visible = !_settings.MqttEnabled && !_settings.HaApiEnabled;
         _generalServiceWarning.Visible = !IsServiceHealthy();
+        _generalOtherSessionInfo.Visible = SessionRole.WaitingForAnotherSession;
         LayoutGeneralStatusMessages();
+    }
+
+    /// <summary>From the tray, on any thread: the status lines of the General page again.</summary>
+    public void RefreshStatus()
+    {
+        if (IsDisposed || !IsHandleCreated)
+        {
+            return;
+        }
+
+        try
+        {
+            BeginInvoke(UpdateGeneralStatusMessages);
+        }
+        catch (InvalidOperationException)
+        {
+            // The window is closing.
+        }
     }
 
     private void UpdateServiceStatusMessage()
@@ -958,17 +1022,22 @@ internal sealed class MainForm : Form
     {
         var y = D(56);
         var statusWidth = _generalDeviceCard?.Width ?? D(720);
-        foreach (var label in new[] { _generalNotConfiguredError, _generalServiceWarning })
+        foreach (var label in new[] { _generalNotConfiguredError, _generalServiceWarning, _generalOtherSessionInfo })
         {
             if (!label.Visible)
             {
                 continue;
             }
 
+            // As tall as its text at this width: a longer translation wraps to a second line.
+            var textHeight = TextRenderer.MeasureText(
+                label.Text, label.Font, new Size(Math.Max(D(100), statusWidth - label.Padding.Horizontal), int.MaxValue),
+                TextFormatFlags.WordBreak).Height;
+            var height = Math.Max(D(34), textHeight + D(12));
             label.Location = new Point(D(28), y);
-            label.Size = new Size(statusWidth, D(34));
+            label.Size = new Size(statusWidth, height);
             label.BringToFront();
-            y += D(42);
+            y += height + D(8);
         }
 
         var firstCardTop = y == D(56) ? D(64) : y + D(8);
@@ -1369,7 +1438,219 @@ internal sealed class MainForm : Form
         card3.Controls.Add(_powerCommandsState);
         FollowCardWidth(card3, _powerCommandsState);
 
+        BuildSendspinCard(page, 722);
+
         return page;
+    }
+
+    // The PC as a Sendspin player of Music Assistant. What is set here applies on Save, like the
+    // rest of the window; the status line and the token buttons work right away.
+    private void BuildSendspinCard(Panel page, int top)
+    {
+        var card = MakeCard(page, 28, top, 600, 420, S("Mp.Sendspin"));
+        AddCardHelp(card, S("Mp.SendspinHelp"));
+        var y = 78;
+        y = AddCheck(card, _sendspinEnabled, S("Mp.SendspinEnable"), y);
+        _sendspinName.PlaceholderText = _settings.DeviceName;
+        y = AddField(card, S("Mp.SendspinName"), _sendspinName, y + 2, inputWidth: 300);
+        y = AddField(card, S("Mp.SendspinDevice"), _sendspinDevice, y, inputWidth: 300);
+        // A device plugged in since the window opened is in the list when it drops down.
+        _sendspinDevice.DropDown += (_, _) => FillSendspinDevices(_sendspinDevice.SelectedIndex > 0 ? Convert.ToString(_sendspinDevice.SelectedItem) : string.Empty);
+
+        y += 4;
+        foreach (var radio in new[] { _sendspinFound, _sendspinConnect })
+        {
+            radio.Text = radio == _sendspinFound ? S("Mp.SendspinFound") : S("Mp.SendspinConnect");
+            radio.Location = Pt(20, y);
+            radio.Size = Sz(560, 26);
+            radio.ForeColor = TextBody;
+            card.Controls.Add(radio);
+            FollowCardWidth(card, radio);
+            y += 28;
+        }
+
+        _sendspinServer.Location = Pt(44, y);
+        _sendspinServer.Size = Sz(300, 28);
+        card.Controls.Add(_sendspinServer);
+        y += 38;
+
+        // Three lines: what plays can be long, and the output's line below it must stay in view.
+        _sendspinState.Location = Pt(20, y);
+        _sendspinState.Size = Sz(560, 60);
+        _sendspinState.ForeColor = TextBody;
+        _sendspinState.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
+        _sendspinState.UseMnemonic = false;
+        _sendspinState.AutoEllipsis = true;
+        card.Controls.Add(_sendspinState);
+        FollowCardWidth(card, _sendspinState);
+        y += 64;
+
+        var copyToken = MakeSecondaryButton(S("Mp.SendspinCopyToken"), 180, 28);
+        copyToken.Location = Pt(20, y);
+        copyToken.Click += (_, _) => CopySendspinToken(rotate: false);
+        card.Controls.Add(copyToken);
+        var newToken = MakeSecondaryButton(S("Mp.SendspinNewToken"), 140, 28);
+        newToken.Location = new Point(copyToken.Right + D(8), D(y));
+        newToken.Click += (_, _) => CopySendspinToken(rotate: true);
+        card.Controls.Add(newToken);
+        y += 38;
+
+        var pairHelp = new Label
+        {
+            Text = S("Mp.SendspinPairHelp"), Location = Pt(20, y), Size = Sz(560, 50),
+            ForeColor = TextMuted, Font = new Font("Segoe UI", 8.5F), UseMnemonic = false
+        };
+        card.Controls.Add(pairHelp);
+        FollowCardWidth(card, pairHelp);
+        y += 56;
+        card.Height = D(y);
+
+        _sendspinControls.AddRange([_sendspinName, _sendspinDevice, _sendspinFound, _sendspinConnect, _sendspinServer]);
+        _sendspinEnabled.CheckedChanged += (_, _) => UpdateSendspinControls();
+        _sendspinConnect.CheckedChanged += (_, _) => UpdateSendspinControls();
+    }
+
+    private void UpdateSendspinControls()
+    {
+        foreach (var control in _sendspinControls)
+        {
+            control.Enabled = _sendspinEnabled.Checked;
+        }
+
+        _sendspinServer.Enabled = _sendspinEnabled.Checked && _sendspinConnect.Checked;
+    }
+
+    // The output devices there are now, the one in the settings too when it is not there (a TV
+    // switched off): choosing it again must not need the device to be on.
+    /// <param name="selected">The choice to keep, or null for the one in the settings; empty for the Windows default.</param>
+    private void FillSendspinDevices(string? selected = null)
+    {
+        _sendspinDevice.Items.Clear();
+        _sendspinDevice.Items.Add(S("Mp.SendspinDefaultDevice"));
+        var names = new List<string>();
+        try
+        {
+            using var enumerator = new NAudio.CoreAudioApi.MMDeviceEnumerator();
+            foreach (var device in enumerator.EnumerateAudioEndPoints(NAudio.CoreAudioApi.DataFlow.Render, NAudio.CoreAudioApi.DeviceState.Active))
+            {
+                names.Add(device.FriendlyName);
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.Debug($"Unable to list the audio outputs: {ex.Message}");
+        }
+
+        var saved = selected ?? _settings.SendspinOutputDevice;
+        if (!string.IsNullOrWhiteSpace(saved) && !names.Contains(saved, StringComparer.OrdinalIgnoreCase))
+        {
+            names.Add(saved);
+        }
+
+        foreach (var name in names.Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.CurrentCultureIgnoreCase))
+        {
+            _sendspinDevice.Items.Add(name);
+        }
+
+        var index = string.IsNullOrWhiteSpace(saved) ? 0 : _sendspinDevice.FindStringExact(saved);
+        _sendspinDevice.SelectedIndex = Math.Max(0, index);
+    }
+
+    private void OnSendspinStatusChanged(object? sender, EventArgs e)
+    {
+        if (IsDisposed || !IsHandleCreated)
+        {
+            return;
+        }
+
+        try
+        {
+            BeginInvoke(RefreshSendspinStatus);
+        }
+        catch (InvalidOperationException)
+        {
+            // The window is closing.
+        }
+    }
+
+    private void RefreshSendspinStatus()
+    {
+        var status = _sendspinPlayer?.Status ?? new SendspinStatus(SendspinState.Off);
+        _sendspinState.Text = SendspinStatusText(status);
+    }
+
+    internal static string SendspinStatusText(SendspinStatus status)
+    {
+        var server = string.IsNullOrWhiteSpace(status.ServerName) ? "Music Assistant" : status.ServerName;
+        var playing = string.Join(" \u2013 ", new[] { status.Title, status.Artist }.Where(t => !string.IsNullOrWhiteSpace(t)));
+        return status.State switch
+        {
+            SendspinState.Off => S("Mp.SendspinOff"),
+            SendspinState.Starting => S("Mp.SendspinStarting"),
+            SendspinState.WaitingForServer => S("Mp.SendspinWaiting"),
+            SendspinState.Connecting => S("Mp.SendspinConnecting"),
+            SendspinState.NeedsPairing => string.Format(S("Mp.SendspinNeedsPairing"), server),
+            SendspinState.Connected => string.Format(S("Mp.SendspinConnected"), server),
+            SendspinState.Playing => string.Format(S("Mp.SendspinPlaying"), playing.Length > 0 ? playing : server, status.Device ?? string.Empty),
+            SendspinState.NoOutputDevice => S("Mp.SendspinNoDevice"),
+            SendspinState.PortInUse => string.Format(S("Mp.SendspinPortInUse"), SendspinPlayerService.ListenPort),
+            SendspinState.ServerTooOld => S("Mp.SendspinTooOld"),
+            SendspinState.InvalidAddress => string.Format(S("Mp.SendspinBadAddress"), status.Detail ?? string.Empty),
+            SendspinState.NotAtConsole => S("Mp.SendspinNotConsole"),
+            SendspinState.ReadOnly => S("Mp.SendspinReadOnly"),
+            _ => string.Format(S("Mp.SendspinFailed"), status.Detail ?? string.Empty)
+        };
+    }
+
+    // One token action at a time: an older one finishing last would put its token on the clipboard.
+    private bool _tokenBusy;
+
+    private async void CopySendspinToken(bool rotate)
+    {
+        if (_tokenBusy)
+        {
+            return;
+        }
+
+        if (rotate && MessageBox.Show(S("Mp.SendspinNewTokenConfirm"), AppIdentity.DisplayName,
+                MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
+        {
+            return;
+        }
+
+        _tokenBusy = true;
+        try
+        {
+            var player = _sendspinPlayer ?? new SendspinPlayerService(_settings, _log);
+            // Off the UI thread: the token's lock may be another app's for up to five seconds.
+            string token;
+            UseWaitCursor = true;
+            try
+            {
+                token = await Task.Run(() => rotate ? player.RotatePairingToken() : player.GetPairingToken());
+            }
+            finally
+            {
+                UseWaitCursor = false;
+            }
+
+            if (IsDisposed)
+            {
+                return;
+            }
+
+            Clipboard.SetText(token);
+            MessageBox.Show(S("Mp.SendspinTokenCopied"), AppIdentity.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+        catch (Exception ex)
+        {
+            _log.Error(ex, "Sendspin: unable to make the pairing token.");
+            MessageBox.Show(string.Format(S("Mp.SendspinTokenFailed"), ex.Message), AppIdentity.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+        finally
+        {
+            _tokenBusy = false;
+        }
     }
 
     /// <summary>Which of sleep, hibernate and shutdown the media player's turn off may use on this PC, as ticked on Capabilities.</summary>
@@ -2930,9 +3211,10 @@ internal sealed class MainForm : Form
 
     private static void RestartApplication(bool openWindow = false)
     {
-        // The single-instance mutex is still held while this process exits,
-        // so relaunch after a short delay from a detached shell.
-        var arguments = openWindow ? " --open-window" : string.Empty;
+        // The single-instance mutex is still held while this process exits, so relaunch after a
+        // short delay from a detached shell; --await-exit has the new instance wait for this one
+        // to leave when the delay was not enough (a goodbye to Music Assistant takes a moment).
+        var arguments = (openWindow ? " --open-window" : string.Empty) + " --await-exit";
         Process.Start(new ProcessStartInfo
         {
             FileName = SystemTools.InSystem32("cmd.exe"),
@@ -2941,6 +3223,8 @@ internal sealed class MainForm : Form
             CreateNoWindow = true,
             UseShellExecute = false
         });
+        // Only once the launcher is on its way: an exit without it is no restart.
+        AppRestart.Pending = true;
         Application.Exit();
     }
 
@@ -3084,6 +3368,14 @@ internal sealed class MainForm : Form
         _announceVolume.Enabled = _settings.AnnouncementVolumeEnabled;
         _announcePausesMedia.Checked = _settings.AnnouncementPausesMedia;
         _announcePausesMedia.Enabled = _settings.AnnouncementVolumeEnabled;
+        _sendspinEnabled.Checked = _settings.SendspinEnabled;
+        _sendspinName.Text = _settings.SendspinPlayerName;
+        FillSendspinDevices();
+        _sendspinFound.Checked = !_settings.SendspinConnectToServer;
+        _sendspinConnect.Checked = _settings.SendspinConnectToServer;
+        _sendspinServer.Text = _settings.SendspinServerAddress;
+        UpdateSendspinControls();
+        RefreshSendspinStatus();
         _capSensorsService.Checked = _settings.MqttServiceSystemSensorsEnabled;
         _capSensorsApp.Checked = _settings.MqttSystemSensorsEnabled;
         // 5 s, or 1 s with the Danger Zone switch; the value is already at or above it.
@@ -3475,6 +3767,35 @@ internal sealed class MainForm : Form
 
     private async Task SaveSettingsAsync()
     {
+        bool langChanged;
+        bool newHaToken;
+        // Under the gate a handover's reload of the settings takes as well: the form's values
+        // and the file's are never written mixed.
+        lock (SettingsStore.Gate)
+        {
+            (langChanged, newHaToken) = WriteSettingsFromForm();
+        }
+
+        UpdateLocalApiControls();
+        SettingsSaved?.Invoke(this, EventArgs.Empty);
+        await ServiceApproval.RequestIfNeededAsync(this, _settings, _log);
+        UpdateGeneralStatusMessages();
+        UpdateServiceStatusMessage();
+
+        var msg = langChanged
+            ? $"{S("Msg.SettingsSaved")}\n\n{S("Msg.RestartRequired")}"
+            : S("Msg.SettingsSaved");
+        MessageBox.Show(msg, AppIdentity.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Information);
+
+        if (newHaToken)
+        {
+            await OfferAfterNewTokenAsync();
+        }
+    }
+
+    /// <summary>The form's values into the settings and the file. Caller holds <see cref="SettingsStore.Gate"/>.</summary>
+    private (bool LangChanged, bool NewHaToken) WriteSettingsFromForm()
+    {
         _settings.DeviceName = _deviceName.Text.Trim();
         _settings.LocalApiEnabled = _localApiEnabled.Checked;
         _settings.BindHost = _bindHost.Text.Trim();
@@ -3521,6 +3842,11 @@ internal sealed class MainForm : Form
         _settings.AnnouncementVolumeEnabled = _announceVolumeEnabled.Checked;
         _settings.AnnouncementVolume = (int)_announceVolume.Value;
         _settings.AnnouncementPausesMedia = _announcePausesMedia.Checked;
+        _settings.SendspinEnabled = _sendspinEnabled.Checked;
+        _settings.SendspinPlayerName = _sendspinName.Text.Trim();
+        _settings.SendspinOutputDevice = _sendspinDevice.SelectedIndex > 0 ? Convert.ToString(_sendspinDevice.SelectedItem) ?? string.Empty : string.Empty;
+        _settings.SendspinConnectToServer = _sendspinConnect.Checked;
+        _settings.SendspinServerAddress = _sendspinServer.Text.Trim();
         _settings.MqttServiceSystemSensorsEnabled = _capSensorsService.Checked;
         _settings.MqttSystemSensorsEnabled = _capSensorsApp.Checked;
         _settings.FastSensorIntervalSeconds = (int)_fastSensorInterval.Value;
@@ -3618,21 +3944,7 @@ internal sealed class MainForm : Form
             || customCommands.Any(command => command.Enabled);
 
         SettingsStore.Save(_paths, _settings);
-        UpdateLocalApiControls();
-        SettingsSaved?.Invoke(this, EventArgs.Empty);
-        await ServiceApproval.RequestIfNeededAsync(this, _settings, _log);
-        UpdateGeneralStatusMessages();
-        UpdateServiceStatusMessage();
-
-        var msg = langChanged
-            ? $"{S("Msg.SettingsSaved")}\n\n{S("Msg.RestartRequired")}"
-            : S("Msg.SettingsSaved");
-        MessageBox.Show(msg, AppIdentity.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Information);
-
-        if (newHaToken)
-        {
-            await OfferAfterNewTokenAsync();
-        }
+        return (langChanged, newHaToken);
     }
 
     /// <summary>

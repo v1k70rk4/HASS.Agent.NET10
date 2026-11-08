@@ -1,4 +1,8 @@
+using System.Diagnostics;
+using System.Security.Principal;
+using HASS.Agent.Companion.Runtime;
 using HASS.Agent.Companion.Configuration;
+using HASS.Agent.Companion.Logging;
 using HASS.Agent.Companion.Media;
 using System.Text.Json;
 using HASS.Agent.Companion.SystemStatus;
@@ -208,7 +212,167 @@ public class UserSessionTests
     public void A_disconnected_session_is_the_last_resort()
     {
         Assert.Equal(0, SystemMetricsService.ChooseUserSession([(2, "disconnected")], consoleId: 1));
+    }
+
+    [Fact]
+    public void A_reload_brings_another_app_s_saved_settings_into_the_instance_in_use()
+    {
+        // The app that takes the connection over at a user switch reads the file again: the
+        // app that talked until then may have saved other connection settings.
+        var folder = Directory.CreateTempSubdirectory("hass-agent-reload-").FullName;
+        try
+        {
+            var paths = new AppPaths(folder, Path.Combine(folder, "settings.json"), Path.Combine(folder, "log.txt"), Path.Combine(folder, "device-id"), []);
+            var log = new FileLog(paths.LogFile);
+            SettingsStore.Save(paths, new CompanionSettings
+            {
+                MqttHost = "broker.new", MqttPort = 8883, MqttUseTls = true, LocalApiEnabled = true, Port = 5200, SendspinEnabled = true
+            });
+
+            var inUse = new CompanionSettings { MqttHost = "broker.old", MqttPort = 1883, LocalApiEnabled = false, Port = 5115 };
+            Assert.Equal(SettingsReload.Changed, SettingsStore.ReloadInto(paths, inUse, log));
+
+            Assert.Equal("broker.new", inUse.MqttHost);
+            Assert.Equal(8883, inUse.MqttPort);
+            Assert.True(inUse.MqttUseTls);
+            Assert.True(inUse.LocalApiEnabled);
+            Assert.Equal(5200, inUse.Port);
+            Assert.True(inUse.SendspinEnabled);
+            // Nothing new in the file: no reload to open the settings window again for.
+            Assert.Equal(SettingsReload.Unchanged, SettingsStore.ReloadInto(paths, inUse, log));
+
+            // A file that cannot be read is told apart from one with nothing new, and leaves the
+            // instance as it is: the handover tries it again.
+            using (new FileStream(paths.SettingsFile, FileMode.Open, FileAccess.Read, FileShare.None))
+            {
+                Assert.Equal(SettingsReload.Failed, SettingsStore.ReloadInto(paths, inUse, log));
+            }
+
+            Assert.Equal("broker.new", inUse.MqttHost);
+        }
+        finally
+        {
+            try { Directory.Delete(folder, recursive: true); } catch { }
+        }
+    }
+
+    [Fact]
+    public void One_tray_app_of_the_pc_talks_to_home_assistant()
+    {
+        // The console's session stands for the PC when it runs a tray app, final.
+        var election = SystemMetricsService.ElectAmong([(1, "active"), (5, "active")], consoleId: 1, sessionsWithApp: new HashSet<uint> { 1, 5 });
+        Assert.Equal(new SessionElection(1, Provisional: false), election);
+        Assert.True(SessionRole.Decide(election, current: 1, new HashSet<uint> { 1, 5 }).Talks);
+        Assert.False(SessionRole.Decide(election, current: 5, new HashSet<uint> { 1, 5 }).Talks);
+
+        // Nothing known about which apps run: the sessions alone decide, final.
+        Assert.Equal(new SessionElection(1, Provisional: false), SystemMetricsService.ElectAmong([(1, "active"), (5, "active")], consoleId: 1, sessionsWithApp: new HashSet<uint>()));
+
+        // The console's user has no app (may not use the settings): the one that has talks, provisionally.
+        var fallback = SystemMetricsService.ElectAmong([(1, "active"), (5, "disconnected"), (6, "active")], consoleId: 1, sessionsWithApp: new HashSet<uint> { 5, 6 });
+        Assert.Equal(new SessionElection(6, Provisional: true), fallback);
+
+        // Windows could not list the sessions: the lowest session with an app talks; with no list of those either, every app does.
+        Assert.True(SessionRole.Decide(null, current: 7, new HashSet<uint> { 7, 9 }).Talks);
+        Assert.False(SessionRole.Decide(null, current: 9, new HashSet<uint> { 7, 9 }).Talks);
+        Assert.True(SessionRole.Decide(null, current: 9, new HashSet<uint>()).Talks);
+        Assert.True(SessionRole.Decide(null, current: 9, new HashSet<uint>()).Provisional);
+
+        // Two apps that both see each other's session agree on one of them, whichever asks.
+        var seen = new HashSet<uint> { 4, 11 };
+        Assert.True(SessionRole.Decide(null, current: 4, seen).Talks);
+        Assert.False(SessionRole.Decide(null, current: 11, seen).Talks);
+        // An app that knows only its own session (the list always holds it) talks: it is alone as far as it can tell.
+        Assert.True(SessionRole.Decide(null, current: 11, new HashSet<uint> { 11 }).Talks);
         Assert.Equal(-1, SystemMetricsService.ChooseUserSession([], consoleId: 1));
+    }
+
+    [Fact]
+    public void A_provisional_claim_connects_only_with_the_turn_in_hand()
+    {
+        // Two apps that each see only themselves both claim the connection provisionally; the
+        // PC's one turn decides, and an app that cannot tell whose turn it is waits.
+        var provisional = new SessionVerdict(Talks: true, Provisional: true);
+        Assert.True(SessionRole.MayConnect(provisional, turnTaken: true));
+        Assert.False(SessionRole.MayConnect(provisional, turnTaken: false));
+        // A final verdict (the sessions named this one) connects even when the turn cannot be told.
+        var final = new SessionVerdict(Talks: true, Provisional: false);
+        Assert.True(SessionRole.MayConnect(final, turnTaken: false));
+        // Denied twice in a row (an app that hangs with the turn, or a hand on the name that is
+        // no app's): the third time it connects all the same, rather than stay out for good.
+        Assert.False(SessionRole.MayConnect(provisional, turnTaken: false, deniedBefore: 1));
+        Assert.True(SessionRole.MayConnect(provisional, turnTaken: false, deniedBefore: 2));
+    }
+
+    [Fact]
+    public void The_leave_of_a_restart_stays_under_what_the_new_instance_waits()
+    {
+        // The new instance waits on the mutex for the old one to leave; every bounded step of
+        // the leave (the player's goodbye, the connection's stop) adds up to less than that.
+        Assert.True(AppRestart.PlayerLeaveTimeout + AppRestart.ConnectionLeaveTimeout + AppRestart.RoleLeaveTimeout < AppRestart.WaitForTheOneBefore);
+        // The rest of a bound already spent is zero, never a negative wait (which a wait refuses).
+        Assert.Equal(TimeSpan.Zero, Program.Remaining(TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(6)));
+        Assert.Equal(TimeSpan.FromSeconds(2), Program.Remaining(TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(3)));
+    }
+
+    [Fact]
+    public void A_wait_for_the_turn_is_called_off_when_the_app_leaves()
+    {
+        // One app holds the turn; another, waiting for it, is told to leave: its wait ends at
+        // once with no turn (not after the 15 s it would give the holder), so nothing of it
+        // connects into the shutdown. The turn, let go later, is free for the next app.
+        var folder = Directory.CreateTempSubdirectory("hass-agent-turn-").FullName;
+        try
+        {
+            var log = new FileLog(Path.Combine(folder, "log.txt"));
+            var names = $".test-{Guid.NewGuid():N}";
+            using var holder = new HomeAssistantLink(folder, log, names);
+            using var waiter = new HomeAssistantLink(folder, log, names);
+            Assert.True(holder.Take(TestContext.Current.CancellationToken));
+
+            using var leaving = new CancellationTokenSource();
+            leaving.CancelAfter(200);
+            var watch = Stopwatch.StartNew();
+            Assert.False(waiter.Take(leaving.Token));
+            Assert.True(watch.Elapsed < TimeSpan.FromSeconds(5), $"the wait took {watch.Elapsed}");
+            // Already leaving: no wait at all.
+            Assert.False(waiter.Take(leaving.Token));
+
+            holder.LetGo();
+            Assert.True(waiter.Take(TestContext.Current.CancellationToken));
+        }
+        finally
+        {
+            try { Directory.Delete(folder, recursive: true); } catch { }
+        }
+    }
+
+    [Fact]
+    public void The_handover_is_open_to_those_who_may_use_the_settings()
+    {
+        // The handover's named objects carry the settings folder's rule (who may use the app on
+        // this PC); with no folder to read, every signed-in user may take part. An app marks its
+        // session as one that runs the app, for the election; a session without the mark runs none.
+        var folder = Directory.CreateTempSubdirectory("hass-agent-link-").FullName;
+        try
+        {
+            Assert.NotEmpty(HomeAssistantLink.Participants(folder));
+            var fallback = HomeAssistantLink.Participants(Path.Combine(folder, "missing"));
+            Assert.Single(fallback);
+            Assert.Equal(new SecurityIdentifier(WellKnownSidType.AuthenticatedUserSid, null), fallback[0]);
+
+            var log = new FileLog(Path.Combine(folder, "log.txt"));
+            using (new SessionPresence(folder, log))
+            {
+                Assert.True(SessionPresence.Exists((uint)Process.GetCurrentProcess().SessionId));
+            }
+
+            Assert.False(SessionPresence.Exists(uint.MaxValue - 7));
+        }
+        finally
+        {
+            try { Directory.Delete(folder, recursive: true); } catch { }
+        }
     }
 }
 

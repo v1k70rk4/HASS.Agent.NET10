@@ -9,6 +9,7 @@ description: Everything HASS.Agent .NET10 does for a Windows PC in Home Assistan
 |---|---|---|
 | **Notifications** | Home Assistant notifications as Windows notifications or in the app's own always-visible window, with pictures, buttons and text fields; what is pressed and typed comes back to Home Assistant as an event. | [Notifications](notifications.md) |
 | **Media player** | The active Windows media session as a `media_player`: title, play / pause, skip, seek, volume, cover art, TTS and announcements that are heard on a muted PC. | [Media player](media-player.md) |
+| **Sendspin player** | The PC as a player of Music Assistant, in sync with the other players of its group. | [Sendspin player](media-player.md#sendspin-player-music-assistant) |
 | **Sensors** | Built-in system sensors (CPU, memory, drives, network, battery, session, GPU, drive health, camera and microphone in use, and more), each with its own polling profile. | [Sensors](../sensors/index.md) |
 | **Custom sensors** | Your own: a process, a service, a drive, an attribute of a built-in sensor, the output of a command or script, a LibreHardwareMonitor value. | [Custom sensors](../sensors/custom.md) |
 | **System commands** | Lock, sleep, monitor off, volume, shutdown, restart as buttons and an action; hibernate and log off (off by default). | [System commands](../commands/index.md) |
@@ -30,7 +31,7 @@ A click on the tray icon opens the settings window; the tray menu also has the d
 - **General**: the device name Home Assistant shows, the local HTTP API (off by default) with its address, port and API key, the UI language and the language of the entity names in Home Assistant (English, Hungarian, German, Simplified Chinese or Russian), start on login, the notification at startup, the settings and log folder, and the **Danger Zone** switch.
 - **MQTT** and **HA API**: the two connections, each with a connection test. [Connection modes](../connection/index.md)
 - **Capabilities**: which role, the tray app or the service, handles each feature and each system command; the notification style and the custom name; the dashboard popup; the custom commands; the hotkeys; the polling intervals. [Windows service](windows-service.md)
-- **Media player**: the media player entity, the cover art, the announcements. [Media player](media-player.md)
+- **Media player**: the media player entity, the cover art, the announcements, the Sendspin player of Music Assistant. [Media player](media-player.md)
 - **Sensors**: the built-in sensors with their roles and profiles, and the custom sensors. [Sensors](../sensors/index.md)
 - **Service**: install, start, stop and uninstall the Windows service. [Windows service](windows-service.md)
 - **About**: the installed version, the update check, the links. [Updates](updates.md)

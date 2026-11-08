@@ -4,6 +4,7 @@ using System.Windows.Forms;
 using HASS.Agent.Companion.Configuration;
 using HASS.Agent.Companion.Http;
 using HASS.Agent.Companion.Logging;
+using HASS.Agent.Companion.Media.Sendspin;
 using HASS.Agent.Companion.Mqtt;
 using HASS.Agent.Companion.Networking;
 using HASS.Agent.Companion.Localization;
@@ -37,6 +38,53 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
 
     /// <summary>A hotkey from the settings was pressed.</summary>
     public event EventHandler<HotkeyDefinition>? HotkeyPressed;
+
+    /// <summary>The session that stands for the PC changed: the General page shows whether this app waits.</summary>
+    public void RefreshSessionRole()
+    {
+        if (_mainForm is { IsDisposed: false } form)
+        {
+            form.RefreshStatus();
+        }
+    }
+
+    /// <summary>
+    /// Another user's app saved other settings, and this one took them over at a handover: a
+    /// settings window open here shows the old ones, with edits not saved yet, maybe. The user
+    /// chooses: the window opened again on its page with the new ones (the edits gone), or kept
+    /// as it is, in which case a Save writes what it shows over the other user's. Nothing is
+    /// discarded before they chose; the question is modal, so no Save runs meanwhile.
+    /// </summary>
+    public void SettingsReloaded()
+    {
+        if (_uiInvoker.IsDisposed)
+        {
+            return;
+        }
+
+        _uiInvoker.BeginInvoke(() =>
+        {
+            // The hotkeys and the menu follow the settings taken over, window or not.
+            ApplyTraySettings();
+            if (_mainForm is not { IsDisposed: false } form)
+            {
+                return;
+            }
+
+            var load = MessageBox.Show(form, Strings.Get("General.SettingsReloaded"), AppIdentity.DisplayName, MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes;
+            if (!load || form.IsDisposed)
+            {
+                return;
+            }
+
+            var page = form.CurrentPage;
+            form.Close();
+            OpenMainForm(page);
+        });
+    }
+
+    /// <summary>Set by Program: the Sendspin player, for its status and pairing token on the Media player page.</summary>
+    public SendspinPlayerService? SendspinPlayer { get; set; }
 
     /// <summary>Set by Program to the MQTT service's discovery republish. Used by the Danger Zone.</summary>
     public Func<Task<bool>>? DiscoveryRepublishHandler { get; set; }
@@ -327,19 +375,25 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
         _mainForm.DashboardPreviewHandler = ShowDashboard;
         _mainForm.HaTokenProbe = () => HaTokenProbe?.Invoke() ?? (null, false);
         _mainForm.HaUserProvisioner = HaUserProvisioner;
+        _mainForm.SendspinPlayer = SendspinPlayer;
         _mainForm.SettingsSaved += (_, _) =>
         {
-            _hotkeys.Apply(_settings.Hotkeys);
-            ApplyNotificationName();
-            if (_copyUrlItem is not null)
-            {
-                _copyUrlItem.Visible = _settings.LocalApiEnabled;
-            }
-
+            ApplyTraySettings();
             SettingsSaved?.Invoke(this, EventArgs.Empty);
         };
         _mainForm.FormClosed += (_, _) => _mainForm = null;
         _mainForm.Show();
+    }
+
+    /// <summary>What of the settings the tray itself uses: the hotkeys, the notifications' name, the menu. UI thread.</summary>
+    private void ApplyTraySettings()
+    {
+        _hotkeys.Apply(_settings.Hotkeys);
+        ApplyNotificationName();
+        if (_copyUrlItem is not null)
+        {
+            _copyUrlItem.Visible = _settings.LocalApiEnabled;
+        }
     }
 
     /// <summary>The dashboard popup above the tray: opens it, or closes the one that is open.</summary>

@@ -15,12 +15,15 @@ namespace HASS.Agent.Companion.Security;
 /// </summary>
 internal static class SafeFiles
 {
-    public static void AppendAllText(string path, string text) => Write(path, text, append: true);
+    public static void AppendAllText(string path, string text) => Write(path, Encoding.UTF8.GetBytes(text), append: true);
 
     /// <summary>The whole file, UTF-8 without a byte order mark, as File.WriteAllText writes it.</summary>
-    public static void WriteAllText(string path, string text) => Write(path, text, append: false);
+    public static void WriteAllText(string path, string text) => Write(path, Encoding.UTF8.GetBytes(text), append: false);
 
-    private static void Write(string path, string text, bool append)
+    /// <summary>The whole file, as File.WriteAllBytes writes it.</summary>
+    public static void WriteAllBytes(string path, byte[] bytes) => Write(path, bytes, append: false);
+
+    private static void Write(string path, byte[] bytes, bool append)
     {
         using var handle = OpenOwnFile(path, append);
         if (!append && (!SetFilePointerEx(handle, 0, IntPtr.Zero, FileBegin) || !SetEndOfFile(handle)))
@@ -28,7 +31,6 @@ internal static class SafeFiles
             throw new Win32Exception(Marshal.GetLastWin32Error(), $"{path} could not be truncated");
         }
 
-        var bytes = Encoding.UTF8.GetBytes(text);
         var offset = 0;
         while (offset < bytes.Length)
         {

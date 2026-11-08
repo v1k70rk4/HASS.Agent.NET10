@@ -2,6 +2,7 @@ using HASS.Agent.Companion.Configuration;
 using HASS.Agent.Companion.Http;
 using HASS.Agent.Companion.Logging;
 using HASS.Agent.Companion.Media;
+using HASS.Agent.Companion.Media.Sendspin;
 using HASS.Agent.Companion.Mqtt;
 using HASS.Agent.Companion.Networking;
 using HASS.Agent.Companion.Runtime;
@@ -89,6 +90,13 @@ internal static class Program
         var kiosk = KioskMode.AppliesToCurrentUser();
 
         using var mutex = new Mutex(initiallyOwned: true, MutexName, out var isFirstInstance);
+        if (!isFirstInstance && args.Any(arg => string.Equals(arg, "--await-exit", StringComparison.OrdinalIgnoreCase)))
+        {
+            // Started by the app's own restart: the one before may still be saying goodbye to
+            // Music Assistant. Its place is taken when it has left, not given up.
+            isFirstInstance = WaitForTheOneBefore(mutex);
+        }
+
         if (!isFirstInstance)
         {
             // --quiet: relaunch watchdogs may race an already-restarted instance.
@@ -110,10 +118,16 @@ internal static class Program
             return;
         }
 
+        // --exit comes from Setup and from the deploy of a build, which start the app again:
+        // the Sendspin player then says it is coming back, and keeps its place in its group.
         using var exitEvent = new EventWaitHandle(false, EventResetMode.AutoReset, ExitEventName);
         var exitRegistration = ThreadPool.RegisterWaitForSingleObject(
             exitEvent,
-            (_, _) => Application.Exit(),
+            (_, _) =>
+            {
+                AppRestart.Pending = true;
+                Application.Exit();
+            },
             state: null,
             Timeout.InfiniteTimeSpan,
             executeOnlyOnce: false);
@@ -214,6 +228,11 @@ internal static class Program
         using var sessionPowerWatcher = new SessionPowerWatcher();
         using var audioEndpointService = new AudioEndpointService(log);
         using var mediaSessionService = new MediaSessionService(log, audioEndpointService, settings);
+        // The Sendspin player of Music Assistant: off unless turned on, tray app only, and only in
+        // the session at the PC's screen; it reads its settings again when that session changes.
+        var sendspinPlayer = new SendspinPlayerService(settings, log, paths.SettingsFile);
+        mediaSessionService.AnnouncementActiveChanged += (_, active) => sendspinPlayer.SetAnnouncementActive(active);
+        trayContext.SendspinPlayer = sendspinPlayer;
         using var systemMetricsService = new SystemMetricsService(log, monitorPowerStateService, audioEndpointService);
         using var systemCommandService = new SystemCommandService(log, audioEndpointService);
         using var mqttService = new MqttCompanionService(
@@ -225,11 +244,270 @@ internal static class Program
             CompanionRuntimeRole.App,
             log);
         using var localApi = new LocalApiServer(settings, trayContext, log);
+        using var link = new HomeAssistantLink(paths.ConfigDirectory, log);
+        using var presence = new SessionPresence(paths.ConfigDirectory, log);
+        // Set at exit: a handover under way then (a wait for the other app's turn) is called off,
+        // and does not start the connection into a shutdown.
+        using var exiting = new CancellationTokenSource();
+
+        // One tray app of the PC talks to Home Assistant: the one in the session that stands for
+        // the PC (SessionRole). Another user's app waits, and takes over on a switch of users.
+        // Everything that starts or stops the connection runs under linkLock, and reads the
+        // role inside it: a save just before a switch must not reconnect an app that has just
+        // given the connection up.
+        var linked = false;
+        var linkLock = new SemaphoreSlim(1, 1);
+        var recheckArmed = 0;
+        var turnDenied = 0;
+        async Task ApplySessionRoleAsync(bool startup)
+        {
+            await linkLock.WaitAsync();
+            try
+            {
+                var verdict = SessionRole.Evaluate();
+                SessionRole.WaitingForAnotherSession = !verdict.Talks;
+                trayContext.RefreshSessionRole();
+                if (verdict.Provisional || !verdict.Talks)
+                {
+                    // Decided by which apps run (the console's user has none, or the sessions
+                    // could not be listed): asked again, the app at the console may be starting.
+                    // Waiting: asked again too, the app that talks may be closed by hand, with
+                    // no switch of users to tell of it, and this one takes over then.
+                    ArmRoleRecheck();
+                }
+
+                if (!verdict.Talks)
+                {
+                    if (startup || linked)
+                    {
+                        log.Info("Another user's session stands for this PC; its app talks to Home Assistant, this one waits.");
+                    }
+
+                    if (linked)
+                    {
+                        linked = false;
+                        await mqttService.StopAsync();
+                        await localApi.StopAsync();
+                        // Stopped: the app that takes over may connect now.
+                        link.LetGo();
+                    }
+
+                    return;
+                }
+
+                if (linked)
+                {
+                    return;
+                }
+
+                linked = true;
+                if (!startup)
+                {
+                    log.Info("This session stands for the PC now: connecting to Home Assistant.");
+                    // The app that talked until now may have saved other connection settings;
+                    // a settings window open here shows the old ones, and is opened again. A file
+                    // that cannot be read this moment (the other app writing it) is tried again
+                    // a few times before this one connects with what it has.
+                    var reload = SettingsStore.ReloadInto(paths, settings, log);
+                    for (var attempt = 1; reload == SettingsReload.Failed && attempt <= 4 && !exiting.IsCancellationRequested; attempt++)
+                    {
+                        await Task.Delay(TimeSpan.FromSeconds(1));
+                        reload = SettingsStore.ReloadInto(paths, settings, log);
+                    }
+
+                    if (reload == SettingsReload.Changed)
+                    {
+                        trayContext.SettingsReloaded();
+                        // The player read the file itself at the switch; a read of its own that
+                        // failed then is made good here (applying unchanged settings does nothing).
+                        _ = Task.Run(() => ApplySendspinAsync(sendspinPlayer, log));
+                    }
+                    else if (reload == SettingsReload.Failed)
+                    {
+                        log.Warning("Connecting with the settings this app had: the file could not be read again.");
+                    }
+                }
+
+                // The app that talked until now is told to ask again (it may not know yet that
+                // this session stands for the PC), and this one waits for it to stop and let
+                // go, so the broker never sees the two at once.
+                link.Signal();
+                var turnTaken = await Task.Run(() => link.Take(exiting.Token));
+                if (exiting.IsCancellationRequested)
+                {
+                    // The app is on its way out: nothing starts now, and a turn just got goes back.
+                    link.LetGo();
+                    linked = false;
+                    return;
+                }
+
+                if (!SessionRole.Evaluate().Talks)
+                {
+                    // The users switched while this app waited for the turn (got or not): another
+                    // session stands for the PC now. A turn got goes back, and that session's app takes it.
+                    link.LetGo();
+                    linked = false;
+                    SessionRole.WaitingForAnotherSession = true;
+                    trayContext.RefreshSessionRole();
+                    log.Info("Another user's session stands for this PC now; this one waits.");
+                    return;
+                }
+
+                if (!SessionRole.MayConnect(verdict, turnTaken, turnDenied))
+                {
+                    // A claim made on which apps run (the sessions unknown), and the turn not
+                    // this app's (another holds it, or there is no telling): this one waits and
+                    // asks again later, a few times.
+                    turnDenied++;
+                    log.Info("Another app of this PC may hold the connection; this one waits.");
+                    linked = false;
+                    SessionRole.WaitingForAnotherSession = true;
+                    trayContext.RefreshSessionRole();
+                    return;
+                }
+
+                if (!turnTaken)
+                {
+                    log.Warning("The connection's turn was not to be had; connecting all the same.");
+                }
+
+                turnDenied = 0;
+                mqttService.Start();
+                await StartLocalApiAsync(startup);
+            }
+            finally
+            {
+                linkLock.Release();
+            }
+        }
+
+        // Caller holds linkLock. At a handover the port may still be the other session's for a
+        // moment: it is tried again, as long as this session is the one that talks.
+        async Task StartLocalApiAsync(bool startup)
+        {
+            if (!settings.LocalApiEnabled)
+            {
+                if (startup)
+                {
+                    log.Info("Local API is off.");
+                }
+
+                return;
+            }
+
+            try
+            {
+                await localApi.StartAsync();
+                log.Info($"Local API listening on {settings.ListenUrl}.");
+            }
+            catch (Exception ex)
+            {
+                // At startup as well: the app of a user who just left may hold the port for a
+                // moment. The retries report the failure when the last of them fails too.
+                log.Warning($"Unable to start the Local API yet, trying again: {ex.Message}");
+                _ = Task.Run(RetryLocalApiAsync);
+            }
+        }
+
+        async Task RetryLocalApiAsync()
+        {
+            for (var attempt = 1; attempt <= 12; attempt++)
+            {
+                try
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(5), exiting.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
+
+                await linkLock.WaitAsync();
+                try
+                {
+                    // Not once the app is leaving: the stop at exit takes the lock after setting
+                    // exiting, so a retry either ran before it or sees it here.
+                    if (exiting.IsCancellationRequested || !linked || localApi.IsRunning || !settings.LocalApiEnabled)
+                    {
+                        return;
+                    }
+
+                    try
+                    {
+                        await localApi.StartAsync();
+                        log.Info($"Local API listening on {settings.ListenUrl}.");
+                        return;
+                    }
+                    catch (Exception ex) when (attempt < 12)
+                    {
+                        log.Debug($"Local API still not available: {ex.Message}");
+                    }
+                    catch (Exception ex)
+                    {
+                        log.Error(ex, "Unable to start Local API.");
+                        trayContext.ShowStartupError(ex);
+                        return;
+                    }
+                }
+                finally
+                {
+                    linkLock.Release();
+                }
+            }
+        }
+
+        void ArmRoleRecheck()
+        {
+            if (Interlocked.Exchange(ref recheckArmed, 1) == 1)
+            {
+                return;
+            }
+
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(TimeSpan.FromSeconds(30));
+                Interlocked.Exchange(ref recheckArmed, 0);
+                try
+                {
+                    await ApplySessionRoleAsync(startup: false);
+                }
+                catch (Exception ex)
+                {
+                    log.Error(ex, "Unable to ask again which session stands for the PC.");
+                }
+            });
+        }
 
         // Event-driven sensor pushes: interactive state changes publish immediately
         // instead of waiting for the next poll (monitor power, session lock, AC/battery).
         monitorPowerStateService.StateChanged += (_, _) => mqttService.TriggerPushUpdate();
-        sessionPowerWatcher.StateChanged += (_, _) => mqttService.TriggerPushUpdate();
+        link.RoleChangeSignaled += (_, _) => _ = Task.Run(async () =>
+        {
+            try
+            {
+                await ApplySessionRoleAsync(startup: false);
+            }
+            catch (Exception ex)
+            {
+                log.Error(ex, "Unable to ask again which session stands for the PC.");
+            }
+        });
+        sessionPowerWatcher.StateChanged += (_, _) =>
+        {
+            mqttService.TriggerPushUpdate();
+            // A user switched, signed in or out: the session that stands for the PC may have changed.
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await ApplySessionRoleAsync(startup: false);
+                }
+                catch (Exception ex)
+                {
+                    log.Error(ex, "Unable to follow the change of sessions.");
+                }
+            });
+        };
         audioEndpointService.StateChanged += (_, _) => mqttService.TriggerPushUpdate();
 
         trayContext.NotificationActionRequested += (_, args) =>
@@ -241,17 +519,33 @@ internal static class Program
         trayContext.SettingsSaved += (_, _) =>
         {
             log.Info("Settings saved from UI.");
-            _ = Task.Run(() => mqttService.RestartAsync());
+            _ = Task.Run(() => ApplySendspinAsync(sendspinPlayer, log));
             _ = Task.Run(async () =>
             {
+                await linkLock.WaitAsync();
                 try
                 {
-                    await localApi.ApplySettingsAsync();
+                    if (!linked)
+                    {
+                        // The saved file reaches the app that talks when it starts next.
+                        log.Info("This session's app is waiting; the saved settings reach the connected one when it starts next.");
+                        return;
+                    }
+
+                    await mqttService.RestartAsync();
+                    try
+                    {
+                        await localApi.ApplySettingsAsync();
+                    }
+                    catch (Exception ex)
+                    {
+                        log.Error(ex, "Unable to start Local API.");
+                        trayContext.ShowStartupError(ex);
+                    }
                 }
-                catch (Exception ex)
+                finally
                 {
-                    log.Error(ex, "Unable to start Local API.");
-                    trayContext.ShowStartupError(ex);
+                    linkLock.Release();
                 }
             });
         };
@@ -260,30 +554,14 @@ internal static class Program
         trayContext.HaUserProvisioner = mqttService.ProvisionHaUserAsync;
         trayContext.UpdateStateHandler = mqttService.ReportUpdateStateAsync;
 
-        if (settings.LocalApiEnabled)
-        {
-            try
-            {
-                localApi.StartAsync().GetAwaiter().GetResult();
-                log.Info($"Local API listening on {settings.ListenUrl}.");
-            }
-            catch (Exception ex)
-            {
-                log.Error(ex, "Unable to start Local API.");
-                trayContext.ShowStartupError(ex);
-            }
-        }
-        else
-        {
-            log.Info("Local API is off.");
-        }
-
         // Detect a completed update: the previous run was a different version. The record is
         // the PC's (LastRunRecord), which every user can write, a kiosk user too; the one in the
         // settings is where versions before it kept it. A running service reports the update
         // and writes the record itself: it has every right, this app may have few.
+        // A waiting app (another user's session stands for the PC) leaves this to the app that
+        // talks, or to the service: a notice queued here would never be sent.
         var lastRun = LastRunRecord.Read() ?? settings.LastRunVersion;
-        if (lastRun != settings.SoftwareVersion)
+        if (lastRun != settings.SoftwareVersion && SessionRole.ThisSessionTalks())
         {
             // With nothing recorded yet (a first install) there is no update to report, and
             // the service records nothing then: the version is recorded here.
@@ -315,7 +593,23 @@ internal static class Program
             log.Warning($"Unable to remove the installer's old update note: {ex.Message}");
         }
 
-        mqttService.Start();
+        // Off the main thread and not waited for: the wait for another app's turn (up to 15 s)
+        // must not hold the message loop, nor the window asked for at start. Waited for at exit,
+        // bounded, so that the stop finds the start done. The status it refreshes goes through
+        // BeginInvoke.
+        var roleAtStart = Task.Run(async () =>
+        {
+            try
+            {
+                await ApplySessionRoleAsync(startup: true);
+            }
+            catch (Exception ex)
+            {
+                log.Error(ex, "Unable to start the connection to Home Assistant.");
+                trayContext.ShowStartupError(ex);
+            }
+        });
+        _ = Task.Run(() => ApplySendspinAsync(sendspinPlayer, log));
 
         if (!settings.MqttEnabled && !settings.HaApiEnabled)
         {
@@ -342,17 +636,91 @@ internal static class Program
         Application.Run(trayContext);
         exitRegistration.Unregister(null);
 
-        mqttService.StopAsync().GetAwaiter().GetResult();
-        localApi.StopAsync().GetAwaiter().GetResult();
+        // Nothing starts the connection from here: a handover or a retry of the Local API under
+        // way sees exiting, and the lock they run under is taken, within one bound, so that the
+        // stop below comes after the last of them. Not given back: the app is leaving.
+        exiting.Cancel();
+        var leaveWatch = System.Diagnostics.Stopwatch.StartNew();
+        if (!roleAtStart.Wait(AppRestart.RoleLeaveTimeout)
+            || !linkLock.Wait(Remaining(AppRestart.RoleLeaveTimeout, leaveWatch.Elapsed)))
+        {
+            log.Warning("The start of the connection was still under way at exit.");
+        }
+
+        // First: Music Assistant hears the player leave instead of finding it gone. Every step of
+        // the leave is bounded (AppRestart): the instance of a restart waits for this one to go,
+        // and a goodbye or a stop that hangs must not keep it waiting past that.
+        try
+        {
+            var leaving = sendspinPlayer.DisposeAsync(comingBack: AppRestart.Pending).AsTask();
+            if (!leaving.Wait(AppRestart.PlayerLeaveTimeout))
+            {
+                log.Warning($"Sendspin: the player did not stop within {AppRestart.PlayerLeaveTimeout.TotalSeconds:0} s; leaving without its goodbye.");
+            }
+        }
+        catch (Exception ex)
+        {
+            log.Warning($"Sendspin: the player did not stop cleanly: {(ex as AggregateException)?.InnerException?.Message ?? ex.Message}");
+        }
+
+        try
+        {
+            var stopping = Task.WhenAll(mqttService.StopAsync(), localApi.StopAsync());
+            if (!stopping.Wait(AppRestart.ConnectionLeaveTimeout))
+            {
+                log.Warning($"The connection did not stop within {AppRestart.ConnectionLeaveTimeout.TotalSeconds:0} s; leaving.");
+            }
+        }
+        catch (Exception ex)
+        {
+            log.Warning($"The connection did not stop cleanly: {(ex as AggregateException)?.InnerException?.Message ?? ex.Message}");
+        }
+
         log.Info($"Stopped {AppIdentity.DisplayName}.");
+
+        // The place is free from here: the instance of a restart, and the kiosk task, wait on
+        // this lock, and the disposals that follow (the services stop again, the Local API
+        // among them) may still hang on a stop that did not finish in its time above.
+        mutex.ReleaseMutex();
+        mutex.Dispose();
 
         if (kiosk && !sessionEnding)
         {
-            // The kiosk task starts the app again on this event, and its start must find the
-            // place free: the instance lock goes first, the connection and the port went above.
-            mutex.ReleaseMutex();
-            mutex.Dispose();
+            // The kiosk task starts the app again on this event.
             KioskEvents.Write(KioskEvents.Closed, $"The kiosk tray app of {Environment.UserDomainName}\\{Environment.UserName} was closed.", log, System.Diagnostics.EventLogEntryType.Warning);
+        }
+    }
+
+    /// <summary>What is left of <paramref name="bound"/> after <paramref name="spent"/>, never below zero.</summary>
+    internal static TimeSpan Remaining(TimeSpan bound, TimeSpan spent)
+    {
+        var left = bound - spent;
+        return left < TimeSpan.Zero ? TimeSpan.Zero : left;
+    }
+
+    // The restart's new instance waits for the old one to leave; an old one that died without
+    // releasing (the mutex abandoned) has left all the same.
+    private static bool WaitForTheOneBefore(Mutex mutex)
+    {
+        try
+        {
+            return mutex.WaitOne(AppRestart.WaitForTheOneBefore);
+        }
+        catch (AbandonedMutexException)
+        {
+            return true;
+        }
+    }
+
+    private static async Task ApplySendspinAsync(SendspinPlayerService player, FileLog log)
+    {
+        try
+        {
+            await player.ApplySettingsAsync();
+        }
+        catch (Exception ex)
+        {
+            log.Error(ex, "Sendspin: unable to apply the settings.");
         }
     }
 

@@ -907,6 +907,47 @@ internal sealed class SystemMetricsService : IDisposable
     }
 
     /// <summary>
+    /// The session that stands for the PC (SessionRole): the one ReadSessionStatus reports, or,
+    /// when that one runs no tray app, the same choice among the sessions that do. Null when
+    /// the sessions cannot be listed, or none has a user.
+    /// </summary>
+    internal static SessionElection? ElectUserSession(IReadOnlyCollection<uint> sessionsWithApp)
+    {
+        var sessions = ReadUserSessions();
+        return sessions is null
+            ? null
+            : ElectAmong(sessions.Select(session => (session.Id, session.State)).ToList(), WTSGetActiveConsoleSessionId(), sessionsWithApp);
+    }
+
+    /// <summary>
+    /// The choice of ChooseUserSession, taken among the sessions that run a tray app when the
+    /// session it would choose does not: a user who may not use the settings has no app, and
+    /// the PC would otherwise have nobody talking to Home Assistant. Such a choice is
+    /// provisional, the app at the console may be about to start.
+    /// </summary>
+    internal static SessionElection? ElectAmong(IReadOnlyList<(uint Id, string State)> sessions, uint consoleId, IReadOnlyCollection<uint> sessionsWithApp)
+    {
+        var strict = ChooseUserSession(sessions, consoleId);
+        if (strict < 0)
+        {
+            return null;
+        }
+
+        if (sessionsWithApp.Count == 0 || sessionsWithApp.Contains(sessions[strict].Id))
+        {
+            return new SessionElection(sessions[strict].Id, Provisional: false);
+        }
+
+        var candidates = sessions.Where(session => sessionsWithApp.Contains(session.Id)).ToList();
+        if (candidates.Count == 0)
+        {
+            return new SessionElection(sessions[strict].Id, Provisional: false);
+        }
+
+        return new SessionElection(candidates[ChooseUserSession(candidates, consoleId)].Id, Provisional: true);
+    }
+
+    /// <summary>
     /// Index of the session to report among the sessions with a user: the console's, else
     /// the first active one, else the first one at all (disconnected). -1 without any.
     /// </summary>
@@ -2856,3 +2897,6 @@ internal sealed record ShutdownInfo(
     DateTime? CreatedAt,
     int EventId,
     string Message);
+
+/// <summary>The session that stands for the PC, and whether the choice is to be asked again (see SystemMetricsService.ElectAmong).</summary>
+internal sealed record SessionElection(uint Elected, bool Provisional);

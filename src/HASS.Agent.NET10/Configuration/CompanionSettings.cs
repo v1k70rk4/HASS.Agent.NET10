@@ -197,6 +197,33 @@ internal sealed class CompanionSettings
     /// <summary>What was playing pauses for the announcement and goes on afterwards.</summary>
     public bool AnnouncementPausesMedia { get; set; } = true;
 
+    /// <summary>
+    /// The PC is a Sendspin player of Music Assistant (tray app): it plays what Music Assistant
+    /// sends it, in sync with the other players of its group. Off until turned on.
+    /// </summary>
+    public bool SendspinEnabled { get; set; }
+
+    /// <summary>The player's name in Music Assistant; empty for the device name.</summary>
+    public string SendspinPlayerName { get; set; } = string.Empty;
+
+    /// <summary>The output device by its Windows name; empty for the Windows default, followed when it changes.</summary>
+    public string SendspinOutputDevice { get; set; } = string.Empty;
+
+    /// <summary>
+    /// False (the default): Music Assistant finds the PC on the network and connects to it.
+    /// True: the PC connects to <see cref="SendspinServerAddress"/>, for a network where it is not found.
+    /// </summary>
+    public bool SendspinConnectToServer { get; set; }
+
+    /// <summary>The Music Assistant to connect to: a host, host:port or a ws:// address.</summary>
+    public string SendspinServerAddress { get; set; } = string.Empty;
+
+    public const int MaxSendspinNameLength = 64;
+
+    [JsonIgnore]
+    public string EffectiveSendspinPlayerName =>
+        string.IsNullOrWhiteSpace(SendspinPlayerName) ? DeviceName : SendspinPlayerName.Trim();
+
     public bool MqttButtonsEnabled { get; set; } = true;
 
     public bool MqttSystemSensorsEnabled { get; set; } = true;
@@ -354,6 +381,16 @@ internal sealed class CompanionSettings
         {
             AnnouncementVolume = DefaultAnnouncementVolume;
         }
+
+        // A null in the file (an edit by hand) is an empty text, as for the other texts.
+        SendspinPlayerName = (SendspinPlayerName ?? string.Empty).Trim();
+        if (SendspinPlayerName.Length > MaxSendspinNameLength)
+        {
+            SendspinPlayerName = SendspinPlayerName[..MaxSendspinNameLength];
+        }
+
+        SendspinOutputDevice = (SendspinOutputDevice ?? string.Empty).Trim();
+        SendspinServerAddress = (SendspinServerAddress ?? string.Empty).Trim();
 
         // Below the floor that applies now (5 s, or 1 s with the Danger Zone switch) the value
         // rises to the floor: a 2 s set while unlocked becomes 5 s when the switch goes off.

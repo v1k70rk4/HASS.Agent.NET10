@@ -31,6 +31,8 @@ Starting with 10.6.8, the release assets (`HASS.Agent.NET10-Setup-<version>.exe`
 | SHA-1 thumbprint | `0C09522639318AF1069507568599DFC5B7F86EE4` |
 | Timestamp | `time.certum.pl` (the signature stays valid after the certificate expires) |
 
+From 10.13.0 the native libraries beside the program that come unsigned from their makers (`libsodium.dll`, for the Sendspin player) are signed with it too; those signed by their makers (the WebView2 loader, the ASP.NET Core module: Microsoft) keep the maker's signature.
+
 To check a download, open its **Properties → Digital Signatures** tab, or with the Windows SDK:
 
 ```powershell
@@ -65,6 +67,7 @@ CodeQL scans every change, the app, the integration and the release flow have ha
 The program does not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it. HASS.Agent .NET10 communicates only with:
 
 - the **Home Assistant instance and/or MQTT broker configured by the user**, to provide its core functionality,
-- the **GitHub API** (`api.github.com` / `github.com`), to check for application updates and download release assets.
+- the **GitHub API** (`api.github.com` / `github.com`), to check for application updates and download release assets,
+- **Music Assistant**, when the [Sendspin player](../features/media-player.md#sendspin-player-music-assistant) is turned on: the PC announces itself on the local network (mDNS) for Music Assistant to connect to it, or connects to the Music Assistant address you give. It stays on the local network, unless the address you give is outside it.
 
 No telemetry, analytics or usage data is collected or transmitted.

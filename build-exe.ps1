@@ -10,7 +10,8 @@
       (nothing)     Standalone, self-contained, single-file .exe in artifacts\standalone - no .NET runtime is
                     needed on the target machine, the tray icon is embedded. Offers to replace this machine's
                     installed copy afterwards (-Deploy skips the question, -NoDeploy the whole step).
-      -Sign         The same standalone .exe, signed. Handy to test a signed binary on this machine.
+      -Sign         The same standalone .exe, signed, with the native libraries inside it that come unsigned
+                    (libsodium) signed too. Handy to test a signed binary on this machine.
       -Tag          Release build for a GitHub tag: the Inno Setup installer (with its uninstaller) and the
                     win-x64 zip, every Windows asset of a release, all signed, with the exact file names the CI
                     workflow produces - so they can replace the CI's unsigned assets on the release. Warns when
@@ -346,6 +347,53 @@ else {
     Write-Host "Building $appName $appVersion  (standalone, self-contained, win-x64)..." -ForegroundColor Cyan
 }
 
+# --- Native libraries that come unsigned: signed before the build takes them --------------------------------------
+# A trial publish in the release layout puts the native libraries next to the exe. Those without their maker's
+# signature (libsodium, under the Sendspin player) are copied to artifacts\signed-native and signed there, and the
+# real publish takes those copies (the project's UseSignedNativeLibraries target): next to the exe for -Tag, and
+# inside the single-file exe for -Sign, which unpacks them at start. Microsoft's own keep their signature.
+if ($signing) {
+    $probeDir = Join-Path ([IO.Path]::GetTempPath()) "hass-agent-native-probe"
+    $signedNativeDir = Join-Path $PSScriptRoot "artifacts\signed-native"
+    foreach ($dir in @($probeDir, $signedNativeDir)) { if (Test-Path $dir) { Remove-Item $dir -Recurse -Force } }
+    New-Item -ItemType Directory -Force -Path $signedNativeDir | Out-Null
+
+    Write-Host "Looking for native libraries that come unsigned..." -ForegroundColor Cyan
+    dotnet publish $project -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o $probeDir --nologo -v quiet
+    if ($LASTEXITCODE -ne 0) { throw "Trial publish failed (dotnet publish exit code $LASTEXITCODE)." }
+
+    # The copies are taken by file name: two different libraries under one name would get one signed file for
+    # both. Compared by the hash of the unsigned original (the signed copy's hash is another), so that the same
+    # library found twice (next to the exe and under runtimes\) passes.
+    $unsignedHashes = @{}
+    foreach ($dll in Get-ChildItem -Path $probeDir -Filter *.dll -File -Recurse) {
+        $status = (Get-AuthenticodeSignature -FilePath $dll.FullName).Status
+        if ($status -eq 'Valid') { continue }
+        # A signature that is there but broken is not papered over with ours.
+        if ($status -ne 'NotSigned') { throw "Signature on $($dll.Name) is $status - refusing to sign over it." }
+        $hash = (Get-FileHash $dll.FullName).Hash
+        if ($unsignedHashes.ContainsKey($dll.Name)) {
+            if ($unsignedHashes[$dll.Name] -ne $hash) { throw "Two different unsigned libraries are both named $($dll.Name); the signing step cannot tell them apart." }
+            continue
+        }
+        $unsignedHashes[$dll.Name] = $hash
+        $copy = Join-Path $signedNativeDir $dll.Name
+        Copy-Item $dll.FullName $copy
+        Write-Host "[sign] $($dll.Name) (came unsigned)" -ForegroundColor Cyan
+        Invoke-SignScript $copy
+        Assert-Signed $copy
+    }
+
+    # The signed copies are taken by the project's UseSignedNativeLibraries target. A source from before it
+    # (an older branch built with -Sign) would pack the unsigned ones and still be called a signed build.
+    if ((Get-ChildItem $signedNativeDir -File).Count -gt 0 -and -not (Select-String -Path $project -Pattern 'UseSignedNativeLibraries' -Quiet)) {
+        throw "The project at $project has no UseSignedNativeLibraries target, so the signed native libraries would not be used. Build a source that has it, or build without -Sign."
+    }
+
+    Remove-Item $probeDir -Recurse -Force -ErrorAction SilentlyContinue
+    $publishArgs += "-p:SignedNativeDir=$signedNativeDir"
+}
+
 # The exe of an earlier build must not survive: publish skips the single-file bundle when the one in the
 # output folder looks newer than its inputs, which it does after a build of another source (or version).
 $staleExe = Join-Path $Output "HASS.Agent.NET10.exe"
@@ -367,6 +415,15 @@ if ($signing) {
     Write-Host "[sign] using $SignScript" -ForegroundColor Cyan
     Invoke-SignScript $fullPath
     Assert-Signed $fullPath
+
+    # Every library next to the exe is signed by now (its maker's, or ours from the step before the build):
+    # checked before the installer and the zip take them, so nothing unsigned goes into Program Files.
+    if ($Tag) {
+        foreach ($dll in Get-ChildItem -Path $Output -Filter *.dll -File -Recurse) {
+            $status = (Get-AuthenticodeSignature -FilePath $dll.FullName).Status
+            if ($status -ne 'Valid') { throw "$($dll.FullName) is $status in the release layout - every library there must be signed." }
+        }
+    }
 }
 
 # --- Release assets: signed installer (+ uninstaller) and the zip, CI file names ----------------------------------
