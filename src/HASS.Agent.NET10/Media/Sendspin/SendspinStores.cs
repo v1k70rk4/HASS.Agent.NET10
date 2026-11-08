@@ -1,8 +1,10 @@
+using System.ComponentModel;
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using HASS.Agent.Companion.Configuration;
+using HASS.Agent.Companion.Security;
 using Sendspin.SDK.Client;
 using Sendspin.SDK.Connection.Noise;
 
@@ -42,13 +44,35 @@ internal static class SendspinStorage
 
     public static string LastPlayedFile => Path.Combine(Directory, FileNames[3]);
 
-    /// <summary>Writes the file whole or not at all: a crash halfway must not leave half a key behind.</summary>
+    /// <summary>
+    /// Writes the file whole or not at all: a crash halfway must not leave half a key behind. The
+    /// folder is shared with the other users of the PC, so the write goes through SafeFiles (a link
+    /// planted under the temp name is not followed), the temp name is this write's own, and a link
+    /// in place of the folder itself is refused.
+    /// </summary>
     internal static void WriteAtomic(string path, byte[] content)
     {
-        System.IO.Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        var temp = path + ".tmp";
-        File.WriteAllBytes(temp, content);
-        File.Move(temp, path, overwrite: true);
+        var folder = System.IO.Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        if (folder.Attributes.HasFlag(FileAttributes.ReparsePoint))
+        {
+            throw new IOException($"{folder.FullName} is a link, not a folder of the player's own.");
+        }
+
+        var temp = $"{path}.{Environment.ProcessId}.{Guid.NewGuid():N}.tmp";
+        try
+        {
+            SafeFiles.WriteAllBytes(temp, content);
+            File.Move(temp, path, overwrite: true);
+        }
+        catch (Win32Exception ex) when (ex.NativeErrorCode == 5)
+        {
+            // Access denied: an account that may only read the settings (a kiosk user).
+            throw new UnauthorizedAccessException(ex.Message, ex);
+        }
+        finally
+        {
+            try { File.Delete(temp); } catch { }
+        }
     }
 
     internal static byte[] Protect(byte[] data, string purpose) =>

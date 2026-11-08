@@ -144,9 +144,10 @@ internal sealed class SendspinPlayerService : IAsyncDisposable
 
             var wanted = Config.From(_settings, IsAtConsole());
 
-            // A player that could not start (the port taken, a failure) starts again on a save
-            // of the same settings: whatever was in the way may be gone by now.
-            var stuck = Status.State is SendspinState.PortInUse or SendspinState.Failed;
+            // A player that could not start (the port taken, no keys this account may write, a
+            // failure) starts again on a save of the same settings: whatever was in the way may
+            // be gone by now.
+            var stuck = Status.State is SendspinState.PortInUse or SendspinState.ReadOnly or SendspinState.Failed;
             if (wanted == _running && !stuck)
             {
                 return;
@@ -328,21 +329,22 @@ internal sealed class SendspinPlayerService : IAsyncDisposable
             SetStatus(new SendspinStatus(SendspinState.Failed, Detail: ex.Message));
         }
 
-        if (started is not null && Status.State == SendspinState.PortInUse)
+        if (started is not null && Status.State is SendspinState.PortInUse or SendspinState.ReadOnly)
         {
-            RetryWhilePortInUse(started);
+            RetryWhileBlocked(started, Status.State);
         }
     }
 
-    // The port is another Windows user's player as a rule; when that user logs off, this one
-    // takes over without anybody having to press Save.
-    private void RetryWhilePortInUse(Session session) => _ = Task.Run(async () =>
+    // Tried again by itself, as nobody may press Save: the port is freed when the other player
+    // stops, and a kiosk user's app gets its keys when the player is set up from an account
+    // that may change the settings (from another session, which this one hears nothing of).
+    private void RetryWhileBlocked(Session session, SendspinState blocked) => _ = Task.Run(async () =>
     {
         await Task.Delay(PortRetryInterval).ConfigureAwait(false);
         await _transition.WaitAsync().ConfigureAwait(false);
         try
         {
-            if (_disposed || _session != session || _running is not { } config || Status.State != SendspinState.PortInUse)
+            if (_disposed || _session != session || _running is not { } config || Status.State != blocked)
             {
                 return;
             }
@@ -353,7 +355,7 @@ internal sealed class SendspinPlayerService : IAsyncDisposable
         }
         catch (Exception ex)
         {
-            _log.Warning($"Sendspin: trying the port again failed: {ex.Message}");
+            _log.Warning($"Sendspin: trying the player again failed: {ex.Message}");
         }
         finally
         {
