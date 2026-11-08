@@ -61,18 +61,19 @@ public class SendspinTests : IDisposable
     }
 
     [Theory]
-    [InlineData(HandshakeFailureKind.LegacyServer, SendspinState.ServerTooOld)]
-    [InlineData(HandshakeFailureKind.PairingRequired, SendspinState.NeedsPairing)]
-    [InlineData(HandshakeFailureKind.PairingStateDiverged, SendspinState.NeedsPairing)]
-    [InlineData(HandshakeFailureKind.ConnectionClosed, SendspinState.Connecting)]
-    [InlineData(HandshakeFailureKind.HandshakeRejected, SendspinState.Failed)]
-    [InlineData(HandshakeFailureKind.ServerError, SendspinState.Failed)]
-    [InlineData(HandshakeFailureKind.ActivationRefused, SendspinState.Failed)]
-    public void A_handshake_that_fails_for_good_has_a_status_of_its_own(HandshakeFailureKind kind, SendspinState expected)
+    [InlineData(HandshakeFailureKind.LegacyServer, "ServerTooOld")]
+    [InlineData(HandshakeFailureKind.PairingRequired, "NeedsPairing")]
+    [InlineData(HandshakeFailureKind.PairingStateDiverged, "NeedsPairing")]
+    [InlineData(HandshakeFailureKind.ConnectionClosed, "Connecting")]
+    [InlineData(HandshakeFailureKind.HandshakeRejected, "Failed")]
+    [InlineData(HandshakeFailureKind.ServerError, "Failed")]
+    [InlineData(HandshakeFailureKind.ActivationRefused, "Failed")]
+    public void A_handshake_that_fails_for_good_has_a_status_of_its_own(HandshakeFailureKind kind, string expected)
     {
         // After a reconnect the SDK reports such a failure only through the disconnected event,
-        // and the status used to stay at "connecting" for good.
-        Assert.Equal(expected, SendspinPlayerService.StateForHandshakeFailure(kind));
+        // and the status used to stay at "connecting" for good. The state is named, as the
+        // enum is the app's own (internal) and a public test method cannot take it.
+        Assert.Equal(Enum.Parse<SendspinState>(expected), SendspinPlayerService.StateForHandshakeFailure(kind));
     }
 
     [Fact]
