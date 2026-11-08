@@ -77,7 +77,8 @@
       "Mp.SendspinTokenCopied",
       "Mp.SendspinTokenFailed",
       "Mp.SendspinNotConsole",
-      "Mp.SendspinReadOnly"
+      "Mp.SendspinReadOnly",
+      "General.OtherSessionTalks"
     ]
   },
   "strings": {
@@ -116,6 +117,7 @@
     "General.NotConfiguredError": "Weder MQTT noch die HA-API ist eingerichtet – die Anwendung sendet keine Daten. Richte eine MQTT-Verbindung (empfohlen) oder eine HA-API-Verbindung ein.",
     "General.MqttDisabledWarning": "MQTT ist nicht eingerichtet. Wenn du einen MQTT-Broker hast, solltest du MQTT aktivieren.",
     "General.ServiceNotInstalledWarning": "Der Windows-Dienst ist nicht installiert oder läuft nicht, daher funktionieren dienstseitige Befehle, Sensoren und stille Updates nicht.",
+    "General.OtherSessionTalks": "Another user's session stands for this PC now: their HASS.Agent talks to Home Assistant, and this one waits. Settings saved here reach it when it starts next.",
     "Danger.Title": "Gefahrenzone",
     "Danger.Tools": "Werkzeuge",
     "Danger.MqttMaintenance": "MQTT-Wartung",

@@ -54,7 +54,8 @@
       "Mp.SendspinTokenCopied",
       "Mp.SendspinTokenFailed",
       "Mp.SendspinNotConsole",
-      "Mp.SendspinReadOnly"
+      "Mp.SendspinReadOnly",
+      "General.OtherSessionTalks"
     ]
   },
   "strings": {
@@ -93,6 +94,7 @@
     "General.NotConfiguredError": "未配置MQTT或HA API，应用无法发送数据。推荐使用MQTT或配置HA API进行连接。",
     "General.MqttDisabledWarning": "如果有MQTT服务器则建议开启并配置，以获得完整体验。",
     "General.ServiceNotInstalledWarning": "windows服务未运行，执行指令、更新传感器及静默更新等后台功能将无法正常工作，请在“服务”选项卡中安装或启动。",
+    "General.OtherSessionTalks": "Another user's session stands for this PC now: their HASS.Agent talks to Home Assistant, and this one waits. Settings saved here reach it when it starts next.",
     "Danger.Title": "调试选项",
     "Danger.Tools": "工具",
     "Danger.MqttMaintenance": "MQTT维护",

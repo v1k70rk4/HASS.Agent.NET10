@@ -56,6 +56,7 @@ internal sealed class MainForm : Form
     private readonly ComboBox _haLangCombo = new() { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly Label _generalNotConfiguredError = new();
     private readonly Label _generalServiceWarning = new();
+    private readonly Label _generalOtherSessionInfo = new();
     private Control? _generalDeviceCard;
     private Control? _generalNetworkCard;
     private Control? _generalFilesCard;
@@ -426,8 +427,14 @@ internal sealed class MainForm : Form
             "⚠  " + S("General.ServiceNotInstalledWarning"),
             Color.FromArgb(255, 243, 224),
             Color.FromArgb(180, 60, 0));
+        ConfigureStatusLabel(
+            _generalOtherSessionInfo,
+            "ℹ  " + S("General.OtherSessionTalks"),
+            Color.FromArgb(227, 242, 253),
+            Color.FromArgb(13, 71, 161));
         page.Controls.Add(_generalNotConfiguredError);
         page.Controls.Add(_generalServiceWarning);
+        page.Controls.Add(_generalOtherSessionInfo);
         page.Layout += (_, _) => LayoutGeneralStatusMessages();
 
         var card1 = MakeCard(page, 28, 64, 720, 252, S("General.Device"));
@@ -965,7 +972,26 @@ internal sealed class MainForm : Form
     {
         _generalNotConfiguredError.Visible = !_settings.MqttEnabled && !_settings.HaApiEnabled;
         _generalServiceWarning.Visible = !IsServiceHealthy();
+        _generalOtherSessionInfo.Visible = SessionRole.WaitingForAnotherSession;
         LayoutGeneralStatusMessages();
+    }
+
+    /// <summary>From the tray, on any thread: the status lines of the General page again.</summary>
+    public void RefreshStatus()
+    {
+        if (IsDisposed || !IsHandleCreated)
+        {
+            return;
+        }
+
+        try
+        {
+            BeginInvoke(UpdateGeneralStatusMessages);
+        }
+        catch (InvalidOperationException)
+        {
+            // The window is closing.
+        }
     }
 
     private void UpdateServiceStatusMessage()
@@ -992,7 +1018,7 @@ internal sealed class MainForm : Form
     {
         var y = D(56);
         var statusWidth = _generalDeviceCard?.Width ?? D(720);
-        foreach (var label in new[] { _generalNotConfiguredError, _generalServiceWarning })
+        foreach (var label in new[] { _generalNotConfiguredError, _generalServiceWarning, _generalOtherSessionInfo })
         {
             if (!label.Visible)
             {

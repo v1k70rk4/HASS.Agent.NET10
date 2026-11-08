@@ -42,6 +42,7 @@
     "General.NotConfiguredError": "Neither MQTT nor HA API is configured — the application is not sending any data. Set up an MQTT (recommended) or HA API connection.",
     "General.MqttDisabledWarning": "MQTT is not configured. If you have an MQTT broker, consider enabling it.",
     "General.ServiceNotInstalledWarning": "The Windows service is not installed or not running, so service-side commands, sensors, and silent updates will not work.",
+    "General.OtherSessionTalks": "Another user's session stands for this PC now: their HASS.Agent talks to Home Assistant, and this one waits. Settings saved here reach it when it starts next.",
     "Danger.Title": "Danger Zone",
     "Danger.Tools": "Tools",
     "Danger.MqttMaintenance": "MQTT maintenance",

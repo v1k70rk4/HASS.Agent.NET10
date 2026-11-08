@@ -907,6 +907,22 @@ internal sealed class SystemMetricsService : IDisposable
     }
 
     /// <summary>
+    /// The session that stands for the PC (SessionRole): the one ReadSessionStatus reports.
+    /// Null when the sessions cannot be listed, or none has a user.
+    /// </summary>
+    internal static uint? ElectedUserSessionId()
+    {
+        var sessions = ReadUserSessions();
+        if (sessions is null)
+        {
+            return null;
+        }
+
+        var chosen = ChooseUserSession(sessions.Select(session => (session.Id, session.State)).ToList(), WTSGetActiveConsoleSessionId());
+        return chosen >= 0 ? sessions[chosen].Id : null;
+    }
+
+    /// <summary>
     /// Index of the session to report among the sessions with a user: the console's, else
     /// the first active one, else the first one at all (disconnected). -1 without any.
     /// </summary>

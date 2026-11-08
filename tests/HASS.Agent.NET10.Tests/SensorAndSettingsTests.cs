@@ -208,6 +208,16 @@ public class UserSessionTests
     public void A_disconnected_session_is_the_last_resort()
     {
         Assert.Equal(0, SystemMetricsService.ChooseUserSession([(2, "disconnected")], consoleId: 1));
+    }
+
+    [Fact]
+    public void One_tray_app_of_the_pc_talks_to_home_assistant()
+    {
+        // The app in the elected session talks; another user's waits. With no answer from
+        // Windows every app talks, rather than none.
+        Assert.True(SessionRole.Decide(elected: 3, current: 3));
+        Assert.False(SessionRole.Decide(elected: 3, current: 7));
+        Assert.True(SessionRole.Decide(elected: null, current: 7));
         Assert.Equal(-1, SystemMetricsService.ChooseUserSession([], consoleId: 1));
     }
 }

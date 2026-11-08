@@ -238,10 +238,93 @@ internal static class Program
             log);
         using var localApi = new LocalApiServer(settings, trayContext, log);
 
+        // One tray app of the PC talks to Home Assistant: the one in the session that stands for
+        // the PC (SessionRole). Another user's app waits, and takes over on a switch of users.
+        var linked = false;
+        var linkLock = new SemaphoreSlim(1, 1);
+        async Task ApplySessionRoleAsync(bool startup)
+        {
+            await linkLock.WaitAsync();
+            try
+            {
+                var talks = SessionRole.ThisSessionTalks();
+                SessionRole.WaitingForAnotherSession = !talks;
+                trayContext.RefreshSessionRole();
+                if (!talks)
+                {
+                    if (startup || linked)
+                    {
+                        log.Info("Another user's session stands for this PC; its app talks to Home Assistant, this one waits.");
+                    }
+
+                    if (linked)
+                    {
+                        linked = false;
+                        await mqttService.StopAsync();
+                        await localApi.StopAsync();
+                    }
+
+                    return;
+                }
+
+                if (linked)
+                {
+                    return;
+                }
+
+                linked = true;
+                if (!startup)
+                {
+                    log.Info("This session stands for the PC now: connecting to Home Assistant.");
+                }
+
+                mqttService.Start();
+                if (!settings.LocalApiEnabled)
+                {
+                    if (startup)
+                    {
+                        log.Info("Local API is off.");
+                    }
+
+                    return;
+                }
+
+                try
+                {
+                    await localApi.StartAsync();
+                    log.Info($"Local API listening on {settings.ListenUrl}.");
+                }
+                catch (Exception ex)
+                {
+                    log.Error(ex, "Unable to start Local API.");
+                    trayContext.ShowStartupError(ex);
+                }
+            }
+            finally
+            {
+                linkLock.Release();
+            }
+        }
+
         // Event-driven sensor pushes: interactive state changes publish immediately
         // instead of waiting for the next poll (monitor power, session lock, AC/battery).
         monitorPowerStateService.StateChanged += (_, _) => mqttService.TriggerPushUpdate();
-        sessionPowerWatcher.StateChanged += (_, _) => mqttService.TriggerPushUpdate();
+        sessionPowerWatcher.StateChanged += (_, _) =>
+        {
+            mqttService.TriggerPushUpdate();
+            // A user switched, signed in or out: the session that stands for the PC may have changed.
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await ApplySessionRoleAsync(startup: false);
+                }
+                catch (Exception ex)
+                {
+                    log.Error(ex, "Unable to follow the change of sessions.");
+                }
+            });
+        };
         audioEndpointService.StateChanged += (_, _) => mqttService.TriggerPushUpdate();
 
         trayContext.NotificationActionRequested += (_, args) =>
@@ -253,8 +336,15 @@ internal static class Program
         trayContext.SettingsSaved += (_, _) =>
         {
             log.Info("Settings saved from UI.");
-            _ = Task.Run(() => mqttService.RestartAsync());
             _ = Task.Run(() => ApplySendspinAsync(sendspinPlayer, log));
+            if (!linked)
+            {
+                // The saved file reaches the app that talks when it starts next.
+                log.Info("This session's app is waiting; the saved settings reach the connected one when it starts next.");
+                return;
+            }
+
+            _ = Task.Run(() => mqttService.RestartAsync());
             _ = Task.Run(async () =>
             {
                 try
@@ -273,30 +363,14 @@ internal static class Program
         trayContext.HaUserProvisioner = mqttService.ProvisionHaUserAsync;
         trayContext.UpdateStateHandler = mqttService.ReportUpdateStateAsync;
 
-        if (settings.LocalApiEnabled)
-        {
-            try
-            {
-                localApi.StartAsync().GetAwaiter().GetResult();
-                log.Info($"Local API listening on {settings.ListenUrl}.");
-            }
-            catch (Exception ex)
-            {
-                log.Error(ex, "Unable to start Local API.");
-                trayContext.ShowStartupError(ex);
-            }
-        }
-        else
-        {
-            log.Info("Local API is off.");
-        }
-
         // Detect a completed update: the previous run was a different version. The record is
         // the PC's (LastRunRecord), which every user can write, a kiosk user too; the one in the
         // settings is where versions before it kept it. A running service reports the update
         // and writes the record itself: it has every right, this app may have few.
+        // A waiting app (another user's session stands for the PC) leaves this to the app that
+        // talks, or to the service: a notice queued here would never be sent.
         var lastRun = LastRunRecord.Read() ?? settings.LastRunVersion;
-        if (lastRun != settings.SoftwareVersion)
+        if (lastRun != settings.SoftwareVersion && SessionRole.ThisSessionTalks())
         {
             // With nothing recorded yet (a first install) there is no update to report, and
             // the service records nothing then: the version is recorded here.
@@ -328,7 +402,7 @@ internal static class Program
             log.Warning($"Unable to remove the installer's old update note: {ex.Message}");
         }
 
-        mqttService.Start();
+        ApplySessionRoleAsync(startup: true).GetAwaiter().GetResult();
         _ = Task.Run(() => ApplySendspinAsync(sendspinPlayer, log));
 
         if (!settings.MqttEnabled && !settings.HaApiEnabled)

@@ -39,6 +39,15 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
     /// <summary>A hotkey from the settings was pressed.</summary>
     public event EventHandler<HotkeyDefinition>? HotkeyPressed;
 
+    /// <summary>The session that stands for the PC changed: the General page shows whether this app waits.</summary>
+    public void RefreshSessionRole()
+    {
+        if (_mainForm is { IsDisposed: false } form)
+        {
+            form.RefreshStatus();
+        }
+    }
+
     /// <summary>Set by Program: the Sendspin player, for its status and pairing token on the Media player page.</summary>
     public SendspinPlayerService? SendspinPlayer { get; set; }
 

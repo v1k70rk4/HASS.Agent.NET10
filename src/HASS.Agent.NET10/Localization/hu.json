@@ -42,6 +42,7 @@
     "General.NotConfiguredError": "Sem az MQTT, sem a HA API nincs beállítva! Az alkalmazás jelenleg nem szolgáltat adatot! Állíts be egy MQTT (ajánlott) vagy HA API kapcsolatot.",
     "General.MqttDisabledWarning": "Az MQTT nincs beállítva. Ha van MQTT brokered, érdemes azt is bekapcsolni.",
     "General.ServiceNotInstalledWarning": "A Windows szolgáltatás nincs telepítve vagy nem fut, ezért a szolgáltatás oldali parancsok, szenzorok és a csendes frissítés nem működnek.",
+    "General.OtherSessionTalks": "A gépet most egy másik felhasználó munkamenete képviseli: az ő HASS.Agentje beszél a Home Assistanttal, ez itt addig vár. Az itt mentett beállításokat a következő indulásakor veszi át.",
     "Danger.Title": "Veszélyes terület",
     "Danger.Tools": "Eszközök",
     "Danger.MqttMaintenance": "MQTT karbantartás",

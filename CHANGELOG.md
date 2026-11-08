@@ -12,6 +12,7 @@ The first beta of 10.13.0: the PC as a Sendspin player of Music Assistant. Works
 - **Setup lets the app through the Windows firewall for the player** (TCP 8928 and UDP 5353, private networks only, the same way as the Local API) and removes the rule at uninstall.
 - **The library the player brings along (libsodium) is signed with the program**; the other libraries beside the program carry Microsoft's signature. See [Signed releases](docs/getting-started/security.md#signed-releases).
 - **The program is 3 MB larger than 10.12.0, not 58.** A library of the Sendspin SDK asks for WPF, which this app does not use; it is kept out of the program.
+- **Two users signed in at once no longer take turns on MQTT.** Every signed-in user has a tray app, and both connected with the PC's client id, so the broker closed one for the other every few seconds and the PC flickered in Home Assistant. One app talks now, the one in the session at the PC's screen (on a PC used over Remote Desktop only, the active session's); the other waits and says so on its General page, and a switch of users hands the connection over. See [Several users signed in at once](docs/features/users.md#several-users-signed-in-at-once).
 
 ## 10.12.0
 
