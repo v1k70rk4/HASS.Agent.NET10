@@ -123,12 +123,26 @@ internal static class SendspinStorage
         }
         finally
         {
+            var oldKept = false;
             if (movedAside && !File.Exists(path))
             {
-                try { File.Move(aside, path); } catch { }
+                try
+                {
+                    File.Move(aside, path);
+                }
+                catch
+                {
+                    // The old file could not go back under its name: it stays as it is, next to
+                    // the name, rather than be deleted with the new one not in place.
+                    oldKept = true;
+                }
             }
 
-            try { File.Delete(aside); } catch { }
+            if (!oldKept)
+            {
+                try { File.Delete(aside); } catch { }
+            }
+
             try { File.Delete(temp); } catch { }
         }
     }
@@ -166,13 +180,32 @@ internal static class SendspinStorage
         }
     }
 
-    /// <summary>The file, read so that another app may replace it meanwhile (the reader keeps the old one).</summary>
-    internal static byte[] ReadShared(string path)
+    /// <summary>
+    /// The file, read so that another app may replace it meanwhile (the reader keeps the old
+    /// one), or null when there is none. A replace by another app has the name empty for an
+    /// instant, between its two renames: a name found empty is looked at again for a moment
+    /// before it counts as no file.
+    /// </summary>
+    internal static byte[]? ReadShared(string path)
     {
-        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-        using var buffer = new MemoryStream();
-        stream.CopyTo(buffer);
-        return buffer.ToArray();
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+                using var buffer = new MemoryStream();
+                stream.CopyTo(buffer);
+                return buffer.ToArray();
+            }
+            catch (FileNotFoundException) when (attempt < 10)
+            {
+                Thread.Sleep(20);
+            }
+            catch (FileNotFoundException)
+            {
+                return null;
+            }
+        }
     }
 
     private static byte[] Entropy(string purpose) => Encoding.UTF8.GetBytes($"HASS.Agent.NET10:sendspin:{purpose}");
@@ -184,7 +217,7 @@ internal sealed class ProtectedSendspinIdentityStore(string path) : ISendspinIde
     private const string Purpose = "identity";
 
     public byte[]? Load() =>
-        File.Exists(path) ? SendspinStorage.Unprotect(SendspinStorage.ReadShared(path), Purpose) : null;
+        SendspinStorage.ReadShared(path) is { } data ? SendspinStorage.Unprotect(data, Purpose) : null;
 
     public void Save(byte[] identityBlob) =>
         SendspinStorage.WriteAtomic(path, SendspinStorage.Protect(identityBlob, Purpose));
@@ -254,12 +287,13 @@ internal sealed class ProtectedPairingRecordStore(string path) : IPairingRecordS
 
     private List<PairingRecord> Read()
     {
-        if (!File.Exists(path))
+        var data = SendspinStorage.ReadShared(path);
+        if (data is null)
         {
             return [];
         }
 
-        var json = SendspinStorage.Unprotect(SendspinStorage.ReadShared(path), Purpose);
+        var json = SendspinStorage.Unprotect(data, Purpose);
         if (json is null)
         {
             // Written on another PC (a copied folder): of no use here, and the player pairs

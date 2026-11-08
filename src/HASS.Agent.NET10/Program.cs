@@ -305,7 +305,17 @@ internal static class Program
                 // this session stands for the PC), and this one waits for it to stop and let
                 // go, so the broker never sees the two at once.
                 link.Signal();
-                await Task.Run(link.Take);
+                if (!await Task.Run(link.Take) && verdict.Provisional)
+                {
+                    // A claim made on which apps run (the sessions unknown), and another app
+                    // holds the turn: that one talks, this one waits and asks again later.
+                    log.Info("Another app of this PC holds the connection; this one waits.");
+                    linked = false;
+                    SessionRole.WaitingForAnotherSession = true;
+                    trayContext.RefreshSessionRole();
+                    return;
+                }
+
                 mqttService.Start();
                 await StartLocalApiAsync(startup);
             }

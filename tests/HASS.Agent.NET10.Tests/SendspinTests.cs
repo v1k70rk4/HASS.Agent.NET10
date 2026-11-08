@@ -197,6 +197,27 @@ public class SendspinTests : IDisposable
     }
 
     [Fact]
+    public async Task A_read_during_another_app_s_replace_still_finds_the_records()
+    {
+        // Between the replace's two renames the name is empty for an instant: a reader that
+        // hits it waits a moment instead of taking the player for unpaired.
+        var store = new ProtectedPairingRecordStore(SendspinStorage.PairingFile);
+        store.Upsert(new PairingRecord(Enumerable.Range(1, 32).Select(i => (byte)i).ToArray(), PskCategory.LongTerm, "server-1"));
+        var aside = SendspinStorage.PairingFile + ".test-aside";
+        File.Move(SendspinStorage.PairingFile, aside);
+        var putBack = Task.Run(async () =>
+        {
+            await Task.Delay(60, TestContext.Current.CancellationToken);
+            File.Move(aside, SendspinStorage.PairingFile);
+        }, TestContext.Current.CancellationToken);
+
+        var records = new ProtectedPairingRecordStore(SendspinStorage.PairingFile).List();
+
+        await putBack;
+        Assert.Single(records);
+    }
+
+    [Fact]
     public void A_pairing_file_that_cannot_be_read_back_counts_as_none()
     {
         // Another Windows user's, or a copy from another PC: the player pairs again, it does not fail.
