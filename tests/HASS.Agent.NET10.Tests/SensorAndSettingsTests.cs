@@ -230,7 +230,7 @@ public class UserSessionTests
             });
 
             var inUse = new CompanionSettings { MqttHost = "broker.old", MqttPort = 1883, LocalApiEnabled = false, Port = 5115 };
-            Assert.True(SettingsStore.ReloadInto(paths, inUse, log));
+            Assert.Equal(SettingsReload.Changed, SettingsStore.ReloadInto(paths, inUse, log));
 
             Assert.Equal("broker.new", inUse.MqttHost);
             Assert.Equal(8883, inUse.MqttPort);
@@ -239,7 +239,16 @@ public class UserSessionTests
             Assert.Equal(5200, inUse.Port);
             Assert.True(inUse.SendspinEnabled);
             // Nothing new in the file: no reload to open the settings window again for.
-            Assert.False(SettingsStore.ReloadInto(paths, inUse, log));
+            Assert.Equal(SettingsReload.Unchanged, SettingsStore.ReloadInto(paths, inUse, log));
+
+            // A file that cannot be read is told apart from one with nothing new, and leaves the
+            // instance as it is: the handover tries it again.
+            using (new FileStream(paths.SettingsFile, FileMode.Open, FileAccess.Read, FileShare.None))
+            {
+                Assert.Equal(SettingsReload.Failed, SettingsStore.ReloadInto(paths, inUse, log));
+            }
+
+            Assert.Equal("broker.new", inUse.MqttHost);
         }
         finally
         {

@@ -320,6 +320,10 @@ public class SendspinTests : IDisposable
                 File.WriteAllText(Path.Combine(sendspin, name), "x");
             }
 
+            // What a replace left behind goes too: a reader would take an aside file for the pairing.
+            File.WriteAllText(Path.Combine(sendspin, $"pairing.bin.1.abc{SendspinStorage.AsideSuffix}"), "old");
+            File.WriteAllText(Path.Combine(sendspin, "identity.bin.1.abc.tmp"), "half");
+
             // The PC's own player (the overridden folder here) is not this reset's to touch.
             foreach (var name in SendspinStorage.FileNames)
             {

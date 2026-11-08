@@ -64,6 +64,8 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
 
         _uiInvoker.BeginInvoke(() =>
         {
+            // The hotkeys and the menu follow the settings taken over, window or not.
+            ApplyTraySettings();
             if (_mainForm is not { IsDisposed: false } form)
             {
                 return;
@@ -376,17 +378,22 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
         _mainForm.SendspinPlayer = SendspinPlayer;
         _mainForm.SettingsSaved += (_, _) =>
         {
-            _hotkeys.Apply(_settings.Hotkeys);
-            ApplyNotificationName();
-            if (_copyUrlItem is not null)
-            {
-                _copyUrlItem.Visible = _settings.LocalApiEnabled;
-            }
-
+            ApplyTraySettings();
             SettingsSaved?.Invoke(this, EventArgs.Empty);
         };
         _mainForm.FormClosed += (_, _) => _mainForm = null;
         _mainForm.Show();
+    }
+
+    /// <summary>What of the settings the tray itself uses: the hotkeys, the notifications' name, the menu. UI thread.</summary>
+    private void ApplyTraySettings()
+    {
+        _hotkeys.Apply(_settings.Hotkeys);
+        ApplyNotificationName();
+        if (_copyUrlItem is not null)
+        {
+            _copyUrlItem.Visible = _settings.LocalApiEnabled;
+        }
     }
 
     /// <summary>The dashboard popup above the tray: opens it, or closes the one that is open.</summary>

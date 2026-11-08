@@ -305,10 +305,23 @@ internal static class Program
                 {
                     log.Info("This session stands for the PC now: connecting to Home Assistant.");
                     // The app that talked until now may have saved other connection settings;
-                    // a settings window open here shows the old ones, and is opened again.
-                    if (SettingsStore.ReloadInto(paths, settings, log))
+                    // a settings window open here shows the old ones, and is opened again. A file
+                    // that cannot be read this moment (the other app writing it) is tried again
+                    // a few times before this one connects with what it has.
+                    var reload = SettingsStore.ReloadInto(paths, settings, log);
+                    for (var attempt = 1; reload == SettingsReload.Failed && attempt <= 4 && !exiting.IsCancellationRequested; attempt++)
+                    {
+                        await Task.Delay(TimeSpan.FromSeconds(1));
+                        reload = SettingsStore.ReloadInto(paths, settings, log);
+                    }
+
+                    if (reload == SettingsReload.Changed)
                     {
                         trayContext.SettingsReloaded();
+                    }
+                    else if (reload == SettingsReload.Failed)
+                    {
+                        log.Warning("Connecting with the settings this app had: the file could not be read again.");
                     }
                 }
 
@@ -322,6 +335,18 @@ internal static class Program
                     // The app is on its way out: nothing starts now, and a turn just got goes back.
                     link.LetGo();
                     linked = false;
+                    return;
+                }
+
+                if (turnTaken && !SessionRole.Evaluate().Talks)
+                {
+                    // The users switched while this app waited for the turn: another session
+                    // stands for the PC now. The turn goes back, and that session's app takes it.
+                    link.LetGo();
+                    linked = false;
+                    SessionRole.WaitingForAnotherSession = true;
+                    trayContext.RefreshSessionRole();
+                    log.Info("Another user's session stands for this PC now; this one waits.");
                     return;
                 }
 
@@ -385,11 +410,21 @@ internal static class Program
         {
             for (var attempt = 1; attempt <= 12; attempt++)
             {
-                await Task.Delay(TimeSpan.FromSeconds(5));
+                try
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(5), exiting.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
+
                 await linkLock.WaitAsync();
                 try
                 {
-                    if (!linked || localApi.IsRunning || !settings.LocalApiEnabled)
+                    // Not once the app is leaving: the stop at exit takes the lock after setting
+                    // exiting, so a retry either ran before it or sees it here.
+                    if (exiting.IsCancellationRequested || !linked || localApi.IsRunning || !settings.LocalApiEnabled)
                     {
                         return;
                     }
@@ -598,8 +633,13 @@ internal static class Program
         Application.Run(trayContext);
         exitRegistration.Unregister(null);
 
+        // Nothing starts the connection from here: a handover or a retry of the Local API under
+        // way sees exiting, and the lock they run under is taken, within one bound, so that the
+        // stop below comes after the last of them. Not given back: the app is leaving.
         exiting.Cancel();
-        if (!roleAtStart.Wait(AppRestart.RoleLeaveTimeout))
+        var leaveWatch = System.Diagnostics.Stopwatch.StartNew();
+        if (!roleAtStart.Wait(AppRestart.RoleLeaveTimeout)
+            || !linkLock.Wait(AppRestart.RoleLeaveTimeout - leaveWatch.Elapsed < TimeSpan.Zero ? TimeSpan.Zero : AppRestart.RoleLeaveTimeout - leaveWatch.Elapsed))
         {
             log.Warning("The start of the connection was still under way at exit.");
         }

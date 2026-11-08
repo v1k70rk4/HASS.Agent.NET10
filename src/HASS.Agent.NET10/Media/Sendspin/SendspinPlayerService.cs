@@ -570,12 +570,17 @@ internal sealed class SendspinPlayerService : IAsyncDisposable
             return;
         }
 
-        var saved = SettingsStore.Import(_settingsFile);
-        _settings.SendspinEnabled = saved.SendspinEnabled;
-        _settings.SendspinPlayerName = saved.SendspinPlayerName;
-        _settings.SendspinOutputDevice = saved.SendspinOutputDevice;
-        _settings.SendspinConnectToServer = saved.SendspinConnectToServer;
-        _settings.SendspinServerAddress = saved.SendspinServerAddress;
+        // Under the gate a save from the settings window takes: a read from before the save
+        // must not put the old address back over the one just saved.
+        lock (SettingsStore.Gate)
+        {
+            var saved = SettingsStore.Import(_settingsFile);
+            _settings.SendspinEnabled = saved.SendspinEnabled;
+            _settings.SendspinPlayerName = saved.SendspinPlayerName;
+            _settings.SendspinOutputDevice = saved.SendspinOutputDevice;
+            _settings.SendspinConnectToServer = saved.SendspinConnectToServer;
+            _settings.SendspinServerAddress = saved.SendspinServerAddress;
+        }
     }
 
     [System.Runtime.InteropServices.DllImport("kernel32.dll")]

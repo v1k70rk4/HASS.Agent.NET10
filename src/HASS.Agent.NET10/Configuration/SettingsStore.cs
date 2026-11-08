@@ -7,6 +7,14 @@ using HASS.Agent.Companion.Security;
 
 namespace HASS.Agent.Companion.Configuration;
 
+/// <summary>What <see cref="SettingsStore.ReloadInto"/> found.</summary>
+internal enum SettingsReload
+{
+    Unchanged,
+    Changed,
+    Failed
+}
+
 internal static class SettingsStore
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -16,32 +24,34 @@ internal static class SettingsStore
     };
 
     /// <summary>
-    /// The settings from the file into the instance the services hold: another app of the PC
-    /// (another user's session) may have saved them since this one read them. A file that
-    /// cannot be read leaves the instance as it is.
-    /// </summary>
-    /// <summary>
     /// Held while the settings in use are written from the settings window and while they are
-    /// reloaded from the file at a handover: the two run on different threads, and a save that
-    /// crossed a reload would write the window's old values mixed with the file's new ones.
+    /// read again from the file (a handover, the Sendspin player's switch of sessions): these run
+    /// on different threads, and a save that crossed a reload would write the window's old values
+    /// mixed with the file's new ones, or a reload read before a save would put older values
+    /// back. The read and the copy both happen under it.
     /// </summary>
     public static readonly object Gate = new();
 
-    public static bool ReloadInto(AppPaths paths, CompanionSettings target, FileLog log)
+    /// <summary>
+    /// The settings from the file into the instance the services hold: another app of the PC
+    /// (another user's session) may have saved them since this one read them. A file that
+    /// cannot be read leaves the instance as it is, and says so (<see cref="SettingsReload.Failed"/>).
+    /// </summary>
+    public static SettingsReload ReloadInto(AppPaths paths, CompanionSettings target, FileLog log)
     {
-        CompanionSettings fresh;
-        try
-        {
-            fresh = LoadOrCreate(paths, log);
-        }
-        catch (Exception ex)
-        {
-            log.Warning($"Unable to read the settings again: {ex.Message}");
-            return false;
-        }
-
         lock (Gate)
         {
+            CompanionSettings fresh;
+            try
+            {
+                fresh = LoadOrCreate(paths, log);
+            }
+            catch (Exception ex)
+            {
+                log.Warning($"Unable to read the settings again: {ex.Message}");
+                return SettingsReload.Failed;
+            }
+
             var before = JsonSerializer.Serialize(target, JsonOptions);
             foreach (var property in typeof(CompanionSettings).GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance))
             {
@@ -52,7 +62,7 @@ internal static class SettingsStore
                 }
             }
 
-            return JsonSerializer.Serialize(target, JsonOptions) != before;
+            return JsonSerializer.Serialize(target, JsonOptions) != before ? SettingsReload.Changed : SettingsReload.Unchanged;
         }
     }
 
@@ -167,7 +177,19 @@ internal static class SettingsStore
         files.AddRange(paths.LegacySettingsFiles);
         // A new device in Home Assistant, and a new Sendspin player in Music Assistant along with it.
         // Taken from this settings folder, not the PC's: a reset of other paths (a test) leaves the PC's player alone.
-        files.AddRange(Media.Sendspin.SendspinStorage.FileNames.Select(name => Path.Combine(paths.ConfigDirectory, Media.Sendspin.SendspinStorage.FolderName, name)));
+        var sendspin = Path.Combine(paths.ConfigDirectory, Media.Sendspin.SendspinStorage.FolderName);
+        files.AddRange(Media.Sendspin.SendspinStorage.FileNames.Select(name => Path.Combine(sendspin, name)));
+        if (Directory.Exists(sendspin))
+        {
+            // What a replace of them left behind (the old file kept aside, a temp file): a reader
+            // takes an aside file for the content, and the reset is to leave no pairing.
+            foreach (var name in Media.Sendspin.SendspinStorage.FileNames)
+            {
+                files.AddRange(Directory.EnumerateFiles(sendspin, $"{name}.*{Media.Sendspin.SendspinStorage.AsideSuffix}"));
+                files.AddRange(Directory.EnumerateFiles(sendspin, $"{name}.*.tmp"));
+            }
+        }
+
         foreach (var file in files)
         {
             if (!File.Exists(file))

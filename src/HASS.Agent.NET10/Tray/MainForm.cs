@@ -1602,14 +1602,23 @@ internal sealed class MainForm : Form
         };
     }
 
+    // One token action at a time: an older one finishing last would put its token on the clipboard.
+    private bool _tokenBusy;
+
     private async void CopySendspinToken(bool rotate)
     {
+        if (_tokenBusy)
+        {
+            return;
+        }
+
         if (rotate && MessageBox.Show(S("Mp.SendspinNewTokenConfirm"), AppIdentity.DisplayName,
                 MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
         {
             return;
         }
 
+        _tokenBusy = true;
         try
         {
             var player = _sendspinPlayer ?? new SendspinPlayerService(_settings, _log);
@@ -1637,6 +1646,10 @@ internal sealed class MainForm : Form
         {
             _log.Error(ex, "Sendspin: unable to make the pairing token.");
             MessageBox.Show(string.Format(S("Mp.SendspinTokenFailed"), ex.Message), AppIdentity.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+        finally
+        {
+            _tokenBusy = false;
         }
     }
 
