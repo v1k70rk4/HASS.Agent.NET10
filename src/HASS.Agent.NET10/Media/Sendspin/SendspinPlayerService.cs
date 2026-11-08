@@ -436,6 +436,16 @@ internal sealed class SendspinPlayerService : IAsyncDisposable
             try
             {
                 ReloadPlayerSettings();
+            }
+            catch (Exception ex)
+            {
+                // The settings as they are in memory, then: the handover itself must happen,
+                // or the session that left the screen keeps playing.
+                _log.Warning($"Sendspin: unable to read the settings again for the session change: {ex.Message}");
+            }
+
+            try
+            {
                 await ApplySettingsAsync().ConfigureAwait(false);
             }
             catch (Exception ex)
