@@ -93,7 +93,9 @@ The status line under the settings says what the player is doing: waiting for Mu
 
 The connection is encrypted, and Music Assistant only plays to a player it is paired with. The pairing token carries the player's key and a secret of its own; once paired, it is not needed again. **New token** makes another one; the old one no longer pairs, and a Music Assistant already paired stays paired.
 
-The player's keys and its pairings belong to the Windows user, in `%LOCALAPPDATA%\HASS.Agent.NET10\sendspin`, protected for that user. They are not in the settings, so a backup restored on another PC does not make a second PC with the same player. On a PC used by several Windows users, each is a player of their own in Music Assistant; while one user's app has the player, the other's says the port is in use.
+The PC is the player, not a Windows user: its keys and pairings are the PC's, next to the settings in `ProgramData\HASS.Agent.NET10\sendspin`, protected for the machine and open to whoever may use the settings ([Who may use it](users.md)). They are not in the settings file, so an export or a backup restored on another PC does not make a second PC with the same player; a factory reset makes a new one.
+
+Only the app in the session at the PC's own screen plays: another user's session, or one over Remote Desktop, says so and stays quiet, and when the screen goes to another user, so does the player. On a [kiosk](kiosk.md) PC, turn the player on and pair it from an account that may change the settings; the kiosk user's app then plays with that pairing.
 
 ### Sound
 
@@ -108,8 +110,10 @@ The player's keys and its pairings belong to the Windows user, in `%LOCALAPPDATA
 | Waiting for Music Assistant to connect | Music Assistant has not found the PC: check that the network is *Private* in Windows, or use **Connect to this Music Assistant**. |
 | Connected, but not paired yet | Paste the pairing token in Music Assistant. |
 | This Music Assistant is too old | Update Music Assistant to 2.10.7 or newer. |
-| Port 8928 is in use | The player of another Windows user's app, or another Sendspin player on the PC (such as Sendspin for Windows), has it. |
+| Port 8928 is in use | Another Sendspin player on the PC (such as Sendspin for Windows) has it. The player tries again every half minute, and on **Save**. |
 | No output device | Windows has no output to play on; the player goes on when one is back. |
+| Not playing here | This app is not in the session at the PC's screen; the one that is plays. |
+| This Windows account may not change the settings | A kiosk user's app, with no player set up yet: turn it on and pair it from an account that may change the settings. |
 
 Short gaps with a radio station come from the stream itself: the player fills a gap in what the server sends with silence, so that it stays in time with the others. With the verbose log on ([Danger Zone](danger-zone.md) → **Debug log**), the log of the app shows each one.
 

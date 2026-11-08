@@ -1,4 +1,5 @@
 using System.Net.Sockets;
+using Microsoft.Win32;
 using HASS.Agent.Companion.Configuration;
 using HASS.Agent.Companion.Logging;
 using HASS.Agent.Companion.Runtime;
@@ -39,6 +40,12 @@ internal enum SendspinState
 
     /// <summary>The address to connect to is not one.</summary>
     InvalidAddress,
+
+    /// <summary>This app is not in the session at the PC's own screen; the one that is plays.</summary>
+    NotAtConsole,
+
+    /// <summary>The player has no keys yet, and this Windows account may not write them (a kiosk user).</summary>
+    ReadOnly,
     Failed
 }
 
@@ -55,6 +62,11 @@ internal sealed record SendspinStatus(
 /// the network (mDNS, port 8928) and connects to it, or it connects to the address in the
 /// settings; either way it pairs with a token the user takes to Music Assistant, and plays what
 /// the server sends in sync with the rest of its group.
+///
+/// The PC is the player, not a Windows user: one identity for the PC, and only the app in the
+/// session at the PC's own screen (the console) plays. Another user's session, or one over Remote
+/// Desktop, stays quiet, so there are never two players of one PC, and the sound comes out of the
+/// PC's speakers. A switch of users moves the player to the new console session.
 ///
 /// The SDK does the protocol, the clock sync and the decoding; this class starts and stops it by
 /// the settings, keeps a status for the settings window and turns the player down while an
@@ -74,6 +86,7 @@ internal sealed class SendspinPlayerService : IAsyncDisposable
 
     private readonly CompanionSettings _settings;
     private readonly FileLog _log;
+    private readonly string? _settingsFile;
     private readonly SemaphoreSlim _transition = new(1, 1);
     private readonly object _statusGate = new();
 
@@ -83,11 +96,26 @@ internal sealed class SendspinPlayerService : IAsyncDisposable
     private float _duck = 1f;
     private bool _disposed;
 
-    public SendspinPlayerService(CompanionSettings settings, FileLog log)
+    /// <param name="settingsFile">
+    /// The settings file, read again for the player's settings when the console session changes:
+    /// they may have been changed meanwhile by the app of another Windows user (a kiosk PC is set
+    /// up from an administrator's session, and the kiosk user's app plays). Null: never read again.
+    /// </param>
+    public SendspinPlayerService(CompanionSettings settings, FileLog log, string? settingsFile = null)
     {
         _settings = settings;
         _log = log;
+        _settingsFile = settingsFile;
+        if (settingsFile is not null)
+        {
+            SystemEvents.SessionSwitch += OnSessionSwitch;
+        }
     }
+
+    /// <summary>Whether this app runs in the session at the PC's own screen. Replaced by the tests.</summary>
+    internal static Func<bool> IsAtConsole { get; set; } = () =>
+        // No console session at all (0xFFFFFFFF, while one is switching) is no match either.
+        System.Diagnostics.Process.GetCurrentProcess().SessionId == (int)WTSGetActiveConsoleSessionId();
 
     public SendspinStatus Status
     {
@@ -114,7 +142,7 @@ internal sealed class SendspinPlayerService : IAsyncDisposable
                 return;
             }
 
-            var wanted = Config.From(_settings);
+            var wanted = Config.From(_settings, IsAtConsole());
 
             // A player that could not start (the port taken, a failure) starts again on a save
             // of the same settings: whatever was in the way may be gone by now.
@@ -137,6 +165,12 @@ internal sealed class SendspinPlayerService : IAsyncDisposable
             if (!wanted.Enabled)
             {
                 SetStatus(new SendspinStatus(SendspinState.Off));
+                return;
+            }
+
+            if (!wanted.AtConsole)
+            {
+                SetStatus(new SendspinStatus(SendspinState.NotAtConsole));
                 return;
             }
 
@@ -216,6 +250,11 @@ internal sealed class SendspinPlayerService : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        if (_settingsFile is not null)
+        {
+            SystemEvents.SessionSwitch -= OnSessionSwitch;
+        }
+
         await _transition.WaitAsync().ConfigureAwait(false);
         try
         {
@@ -275,6 +314,13 @@ internal sealed class SendspinPlayerService : IAsyncDisposable
             started = new Session(this, config);
             _session = started;
             await started.StartAsync().ConfigureAwait(false);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            // The player's keys are made on its first start, next to the settings, which this
+            // account may only read: it is set up from an account that may change the settings.
+            _log.Warning($"Sendspin: this account may not write the player's keys: {ex.Message}");
+            SetStatus(new SendspinStatus(SendspinState.ReadOnly));
         }
         catch (Exception ex)
         {
@@ -351,15 +397,60 @@ internal sealed class SendspinPlayerService : IAsyncDisposable
         StatusChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    /// <summary>What the running player was started with; a change restarts it (the device alone does not).</summary>
-    private sealed record Config(bool Enabled, string Name, bool ConnectToServer, string ServerAddress, string Device)
+    // A user signed in or out, or the screen went to another user's session: the player belongs
+    // to the console session. Its settings are read again first; another user's app may have
+    // changed them. On a thread of its own: SystemEvents calls in on its window's thread.
+    private void OnSessionSwitch(object? sender, SessionSwitchEventArgs e)
     {
-        public static Config From(CompanionSettings settings) => new(
+        if (e.Reason is SessionSwitchReason.SessionLock or SessionSwitchReason.SessionUnlock)
+        {
+            // A locked screen is still this user's screen: the music goes on.
+            return;
+        }
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                ReloadPlayerSettings();
+                await ApplySettingsAsync().ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _log.Warning($"Sendspin: unable to follow the session change: {ex.Message}");
+            }
+        });
+    }
+
+    // Only the player's own settings: the rest of this app's settings are not taken over here.
+    private void ReloadPlayerSettings()
+    {
+        if (_settingsFile is null || !File.Exists(_settingsFile))
+        {
+            return;
+        }
+
+        var saved = SettingsStore.Import(_settingsFile);
+        _settings.SendspinEnabled = saved.SendspinEnabled;
+        _settings.SendspinPlayerName = saved.SendspinPlayerName;
+        _settings.SendspinOutputDevice = saved.SendspinOutputDevice;
+        _settings.SendspinConnectToServer = saved.SendspinConnectToServer;
+        _settings.SendspinServerAddress = saved.SendspinServerAddress;
+    }
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+    private static extern uint WTSGetActiveConsoleSessionId();
+
+    /// <summary>What the running player was started with; a change restarts it (the device alone does not).</summary>
+    private sealed record Config(bool Enabled, string Name, bool ConnectToServer, string ServerAddress, string Device, bool AtConsole)
+    {
+        public static Config From(CompanionSettings settings, bool atConsole) => new(
             settings.SendspinEnabled,
             settings.EffectiveSendspinPlayerName,
             settings.SendspinConnectToServer,
             settings.SendspinConnectToServer ? settings.SendspinServerAddress : string.Empty,
-            settings.SendspinOutputDevice);
+            settings.SendspinOutputDevice,
+            atConsole);
     }
 
     /// <summary>One run of the player: the SDK's objects for the settings it was started with.</summary>

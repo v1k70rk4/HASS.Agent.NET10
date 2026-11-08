@@ -16,6 +16,7 @@ namespace HASS.Agent.Companion.Tests;
 public class SendspinTests : IDisposable
 {
     private readonly string _folder = Directory.CreateTempSubdirectory("hass-agent-sendspin-").FullName;
+    private readonly Func<bool> _isAtConsole = SendspinPlayerService.IsAtConsole;
 
     public SendspinTests()
     {
@@ -25,6 +26,7 @@ public class SendspinTests : IDisposable
     public void Dispose()
     {
         SendspinStorage.DirectoryOverride = null;
+        SendspinPlayerService.IsAtConsole = _isAtConsole;
         Strings.Language = Strings.English;
         try { Directory.Delete(_folder, recursive: true); } catch { }
         GC.SuppressFinalize(this);
@@ -106,6 +108,42 @@ public class SendspinTests : IDisposable
         var rotated = player.RotatePairingToken();
         Assert.NotEqual(token, rotated);
         Assert.Equal(rotated, player.GetPairingToken());
+    }
+
+    [Fact]
+    public async Task Only_the_app_at_the_pc_s_screen_plays()
+    {
+        // Another user's session, or one over Remote Desktop: quiet, so a PC is never two players.
+        SendspinPlayerService.IsAtConsole = () => false;
+        var player = new SendspinPlayerService(new CompanionSettings { SendspinEnabled = true }, new FileLog(Path.Combine(_folder, "test.log")));
+
+        await player.ApplySettingsAsync();
+
+        Assert.Equal(SendspinState.NotAtConsole, player.Status.State);
+        await player.DisposeAsync();
+    }
+
+    [Fact]
+    public void A_factory_reset_makes_a_new_player_of_its_own_settings_folder_only()
+    {
+        var config = Directory.CreateTempSubdirectory("hass-agent-reset-").FullName;
+        try
+        {
+            var paths = new AppPaths(config, Path.Combine(config, "settings.json"), Path.Combine(config, "log.txt"), Path.Combine(config, "device-id"), []);
+            var sendspin = Directory.CreateDirectory(Path.Combine(config, SendspinStorage.FolderName)).FullName;
+            foreach (var name in SendspinStorage.FileNames)
+            {
+                File.WriteAllText(Path.Combine(sendspin, name), "x");
+            }
+
+            SettingsStore.FactoryReset(paths, new FileLog(paths.LogFile));
+
+            Assert.Empty(Directory.GetFiles(sendspin));
+        }
+        finally
+        {
+            try { Directory.Delete(config, recursive: true); } catch { }
+        }
     }
 
     [Fact]

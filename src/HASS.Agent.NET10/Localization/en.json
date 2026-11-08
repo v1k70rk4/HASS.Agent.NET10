@@ -210,6 +210,8 @@
     "Mp.SendspinPortInUse": "Port {0} is in use: the player of another Windows user, or another Sendspin player, has it",
     "Mp.SendspinTooOld": "This Music Assistant is too old for the player: 2.10.7 or newer is needed",
     "Mp.SendspinBadAddress": "\"{0}\" is not an address to connect to",
+    "Mp.SendspinNotConsole": "Not playing here: the player plays in the session at this PC's own screen, and this one is not it",
+    "Mp.SendspinReadOnly": "This Windows account may not change the settings: turn the player on and pair it from one that may, and it plays here too",
     "Mp.SendspinFailed": "Not working: {0}",
     "Mp.SendspinNewTokenConfirm": "A new pairing token replaces the old one, which then no longer pairs. A Music Assistant already paired stays paired. Make a new one?",
     "Mp.SendspinTokenCopied": "The pairing token is on the clipboard. Paste it in Music Assistant where it asks for it at this player.",

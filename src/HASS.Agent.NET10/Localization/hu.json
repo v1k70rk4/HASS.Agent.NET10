@@ -210,6 +210,8 @@
     "Mp.SendspinPortInUse": "Foglalt a port ({0}): egy másik Windows-felhasználó lejátszója vagy egy másik Sendspin-lejátszó használja",
     "Mp.SendspinTooOld": "Ez a Music Assistant túl régi a lejátszóhoz: 2.10.7 vagy újabb kell",
     "Mp.SendspinBadAddress": "„{0}” nem használható kapcsolódási címként",
+    "Mp.SendspinNotConsole": "Itt nem játszik: a lejátszó a gép saját képernyője előtti munkamenetben szól, és ez nem az",
+    "Mp.SendspinReadOnly": "Ez a Windows-fiók nem módosíthatja a beállításokat: kapcsold be és párosítsd a lejátszót egy olyan fiókból, amelyik igen, és itt is szólni fog",
     "Mp.SendspinFailed": "Nem működik: {0}",
     "Mp.SendspinNewTokenConfirm": "Az új párosító token leváltja a régit, amivel utána már nem lehet párosítani. A már párosított Music Assistant párosítva marad. Készüljön új?",
     "Mp.SendspinTokenCopied": "A párosító token a vágólapon van. Illeszd be a Music Assistantban, ahol ennél a lejátszónál kéri.",

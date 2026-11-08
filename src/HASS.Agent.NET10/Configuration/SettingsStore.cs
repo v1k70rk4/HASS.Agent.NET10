@@ -123,6 +123,9 @@ internal static class SettingsStore
     {
         var files = new List<string> { paths.SettingsFile, BackupFile(paths), paths.DeviceIdFile };
         files.AddRange(paths.LegacySettingsFiles);
+        // A new device in Home Assistant, and a new Sendspin player in Music Assistant along with it.
+        // Taken from this settings folder, not the PC's: a reset of other paths (a test) leaves the PC's player alone.
+        files.AddRange(Media.Sendspin.SendspinStorage.FileNames.Select(name => Path.Combine(paths.ConfigDirectory, Media.Sendspin.SendspinStorage.FolderName, name)));
         foreach (var file in files)
         {
             if (!File.Exists(file))

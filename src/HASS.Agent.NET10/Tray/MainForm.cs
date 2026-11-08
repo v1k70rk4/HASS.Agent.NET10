@@ -1556,6 +1556,8 @@ internal sealed class MainForm : Form
             SendspinState.PortInUse => string.Format(S("Mp.SendspinPortInUse"), SendspinPlayerService.ListenPort),
             SendspinState.ServerTooOld => S("Mp.SendspinTooOld"),
             SendspinState.InvalidAddress => string.Format(S("Mp.SendspinBadAddress"), status.Detail ?? string.Empty),
+            SendspinState.NotAtConsole => S("Mp.SendspinNotConsole"),
+            SendspinState.ReadOnly => S("Mp.SendspinReadOnly"),
             _ => string.Format(S("Mp.SendspinFailed"), status.Detail ?? string.Empty)
         };
     }

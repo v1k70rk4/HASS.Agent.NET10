@@ -215,8 +215,9 @@ internal static class Program
         using var sessionPowerWatcher = new SessionPowerWatcher();
         using var audioEndpointService = new AudioEndpointService(log);
         using var mediaSessionService = new MediaSessionService(log, audioEndpointService, settings);
-        // The Sendspin player of Music Assistant: off unless turned on, tray app only.
-        var sendspinPlayer = new SendspinPlayerService(settings, log);
+        // The Sendspin player of Music Assistant: off unless turned on, tray app only, and only in
+        // the session at the PC's screen; it reads its settings again when that session changes.
+        var sendspinPlayer = new SendspinPlayerService(settings, log, paths.SettingsFile);
         mediaSessionService.AnnouncementActiveChanged += (_, active) => sendspinPlayer.SetAnnouncementActive(active);
         trayContext.SendspinPlayer = sendspinPlayer;
         using var systemMetricsService = new SystemMetricsService(log, monitorPowerStateService, audioEndpointService);
