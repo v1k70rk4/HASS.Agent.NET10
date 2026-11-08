@@ -3754,6 +3754,35 @@ internal sealed class MainForm : Form
 
     private async Task SaveSettingsAsync()
     {
+        bool langChanged;
+        bool newHaToken;
+        // Under the gate a handover's reload of the settings takes as well: the form's values
+        // and the file's are never written mixed.
+        lock (SettingsStore.Gate)
+        {
+            (langChanged, newHaToken) = WriteSettingsFromForm();
+        }
+
+        UpdateLocalApiControls();
+        SettingsSaved?.Invoke(this, EventArgs.Empty);
+        await ServiceApproval.RequestIfNeededAsync(this, _settings, _log);
+        UpdateGeneralStatusMessages();
+        UpdateServiceStatusMessage();
+
+        var msg = langChanged
+            ? $"{S("Msg.SettingsSaved")}\n\n{S("Msg.RestartRequired")}"
+            : S("Msg.SettingsSaved");
+        MessageBox.Show(msg, AppIdentity.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Information);
+
+        if (newHaToken)
+        {
+            await OfferAfterNewTokenAsync();
+        }
+    }
+
+    /// <summary>The form's values into the settings and the file. Caller holds <see cref="SettingsStore.Gate"/>.</summary>
+    private (bool LangChanged, bool NewHaToken) WriteSettingsFromForm()
+    {
         _settings.DeviceName = _deviceName.Text.Trim();
         _settings.LocalApiEnabled = _localApiEnabled.Checked;
         _settings.BindHost = _bindHost.Text.Trim();
@@ -3902,21 +3931,7 @@ internal sealed class MainForm : Form
             || customCommands.Any(command => command.Enabled);
 
         SettingsStore.Save(_paths, _settings);
-        UpdateLocalApiControls();
-        SettingsSaved?.Invoke(this, EventArgs.Empty);
-        await ServiceApproval.RequestIfNeededAsync(this, _settings, _log);
-        UpdateGeneralStatusMessages();
-        UpdateServiceStatusMessage();
-
-        var msg = langChanged
-            ? $"{S("Msg.SettingsSaved")}\n\n{S("Msg.RestartRequired")}"
-            : S("Msg.SettingsSaved");
-        MessageBox.Show(msg, AppIdentity.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Information);
-
-        if (newHaToken)
-        {
-            await OfferAfterNewTokenAsync();
-        }
+        return (langChanged, newHaToken);
     }
 
     /// <summary>

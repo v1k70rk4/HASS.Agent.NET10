@@ -50,8 +50,10 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
 
     /// <summary>
     /// Another user's app saved other settings, and this one took them over at a handover: a
-    /// settings window open here shows the old ones, so it is opened again on its page, with
-    /// the new ones, and the user is told what became of what was not saved in it.
+    /// settings window open here shows the old ones, with edits not saved yet, maybe. The user
+    /// chooses: the window opened again on its page with the new ones (the edits gone), or kept
+    /// as it is, in which case a Save writes what it shows over the other user's. Nothing is
+    /// discarded before they chose; the question is modal, so no Save runs meanwhile.
     /// </summary>
     public void SettingsReloaded()
     {
@@ -67,10 +69,15 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
                 return;
             }
 
+            var load = MessageBox.Show(form, Strings.Get("General.SettingsReloaded"), AppIdentity.DisplayName, MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes;
+            if (!load || form.IsDisposed)
+            {
+                return;
+            }
+
             var page = form.CurrentPage;
             form.Close();
             OpenMainForm(page);
-            ShowNotification(new NotificationPayload { Title = AppIdentity.DisplayName, Message = Strings.Get("General.SettingsReloaded") });
         });
     }
 

@@ -52,8 +52,13 @@ internal static class SessionRole
     /// way: the sessions alone named this one, and a turn not got means the other app hangs or
     /// the turn cannot be told. A provisional one rests on which apps run, which two apps may
     /// both see wrongly; it connects only with the turn in hand, and is asked again otherwise.
+    /// But not for good: <paramref name="deniedBefore"/> times in a row the turn was not got,
+    /// and after two (a minute or two, with the rechecks between) the hand on it is taken for
+    /// one that never lets go, an app that hangs or someone holding the name who is no app at
+    /// all, and this one connects all the same rather than leave the PC without a connection.
     /// </summary>
-    internal static bool MayConnect(SessionVerdict verdict, bool turnTaken) => turnTaken || !verdict.Provisional;
+    internal static bool MayConnect(SessionVerdict verdict, bool turnTaken, int deniedBefore = 0) =>
+        turnTaken || !verdict.Provisional || deniedBefore >= 2;
 
     /// <summary>For the General page: another session's app has the connection.</summary>
     public static bool WaitingForAnotherSession { get; set; }

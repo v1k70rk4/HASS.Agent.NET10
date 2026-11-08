@@ -255,6 +255,7 @@ internal static class Program
         var linked = false;
         var linkLock = new SemaphoreSlim(1, 1);
         var recheckArmed = 0;
+        var turnDenied = 0;
         async Task ApplySessionRoleAsync(bool startup)
         {
             await linkLock.WaitAsync();
@@ -312,11 +313,13 @@ internal static class Program
                 // this session stands for the PC), and this one waits for it to stop and let
                 // go, so the broker never sees the two at once.
                 link.Signal();
-                if (!SessionRole.MayConnect(verdict, turnTaken: await Task.Run(link.Take)))
+                var turnTaken = await Task.Run(link.Take);
+                if (!SessionRole.MayConnect(verdict, turnTaken, turnDenied))
                 {
                     // A claim made on which apps run (the sessions unknown), and the turn not
                     // this app's (another holds it, or there is no telling): this one waits and
-                    // asks again later.
+                    // asks again later, a few times.
+                    turnDenied++;
                     log.Info("Another app of this PC may hold the connection; this one waits.");
                     linked = false;
                     SessionRole.WaitingForAnotherSession = true;
@@ -324,6 +327,12 @@ internal static class Program
                     return;
                 }
 
+                if (!turnTaken)
+                {
+                    log.Warning("The connection's turn was not to be had; connecting all the same.");
+                }
+
+                turnDenied = 0;
                 mqttService.Start();
                 await StartLocalApiAsync(startup);
             }

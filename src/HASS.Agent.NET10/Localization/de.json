@@ -119,7 +119,7 @@
     "General.MqttDisabledWarning": "MQTT ist nicht eingerichtet. Wenn du einen MQTT-Broker hast, solltest du MQTT aktivieren.",
     "General.ServiceNotInstalledWarning": "Der Windows-Dienst ist nicht installiert oder läuft nicht, daher funktionieren dienstseitige Befehle, Sensoren und stille Updates nicht.",
     "General.OtherSessionTalks": "Another user's session stands for this PC now: their HASS.Agent talks to Home Assistant, and this one waits. Settings saved here reach it when it starts next.",
-    "General.SettingsReloaded": "Another user's HASS.Agent saved other settings, and this one took them over: the settings window was opened again with them. What was not saved in it is gone.",
+    "General.SettingsReloaded": "Another user's HASS.Agent saved other settings, and this one uses them now. Load them into this window?\n\nYes: the window opens again with them; what was not saved here is lost.\nNo: the window keeps what it shows, and Save writes that over theirs.",
     "Danger.Title": "Gefahrenzone",
     "Danger.Tools": "Werkzeuge",
     "Danger.MqttMaintenance": "MQTT-Wartung",

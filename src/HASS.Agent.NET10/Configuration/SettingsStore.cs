@@ -20,6 +20,13 @@ internal static class SettingsStore
     /// (another user's session) may have saved them since this one read them. A file that
     /// cannot be read leaves the instance as it is.
     /// </summary>
+    /// <summary>
+    /// Held while the settings in use are written from the settings window and while they are
+    /// reloaded from the file at a handover: the two run on different threads, and a save that
+    /// crossed a reload would write the window's old values mixed with the file's new ones.
+    /// </summary>
+    public static readonly object Gate = new();
+
     public static bool ReloadInto(AppPaths paths, CompanionSettings target, FileLog log)
     {
         CompanionSettings fresh;
@@ -33,17 +40,20 @@ internal static class SettingsStore
             return false;
         }
 
-        var before = JsonSerializer.Serialize(target, JsonOptions);
-        foreach (var property in typeof(CompanionSettings).GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance))
+        lock (Gate)
         {
-            if (property.CanWrite && property.GetIndexParameters().Length == 0
-                && property.GetCustomAttributes(typeof(JsonIgnoreAttribute), inherit: true).Length == 0)
+            var before = JsonSerializer.Serialize(target, JsonOptions);
+            foreach (var property in typeof(CompanionSettings).GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance))
             {
-                property.SetValue(target, property.GetValue(fresh));
+                if (property.CanWrite && property.GetIndexParameters().Length == 0
+                    && property.GetCustomAttributes(typeof(JsonIgnoreAttribute), inherit: true).Length == 0)
+                {
+                    property.SetValue(target, property.GetValue(fresh));
+                }
             }
-        }
 
-        return JsonSerializer.Serialize(target, JsonOptions) != before;
+            return JsonSerializer.Serialize(target, JsonOptions) != before;
+        }
     }
 
     public static CompanionSettings LoadOrCreate(AppPaths paths, FileLog log)

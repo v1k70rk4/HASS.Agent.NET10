@@ -289,6 +289,10 @@ public class UserSessionTests
         // A final verdict (the sessions named this one) connects even when the turn cannot be told.
         var final = new SessionVerdict(Talks: true, Provisional: false);
         Assert.True(SessionRole.MayConnect(final, turnTaken: false));
+        // Denied twice in a row (an app that hangs with the turn, or a hand on the name that is
+        // no app's): the third time it connects all the same, rather than stay out for good.
+        Assert.False(SessionRole.MayConnect(provisional, turnTaken: false, deniedBefore: 1));
+        Assert.True(SessionRole.MayConnect(provisional, turnTaken: false, deniedBefore: 2));
     }
 
     [Fact]

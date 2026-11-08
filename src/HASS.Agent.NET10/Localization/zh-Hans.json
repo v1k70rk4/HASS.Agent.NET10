@@ -96,7 +96,7 @@
     "General.MqttDisabledWarning": "如果有MQTT服务器则建议开启并配置，以获得完整体验。",
     "General.ServiceNotInstalledWarning": "windows服务未运行，执行指令、更新传感器及静默更新等后台功能将无法正常工作，请在“服务”选项卡中安装或启动。",
     "General.OtherSessionTalks": "Another user's session stands for this PC now: their HASS.Agent talks to Home Assistant, and this one waits. Settings saved here reach it when it starts next.",
-    "General.SettingsReloaded": "Another user's HASS.Agent saved other settings, and this one took them over: the settings window was opened again with them. What was not saved in it is gone.",
+    "General.SettingsReloaded": "Another user's HASS.Agent saved other settings, and this one uses them now. Load them into this window?\n\nYes: the window opens again with them; what was not saved here is lost.\nNo: the window keeps what it shows, and Save writes that over theirs.",
     "Danger.Title": "调试选项",
     "Danger.Tools": "工具",
     "Danger.MqttMaintenance": "MQTT维护",
