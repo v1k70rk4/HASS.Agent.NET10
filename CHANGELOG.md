@@ -2,6 +2,17 @@
 
 Every release of HASS.Agent .NET10, newest first. The downloads are on the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases).
 
+## 10.13.0-beta.1
+
+> **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered the beta, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.12.0**, below.
+
+The first beta of 10.13.0: the PC as a Sendspin player of Music Assistant. Works with the Home Assistant integration **10.6.7** or newer; there is no new integration with this one. Signed release.
+
+- **The PC as a Sendspin player of Music Assistant.** A new card on the Media player page: turn it on, and the PC plays what [Music Assistant](https://music-assistant.io/) sends it, in sync with the other players of its group, in another room, on a speaker, on another PC. Music Assistant finds the PC on the network and asks for a pairing token, which the page copies to the clipboard; for a network where it is not found, the PC connects to an address you give. The sound goes to the Windows default output or to a device you choose, and an output that goes away (a headset unplugged, a TV that drops its HDMI audio) is replaced by whatever is there, with the PC staying in its group. An announcement of the app silences the player meanwhile. The PC is the player, whoever is signed in at its screen: a user switch hands the player over within a few seconds, and so does an update of the app. Needs Music Assistant 2.10.7 or newer; the player's entity in Home Assistant comes from Music Assistant's own integration. See [Sendspin player](docs/features/media-player.md#sendspin-player-music-assistant).
+- **Setup lets the app through the Windows firewall for the player** (TCP 8928 and UDP 5353, private networks only, the same way as the Local API) and removes the rule at uninstall.
+- **The library the player brings along (libsodium) is signed with the program**; the other libraries beside the program carry Microsoft's signature. See [Signed releases](docs/getting-started/security.md#signed-releases).
+- **The program is 3 MB larger than 10.12.0, not 58.** A library of the Sendspin SDK asks for WPF, which this app does not use; it is kept out of the program.
+
 ## 10.12.0
 
 A release for people coming from the classic HASS.Agent: the app takes over its settings. With it, the dashboard popup keeps its zoom, an uninstaller that stops the app, the service's update notes in the registry, and Russian. Works with the Home Assistant integration **10.6.7** or newer; the notice in Home Assistant for a PC on the old client is fixed in the integration **10.12.0**, out at the same time. Built on the same .NET 10.0.14 as 10.11.0. Signed release.
