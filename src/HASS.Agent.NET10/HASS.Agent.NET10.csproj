@@ -60,4 +60,17 @@
     </ItemGroup>
   </Target>
 
+  <!-- Signed builds (build-exe.ps1 -Sign, -Tag): the native libraries that come unsigned from their
+       makers (libsodium, under the Sendspin player) are signed first and their folder is handed in
+       as SignedNativeDir. The publish takes those copies instead of the package's: next to the exe in
+       the release layout, and inside the single-file exe, which unpacks them at start. -->
+  <Target Name="UseSignedNativeLibraries" AfterTargets="ComputeResolvedFilesToPublishList" Condition="'$(SignedNativeDir)' != ''">
+    <ItemGroup>
+      <_SignedNativeLibrary Include="@(ResolvedFileToPublish)" Condition="Exists('$(SignedNativeDir)\%(Filename)%(Extension)')" />
+      <ResolvedFileToPublish Remove="@(_SignedNativeLibrary)" />
+      <ResolvedFileToPublish Include="@(_SignedNativeLibrary->'$(SignedNativeDir)\%(Filename)%(Extension)')" />
+    </ItemGroup>
+    <Message Importance="high" Text="Signed native library: %(_SignedNativeLibrary.Filename)%(_SignedNativeLibrary.Extension)" Condition="'@(_SignedNativeLibrary)' != ''" />
+  </Target>
+
 </Project>
