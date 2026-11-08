@@ -213,11 +213,24 @@ public class UserSessionTests
     [Fact]
     public void One_tray_app_of_the_pc_talks_to_home_assistant()
     {
-        // The app in the elected session talks; another user's waits. With no answer from
-        // Windows every app talks, rather than none.
-        Assert.True(SessionRole.Decide(elected: 3, current: 3));
-        Assert.False(SessionRole.Decide(elected: 3, current: 7));
-        Assert.True(SessionRole.Decide(elected: null, current: 7));
+        // The console's session stands for the PC when it runs a tray app, final.
+        var election = SystemMetricsService.ElectAmong([(1, "active"), (5, "active")], consoleId: 1, sessionsWithApp: new HashSet<uint> { 1, 5 });
+        Assert.Equal(new SessionElection(1, Provisional: false), election);
+        Assert.True(SessionRole.Decide(election, current: 1, new HashSet<uint> { 1, 5 }).Talks);
+        Assert.False(SessionRole.Decide(election, current: 5, new HashSet<uint> { 1, 5 }).Talks);
+
+        // Nothing known about which apps run: the sessions alone decide, final.
+        Assert.Equal(new SessionElection(1, Provisional: false), SystemMetricsService.ElectAmong([(1, "active"), (5, "active")], consoleId: 1, sessionsWithApp: new HashSet<uint>()));
+
+        // The console's user has no app (may not use the settings): the one that has talks, provisionally.
+        var fallback = SystemMetricsService.ElectAmong([(1, "active"), (5, "disconnected"), (6, "active")], consoleId: 1, sessionsWithApp: new HashSet<uint> { 5, 6 });
+        Assert.Equal(new SessionElection(6, Provisional: true), fallback);
+
+        // Windows could not list the sessions: the lowest session with an app talks; with no list of those either, every app does.
+        Assert.True(SessionRole.Decide(null, current: 7, new HashSet<uint> { 7, 9 }).Talks);
+        Assert.False(SessionRole.Decide(null, current: 9, new HashSet<uint> { 7, 9 }).Talks);
+        Assert.True(SessionRole.Decide(null, current: 9, new HashSet<uint>()).Talks);
+        Assert.True(SessionRole.Decide(null, current: 9, new HashSet<uint>()).Provisional);
         Assert.Equal(-1, SystemMetricsService.ChooseUserSession([], consoleId: 1));
     }
 }

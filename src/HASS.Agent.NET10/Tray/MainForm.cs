@@ -1025,10 +1025,15 @@ internal sealed class MainForm : Form
                 continue;
             }
 
+            // As tall as its text at this width: a longer translation wraps to a second line.
+            var textHeight = TextRenderer.MeasureText(
+                label.Text, label.Font, new Size(Math.Max(D(100), statusWidth - label.Padding.Horizontal), int.MaxValue),
+                TextFormatFlags.WordBreak).Height;
+            var height = Math.Max(D(34), textHeight + D(12));
             label.Location = new Point(D(28), y);
-            label.Size = new Size(statusWidth, D(34));
+            label.Size = new Size(statusWidth, height);
             label.BringToFront();
-            y += D(42);
+            y += height + D(8);
         }
 
         var firstCardTop = y == D(56) ? D(64) : y + D(8);
@@ -1465,14 +1470,16 @@ internal sealed class MainForm : Form
         card.Controls.Add(_sendspinServer);
         y += 38;
 
+        // Three lines: what plays can be long, and the output's line below it must stay in view.
         _sendspinState.Location = Pt(20, y);
-        _sendspinState.Size = Sz(560, 42);
+        _sendspinState.Size = Sz(560, 60);
         _sendspinState.ForeColor = TextBody;
         _sendspinState.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
         _sendspinState.UseMnemonic = false;
+        _sendspinState.AutoEllipsis = true;
         card.Controls.Add(_sendspinState);
         FollowCardWidth(card, _sendspinState);
-        y += 46;
+        y += 64;
 
         var copyToken = MakeSecondaryButton(S("Mp.SendspinCopyToken"), 180, 28);
         copyToken.Location = Pt(20, y);
@@ -3171,10 +3178,10 @@ internal sealed class MainForm : Form
 
     private static void RestartApplication(bool openWindow = false)
     {
-        // The single-instance mutex is still held while this process exits,
-        // so relaunch after a short delay from a detached shell.
-        AppRestart.Pending = true;
-        var arguments = openWindow ? " --open-window" : string.Empty;
+        // The single-instance mutex is still held while this process exits, so relaunch after a
+        // short delay from a detached shell; --await-exit has the new instance wait for this one
+        // to leave when the delay was not enough (a goodbye to Music Assistant takes a moment).
+        var arguments = (openWindow ? " --open-window" : string.Empty) + " --await-exit";
         Process.Start(new ProcessStartInfo
         {
             FileName = SystemTools.InSystem32("cmd.exe"),
@@ -3183,6 +3190,8 @@ internal sealed class MainForm : Form
             CreateNoWindow = true,
             UseShellExecute = false
         });
+        // Only once the launcher is on its way: an exit without it is no restart.
+        AppRestart.Pending = true;
         Application.Exit();
     }
 

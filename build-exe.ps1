@@ -368,10 +368,21 @@ if ($signing) {
         # A signature that is there but broken is not papered over with ours.
         if ($status -ne 'NotSigned') { throw "Signature on $($dll.Name) is $status - refusing to sign over it." }
         $copy = Join-Path $signedNativeDir $dll.Name
+        if (Test-Path $copy) {
+            # The copies are taken by file name: two different libraries under one name would get one signed file for both.
+            if ((Get-FileHash $copy).Hash -ne (Get-FileHash $dll.FullName).Hash) { throw "Two different unsigned libraries are both named $($dll.Name); the signing step cannot tell them apart." }
+            continue
+        }
         Copy-Item $dll.FullName $copy
         Write-Host "[sign] $($dll.Name) (came unsigned)" -ForegroundColor Cyan
         Invoke-SignScript $copy
         Assert-Signed $copy
+    }
+
+    # The signed copies are taken by the project's UseSignedNativeLibraries target. A source from before it
+    # (an older branch built with -Sign) would pack the unsigned ones and still be called a signed build.
+    if ((Get-ChildItem $signedNativeDir -File).Count -gt 0 -and -not (Select-String -Path $project -Pattern 'UseSignedNativeLibraries' -Quiet)) {
+        throw "The project at $project has no UseSignedNativeLibraries target, so the signed native libraries would not be used. Build a source that has it, or build without -Sign."
     }
 
     Remove-Item $probeDir -Recurse -Force -ErrorAction SilentlyContinue

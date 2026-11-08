@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text.Json.Nodes;
 using HASS.Agent.Companion.Logging;
 
@@ -13,6 +14,34 @@ internal static class SettingsStore
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         WriteIndented = true
     };
+
+    /// <summary>
+    /// The settings from the file into the instance the services hold: another app of the PC
+    /// (another user's session) may have saved them since this one read them. A file that
+    /// cannot be read leaves the instance as it is.
+    /// </summary>
+    public static void ReloadInto(AppPaths paths, CompanionSettings target, FileLog log)
+    {
+        CompanionSettings fresh;
+        try
+        {
+            fresh = LoadOrCreate(paths, log);
+        }
+        catch (Exception ex)
+        {
+            log.Warning($"Unable to read the settings again: {ex.Message}");
+            return;
+        }
+
+        foreach (var property in typeof(CompanionSettings).GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance))
+        {
+            if (property.CanWrite && property.GetIndexParameters().Length == 0
+                && property.GetCustomAttributes(typeof(JsonIgnoreAttribute), inherit: true).Length == 0)
+            {
+                property.SetValue(target, property.GetValue(fresh));
+            }
+        }
+    }
 
     public static CompanionSettings LoadOrCreate(AppPaths paths, FileLog log)
     {

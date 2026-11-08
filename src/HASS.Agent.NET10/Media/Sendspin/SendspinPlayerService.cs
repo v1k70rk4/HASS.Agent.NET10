@@ -154,7 +154,10 @@ internal sealed class SendspinPlayerService : IAsyncDisposable
             // A player that could not start (the port taken, no keys this account may write, a
             // failure, not the session at the screen) is tried again on a save of the same
             // settings: whatever was in the way may be gone by now.
-            var stuck = Status.State is SendspinState.PortInUse or SendspinState.ReadOnly or SendspinState.Failed or SendspinState.NotAtConsole;
+            // ServerTooOld and NeedsPairing after a reconnect are final for the SDK (it stops
+            // trying): a save starts the connection again once the server is updated or paired.
+            var stuck = Status.State is SendspinState.PortInUse or SendspinState.ReadOnly or SendspinState.Failed
+                or SendspinState.NotAtConsole or SendspinState.ServerTooOld or SendspinState.NeedsPairing;
             if (wanted == _running && !stuck)
             {
                 return;
@@ -209,24 +212,30 @@ internal sealed class SendspinPlayerService : IAsyncDisposable
     // client that is never connected, over the same identity and store.
     private string WithPairing(Func<IPairingTokenSource, string> operation)
     {
-        var session = _session;
-        if (session?.TokenSource is { } running)
+        // One token operation at a time across the apps of this PC: two users pressing the
+        // button at once would mint two tokens, both of them valid. A lock of its own, as the
+        // operation writes the store under the folder's lock.
+        using (SendspinStorage.Lock("token.lock"))
         {
-            return operation(running);
-        }
+            var session = _session;
+            if (session?.TokenSource is { } running)
+            {
+                return operation(running);
+            }
 
-        var client = SendspinClientService.CreateForDial(
-            Microsoft.Extensions.Logging.Abstractions.NullLoggerFactory.Instance,
-            new SendspinClientOptions { Identity = Identity(), PairingRecordStore = PairingStore() });
-        try
-        {
-            return operation(new ClientTokenSource(client));
-        }
-        finally
-        {
-            // Called from the settings window: disposed on the thread pool, so that nothing in the
-            // SDK's disposal can wait for the UI thread that is waiting here.
-            Task.Run(() => client.DisposeAsync().AsTask()).GetAwaiter().GetResult();
+            var client = SendspinClientService.CreateForDial(
+                Microsoft.Extensions.Logging.Abstractions.NullLoggerFactory.Instance,
+                new SendspinClientOptions { Identity = Identity(), PairingRecordStore = PairingStore() });
+            try
+            {
+                return operation(new ClientTokenSource(client));
+            }
+            finally
+            {
+                // Called from the settings window: disposed on the thread pool, so that nothing in the
+                // SDK's disposal can wait for the UI thread that is waiting here.
+                Task.Run(() => client.DisposeAsync().AsTask()).GetAwaiter().GetResult();
+            }
         }
     }
 
@@ -438,13 +447,30 @@ internal sealed class SendspinPlayerService : IAsyncDisposable
         await _transition.WaitAsync().ConfigureAwait(false);
         try
         {
-            if (_disposed || _session != session || _running is not { } config || Status.State != blocked)
+            if (_disposed || _session != session || _running is null || Status.State != blocked)
             {
                 return;
             }
 
+            // The settings as saved by now: a kiosk player is set up from another session
+            // while this app waits for its keys, with an address this app has not seen.
+            ReloadPlayerSettings();
+            var config = Config.From(_settings, IsAtConsole());
             await StopSessionAsync(GoodbyeReasons.Restart).ConfigureAwait(false);
             _running = config;
+            if (!config.Enabled)
+            {
+                SetStatus(new SendspinStatus(SendspinState.Off));
+                return;
+            }
+
+            if (!config.AtConsole)
+            {
+                SetStatus(new SendspinStatus(SendspinState.NotAtConsole));
+                RecheckConsoleLater();
+                return;
+            }
+
             await StartSessionAsync(config).ConfigureAwait(false);
         }
         catch (Exception ex)

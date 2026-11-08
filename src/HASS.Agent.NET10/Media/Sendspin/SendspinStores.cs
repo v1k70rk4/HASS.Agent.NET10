@@ -50,9 +50,9 @@ internal static class SendspinStorage
     /// for a few seconds. An account that may only read the folder cannot make the lock file
     /// and gets a lock that holds nothing: it cannot write either, so there is nothing to race.
     /// </summary>
-    internal static IDisposable Lock()
+    internal static IDisposable Lock(string name = "sendspin.lock")
     {
-        var path = Path.Combine(Directory, "sendspin.lock");
+        var path = Path.Combine(Directory, name);
         var deadline = DateTime.UtcNow.AddSeconds(5);
         while (true)
         {
@@ -99,7 +99,20 @@ internal static class SendspinStorage
         try
         {
             SafeFiles.WriteAllBytes(temp, content);
-            File.Move(temp, path, overwrite: true);
+            // Another app of the PC may be reading the file this moment; it reads with the
+            // sharing that lets this replace it, and a slower reader is given a few more tries.
+            for (var attempt = 1; ; attempt++)
+            {
+                try
+                {
+                    File.Move(temp, path, overwrite: true);
+                    break;
+                }
+                catch (IOException) when (attempt < 10)
+                {
+                    Thread.Sleep(20);
+                }
+            }
         }
         catch (Win32Exception ex) when (ex.NativeErrorCode == 5)
         {
@@ -128,6 +141,15 @@ internal static class SendspinStorage
         }
     }
 
+    /// <summary>The file, read so that another app may replace it meanwhile (the reader keeps the old one).</summary>
+    internal static byte[] ReadShared(string path)
+    {
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        using var buffer = new MemoryStream();
+        stream.CopyTo(buffer);
+        return buffer.ToArray();
+    }
+
     private static byte[] Entropy(string purpose) => Encoding.UTF8.GetBytes($"HASS.Agent.NET10:sendspin:{purpose}");
 }
 
@@ -137,7 +159,7 @@ internal sealed class ProtectedSendspinIdentityStore(string path) : ISendspinIde
     private const string Purpose = "identity";
 
     public byte[]? Load() =>
-        File.Exists(path) ? SendspinStorage.Unprotect(File.ReadAllBytes(path), Purpose) : null;
+        File.Exists(path) ? SendspinStorage.Unprotect(SendspinStorage.ReadShared(path), Purpose) : null;
 
     public void Save(byte[] identityBlob) =>
         SendspinStorage.WriteAtomic(path, SendspinStorage.Protect(identityBlob, Purpose));
@@ -212,7 +234,7 @@ internal sealed class ProtectedPairingRecordStore(string path) : IPairingRecordS
             return [];
         }
 
-        var json = SendspinStorage.Unprotect(File.ReadAllBytes(path), Purpose);
+        var json = SendspinStorage.Unprotect(SendspinStorage.ReadShared(path), Purpose);
         if (json is null)
         {
             // Written on another PC (a copied folder): of no use here, and the player pairs

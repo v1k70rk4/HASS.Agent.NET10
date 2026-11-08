@@ -140,6 +140,32 @@ public class SendspinTests : IDisposable
     }
 
     [Fact]
+    public void A_read_only_account_may_fail_to_note_a_pairing_s_use_but_not_a_new_pairing()
+    {
+        // A kiosk user's app reads the folder only. The SDK notes when a pairing was last used
+        // on every connection: that write may fail quietly, or the player would never connect.
+        // A pairing it does not have must still fail loudly, or it would report a pairing
+        // that was never stored.
+        var store = new ProtectedPairingRecordStore(SendspinStorage.PairingFile);
+        var psk = Enumerable.Range(1, 32).Select(i => (byte)(i * 3)).ToArray();
+        store.Upsert(new PairingRecord(psk, PskCategory.LongTerm, "server-1"));
+        File.SetAttributes(SendspinStorage.PairingFile, FileAttributes.ReadOnly);
+        try
+        {
+            store.Upsert(new PairingRecord(psk, PskCategory.LongTerm, "server-1", DateTimeOffset.UtcNow));
+
+            var other = Enumerable.Range(1, 32).Select(i => (byte)(i * 5)).ToArray();
+            Assert.Throws<UnauthorizedAccessException>(() => store.Upsert(new PairingRecord(other, PskCategory.LongTerm, "server-2")));
+        }
+        finally
+        {
+            File.SetAttributes(SendspinStorage.PairingFile, FileAttributes.Normal);
+        }
+
+        Assert.Single(new ProtectedPairingRecordStore(SendspinStorage.PairingFile).List());
+    }
+
+    [Fact]
     public void A_pairing_file_that_cannot_be_read_back_counts_as_none()
     {
         // Another Windows user's, or a copy from another PC: the player pairs again, it does not fail.

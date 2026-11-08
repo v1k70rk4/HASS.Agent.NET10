@@ -90,6 +90,13 @@ internal static class Program
         var kiosk = KioskMode.AppliesToCurrentUser();
 
         using var mutex = new Mutex(initiallyOwned: true, MutexName, out var isFirstInstance);
+        if (!isFirstInstance && args.Any(arg => string.Equals(arg, "--await-exit", StringComparison.OrdinalIgnoreCase)))
+        {
+            // Started by the app's own restart: the one before may still be saying goodbye to
+            // Music Assistant. Its place is taken when it has left, not given up.
+            isFirstInstance = WaitForTheOneBefore(mutex);
+        }
+
         if (!isFirstInstance)
         {
             // --quiet: relaunch watchdogs may race an already-restarted instance.
@@ -240,17 +247,28 @@ internal static class Program
 
         // One tray app of the PC talks to Home Assistant: the one in the session that stands for
         // the PC (SessionRole). Another user's app waits, and takes over on a switch of users.
+        // Everything that starts or stops the connection runs under linkLock, and reads the
+        // role inside it: a save just before a switch must not reconnect an app that has just
+        // given the connection up.
         var linked = false;
         var linkLock = new SemaphoreSlim(1, 1);
+        var recheckArmed = 0;
         async Task ApplySessionRoleAsync(bool startup)
         {
             await linkLock.WaitAsync();
             try
             {
-                var talks = SessionRole.ThisSessionTalks();
-                SessionRole.WaitingForAnotherSession = !talks;
+                var verdict = SessionRole.Evaluate();
+                SessionRole.WaitingForAnotherSession = !verdict.Talks;
                 trayContext.RefreshSessionRole();
-                if (!talks)
+                if (verdict.Provisional)
+                {
+                    // Decided by which apps run (the console's user has none, or the sessions
+                    // could not be listed): asked again, the app at the console may be starting.
+                    ArmRoleRecheck();
+                }
+
+                if (!verdict.Talks)
                 {
                     if (startup || linked)
                     {
@@ -276,34 +294,107 @@ internal static class Program
                 if (!startup)
                 {
                     log.Info("This session stands for the PC now: connecting to Home Assistant.");
+                    // The app that talked until now may have saved other connection settings.
+                    SettingsStore.ReloadInto(paths, settings, log);
                 }
 
                 mqttService.Start();
-                if (!settings.LocalApiEnabled)
-                {
-                    if (startup)
-                    {
-                        log.Info("Local API is off.");
-                    }
-
-                    return;
-                }
-
-                try
-                {
-                    await localApi.StartAsync();
-                    log.Info($"Local API listening on {settings.ListenUrl}.");
-                }
-                catch (Exception ex)
-                {
-                    log.Error(ex, "Unable to start Local API.");
-                    trayContext.ShowStartupError(ex);
-                }
+                await StartLocalApiAsync(startup);
             }
             finally
             {
                 linkLock.Release();
             }
+        }
+
+        // Caller holds linkLock. At a handover the port may still be the other session's for a
+        // moment: it is tried again, as long as this session is the one that talks.
+        async Task StartLocalApiAsync(bool startup)
+        {
+            if (!settings.LocalApiEnabled)
+            {
+                if (startup)
+                {
+                    log.Info("Local API is off.");
+                }
+
+                return;
+            }
+
+            try
+            {
+                await localApi.StartAsync();
+                log.Info($"Local API listening on {settings.ListenUrl}.");
+            }
+            catch (Exception ex) when (!startup)
+            {
+                log.Warning($"Unable to start the Local API yet, trying again: {ex.Message}");
+                _ = Task.Run(RetryLocalApiAsync);
+            }
+            catch (Exception ex)
+            {
+                log.Error(ex, "Unable to start Local API.");
+                trayContext.ShowStartupError(ex);
+            }
+        }
+
+        async Task RetryLocalApiAsync()
+        {
+            for (var attempt = 1; attempt <= 12; attempt++)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(5));
+                await linkLock.WaitAsync();
+                try
+                {
+                    if (!linked || localApi.IsRunning || !settings.LocalApiEnabled)
+                    {
+                        return;
+                    }
+
+                    try
+                    {
+                        await localApi.StartAsync();
+                        log.Info($"Local API listening on {settings.ListenUrl}.");
+                        return;
+                    }
+                    catch (Exception ex) when (attempt < 12)
+                    {
+                        log.Debug($"Local API still not available: {ex.Message}");
+                    }
+                    catch (Exception ex)
+                    {
+                        log.Error(ex, "Unable to start Local API.");
+                        trayContext.ShowStartupError(ex);
+                        return;
+                    }
+                }
+                finally
+                {
+                    linkLock.Release();
+                }
+            }
+        }
+
+        void ArmRoleRecheck()
+        {
+            if (Interlocked.Exchange(ref recheckArmed, 1) == 1)
+            {
+                return;
+            }
+
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(TimeSpan.FromSeconds(30));
+                Interlocked.Exchange(ref recheckArmed, 0);
+                try
+                {
+                    await ApplySessionRoleAsync(startup: false);
+                }
+                catch (Exception ex)
+                {
+                    log.Error(ex, "Unable to ask again which session stands for the PC.");
+                }
+            });
         }
 
         // Event-driven sensor pushes: interactive state changes publish immediately
@@ -337,24 +428,32 @@ internal static class Program
         {
             log.Info("Settings saved from UI.");
             _ = Task.Run(() => ApplySendspinAsync(sendspinPlayer, log));
-            if (!linked)
-            {
-                // The saved file reaches the app that talks when it starts next.
-                log.Info("This session's app is waiting; the saved settings reach the connected one when it starts next.");
-                return;
-            }
-
-            _ = Task.Run(() => mqttService.RestartAsync());
             _ = Task.Run(async () =>
             {
+                await linkLock.WaitAsync();
                 try
                 {
-                    await localApi.ApplySettingsAsync();
+                    if (!linked)
+                    {
+                        // The saved file reaches the app that talks when it starts next.
+                        log.Info("This session's app is waiting; the saved settings reach the connected one when it starts next.");
+                        return;
+                    }
+
+                    await mqttService.RestartAsync();
+                    try
+                    {
+                        await localApi.ApplySettingsAsync();
+                    }
+                    catch (Exception ex)
+                    {
+                        log.Error(ex, "Unable to start Local API.");
+                        trayContext.ShowStartupError(ex);
+                    }
                 }
-                catch (Exception ex)
+                finally
                 {
-                    log.Error(ex, "Unable to start Local API.");
-                    trayContext.ShowStartupError(ex);
+                    linkLock.Release();
                 }
             });
         };
@@ -451,6 +550,20 @@ internal static class Program
             mutex.ReleaseMutex();
             mutex.Dispose();
             KioskEvents.Write(KioskEvents.Closed, $"The kiosk tray app of {Environment.UserDomainName}\\{Environment.UserName} was closed.", log, System.Diagnostics.EventLogEntryType.Warning);
+        }
+    }
+
+    // The restart's new instance waits for the old one to leave; an old one that died without
+    // releasing (the mutex abandoned) has left all the same.
+    private static bool WaitForTheOneBefore(Mutex mutex)
+    {
+        try
+        {
+            return mutex.WaitOne(TimeSpan.FromSeconds(30));
+        }
+        catch (AbandonedMutexException)
+        {
+            return true;
         }
     }
 

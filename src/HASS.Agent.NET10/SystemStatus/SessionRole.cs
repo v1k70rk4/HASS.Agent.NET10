@@ -2,6 +2,9 @@ using System.Diagnostics;
 
 namespace HASS.Agent.Companion.SystemStatus;
 
+/// <summary>The outcome of <see cref="SessionRole.Evaluate"/>: whether this app talks, and whether that is to be asked again.</summary>
+internal sealed record SessionVerdict(bool Talks, bool Provisional);
+
 /// <summary>
 /// Which session's tray app stands for the PC towards Home Assistant. Every signed-in user has
 /// a tray app of their own, and the PC is one device: two apps connected at once publish the
@@ -9,19 +12,66 @@ namespace HASS.Agent.Companion.SystemStatus;
 /// over, both having the PC's client id. So one talks and the others wait: the one in the
 /// session the logged-in-user sensor reports too (<see cref="SystemMetricsService.ChooseUserSession"/>),
 /// the console's, else the active one (a PC used over Remote Desktop only), else the first
-/// disconnected one. A switch of users hands the connection over.
+/// disconnected one; among the sessions that run a tray app, when that session has none (a
+/// user who may not use the settings). A switch of users hands the connection over.
 /// </summary>
 internal static class SessionRole
 {
+    public static SessionVerdict Evaluate()
+    {
+        var current = (uint)Process.GetCurrentProcess().SessionId;
+        var withApp = SessionsWithTrayApp();
+        return Decide(SystemMetricsService.ElectUserSession(withApp), current, withApp);
+    }
+
     /// <summary>Whether this app's session is the one that talks to Home Assistant now.</summary>
-    public static bool ThisSessionTalks() => Decide(SystemMetricsService.ElectedUserSessionId(), (uint)Process.GetCurrentProcess().SessionId);
+    public static bool ThisSessionTalks() => Evaluate().Talks;
 
     /// <summary>
-    /// Whether the app in <paramref name="current"/> talks: when it is the elected session, and
-    /// when there is none (Windows could not list the sessions), rather than nobody talking.
+    /// The verdict for the app in <paramref name="current"/>. With an election it talks when it
+    /// is the elected session. With none (Windows could not list the sessions) the lowest
+    /// session that runs a tray app talks, so that one talks rather than every one or none; with
+    /// no such list either, this one. A verdict is provisional when it rests on which apps run
+    /// rather than on the sessions alone: the app at the console may still be starting.
     /// </summary>
-    internal static bool Decide(uint? elected, uint current) => elected is null || elected == current;
+    internal static SessionVerdict Decide(SessionElection? election, uint current, IReadOnlyCollection<uint> withApp)
+    {
+        if (election is { } result)
+        {
+            return new SessionVerdict(result.Elected == current, result.Provisional);
+        }
+
+        return withApp.Count > 0
+            ? new SessionVerdict(withApp.Min() == current, Provisional: true)
+            : new SessionVerdict(true, Provisional: true);
+    }
 
     /// <summary>For the General page: another session's app has the connection.</summary>
     public static bool WaitingForAnotherSession { get; set; }
+
+    // The sessions with a tray app of this program in them, the service's session 0 left out.
+    private static HashSet<uint> SessionsWithTrayApp()
+    {
+        var sessions = new HashSet<uint>();
+        var name = Process.GetCurrentProcess().ProcessName;
+        foreach (var process in Process.GetProcessesByName(name))
+        {
+            using (process)
+            {
+                try
+                {
+                    if (process.SessionId != 0)
+                    {
+                        sessions.Add((uint)process.SessionId);
+                    }
+                }
+                catch (Exception)
+                {
+                    // Gone, or not ours to look at.
+                }
+            }
+        }
+
+        return sessions;
+    }
 }
