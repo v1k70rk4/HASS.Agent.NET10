@@ -382,14 +382,15 @@ internal sealed class CompanionSettings
             AnnouncementVolume = DefaultAnnouncementVolume;
         }
 
-        SendspinPlayerName = SendspinPlayerName.Trim();
+        // A null in the file (an edit by hand) is an empty text, as for the other texts.
+        SendspinPlayerName = (SendspinPlayerName ?? string.Empty).Trim();
         if (SendspinPlayerName.Length > MaxSendspinNameLength)
         {
             SendspinPlayerName = SendspinPlayerName[..MaxSendspinNameLength];
         }
 
-        SendspinOutputDevice = SendspinOutputDevice.Trim();
-        SendspinServerAddress = SendspinServerAddress.Trim();
+        SendspinOutputDevice = (SendspinOutputDevice ?? string.Empty).Trim();
+        SendspinServerAddress = (SendspinServerAddress ?? string.Empty).Trim();
 
         // Below the floor that applies now (5 s, or 1 s with the Danger Zone switch) the value
         // rises to the floor: a 2 s set while unlocked becomes 5 s when the switch goes off.

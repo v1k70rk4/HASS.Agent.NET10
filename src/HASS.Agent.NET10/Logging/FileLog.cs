@@ -52,6 +52,12 @@ internal sealed class FileLog : IDisposable
         Write("ERROR", $"{message}{Environment.NewLine}{exception}");
     }
 
+    /// <summary>An error with no exception to show, as a library reports one of its own.</summary>
+    public void Error(string message)
+    {
+        Write("ERROR", message);
+    }
+
     public void Dispose()
     {
         _disposed = true;

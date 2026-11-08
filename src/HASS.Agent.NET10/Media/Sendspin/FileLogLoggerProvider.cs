@@ -60,7 +60,7 @@ internal sealed class FileLogLoggerProvider(FileLog log) : ILoggerProvider
                 case LogLevel.Error or LogLevel.Critical:
                     if (exception is null)
                     {
-                        log.Warning(message);
+                        log.Error(message);
                     }
                     else
                     {

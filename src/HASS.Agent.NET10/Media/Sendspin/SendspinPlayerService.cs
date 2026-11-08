@@ -152,9 +152,9 @@ internal sealed class SendspinPlayerService : IAsyncDisposable
             var wanted = Config.From(_settings, IsAtConsole());
 
             // A player that could not start (the port taken, no keys this account may write, a
-            // failure) starts again on a save of the same settings: whatever was in the way may
-            // be gone by now.
-            var stuck = Status.State is SendspinState.PortInUse or SendspinState.ReadOnly or SendspinState.Failed;
+            // failure, not the session at the screen) is tried again on a save of the same
+            // settings: whatever was in the way may be gone by now.
+            var stuck = Status.State is SendspinState.PortInUse or SendspinState.ReadOnly or SendspinState.Failed or SendspinState.NotAtConsole;
             if (wanted == _running && !stuck)
             {
                 return;
@@ -178,8 +178,13 @@ internal sealed class SendspinPlayerService : IAsyncDisposable
 
             if (!wanted.AtConsole)
             {
-                _log.Info("Sendspin: not the session at the PC's screen; the player is left to the one that is.");
+                if (Status.State != SendspinState.NotAtConsole)
+                {
+                    _log.Info("Sendspin: not the session at the PC's screen; the player is left to the one that is.");
+                }
+
                 SetStatus(new SendspinStatus(SendspinState.NotAtConsole));
+                RecheckConsoleLater();
                 return;
             }
 
@@ -309,7 +314,7 @@ internal sealed class SendspinPlayerService : IAsyncDisposable
         }
 
         var builder = new UriBuilder(uri);
-        if (uri.IsDefaultPort && !value.Contains($":{uri.Port}", StringComparison.Ordinal))
+        if (uri.IsDefaultPort && !HasExplicitPort(value))
         {
             builder.Port = DefaultServerPort;
         }
@@ -322,9 +327,32 @@ internal sealed class SendspinPlayerService : IAsyncDisposable
         return builder.Uri;
     }
 
+    /// <summary>Whether the authority of the address names a port ("host:8927", "[fd00::1]:8927"), as against the colons of an IPv6 address.</summary>
+    internal static bool HasExplicitPort(string value)
+    {
+        var start = value.IndexOf("://", StringComparison.Ordinal) + 3;
+        var end = value.IndexOfAny(['/', '?', '#'], start);
+        var authority = end < 0 ? value[start..] : value[start..end];
+        var colon = authority.LastIndexOf(':');
+        var bracket = authority.LastIndexOf(']');
+        return colon > bracket
+            && colon < authority.Length - 1
+            && authority[(colon + 1)..].All(char.IsDigit)
+            && (bracket >= 0 || authority.IndexOf(':') == colon);
+    }
+
     private static ProtectedPairingRecordStore PairingStore() => new(SendspinStorage.PairingFile);
 
-    private static SendspinIdentity Identity() => SendspinIdentity.FromStore(new ProtectedSendspinIdentityStore(SendspinStorage.IdentityFile));
+    // Under the folder's lock: the SDK loads the identity, and makes and saves one when there
+    // is none. Two apps of this PC (two users' sessions) starting at once would otherwise each
+    // make one, and the PC would be two players.
+    private static SendspinIdentity Identity()
+    {
+        using (SendspinStorage.Lock())
+        {
+            return SendspinIdentity.FromStore(new ProtectedSendspinIdentityStore(SendspinStorage.IdentityFile));
+        }
+    }
 
     // Caller holds _transition.
     private async Task StartSessionAsync(Config config)
@@ -355,6 +383,27 @@ internal sealed class SendspinPlayerService : IAsyncDisposable
             RetryWhileBlocked(started, Status.State);
         }
     }
+
+    // Which session is at the screen is asked of Windows, and while users switch the answer can
+    // be "none" for a moment: an app that asked just then would wait for an event that is not
+    // coming. So it asks again now and then, which costs nothing.
+    private void RecheckConsoleLater() => _ = Task.Run(async () =>
+    {
+        await Task.Delay(PortRetryInterval).ConfigureAwait(false);
+        if (_disposed || Status.State != SendspinState.NotAtConsole)
+        {
+            return;
+        }
+
+        try
+        {
+            await ApplySettingsAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _log.Warning($"Sendspin: asking again for the session at the screen failed: {ex.Message}");
+        }
+    });
 
     // Tried again by itself, as nobody may press Save: the port is freed when the other player
     // stops, and a kiosk user's app gets its keys when the player is set up from an account
@@ -732,11 +781,39 @@ internal sealed class SendspinPlayerService : IAsyncDisposable
                     break;
                 case ConnectionState.Disconnected:
                     _group = null;
-                    if (_link is not (SendspinState.ServerTooOld or SendspinState.NeedsPairing or SendspinState.Failed))
+                    if (e.Exception is SendspinHandshakeException handshake)
+                    {
+                        // A handshake that failed for good after a reconnect (the server replaced by
+                        // an older one, a pairing gone): the SDK stops trying, and says so only here.
+                        OnHandshakeFailed(handshake);
+                    }
+                    else if (_link is not (SendspinState.ServerTooOld or SendspinState.NeedsPairing or SendspinState.Failed))
                     {
                         Update(SendspinState.Connecting);
                     }
 
+                    break;
+            }
+        }
+
+        private void OnHandshakeFailed(SendspinHandshakeException handshake)
+        {
+            switch (handshake.Kind)
+            {
+                case HandshakeFailureKind.LegacyServer:
+                    Log.Warning("Sendspin: the server is older than the encrypted Sendspin protocol; Music Assistant 2.10.7 or newer is needed.");
+                    Update(SendspinState.ServerTooOld);
+                    break;
+                case HandshakeFailureKind.PairingRequired or HandshakeFailureKind.PairingStateDiverged:
+                    Update(SendspinState.NeedsPairing);
+                    break;
+                case HandshakeFailureKind.ConnectionClosed:
+                    Update(SendspinState.Connecting);
+                    break;
+                default:
+                    Log.Warning($"Sendspin: the server refused the player ({handshake.Kind}): {handshake.Message}");
+                    _detail = handshake.Message;
+                    Update(SendspinState.Failed);
                     break;
             }
         }

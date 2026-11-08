@@ -40,6 +40,9 @@ public class SendspinTests : IDisposable
     [InlineData("ws://192.168.1.10/other", "ws://192.168.1.10:8927/other")]
     [InlineData("ws://192.168.1.10:80", "ws://192.168.1.10/sendspin")]
     [InlineData("wss://ma.example.com", "wss://ma.example.com:8927/sendspin")]
+    [InlineData("ws://[fd00:80::1]", "ws://[fd00:80::1]:8927/sendspin")]
+    [InlineData("ws://[fd00::1]:9000", "ws://[fd00::1]:9000/sendspin")]
+    [InlineData("[fd00::1]:80", "ws://[fd00::1]/sendspin")]
     public void A_typed_address_becomes_the_server_s_sendspin_address(string typed, string expected)
     {
         Assert.Equal(new Uri(expected), SendspinPlayerService.ParseServerAddress(typed));
@@ -136,9 +139,19 @@ public class SendspinTests : IDisposable
                 File.WriteAllText(Path.Combine(sendspin, name), "x");
             }
 
+            // The PC's own player (the overridden folder here) is not this reset's to touch.
+            foreach (var name in SendspinStorage.FileNames)
+            {
+                File.WriteAllText(Path.Combine(SendspinStorage.Directory, name), "keep");
+            }
+
             SettingsStore.FactoryReset(paths, new FileLog(paths.LogFile));
 
             Assert.Empty(Directory.GetFiles(sendspin));
+            foreach (var name in SendspinStorage.FileNames)
+            {
+                Assert.Equal("keep", File.ReadAllText(Path.Combine(SendspinStorage.Directory, name)));
+            }
         }
         finally
         {

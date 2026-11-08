@@ -112,7 +112,7 @@ Only the app in the session at the PC's own screen plays: another user's session
 | Connected, but not paired yet | Paste the pairing token in Music Assistant. |
 | This Music Assistant is too old | Update Music Assistant to 2.10.7 or newer. |
 | Port 8928 is in use | Another Sendspin player on the PC (such as Sendspin for Windows) has it. The player tries again every half minute, and on **Save**. |
-| No output device | Windows has no output to play on; the player goes on when one is back. |
+| No output device | Windows has no output to play on, or the output chosen under **Output** is not there (a TV switched off); the player goes on when it is back. Or choose another output and press **Save**. |
 | Not playing here | This app is not in the session at the PC's screen; the one that is plays. |
 | This Windows account may not change the settings | A kiosk user's app, with no player set up yet: turn it on and pair it from an account that may change the settings. |
 

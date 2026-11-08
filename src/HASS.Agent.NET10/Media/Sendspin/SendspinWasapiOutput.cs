@@ -284,9 +284,10 @@ internal sealed class SendspinWasapiOutput : IAudioPlayer
         try
         {
             var output = new WasapiOut(device, AudioClientShareMode.Shared, useEventSync: true, latency: RequestedLatencyMs);
+            // Ours before Init: an Init that throws leaves it to the catch below to dispose.
+            _out = output;
             output.PlaybackStopped += OnPlaybackStopped;
             output.Init(_gain);
-            _out = output;
             MeasureLatency(output);
             if (_wantPlaying)
             {

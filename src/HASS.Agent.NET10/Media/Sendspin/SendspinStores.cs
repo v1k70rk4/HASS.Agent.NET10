@@ -45,6 +45,43 @@ internal static class SendspinStorage
     public static string LastPlayedFile => Path.Combine(Directory, FileNames[3]);
 
     /// <summary>
+    /// Holds the folder against the other apps of this PC (another user's session) for one
+    /// read-modify-write of a file here: a lock file, opened by one process at a time, waited
+    /// for a few seconds. An account that may only read the folder cannot make the lock file
+    /// and gets a lock that holds nothing: it cannot write either, so there is nothing to race.
+    /// </summary>
+    internal static IDisposable Lock()
+    {
+        var path = Path.Combine(Directory, "sendspin.lock");
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (true)
+        {
+            try
+            {
+                System.IO.Directory.CreateDirectory(Directory);
+                return new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None, 1, FileOptions.None);
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return EmptyLock.Instance;
+            }
+            catch (IOException) when (DateTime.UtcNow < deadline)
+            {
+                Thread.Sleep(25);
+            }
+        }
+    }
+
+    private sealed class EmptyLock : IDisposable
+    {
+        public static readonly EmptyLock Instance = new();
+
+        public void Dispose()
+        {
+        }
+    }
+
+    /// <summary>
     /// Writes the file whole or not at all: a crash halfway must not leave half a key behind. The
     /// folder is shared with the other users of the PC, so the write goes through SafeFiles (a link
     /// planted under the temp name is not followed), the temp name is this write's own, and a link
@@ -128,16 +165,29 @@ internal sealed class ProtectedPairingRecordStore(string path) : IPairingRecordS
     public void Upsert(PairingRecord record)
     {
         lock (_gate)
+        using (SendspinStorage.Lock())
         {
-            var records = Read().Where(r => r.PskId != record.PskId).ToList();
+            var records = Read();
+            var existing = records.FirstOrDefault(r => r.PskId == record.PskId);
+            records.RemoveAll(r => r.PskId == record.PskId);
             records.Add(record);
-            Write(records);
+            try
+            {
+                Write(records);
+            }
+            catch (UnauthorizedAccessException) when (existing is not null && SameCredential(existing, record))
+            {
+                // Only the time the record was last used changed, which an account that may
+                // only read the folder (a kiosk user) cannot note down. The connection goes
+                // on: the pairing itself is there. A new or changed pairing is not swallowed.
+            }
         }
     }
 
     public void Remove(string pskId)
     {
         lock (_gate)
+        using (SendspinStorage.Lock())
         {
             var records = Read();
             var kept = records.Where(r => r.PskId != pskId).ToList();
@@ -147,6 +197,9 @@ internal sealed class ProtectedPairingRecordStore(string path) : IPairingRecordS
             }
         }
     }
+
+    private static bool SameCredential(PairingRecord a, PairingRecord b) =>
+        a.Category == b.Category && a.ServerId == b.ServerId && a.Psk.Span.SequenceEqual(b.Psk.Span);
 
     /// <summary>Whether a pairing with this server is stored: if not, the player still has to be paired in Music Assistant.</summary>
     public bool IsPairedWith(string serverId) =>

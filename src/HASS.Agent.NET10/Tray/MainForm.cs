@@ -1419,6 +1419,8 @@ internal sealed class MainForm : Form
         _sendspinName.PlaceholderText = _settings.DeviceName;
         y = AddField(card, S("Mp.SendspinName"), _sendspinName, y + 2, inputWidth: 300);
         y = AddField(card, S("Mp.SendspinDevice"), _sendspinDevice, y, inputWidth: 300);
+        // A device plugged in since the window opened is in the list when it drops down.
+        _sendspinDevice.DropDown += (_, _) => FillSendspinDevices(_sendspinDevice.SelectedIndex > 0 ? Convert.ToString(_sendspinDevice.SelectedItem) : string.Empty);
 
         y += 4;
         foreach (var radio in new[] { _sendspinFound, _sendspinConnect })
@@ -1483,7 +1485,8 @@ internal sealed class MainForm : Form
 
     // The output devices there are now, the one in the settings too when it is not there (a TV
     // switched off): choosing it again must not need the device to be on.
-    private void FillSendspinDevices()
+    /// <param name="selected">The choice to keep, or null for the one in the settings; empty for the Windows default.</param>
+    private void FillSendspinDevices(string? selected = null)
     {
         _sendspinDevice.Items.Clear();
         _sendspinDevice.Items.Add(S("Mp.SendspinDefaultDevice"));
@@ -1501,7 +1504,7 @@ internal sealed class MainForm : Form
             _log.Debug($"Unable to list the audio outputs: {ex.Message}");
         }
 
-        var saved = _settings.SendspinOutputDevice;
+        var saved = selected ?? _settings.SendspinOutputDevice;
         if (!string.IsNullOrWhiteSpace(saved) && !names.Contains(saved, StringComparer.OrdinalIgnoreCase))
         {
             names.Add(saved);
@@ -3144,6 +3147,7 @@ internal sealed class MainForm : Form
     {
         // The single-instance mutex is still held while this process exits,
         // so relaunch after a short delay from a detached shell.
+        AppRestart.Pending = true;
         var arguments = openWindow ? " --open-window" : string.Empty;
         Process.Start(new ProcessStartInfo
         {
