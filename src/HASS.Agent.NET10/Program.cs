@@ -244,6 +244,7 @@ internal static class Program
             CompanionRuntimeRole.App,
             log);
         using var localApi = new LocalApiServer(settings, trayContext, log);
+        using var link = new HomeAssistantLink(log);
 
         // One tray app of the PC talks to Home Assistant: the one in the session that stands for
         // the PC (SessionRole). Another user's app waits, and takes over on a switch of users.
@@ -280,6 +281,8 @@ internal static class Program
                         linked = false;
                         await mqttService.StopAsync();
                         await localApi.StopAsync();
+                        // Stopped: the app that takes over may connect now.
+                        link.LetGo();
                     }
 
                     return;
@@ -298,6 +301,11 @@ internal static class Program
                     SettingsStore.ReloadInto(paths, settings, log);
                 }
 
+                // The app that talked until now is told to ask again (it may not know yet that
+                // this session stands for the PC), and this one waits for it to stop and let
+                // go, so the broker never sees the two at once.
+                link.Signal();
+                await Task.Run(link.Take);
                 mqttService.Start();
                 await StartLocalApiAsync(startup);
             }
@@ -326,15 +334,12 @@ internal static class Program
                 await localApi.StartAsync();
                 log.Info($"Local API listening on {settings.ListenUrl}.");
             }
-            catch (Exception ex) when (!startup)
-            {
-                log.Warning($"Unable to start the Local API yet, trying again: {ex.Message}");
-                _ = Task.Run(RetryLocalApiAsync);
-            }
             catch (Exception ex)
             {
-                log.Error(ex, "Unable to start Local API.");
-                trayContext.ShowStartupError(ex);
+                // At startup as well: the app of a user who just left may hold the port for a
+                // moment. The retries report the failure when the last of them fails too.
+                log.Warning($"Unable to start the Local API yet, trying again: {ex.Message}");
+                _ = Task.Run(RetryLocalApiAsync);
             }
         }
 
@@ -400,6 +405,17 @@ internal static class Program
         // Event-driven sensor pushes: interactive state changes publish immediately
         // instead of waiting for the next poll (monitor power, session lock, AC/battery).
         monitorPowerStateService.StateChanged += (_, _) => mqttService.TriggerPushUpdate();
+        link.RoleChangeSignaled += (_, _) => _ = Task.Run(async () =>
+        {
+            try
+            {
+                await ApplySessionRoleAsync(startup: false);
+            }
+            catch (Exception ex)
+            {
+                log.Error(ex, "Unable to ask again which session stands for the PC.");
+            }
+        });
         sessionPowerWatcher.StateChanged += (_, _) =>
         {
             mqttService.TriggerPushUpdate();
@@ -529,14 +545,20 @@ internal static class Program
         Application.Run(trayContext);
         exitRegistration.Unregister(null);
 
-        // First: Music Assistant hears the player leave instead of finding it gone.
+        // First: Music Assistant hears the player leave instead of finding it gone. Bounded: the
+        // instance of a restart waits 30 s for this one to leave, and a goodbye that hangs must
+        // not keep it waiting.
         try
         {
-            sendspinPlayer.DisposeAsync(comingBack: AppRestart.Pending).AsTask().GetAwaiter().GetResult();
+            var leaving = sendspinPlayer.DisposeAsync(comingBack: AppRestart.Pending).AsTask();
+            if (!leaving.Wait(TimeSpan.FromSeconds(10)))
+            {
+                log.Warning("Sendspin: the player did not stop within 10 s; leaving without its goodbye.");
+            }
         }
         catch (Exception ex)
         {
-            log.Warning($"Sendspin: the player did not stop cleanly: {ex.Message}");
+            log.Warning($"Sendspin: the player did not stop cleanly: {(ex as AggregateException)?.InnerException?.Message ?? ex.Message}");
         }
 
         mqttService.StopAsync().GetAwaiter().GetResult();

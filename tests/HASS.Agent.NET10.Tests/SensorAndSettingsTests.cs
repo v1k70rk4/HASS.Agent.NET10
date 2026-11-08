@@ -1,4 +1,5 @@
 using HASS.Agent.Companion.Configuration;
+using HASS.Agent.Companion.Logging;
 using HASS.Agent.Companion.Media;
 using System.Text.Json;
 using HASS.Agent.Companion.SystemStatus;
@@ -208,6 +209,37 @@ public class UserSessionTests
     public void A_disconnected_session_is_the_last_resort()
     {
         Assert.Equal(0, SystemMetricsService.ChooseUserSession([(2, "disconnected")], consoleId: 1));
+    }
+
+    [Fact]
+    public void A_reload_brings_another_app_s_saved_settings_into_the_instance_in_use()
+    {
+        // The app that takes the connection over at a user switch reads the file again: the
+        // app that talked until then may have saved other connection settings.
+        var folder = Directory.CreateTempSubdirectory("hass-agent-reload-").FullName;
+        try
+        {
+            var paths = new AppPaths(folder, Path.Combine(folder, "settings.json"), Path.Combine(folder, "log.txt"), Path.Combine(folder, "device-id"), []);
+            var log = new FileLog(paths.LogFile);
+            SettingsStore.Save(paths, new CompanionSettings
+            {
+                MqttHost = "broker.new", MqttPort = 8883, MqttUseTls = true, LocalApiEnabled = true, Port = 5200, SendspinEnabled = true
+            });
+
+            var inUse = new CompanionSettings { MqttHost = "broker.old", MqttPort = 1883, LocalApiEnabled = false, Port = 5115 };
+            SettingsStore.ReloadInto(paths, inUse, log);
+
+            Assert.Equal("broker.new", inUse.MqttHost);
+            Assert.Equal(8883, inUse.MqttPort);
+            Assert.True(inUse.MqttUseTls);
+            Assert.True(inUse.LocalApiEnabled);
+            Assert.Equal(5200, inUse.Port);
+            Assert.True(inUse.SendspinEnabled);
+        }
+        finally
+        {
+            try { Directory.Delete(folder, recursive: true); } catch { }
+        }
     }
 
     [Fact]
