@@ -527,7 +527,10 @@ internal static class Program
             log.Warning($"Unable to remove the installer's old update note: {ex.Message}");
         }
 
-        ApplySessionRoleAsync(startup: true).GetAwaiter().GetResult();
+        // On a pool thread: the main thread waits for it here, before the message loop runs, and
+        // a continuation posted to that loop (the wait for the other app's turn) would never
+        // run. The status it refreshes goes through BeginInvoke, and no form is open yet.
+        Task.Run(() => ApplySessionRoleAsync(startup: true)).GetAwaiter().GetResult();
         _ = Task.Run(() => ApplySendspinAsync(sendspinPlayer, log));
 
         if (!settings.MqttEnabled && !settings.HaApiEnabled)
