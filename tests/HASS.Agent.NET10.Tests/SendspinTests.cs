@@ -4,6 +4,7 @@ using HASS.Agent.Companion.Localization;
 using HASS.Agent.Companion.Logging;
 using HASS.Agent.Companion.Media.Sendspin;
 using HASS.Agent.Companion.Tray;
+using Sendspin.SDK.Connection;
 using Sendspin.SDK.Connection.Noise;
 
 namespace HASS.Agent.Companion.Tests;
@@ -57,6 +58,21 @@ public class SendspinTests : IDisposable
     public void What_is_not_an_address_is_none(string? typed)
     {
         Assert.Null(SendspinPlayerService.ParseServerAddress(typed));
+    }
+
+    [Theory]
+    [InlineData(HandshakeFailureKind.LegacyServer, SendspinState.ServerTooOld)]
+    [InlineData(HandshakeFailureKind.PairingRequired, SendspinState.NeedsPairing)]
+    [InlineData(HandshakeFailureKind.PairingStateDiverged, SendspinState.NeedsPairing)]
+    [InlineData(HandshakeFailureKind.ConnectionClosed, SendspinState.Connecting)]
+    [InlineData(HandshakeFailureKind.HandshakeRejected, SendspinState.Failed)]
+    [InlineData(HandshakeFailureKind.ServerError, SendspinState.Failed)]
+    [InlineData(HandshakeFailureKind.ActivationRefused, SendspinState.Failed)]
+    public void A_handshake_that_fails_for_good_has_a_status_of_its_own(HandshakeFailureKind kind, SendspinState expected)
+    {
+        // After a reconnect the SDK reports such a failure only through the disconnected event,
+        // and the status used to stay at "connecting" for good.
+        Assert.Equal(expected, SendspinPlayerService.StateForHandshakeFailure(kind));
     }
 
     [Fact]

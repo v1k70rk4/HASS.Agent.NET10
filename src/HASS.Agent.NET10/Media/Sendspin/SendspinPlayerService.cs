@@ -327,6 +327,15 @@ internal sealed class SendspinPlayerService : IAsyncDisposable
         return builder.Uri;
     }
 
+    /// <summary>What a handshake that failed for good means to the status; the SDK stops trying after each but ConnectionClosed.</summary>
+    internal static SendspinState StateForHandshakeFailure(HandshakeFailureKind kind) => kind switch
+    {
+        HandshakeFailureKind.LegacyServer => SendspinState.ServerTooOld,
+        HandshakeFailureKind.PairingRequired or HandshakeFailureKind.PairingStateDiverged => SendspinState.NeedsPairing,
+        HandshakeFailureKind.ConnectionClosed => SendspinState.Connecting,
+        _ => SendspinState.Failed
+    };
+
     /// <summary>Whether the authority of the address names a port ("host:8927", "[fd00::1]:8927"), as against the colons of an IPv6 address.</summary>
     internal static bool HasExplicitPort(string value)
     {
@@ -798,24 +807,19 @@ internal sealed class SendspinPlayerService : IAsyncDisposable
 
         private void OnHandshakeFailed(SendspinHandshakeException handshake)
         {
-            switch (handshake.Kind)
+            var state = StateForHandshakeFailure(handshake.Kind);
+            switch (state)
             {
-                case HandshakeFailureKind.LegacyServer:
+                case SendspinState.ServerTooOld:
                     Log.Warning("Sendspin: the server is older than the encrypted Sendspin protocol; Music Assistant 2.10.7 or newer is needed.");
-                    Update(SendspinState.ServerTooOld);
                     break;
-                case HandshakeFailureKind.PairingRequired or HandshakeFailureKind.PairingStateDiverged:
-                    Update(SendspinState.NeedsPairing);
-                    break;
-                case HandshakeFailureKind.ConnectionClosed:
-                    Update(SendspinState.Connecting);
-                    break;
-                default:
+                case SendspinState.Failed:
                     Log.Warning($"Sendspin: the server refused the player ({handshake.Kind}): {handshake.Message}");
                     _detail = handshake.Message;
-                    Update(SendspinState.Failed);
                     break;
             }
+
+            Update(state);
         }
 
         private void OnServerConnected(object? sender, ConnectedServerInfo info)
