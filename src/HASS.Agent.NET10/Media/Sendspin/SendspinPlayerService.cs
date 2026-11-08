@@ -246,7 +246,13 @@ internal sealed class SendspinPlayerService : IAsyncDisposable
     public void SetAnnouncementActive(bool active)
     {
         _duck = !active ? 1f : _settings.AnnouncementPausesMedia ? 0f : 0.25f;
-        _session?.SetDuck(_duck);
+        var session = _session;
+        if (session is not null)
+        {
+            session.SetDuck(_duck);
+            // The only trace of it: the announcement's own lines say nothing about the player.
+            _log.Debug(active ? $"Sendspin: turned down to {_duck:P0} for the announcement." : "Sendspin: back up after the announcement.");
+        }
     }
 
     public async ValueTask DisposeAsync()
