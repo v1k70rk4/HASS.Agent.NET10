@@ -70,6 +70,8 @@ internal sealed class SendspinPlayerService : IAsyncDisposable
     // the byte figure it announces from it.
     private const int BufferCapacityMs = 30_000;
 
+    private static readonly TimeSpan PortRetryInterval = TimeSpan.FromSeconds(30);
+
     private readonly CompanionSettings _settings;
     private readonly FileLog _log;
     private readonly SemaphoreSlim _transition = new(1, 1);
@@ -113,12 +115,16 @@ internal sealed class SendspinPlayerService : IAsyncDisposable
             }
 
             var wanted = Config.From(_settings);
-            if (wanted == _running)
+
+            // A player that could not start (the port taken, a failure) starts again on a save
+            // of the same settings: whatever was in the way may be gone by now.
+            var stuck = Status.State is SendspinState.PortInUse or SendspinState.Failed;
+            if (wanted == _running && !stuck)
             {
                 return;
             }
 
-            if (_running is not null && _session is not null && wanted.Enabled && wanted with { Device = _running.Device } == _running)
+            if (!stuck && _running is not null && _session is not null && wanted.Enabled && wanted with { Device = _running.Device } == _running)
             {
                 // Only the output device changed: the output is built again, the connection stays.
                 _running = wanted;
@@ -170,7 +176,9 @@ internal sealed class SendspinPlayerService : IAsyncDisposable
         }
         finally
         {
-            client.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            // Called from the settings window: disposed on the thread pool, so that nothing in the
+            // SDK's disposal can wait for the UI thread that is waiting here.
+            Task.Run(() => client.DisposeAsync().AsTask()).GetAwaiter().GetResult();
         }
     }
 
@@ -261,18 +269,51 @@ internal sealed class SendspinPlayerService : IAsyncDisposable
     private async Task StartSessionAsync(Config config)
     {
         SetStatus(new SendspinStatus(SendspinState.Starting));
+        Session? started = null;
         try
         {
-            var session = new Session(this, config);
-            _session = session;
-            await session.StartAsync().ConfigureAwait(false);
+            started = new Session(this, config);
+            _session = started;
+            await started.StartAsync().ConfigureAwait(false);
         }
         catch (Exception ex)
         {
             _log.Error(ex, "Sendspin: unable to start the player.");
             SetStatus(new SendspinStatus(SendspinState.Failed, Detail: ex.Message));
         }
+
+        if (started is not null && Status.State == SendspinState.PortInUse)
+        {
+            RetryWhilePortInUse(started);
+        }
     }
+
+    // The port is another Windows user's player as a rule; when that user logs off, this one
+    // takes over without anybody having to press Save.
+    private void RetryWhilePortInUse(Session session) => _ = Task.Run(async () =>
+    {
+        await Task.Delay(PortRetryInterval).ConfigureAwait(false);
+        await _transition.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            if (_disposed || _session != session || _running is not { } config || Status.State != SendspinState.PortInUse)
+            {
+                return;
+            }
+
+            await StopSessionAsync().ConfigureAwait(false);
+            _running = config;
+            await StartSessionAsync(config).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _log.Warning($"Sendspin: trying the port again failed: {ex.Message}");
+        }
+        finally
+        {
+            _transition.Release();
+        }
+    });
 
     // Caller holds _transition.
     private async Task StopSessionAsync()
@@ -620,17 +661,21 @@ internal sealed class SendspinPlayerService : IAsyncDisposable
                 return;
             }
 
+            // Read once: the SDK's threads and the device watcher change these meanwhile.
             var state = _link;
+            var group = _group;
+            var output = _output;
+            var device = output?.CurrentDeviceName;
             string? title = null;
             string? artist = null;
-            if (state == SendspinState.Connected && _group?.PlaybackState == PlaybackState.Playing)
+            if (state == SendspinState.Connected && group?.PlaybackState == PlaybackState.Playing)
             {
-                state = _output is not null && _output.CurrentDeviceName is null ? SendspinState.NoOutputDevice : SendspinState.Playing;
-                title = _group.Metadata?.Title;
-                artist = _group.Metadata?.Artist;
+                state = output is not null && device is null ? SendspinState.NoOutputDevice : SendspinState.Playing;
+                title = group.Metadata?.Title;
+                artist = group.Metadata?.Artist;
             }
 
-            _owner.SetStatus(new SendspinStatus(state, _serverName, title, artist, _output?.CurrentDeviceName, _detail));
+            _owner.SetStatus(new SendspinStatus(state, _serverName, title, artist, device, _detail));
         }
 
         private static bool IsPortInUse(Exception ex) => ex switch
