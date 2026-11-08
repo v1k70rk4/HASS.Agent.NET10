@@ -617,7 +617,13 @@ internal sealed class MediaSessionService : IDisposable
             _announcementRestore = new AnnouncementRestore(_audioEndpoint.GetVolume(), _audioEndpoint.GetMuted(), paused);
 
             // Before the volume goes up: the Sendspin player would be as loud as the announcement.
-            AnnouncementActiveChanged?.Invoke(this, true);
+            if (AnnouncementActiveChanged is { } ducking)
+            {
+                ducking(this, true);
+                // What the player had handed to the device already (its 100 ms buffer) plays out
+                // at the old gain: the volume goes up once that is gone, which no one hears as a wait.
+                await Task.Delay(150).ConfigureAwait(false);
+            }
         }
 
         _audioEndpoint.SetMuted(false);
