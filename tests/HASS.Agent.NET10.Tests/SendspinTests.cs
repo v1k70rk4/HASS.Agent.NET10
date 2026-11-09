@@ -7,6 +7,7 @@ using HASS.Agent.Companion.Media.Sendspin;
 using HASS.Agent.Companion.Tray;
 using Sendspin.SDK.Connection;
 using Sendspin.SDK.Connection.Noise;
+using Sendspin.SDK.Protocol.Messages;
 
 namespace HASS.Agent.Companion.Tests;
 
@@ -101,6 +102,24 @@ public class SendspinTests : IDisposable
             Exception = new SendspinHandshakeException(HandshakeFailureKind.ConnectionClosed, "closed")
         };
         Assert.False(SendspinPlayerService.SdkGaveUp(closed));
+
+        // Music Assistant withdrew the pairing: the SDK closed itself with 'unpaired' and no
+        // exception, and redials nothing. The player says it needs pairing and dials again.
+        var unpaired = new ConnectionStateChangedEventArgs
+        {
+            OldState = ConnectionState.Disconnecting,
+            NewState = ConnectionState.Disconnected,
+            Reason = GoodbyeReasons.Unpaired
+        };
+        Assert.Equal(SendspinState.NeedsPairing, SendspinPlayerService.StateForConnectionChange(unpaired, SendspinState.Connected, paired: true));
+        Assert.Equal(TimeSpan.FromSeconds(15), SendspinPlayerService.RedialDelay(unpaired));
+        // A close of the app's own (a restart, a switch of sessions) is not one.
+        Assert.Null(SendspinPlayerService.RedialDelay(new ConnectionStateChangedEventArgs
+        {
+            OldState = ConnectionState.Disconnecting,
+            NewState = ConnectionState.Disconnected,
+            Reason = GoodbyeReasons.Restart
+        }));
         Assert.False(SendspinPlayerService.SdkGaveUp(new ConnectionStateChangedEventArgs { OldState = ConnectionState.Connected, NewState = ConnectionState.Disconnected }));
     }
 
@@ -370,13 +389,16 @@ public class SendspinTests : IDisposable
     }
 
     [Fact]
-    public void The_volume_follows_the_loudness_curve_and_mute_and_duck_silence()
+    public void The_volume_is_applied_as_the_sdk_hands_it_over_and_mute_and_duck_silence()
     {
-        var gain = new SendspinWasapiOutput.GainSampleProvider { Volume = 0.5f };
-        Assert.Equal(Math.Pow(0.5, 1.5), gain.Target, 5);
+        // The SDK has put the loudness curve on it already: 50 % reaches the player as 0.5^1.5.
+        // Curved once more it would play at 0.21, far too quiet between the ends.
+        var amplitude = (float)Math.Pow(0.5, 1.5);
+        var gain = new SendspinWasapiOutput.GainSampleProvider { Volume = amplitude };
+        Assert.Equal(amplitude, gain.Target, 5);
 
         gain.Duck = 0.25f;
-        Assert.Equal(Math.Pow(0.5, 1.5) * 0.25, gain.Target, 5);
+        Assert.Equal(amplitude * 0.25, gain.Target, 5);
 
         gain.Muted = true;
         Assert.Equal(0f, gain.Target);

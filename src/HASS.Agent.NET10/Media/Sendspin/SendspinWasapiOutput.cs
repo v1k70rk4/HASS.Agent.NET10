@@ -442,9 +442,11 @@ internal sealed class SendspinWasapiOutput : IAudioPlayer
     }
 
     /// <summary>
-    /// The SDK's samples as NAudio's, with the gain applied: the volume on the spec's loudness
-    /// curve (amplitude = volume^1.5, as the reference player), mute and the announcement duck,
-    /// eased over about 10 ms so a change does not click.
+    /// The SDK's samples as NAudio's, with the gain applied: the volume, mute and the announcement
+    /// duck, eased over about 10 ms so a change does not click. The volume is an amplitude
+    /// already: the SDK puts the spec's loudness curve on it (volume^1.5) before it hands it to
+    /// the player, so it is applied as it comes; put on it once more, 50 % played at 0.21
+    /// instead of 0.35.
     /// </summary>
     internal sealed class GainSampleProvider : ISampleProvider
     {
@@ -472,7 +474,7 @@ internal sealed class SendspinWasapiOutput : IAudioPlayer
 
         public WaveFormat WaveFormat { get; private set; } = WaveFormat.CreateIeeeFloatWaveFormat(48000, 2);
 
-        internal float Target => Muted ? 0f : (float)Math.Pow(Math.Clamp(Volume, 0f, 1f), 1.5) * Duck;
+        internal float Target => Muted ? 0f : Math.Clamp(Volume, 0f, 1f) * Duck;
 
         public int Read(float[] buffer, int offset, int count)
         {

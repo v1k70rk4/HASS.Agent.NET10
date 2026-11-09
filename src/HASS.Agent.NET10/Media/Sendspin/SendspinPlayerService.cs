@@ -349,6 +349,9 @@ internal sealed class SendspinPlayerService : IAsyncDisposable
         ConnectionState.Connected => paired ? SendspinState.Connected : SendspinState.NeedsPairing,
         ConnectionState.Connecting or ConnectionState.Handshaking or ConnectionState.Reconnecting => SendspinState.Connecting,
         ConnectionState.Disconnected when e.Exception is SendspinHandshakeException handshake => StateForHandshakeFailure(handshake.Kind),
+        // Music Assistant withdrew the pairing (server/unpair): the SDK removed the record and
+        // closed itself, with no exception, and does not dial again.
+        ConnectionState.Disconnected when e.Reason == GoodbyeReasons.Unpaired => SendspinState.NeedsPairing,
         ConnectionState.Disconnected when current is not (SendspinState.ServerTooOld or SendspinState.NeedsPairing or SendspinState.Failed) => SendspinState.Connecting,
         _ => null
     };
@@ -368,9 +371,22 @@ internal sealed class SendspinPlayerService : IAsyncDisposable
     /// is taken without a restart. A connection closed by the network is not one: the SDK keeps
     /// trying those.
     /// </summary>
-    internal static bool SdkGaveUp(ConnectionStateChangedEventArgs e) =>
-        e.NewState == ConnectionState.Disconnected
-        && e.Exception is SendspinHandshakeException { Kind: not HandshakeFailureKind.ConnectionClosed };
+    internal static bool SdkGaveUp(ConnectionStateChangedEventArgs e) => RedialDelay(e) is not null;
+
+    /// <summary>
+    /// How long the player waits before it dials again after the SDK gave up, or null when the
+    /// SDK did not: a handshake that failed for good, or a pairing Music Assistant withdrew
+    /// (server/unpair: the SDK closes with 'unpaired' and no exception, a close of its own that
+    /// it does not redial). After the latter the dial is refused until the PC is paired again,
+    /// and the loop tries every 15 s, so a new pairing is taken by itself.
+    /// </summary>
+    internal static TimeSpan? RedialDelay(ConnectionStateChangedEventArgs e) => e switch
+    {
+        { NewState: not ConnectionState.Disconnected } => null,
+        { Exception: SendspinHandshakeException { Kind: not HandshakeFailureKind.ConnectionClosed } handshake } => RedialAfter(handshake.Kind),
+        { Reason: GoodbyeReasons.Unpaired } => RedialAfter(HandshakeFailureKind.PairingRequired),
+        _ => null
+    };
 
     /// <summary>What a handshake that failed for good means to the status; the SDK stops trying after each but ConnectionClosed.</summary>
     internal static SendspinState StateForHandshakeFailure(HandshakeFailureKind kind) => kind switch
@@ -910,14 +926,19 @@ internal sealed class SendspinPlayerService : IAsyncDisposable
             // Assistant, the server replaced) ends its tries, after the loop of the start had
             // returned: the player dials again itself, so a new pairing is taken without a
             // restart or a save.
-            if (SdkGaveUp(e) && e.Exception is SendspinHandshakeException gaveUp && _dialed is { } uri && !_cts.IsCancellationRequested)
+            if (e.NewState == ConnectionState.Disconnected && e.Reason == GoodbyeReasons.Unpaired)
+            {
+                Log.Warning("Sendspin: Music Assistant removed the pairing of this player; pair it again with the token from the Media player page.");
+            }
+
+            if (RedialDelay(e) is { } wait && _dialed is { } uri && !_cts.IsCancellationRequested)
             {
                 lock (_loopGate)
                 {
                     if (_connectLoop is null || _connectLoop.IsCompleted)
                     {
-                        Log.Info($"Sendspin: dialing {uri} again in {RedialAfter(gaveUp.Kind).TotalSeconds:0} s.");
-                        _connectLoop = Task.Run(() => ConnectLoopAsync(uri, RedialAfter(gaveUp.Kind), _cts.Token));
+                        Log.Info($"Sendspin: dialing {uri} again in {wait.TotalSeconds:0} s.");
+                        _connectLoop = Task.Run(() => ConnectLoopAsync(uri, wait, _cts.Token));
                     }
                 }
             }

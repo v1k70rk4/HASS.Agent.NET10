@@ -81,6 +81,13 @@ internal static class Program
         // Load language early so elevated service commands show localized messages
         LoadLanguageEarly();
 
+        // The Sendspin player's pairing token, for a script, Intune or a kiosk PC (no window).
+        if (Media.Sendspin.SendspinTokenCommand.Applies(args))
+        {
+            Environment.ExitCode = Media.Sendspin.SendspinTokenCommand.Run(args);
+            return;
+        }
+
         if (CompanionServiceManager.TryHandleCommandLine(args))
         {
             return;

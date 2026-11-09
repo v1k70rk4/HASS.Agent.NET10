@@ -95,6 +95,14 @@ The connection is encrypted, and Music Assistant only plays to a player it is pa
 
 The PC is the player, not a Windows user: its keys and pairings are the PC's, next to the settings in `ProgramData\HASS.Agent.NET10\sendspin`, protected for the machine and open to whoever may use the settings ([Who may use it](users.md)). They are not in the settings file, so an export or a backup restored on another PC does not make a second PC with the same player; a factory reset makes a new one.
 
+The token can also be had from the command line, for a PC set up by a script or by Intune, or a kiosk PC whose app has no window. It goes to standard output, and without `--quiet` to the clipboard as well; `--new` makes a new one. It is run by an account that may use the settings, and exits with 1, the reason on standard error, when there is no token:
+
+```powershell
+$token = & "C:\Program Files\HASS.Agent .NET10\HASS.Agent.NET10.exe" --sendspin-token --quiet | Out-String
+```
+
+When Music Assistant unpairs the player, the app writes it in its log and the status turns to *Connected, but not paired yet*; pair it again with the token and it comes back by itself, without a restart.
+
 Only the app in the session at the PC's own screen plays: another user's session, or one over Remote Desktop, says so and stays quiet, and when the screen goes to another user, so does the player. On a [kiosk](kiosk.md) PC, turn the player on and pair it from an account that may change the settings; the kiosk user's app then plays with that pairing.
 
 ### Sound
