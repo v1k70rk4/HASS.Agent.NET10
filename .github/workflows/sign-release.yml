@@ -64,8 +64,9 @@ jobs:
           Assert-Signed $exe[0].FullName
           # The Sigstore signature covers the whole zip, so everything in it is checked, not
           # only the app: our executable with the Certum signature, the third-party DLLs
-          # (WebView2, ASP.NET Core) with a valid Microsoft signature, and nothing else that
-          # could run. Debug symbols and documentation files are data.
+          # (WebView2, ASP.NET Core) with a valid Microsoft signature, a native library that
+          # comes unsigned (libsodium) with the Certum signature build-exe.ps1 puts on it, and
+          # nothing else that could run. Debug symbols and documentation files are data.
           Expand-Archive $zip[0].FullName -DestinationPath unpacked
           $root = (Resolve-Path unpacked).Path
           $apps = 0
@@ -81,10 +82,14 @@ jobs:
               }
               '^\.dll$' {
                 $sig = Get-AuthenticodeSignature -FilePath $file.FullName
+                if ($sig.Status -eq 'Valid' -and $sig.SignerCertificate.Thumbprint -eq $env:CERTUM_THUMBPRINT) {
+                  "${name}: signed by $($sig.SignerCertificate.Subject)"
+                  continue
+                }
                 $subject = if ($sig.SignerCertificate) { $sig.SignerCertificate.GetNameInfo([System.Security.Cryptography.X509Certificates.X509NameType]::SimpleName, $false) } else { 'nobody' }
                 $issuer = if ($sig.SignerCertificate) { $sig.SignerCertificate.GetNameInfo([System.Security.Cryptography.X509Certificates.X509NameType]::SimpleName, $true) } else { '' }
                 if ($sig.Status -ne 'Valid' -or $subject -notin @('Microsoft Corporation', '.NET') -or -not $issuer.StartsWith('Microsoft')) {
-                  throw "$name in $($zip[0].Name) is not a Microsoft-signed library (status $($sig.Status), signer $subject, issuer $issuer). Not signing it."
+                  throw "$name in $($zip[0].Name) is signed neither by Microsoft nor with the release certificate (status $($sig.Status), signer $subject, issuer $issuer). Not signing it."
                 }
                 "${name}: signed by $subject"
                 continue
