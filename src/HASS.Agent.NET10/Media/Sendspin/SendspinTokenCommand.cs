@@ -11,7 +11,8 @@ namespace HASS.Agent.Companion.Media.Sendspin;
 /// Sendspin player, as the Media player page's button gives it, for a PC set up by a script or
 /// by Intune, or a kiosk PC whose app has no window. The token goes to standard output (for a
 /// script that captures it); without <c>--quiet</c> it is also put on the clipboard and said so.
-/// <c>--new</c> makes a new one, as the page's other button. The exit code is 0 with a token and
+/// <c>--new</c> makes a new one, as the page's other button. Where no window can show (a script
+/// run as SYSTEM by Intune), it is quiet by itself. The exit code is 0 with a token and
 /// 1 without, with the reason on standard error. Whoever runs it needs to be allowed to use the
 /// settings of the PC; the token itself is not logged.
 /// </summary>
@@ -24,7 +25,10 @@ internal static class SendspinTokenCommand
 
     public static int Run(string[] args)
     {
-        var quiet = args.Any(arg => string.Equals(arg, "--quiet", StringComparison.OrdinalIgnoreCase));
+        // Quiet by itself where no one could see a window: a script Intune runs as SYSTEM, in the
+        // session of the services. A dialog there throws, after the token went out.
+        var quiet = !Environment.UserInteractive
+            || args.Any(arg => string.Equals(arg, "--quiet", StringComparison.OrdinalIgnoreCase));
         var rotate = args.Any(arg => string.Equals(arg, "--new", StringComparison.OrdinalIgnoreCase));
         try
         {
