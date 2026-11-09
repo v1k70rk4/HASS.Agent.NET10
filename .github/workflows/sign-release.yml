@@ -82,7 +82,8 @@ jobs:
               }
               '^\.dll$' {
                 $sig = Get-AuthenticodeSignature -FilePath $file.FullName
-                if ($sig.Status -eq 'Valid' -and $sig.SignerCertificate.Thumbprint -eq $env:CERTUM_THUMBPRINT) {
+                # Ours only with a timestamp, as build-exe.ps1 requires: it has to stay valid after the certificate expires.
+                if ($sig.Status -eq 'Valid' -and $sig.SignerCertificate.Thumbprint -eq $env:CERTUM_THUMBPRINT -and $sig.TimeStamperCertificate) {
                   "${name}: signed by $($sig.SignerCertificate.Subject)"
                   continue
                 }
