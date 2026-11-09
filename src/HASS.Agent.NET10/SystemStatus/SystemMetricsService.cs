@@ -1127,6 +1127,9 @@ internal sealed class SystemMetricsService : IDisposable
         }
     }
 
+    /// <summary>Whether the session has no one at it: disconnected (a user switched away, a Remote Desktop closed).</summary>
+    internal static bool IsSessionDisconnected(uint sessionId) => QuerySessionConnectState(sessionId) == "disconnected";
+
     private static string QuerySessionConnectState(uint sessionId)
     {
         if (!WTSQuerySessionInformation(

@@ -12,7 +12,7 @@ namespace HASS.Agent.Companion.Media.Sendspin;
 /// by Intune, or a kiosk PC whose app has no window. The token goes to standard output (for a
 /// script that captures it); without <c>--quiet</c> it is also put on the clipboard and said so.
 /// <c>--new</c> makes a new one, as the page's other button. Where no window can show (a script
-/// run as SYSTEM by Intune), it is quiet by itself. The exit code is 0 with a token and
+/// run as SYSTEM by Intune, a task in a disconnected session), it is quiet by itself. The exit code is 0 with a token and
 /// 1 without, with the reason on standard error. Whoever runs it needs to be allowed to use the
 /// settings of the PC; the token itself is not logged.
 /// </summary>
@@ -26,8 +26,10 @@ internal static class SendspinTokenCommand
     public static int Run(string[] args)
     {
         // Quiet by itself where no one could see a window: a script Intune runs as SYSTEM, in the
-        // session of the services. A dialog there throws, after the token went out.
+        // session of the services (a dialog there throws, after the token went out), or a task in
+        // a disconnected session (a dialog there waits for no one).
         var quiet = !Environment.UserInteractive
+            || SystemStatus.SystemMetricsService.IsSessionDisconnected((uint)System.Diagnostics.Process.GetCurrentProcess().SessionId)
             || args.Any(arg => string.Equals(arg, "--quiet", StringComparison.OrdinalIgnoreCase));
         var rotate = args.Any(arg => string.Equals(arg, "--new", StringComparison.OrdinalIgnoreCase));
         try
