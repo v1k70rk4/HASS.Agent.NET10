@@ -625,6 +625,35 @@ public class SettingsAccessTests : IDisposable
     }
 
     [Fact]
+    public void An_elevated_command_leaves_the_folder_owned_by_the_administrators_also_when_it_was_its_own_user_s()
+    {
+        // Whoever looks at the folder later (the service, an update as SYSTEM) then need not
+        // find out whether its owner is an administrator.
+        Assert.SkipUnless(IsElevated, "Without elevation a folder of the user's own stays theirs.");
+        var folder = Path.Combine(_folder, "my-own");
+        Directory.CreateDirectory(folder);
+        File.WriteAllText(Path.Combine(folder, "settings.json"), """{"deviceName":"kept"}""");
+        GiveTo(folder, Me);
+
+        SettingsAccess.MakeSafe(folder, out var putAside);
+
+        Assert.Null(putAside);
+        Assert.Equal(new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null), OwnerOf(folder));
+        Assert.Equal("""{"deviceName":"kept"}""", File.ReadAllText(Path.Combine(folder, "settings.json")));
+    }
+
+    [Fact]
+    public void Without_elevation_a_folder_of_the_user_s_own_stays_theirs()
+    {
+        Assert.SkipWhen(IsElevated, "For a run without an administrator's rights.");
+
+        SettingsAccess.MakeSafe(_folder, out var putAside);
+
+        Assert.Null(putAside);
+        Assert.Equal(Me, OwnerOf(_folder));
+    }
+
+    [Fact]
     public void The_settings_folder_is_the_pc_s_when_it_is_ours_or_not_there_and_not_when_it_is_a_link()
     {
         Assert.True(SettingsAccess.IsOfThePc(_folder));

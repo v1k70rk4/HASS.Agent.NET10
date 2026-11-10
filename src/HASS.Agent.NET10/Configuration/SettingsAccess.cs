@@ -1180,15 +1180,25 @@ internal static class SettingsAccess
                 }
 
                 var owner = OwnerOf(root);
-                if (!OwnerIsTrusted(owner) && IsAnAdministrator(owner))
+                var ownedByWhoeverRunsThis = owner is not null && owner == CurrentUser.Value;
+                if (owner == LocalSystem || owner == Administrators)
+                {
+                    // As it should be.
+                }
+                else if (ownedByWhoeverRunsThis ? IsElevated.Value : IsAnAdministrator(owner))
                 {
                     // An administrator's own: made by their app, which runs without elevation,
                     // so what it makes is theirs by name and not the group's. It is the PC's
                     // folder all the same, and stays, with what is in it; only its owner
-                    // becomes the group, so that changing its rule takes elevation.
+                    // becomes the group, so that changing its rule takes elevation. Also when
+                    // it is the administrator's who runs this: once an elevated command has
+                    // been here the owner is SYSTEM or the group, and nobody who looks at the
+                    // folder later (the service, a silent update as SYSTEM) has to find out
+                    // whether an account is an administrator, which for one from a domain
+                    // takes a domain controller.
                     GiveToAdministrators(root, configDirectory);
                 }
-                else if (!OwnerIsTrusted(owner))
+                else if (!ownedByWhoeverRunsThis)
                 {
                     if (attempt == 4)
                     {
@@ -1571,6 +1581,10 @@ internal static class SettingsAccess
         });
 
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<SecurityIdentifier, bool> KnownAdministrators = new();
+
+    // Whether this runs with an administrator's rights (elevated, or as SYSTEM).
+    private static readonly Lazy<bool> IsElevated = new(() =>
+        new WindowsPrincipal(WindowsIdentity.GetCurrent()).IsInRole(WindowsBuiltInRole.Administrator));
 
     private static readonly Lazy<SecurityIdentifier?> CurrentUser = new(() => WindowsIdentity.GetCurrent().User);
 
