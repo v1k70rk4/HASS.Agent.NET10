@@ -5,6 +5,8 @@ using HASS.Agent.Companion.Configuration;
 using HASS.Agent.Companion.Localization;
 using HASS.Agent.Companion.Logging;
 using HASS.Agent.Companion.Runtime;
+using HASS.Agent.Companion.Security;
+using HASS.Agent.Companion.SystemCommands;
 using HASS.Agent.Companion.SystemService;
 
 namespace HASS.Agent.Companion.Tray;
@@ -78,21 +80,80 @@ internal static class ServiceApproval
     }
 
     /// <summary>
-    /// "Name:" and below it everything it runs, whole and with its own line breaks: a script
-    /// cut short, or put on one line, could hide the part after a comment sign.
+    /// "Name [type]:" and below it everything it runs, whole and with its own line breaks: a
+    /// script cut short, or put on one line, could hide the part after a comment sign. The name
+    /// is on one line: the settings can be written by others, and a name with line breaks in it
+    /// would read as entries of its own above the one that is approved.
     /// </summary>
     internal static IReadOnlyList<string> PendingDescriptions(CompanionSettings settings, ServicePolicy policy) =>
         settings.CustomCommands.Where(command => ServicePolicy.NeedsApproval(command) && !policy.Allows(command))
-            .Select(command => Describe(command.Name, string.IsNullOrEmpty(command.Arguments) ? command.Command : $"{command.Command} {command.Arguments}"))
+            .Select(command => Describe(
+                command.Name,
+                command.Type,
+                string.IsNullOrEmpty(command.Arguments) ? command.Command : $"{command.Command} {command.Arguments}",
+                TargetFile(command.Command, script: command.IsPowerShell || command.IsPwsh)))
             .Concat(settings.CustomSensors.Where(sensor => ServicePolicy.NeedsApproval(sensor) && !policy.Allows(sensor))
-                .Select(sensor => Describe(sensor.Name, sensor.Parameter)))
+                .Select(sensor => Describe(
+                    sensor.Name,
+                    sensor.Type,
+                    sensor.Parameter,
+                    TargetFile(sensor.Parameter, script: sensor.IsCommandPowerShell || sensor.IsCommandPwsh))))
             .ToList();
 
-    private static string Describe(string name, string? runs)
+    private static string Describe(string name, string type, string? runs, string? targetFile)
     {
-        var lines = (runs ?? string.Empty).Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
-        return $"{name}:{Environment.NewLine}{string.Join(Environment.NewLine, lines.Select(line => "    " + line))}";
+        var lines = (runs ?? string.Empty).Replace("\r\n", "\n").Replace('\r', '\n').Split('\n').Select(line => "    " + Visible(line)).ToList();
+        // What is approved is the text above, not what the file it names says at the time.
+        if (targetFile is not null && FileTrust.CanBeChangedWithoutAdministrator(targetFile))
+        {
+            lines.Add("    " + string.Format(Strings.Get("SvcMgr.ApprovalWritable"), targetFile));
+        }
+
+        return $"{OneLine(name)} [{OneLine(type)}]:{Environment.NewLine}{string.Join(Environment.NewLine, lines)}";
     }
+
+    /// <summary>
+    /// The program, or the script file, an entry names by its full path; null when it names
+    /// none (a command by its name alone, a PowerShell command typed out).
+    /// </summary>
+    internal static string? TargetFile(string? runs, bool script)
+    {
+        var text = (runs ?? string.Empty).Trim();
+        var file = script ? text.Trim('"') : SystemCommandService.SplitProcessCommand(text).FileName;
+        if (script && !file.EndsWith(".ps1", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        return Path.IsPathFullyQualified(file) ? file : null;
+    }
+
+    /// <summary>
+    /// The text with every line break and control character in it turned into a space, and
+    /// with them the characters that are not shown but change how the rest is (the ones that
+    /// turn the reading direction around, for one: a name could read as something else).
+    /// </summary>
+    internal static string OneLine(string? text) =>
+        new string((text ?? string.Empty).Select(character =>
+            char.IsControl(character)
+            || char.GetUnicodeCategory(character) == System.Globalization.UnicodeCategory.Format
+            || character is '\u2028' or '\u2029' ? ' ' : character).ToArray()).Trim();
+
+    /// <summary>
+    /// A line of what a command runs, with the characters that are not shown written out as
+    /// their code (U+202E as a backslash, u and 202E): one that turns the reading direction
+    /// around would have the administrator read another text than the one that is approved
+    /// and run. Written out, not left out: what is shown stays the text that is approved,
+    /// with nothing missing from it.
+    /// </summary>
+    internal static string Visible(string line) =>
+        string.Concat(line.Select(character =>
+            character != '\t'
+            && (char.IsControl(character)
+                || char.GetUnicodeCategory(character) == System.Globalization.UnicodeCategory.Format
+                || character is '\u2028' or '\u2029')
+                ? $"\\u{(int)character:X4}"
+                : character.ToString()));
 
     /// <summary>The question above, and what is to be approved in a box that scrolls, as long as it is.</summary>
     private static bool Ask(IWin32Window owner, string question, string details)
@@ -116,8 +177,9 @@ internal static class ServiceApproval
         {
             Multiline = true,
             ReadOnly = true,
-            WordWrap = false,
-            ScrollBars = ScrollBars.Both,
+            // Wrapped: what is approved is what is in view, not what a long line keeps to the right.
+            WordWrap = true,
+            ScrollBars = ScrollBars.Vertical,
             Dock = DockStyle.Fill,
             Font = new Font("Consolas", 9.5F),
             BackColor = Color.FromArgb(248, 250, 252),
@@ -143,7 +205,7 @@ internal static class ServiceApproval
 
     /// <summary>The names of what the settings ask the service to run and the policy does not approve.</summary>
     internal static IReadOnlyList<string> PendingNames(CompanionSettings settings, ServicePolicy policy) =>
-        settings.CustomCommands.Where(command => ServicePolicy.NeedsApproval(command) && !policy.Allows(command)).Select(command => command.Name)
-            .Concat(settings.CustomSensors.Where(sensor => ServicePolicy.NeedsApproval(sensor) && !policy.Allows(sensor)).Select(sensor => sensor.Name))
+        settings.CustomCommands.Where(command => ServicePolicy.NeedsApproval(command) && !policy.Allows(command)).Select(command => OneLine(command.Name))
+            .Concat(settings.CustomSensors.Where(sensor => ServicePolicy.NeedsApproval(sensor) && !policy.Allows(sensor)).Select(sensor => OneLine(sensor.Name)))
             .ToList();
 }

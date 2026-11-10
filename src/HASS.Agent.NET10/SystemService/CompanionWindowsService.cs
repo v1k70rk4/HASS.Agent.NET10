@@ -40,6 +40,28 @@ internal sealed class CompanionWindowsService : ServiceBase
 
     protected override void OnStart(string[] args)
     {
+        // Nothing is written as SYSTEM where a user pointed the settings folder, or into a folder
+        // a user who is no administrator made there and still has a hold on. The folder's
+        // anchor (SettingsAccess.CreateAnchor) keeps it from becoming a link, and an elevated
+        // command puts another user's folder aside; this is for a folder no such command got
+        // to, or could not put right. The service then does not start, and Windows writes why
+        // to the Application log.
+        // A folder that is not there is made with its rule and its anchor from the start, open
+        // to every user as a silent first install leaves it. Made the usual way it would take
+        // ProgramData's rule and be empty for a moment: a user waiting for that could make it
+        // a link before the first line of the log is written.
+        if (!Directory.Exists(AppPaths.ConfigDirectoryPath))
+        {
+            SettingsAccess.OpenToEveryone(AppPaths.ConfigDirectoryPath);
+        }
+
+        if (!SettingsAccess.IsOfThePc(AppPaths.ConfigDirectoryPath))
+        {
+            throw new IOException(
+                $"{AppPaths.ConfigDirectoryPath} is a link, or was made by a user who is no administrator: the service does not use it as the settings folder. " +
+                "Sign the other users of this PC out, or restart it, and run the installer again to put the folder right.");
+        }
+
         _paths = AppPaths.Create();
         _log = new FileLog(_paths.LogFile);
         _log.Info($"Starting {AppIdentity.DisplayName} system service.");
@@ -202,6 +224,8 @@ internal sealed class CompanionWindowsService : ServiceBase
                 $"Not run by the service, as no administrator approved them: {string.Join(", ", restricted)}. " +
                 "Save the settings in the app and approve the prompt to let the service run them.");
         }
+
+        ServicePolicy.DropTrayAppCommands(settings);
 
         return settings;
     }

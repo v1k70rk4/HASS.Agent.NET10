@@ -31,13 +31,9 @@ internal sealed record AppPaths(
         var legacySettingsFile = Path.Combine(legacyConfigDirectory, "settings.json");
         try
         {
-            if (!File.Exists(settingsFile) && File.Exists(legacyProgramDataSettingsFile))
+            if (!File.Exists(settingsFile) && LegacySource(legacyProgramDataDirectory, legacyProgramDataSettingsFile, legacySettingsFile) is { } legacy)
             {
-                File.Copy(legacyProgramDataSettingsFile, settingsFile);
-            }
-            else if (!File.Exists(settingsFile) && File.Exists(legacySettingsFile))
-            {
-                File.Copy(legacySettingsFile, settingsFile);
+                File.Copy(legacy, settingsFile);
             }
         }
         catch (UnauthorizedAccessException) when (KioskMode.AppliesToCurrentUser())
@@ -60,4 +56,15 @@ internal sealed record AppPaths(
             // next start would simply migrate the old settings back in.
             [legacyProgramDataSettingsFile, legacySettingsFile]);
     }
+
+    /// <summary>
+    /// The settings of the first versions to start from, when there are any: the PC's, then
+    /// the user's own. The PC's are in ProgramData, where every user can make a folder, and
+    /// whoever runs this may be the service or an administrator: a folder or a file there that
+    /// another user made is not the PC's settings, and is left where it is.
+    /// </summary>
+    internal static string? LegacySource(string programDataDirectory, string programDataFile, string userFile) =>
+        File.Exists(programDataFile) && SettingsAccess.IsOwnOrAdministrators(programDataDirectory, programDataFile) ? programDataFile
+        : File.Exists(userFile) ? userFile
+        : null;
 }

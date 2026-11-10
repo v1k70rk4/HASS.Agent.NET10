@@ -13,6 +13,7 @@ namespace HASS.Agent.Companion.Tests;
 /// tried), and the kiosk task's definition. The group, the event source and the task itself
 /// need an administrator, so they are tried by hand (mediaserver).
 /// </summary>
+[Collection(SettingsFolderCollection.Name)]
 public class KioskTests : IDisposable
 {
     private readonly string _folder = Directory.CreateTempSubdirectory("hass-agent-kiosk-").FullName;
@@ -29,11 +30,15 @@ public class KioskTests : IDisposable
     }
 
     [Theory]
-    [InlineData(true, true)]    // in the group, an administrator too
-    [InlineData(false, false)]  // anyone else
-    public void Who_gets_the_kiosk_tray(bool inGroup, bool kiosk)
+    [InlineData(true, false, true)]    // in the group, an administrator too
+    [InlineData(true, true, true)]
+    [InlineData(false, true, false)]   // anyone else, whatever they can see
+    [InlineData(false, false, false)]
+    [InlineData(null, false, false)]   // no group, no task: a PC without kiosk mode
+    [InlineData(null, true, true)]     // the group could not be looked up, and the kiosk task is there for this user
+    public void Who_gets_the_kiosk_tray(bool? inGroup, bool kioskTaskIsThere, bool kiosk)
     {
-        Assert.Equal(kiosk, KioskMode.IsKioskUser(inGroup));
+        Assert.Equal(kiosk, KioskMode.IsKioskUser(inGroup, kioskTaskIsThere));
     }
 
     [Fact]
@@ -156,5 +161,50 @@ public class KioskTests : IDisposable
         var selects = query.Descendants("Select").Select(select => select.Value).ToList();
         Assert.Contains(selects, select => select.Contains($"@Name='{KioskEvents.Source}'") && select.Contains($"EventID={KioskEvents.Closed}"));
         Assert.Contains(selects, select => select.Contains("@Name='Application Error'") && select.Contains("Data='HASS.Agent.NET10.exe'"));
+    }
+}
+
+/// <summary>
+/// The tests that set a folder's rule run one at a time. Setting it turns on the backup and
+/// restore privileges for a moment, when the tests run as an administrator, and those are the
+/// whole process's: a test that looks at what a deny keeps out would, at that moment, find
+/// that it keeps nothing out.
+/// </summary>
+[CollectionDefinition(Name, DisableParallelization = true)]
+public sealed class SettingsFolderCollection
+{
+    public const string Name = "Settings folder rules";
+}
+
+/// <summary>Changes a variable of the whole test process, so nothing else runs meanwhile.</summary>
+[CollectionDefinition(nameof(ComputerNameCollection), DisableParallelization = true)]
+public sealed class ComputerNameCollection;
+
+[Collection(nameof(ComputerNameCollection))]
+public class ComputerNameTests
+{
+    [Fact]
+    public void A_variable_of_the_users_own_does_not_hide_the_pc_s_groups()
+    {
+        // A name every PC has among its own, as the kiosk group is: the built-in administrator
+        // account, whatever it is called here. It is looked up the way the group is.
+        var machine = SettingsAccess.AccountDomainSid();
+        Assert.NotNull(machine);
+        var builtIn = new SecurityIdentifier(WellKnownSidType.AccountAdministratorSid, machine);
+        var name = ((NTAccount)builtIn.Translate(typeof(NTAccount))).Value.Split('\\')[^1];
+        Assert.Equal(builtIn, SettingsAccess.TryGroupSid(name));
+
+        // What a kiosk user set for their own app: Windows then names the PC by it, and the
+        // lookup of the kiosk group, done under that name, found nothing.
+        Environment.SetEnvironmentVariable("_CLUSTER_NETWORK_NAME_", "NOSUCHPC");
+        try
+        {
+            Assert.NotEqual("NOSUCHPC", SettingsAccess.MachineName, StringComparer.OrdinalIgnoreCase);
+            Assert.Equal(builtIn, SettingsAccess.TryGroupSid(name));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("_CLUSTER_NETWORK_NAME_", null);
+        }
     }
 }

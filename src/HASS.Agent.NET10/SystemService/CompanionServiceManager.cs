@@ -37,8 +37,9 @@ internal static class CompanionServiceManager
             "--kiosk" => ChangeKioskMode(arguments),
             _ => ExecuteControlCommand(command, args),
         };
-        // For whoever started this (the installer, a script): 1 when it did not do what was asked.
-        Environment.ExitCode = result.Success ? 0 : 1;
+        // For whoever started this (the installer, a script): 1 when it did not do what was
+        // asked, 2 when that is because the settings folder could not be made safe to use.
+        Environment.ExitCode = result.Success ? 0 : result.FolderNotSafe ? 2 : 1;
         if (!args.Any(arg => string.Equals(arg, "--quiet", StringComparison.OrdinalIgnoreCase)))
         {
             MessageBox.Show(
@@ -106,8 +107,54 @@ internal static class CompanionServiceManager
         };
     }
 
+    /// <summary>
+    /// Before an elevated command reads or writes anything in the settings folder, and before
+    /// a service is made that will: the folder is made safe (<see cref="SettingsAccess.MakeSafe(string)"/>).
+    /// The one place for every command. A folder a user who is no administrator had made is
+    /// put aside there and a new one made, which only administrators can use: the log says
+    /// where the old one went, and unless the command sets the folder's rule itself
+    /// (<paramref name="setsTheFoldersRule"/>), the new one is opened to every user, as a
+    /// silent first install leaves it, so the app asks who it is for.
+    /// </summary>
+    /// <returns>Null, or why the folder is not safe to use: the command then does nothing.</returns>
+    private static ControlCommandResult? MakeSettingsFolderSafe(bool setsTheFoldersRule = false)
+    {
+        try
+        {
+            SettingsAccess.MakeSafe(AppPaths.ConfigDirectoryPath, out var putAside);
+            if (putAside is null)
+            {
+                return null;
+            }
+
+            if (!setsTheFoldersRule)
+            {
+                SettingsAccess.OpenToEveryone(AppPaths.ConfigDirectoryPath);
+            }
+
+            using var log = new FileLog(AppPaths.Create().LogFile);
+            log.Warning($"The settings folder was made by a user who is no administrator. It was put aside as {putAside}, with what it held, and a new one made: nothing in it is used.");
+            if (!setsTheFoldersRule)
+            {
+                log.Info("Settings open to every user of this PC until someone chooses in the app.");
+            }
+
+            return null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception)
+        {
+            return new ControlCommandResult(false, string.Format(S("Access.FolderNotSafe"), ex.Message), FolderNotSafe: true);
+        }
+    }
+
     private static ControlCommandResult Install()
     {
+        // First of all: no service is made, or started, over a settings folder that is not the PC's.
+        if (MakeSettingsFolderSafe() is { } notSafe)
+        {
+            return notSafe;
+        }
+
         var executable = Environment.ProcessPath ?? Application.ExecutablePath;
         var binaryPath = $"{Quote(executable)} --service";
 
@@ -168,6 +215,11 @@ internal static class CompanionServiceManager
             return new ControlCommandResult(false, S("SvcMgr.ApprovalNeedsAdmin"));
         }
 
+        if (MakeSettingsFolderSafe() is { } notSafe)
+        {
+            return notSafe;
+        }
+
         try
         {
             var paths = AppPaths.Create();
@@ -215,6 +267,9 @@ internal static class CompanionServiceManager
     /// "HASS.Agent Users" group); "everyone": every user of the PC, as before; "open": the same
     /// without recording a choice, for a silent first install where nobody chose, so the app
     /// still asks; "keep": what the folder had, after an update. Needs an administrator.
+    /// A settings folder made by a user who is no administrator (before the first install, in
+    /// ProgramData, where every user can make one) is not used, nor anything in it: it is put
+    /// aside and a new one made (<see cref="SettingsAccess.MakeSafe(string, out string?)"/>).
     /// </summary>
     private static ControlCommandResult ChangeSettingsAccess(IReadOnlyList<string> arguments)
     {
@@ -225,6 +280,16 @@ internal static class CompanionServiceManager
 
         var mode = arguments.FirstOrDefault()?.ToLowerInvariant();
         var users = arguments.Skip(1).Where(user => !string.IsNullOrWhiteSpace(user)).ToList();
+        // Before anything is read or written there as administrator: the folder may have been
+        // made by a user, as a link to a folder of their choosing or with settings of theirs.
+        // "keep" over a folder that was put aside finds the new one open to every user, and
+        // does with it what an update does with such a folder.
+        var setsTheFoldersRule = mode is "everyone" or "open" || (mode == "only" && users.Count > 0);
+        if (MakeSettingsFolderSafe(setsTheFoldersRule) is { } notSafe)
+        {
+            return notSafe;
+        }
+
         var paths = AppPaths.Create();
         using var log = new FileLog(paths.LogFile);
         PrepareLastRunRecord(log);
@@ -274,6 +339,12 @@ internal static class CompanionServiceManager
 
         var mode = arguments.FirstOrDefault()?.ToLowerInvariant();
         var users = arguments.Skip(1).Where(user => !string.IsNullOrWhiteSpace(user)).ToList();
+        // Before anything is read or written there as administrator.
+        if (MakeSettingsFolderSafe() is { } notSafe)
+        {
+            return notSafe;
+        }
+
         var paths = AppPaths.Create();
         using var log = new FileLog(paths.LogFile);
         var by = $"{Environment.UserDomainName}\\{Environment.UserName}";
@@ -543,5 +614,5 @@ internal static class CompanionServiceManager
         return $"\"{value.Replace("\"", "\\\"", StringComparison.Ordinal)}\"";
     }
 
-    private sealed record ControlCommandResult(bool Success, string Message);
+    private sealed record ControlCommandResult(bool Success, string Message, bool FolderNotSafe = false);
 }

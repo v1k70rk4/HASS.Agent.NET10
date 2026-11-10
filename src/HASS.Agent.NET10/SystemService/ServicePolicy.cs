@@ -159,6 +159,14 @@ internal sealed class ServicePolicy
         return restricted;
     }
 
+    /// <summary>
+    /// In the service, after <see cref="Restrict"/>: the custom commands that are not the
+    /// service's are not in the settings it works from at all. Whatever reaches the service,
+    /// by whichever way, finds no tray app command there to run as SYSTEM.
+    /// </summary>
+    public static void DropTrayAppCommands(CompanionSettings settings) =>
+        settings.CustomCommands.RemoveAll(command => !command.Service);
+
     private static string Hash(params string?[] parts)
     {
         var text = string.Join('\0', parts.Select(part => part ?? string.Empty));

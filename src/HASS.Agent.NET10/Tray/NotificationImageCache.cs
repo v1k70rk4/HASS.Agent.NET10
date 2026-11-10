@@ -212,7 +212,7 @@ internal sealed class NotificationImageCache
         {
             return NetworkInterface.GetAllNetworkInterfaces()
                 .SelectMany(adapter => adapter.GetIPProperties().UnicastAddresses)
-                .Any(unicast => unicast.Address.Equals(address)
+                .Any(unicast => IsSameAddress(unicast.Address, address)
                     || (unicast.Address.IsIPv4MappedToIPv6 && unicast.Address.MapToIPv4().Equals(address)));
         }
         catch (NetworkInformationException)
@@ -220,6 +220,11 @@ internal sealed class NotificationImageCache
             return false;
         }
     }
+
+    // By the bytes alone: an adapter's link-local address carries the adapter's scope
+    // (fe80::1%14), the same address in a URL usually does not, and Equals tells them apart.
+    internal static bool IsSameAddress(IPAddress own, IPAddress other) =>
+        own.AddressFamily == other.AddressFamily && own.GetAddressBytes().AsSpan().SequenceEqual(other.GetAddressBytes());
 
     internal static bool IsAllowedTarget(IPAddress address, bool allowThisPc = false)
     {

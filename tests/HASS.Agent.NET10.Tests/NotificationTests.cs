@@ -150,6 +150,37 @@ public class NotificationPictureAddressTests
     }
 
     [Fact]
+    public void This_pcs_link_local_address_counts_as_this_pc_without_its_scope_too()
+    {
+        // The adapter has it as fe80::1%14; an address in a URL is usually written without the scope.
+        var own = System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces()
+            .SelectMany(adapter => adapter.GetIPProperties().UnicastAddresses)
+            .Select(unicast => unicast.Address)
+            .FirstOrDefault(address => address.IsIPv6LinkLocal);
+        if (own is null)
+        {
+            return;
+        }
+
+        var withoutScope = new System.Net.IPAddress(own.GetAddressBytes());
+
+        Assert.False(HASS.Agent.Companion.Tray.NotificationImageCache.IsAllowedTarget(withoutScope));
+        Assert.True(HASS.Agent.Companion.Tray.NotificationImageCache.IsAllowedTarget(withoutScope, allowThisPc: true));
+    }
+
+    [Theory]
+    [InlineData("fe80::1%14", "fe80::1", true)]
+    [InlineData("fe80::1%14", "fe80::1%3", true)]
+    [InlineData("fe80::1%14", "fe80::2", false)]
+    [InlineData("192.168.1.10", "192.168.1.10", true)]
+    [InlineData("192.168.1.10", "192.168.1.11", false)]
+    [InlineData("192.168.1.10", "::ffff:192.168.1.10", false)]   // told apart here; IsAllowedTarget maps it first
+    public void An_address_is_the_same_address_whatever_its_scope(string own, string other, bool same)
+    {
+        Assert.Equal(same, HASS.Agent.Companion.Tray.NotificationImageCache.IsSameAddress(System.Net.IPAddress.Parse(own), System.Net.IPAddress.Parse(other)));
+    }
+
+    [Fact]
     public void Home_assistant_on_this_pc_is_allowed()
     {
         Assert.True(HASS.Agent.Companion.Tray.NotificationImageCache.IsAllowedTarget(System.Net.IPAddress.Loopback, allowThisPc: true));

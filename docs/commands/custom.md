@@ -22,6 +22,7 @@ Beyond the built-in commands, you can define your own on the **Capabilities** pa
 | **Popup window (WebView)** | A web address (`http://` or `https://`) to show in a window of its own | Window size, e.g. `1024x720` (optional) |
 
 - **Program** commands launch via the shell, so GUI apps show in your session; PowerShell runs hidden with `-NoProfile -ExecutionPolicy Bypass`.
+- Put a program's path in quotes when it has a space in it and arguments follow it: `"C:\Program Files\App\app.exe" /x`. Without the quotes the command is not run, and the editor says so when you save. Cut at the first space, the line would name another program (`C:\Program`).
 - Tick **Tray**, **Svc**, or both to choose where a command runs. Service-run commands execute in the `SYSTEM` session (no visible UI), and only after an administrator has approved them: [Commands the service runs](../features/windows-service.md#commands-the-service-runs).
 - **Key press**, **Open address** and **Popup window** act on the desktop of the logged-in user, so they run in the tray app only; the **Svc** tick is cleared for them on save.
 - **Security:** you own the command list. Home Assistant only sends the command's id to trigger it, never the program or script itself, so it cannot run arbitrary code on your PC. Requires the integration 10.6.0 or newer to show the buttons.

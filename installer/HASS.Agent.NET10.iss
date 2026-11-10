@@ -1,5 +1,5 @@
 ﻿#ifndef MyAppVersion
-#define MyAppVersion "10.13.0-beta.1"
+#define MyAppVersion "10.13.0"
 #endif
 
 ; The file version resource takes numbers only: a pre-release ("10.9.0-beta.1") keeps its
@@ -64,6 +64,7 @@ english.TaskAccessAll=Every user of this PC
 english.UninstallSettings=Remove the settings too?%n%nThey hold the Home Assistant token, the MQTT password and the API key. Keep them only if you will install HASS.Agent .NET10 again.
 english.AccessUserUnknown=Setup could not find out which user started it, so HASS.Agent .NET10 was limited to %1 only.%n%nIf that is not you, an administrator can add you in HASS.Agent: Danger Zone, Users of this PC.
 english.AccessFailed=HASS.Agent .NET10 could not be limited to the chosen users; every user of this PC can use it for now.%n%nIt can be set in HASS.Agent: Danger Zone, Users of this PC.
+english.SettingsFolderNotSafe=The files of HASS.Agent .NET10 are installed, but its settings folder (in ProgramData) could not be made safe to use: another user of this PC made it and has it open. HASS.Agent was not started, and its service was not installed or started.%n%nSign the other users out, or restart the PC, and run this Setup again.
 english.KioskTaskNotDisabled=The kiosk mode task (HASS.Agent.NET10\Kiosk) could not be paused, so the files cannot be replaced safely. Nothing was changed. Try again, or turn kiosk mode off first.
 english.KioskTaskNotEnabled=The kiosk mode task (HASS.Agent.NET10\Kiosk) could not be turned back on. Until it is, the app does not come back for the kiosk users when it is closed.%n%nTurn it on in Task Scheduler, or save kiosk mode again in HASS.Agent: Danger Zone, Kiosk mode.
 
@@ -80,6 +81,7 @@ hungarian.TaskAccessAll=A gép minden felhasználója
 hungarian.UninstallSettings=A beállításokat is törlöd?%n%nBennük van a Home Assistant token, az MQTT jelszó és az API kulcs. Csak akkor tartsd meg őket, ha újra telepíted a HASS.Agent .NET10-et.
 hungarian.AccessUserUnknown=A telepítő nem tudta megállapítani, melyik felhasználó indította, ezért a HASS.Agent .NET10 csak %1 számára lett korlátozva.%n%nHa ez nem te vagy, egy rendszergazda felvehet a HASS.Agentben: Danger Zone, A gép felhasználói.
 hungarian.AccessFailed=A HASS.Agent .NET10-et nem sikerült a választott felhasználókra korlátozni; egyelőre a gép minden felhasználója használhatja.%n%nA HASS.Agentben beállítható: Danger Zone, A gép felhasználói.
+hungarian.SettingsFolderNotSafe=A HASS.Agent .NET10 fájljai települtek, de a beállításmappáját (a ProgramData alatt) nem sikerült biztonságosan használhatóvá tenni: a gép egy másik felhasználója hozta létre, és nyitva tartja. A HASS.Agent nem indult el, a szolgáltatása pedig nem lett telepítve, illetve elindítva.%n%nJelentkeztesd ki a többi felhasználót, vagy indítsd újra a gépet, és futtasd újra ezt a telepítőt.
 hungarian.KioskTaskNotDisabled=A kioszk mód feladatát (HASS.Agent.NET10\Kiosk) nem sikerült szüneteltetni, ezért a fájlokat nem lehet biztonságosan lecserélni. Nem változott semmi. Próbáld újra, vagy előbb kapcsold ki a kioszk módot.
 hungarian.KioskTaskNotEnabled=A kioszk mód feladatát (HASS.Agent.NET10\Kiosk) nem sikerült visszakapcsolni. Amíg nincs bekapcsolva, a kioszk-felhasználóknál bezárás után nem jön vissza az alkalmazás.%n%nKapcsold be a Feladatütemezőben, vagy mentsd el újra a kioszk módot a HASS.Agentben: Danger Zone, Kioszk mód.
 
@@ -212,6 +214,21 @@ begin
   Result := Exec(FileName, Parameters, '', SW_HIDE, ewWaitUntilTerminated, ResultCode) and (ResultCode = 0);
 end;
 
+const
+  { The app's exit code when the settings folder could not be made safe to use. }
+  SettingsFolderNotSafe = 2;
+
+{ The installed app with these parameters, hidden: its exit code, or -1 when it did not start. }
+function RunApp(Parameters: string): Integer;
+var
+  ResultCode: Integer;
+begin
+  if Exec(ExpandConstant('{app}\{#MyAppExeName}'), Parameters, '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+    Result := ResultCode
+  else
+    Result := -1;
+end;
+
 { True when the setup was started by the HASS.Agent silent self-update.
   In that case the installer runs as SYSTEM (session 0), so launching the
   tray app here would make it invisible — a watchdog in the user session
@@ -253,12 +270,18 @@ end;
 
 { Who may use the shared settings. A first install asks (only the user who installs, or
   every user, as every version before 10.9.1 had it); an update, including a silent one from
-  Home Assistant that runs as SYSTEM, keeps what the PC has. The app does the work. }
-procedure EnsureConfigDirectoryPermissions();
+  Home Assistant that runs as SYSTEM, keeps what the PC has. The app does the work. A settings
+  folder that is there already, made by a user who is no administrator, is not used: the app
+  puts it aside and makes a new one.
+  False when the app could not make the folder safe to use (its exit code 2: such a folder,
+  held open by whoever made it): the install then makes and starts no service and starts no
+  app over it. Any other failure is logged and the install goes on, as before. }
+function EnsureConfigDirectoryPermissions(): Boolean;
 var
   Users: string;
   Elevated: string;
   Original: string;
+  Code: Integer;
 begin
   { PreviousVersion, read before the files went in: by now this setup is registered itself.
     "Only me" needs a person who chose it: a silent install (winget, a deployment tool, an
@@ -272,7 +295,12 @@ begin
     Original := OriginalUserName();
     if (Original <> '') and (CompareText(Original, Elevated) <> 0) then
       Users := Users + ' "' + Original + '"';
-    if not RunHidden(ExpandConstant('{app}\{#MyAppExeName}'), '--settings-access only ' + Users + ' --quiet') then
+    Code := RunApp('--settings-access only ' + Users + ' --quiet');
+    if Code = SettingsFolderNotSafe then
+    begin
+      { Said by the caller, as in every other mode. }
+    end
+    else if Code <> 0 then
     begin
       Log('Limiting the settings to ' + Users + ' failed.');
       MsgBox(CustomMessage('AccessFailed'), mbError, MB_OK);
@@ -285,13 +313,17 @@ begin
     end;
   end
   else if (PreviousVersion = '') and WizardIsTaskSelected('accessall') and (not WizardSilent()) then
-    RunHidden(ExpandConstant('{app}\{#MyAppExeName}'), '--settings-access everyone --quiet')
+    Code := RunApp('--settings-access everyone --quiet')
   else if PreviousVersion = '' then
     { Nobody chose: open as before, without recording a choice, so the app asks when its
       window is opened on a PC with a user who is not an administrator. }
-    RunHidden(ExpandConstant('{app}\{#MyAppExeName}'), '--settings-access open --quiet')
+    Code := RunApp('--settings-access open --quiet')
   else
-    RunHidden(ExpandConstant('{app}\{#MyAppExeName}'), '--settings-access keep --quiet');
+    Code := RunApp('--settings-access keep --quiet');
+
+  if Code <> 0 then
+    Log('The settings step ended with exit code ' + IntToStr(Code) + '.');
+  Result := Code <> SettingsFolderNotSafe;
 end;
 
 const
@@ -416,6 +448,7 @@ end;
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   ResultCode: Integer;
+  SettingsFolderSafe: Boolean;
 begin
   if CurStep = ssInstall then
   begin
@@ -437,7 +470,17 @@ begin
 
   if CurStep = ssPostInstall then
   begin
-    EnsureConfigDirectoryPermissions();
+    { A settings folder that could not be made safe is another user's still: no service is
+      made or started over it, which would write there as SYSTEM, and no app is started, which
+      would run that user's settings. Said in every mode with someone to read it; the app
+      itself refuses such a folder too (the service's start, the tray app's, --install-service). }
+    SettingsFolderSafe := EnsureConfigDirectoryPermissions();
+    if not SettingsFolderSafe then
+    begin
+      Log('The settings folder could not be made safe to use: no service is installed or started, and the app is not started.');
+      if not WizardSilent() then
+        MsgBox(CustomMessage('SettingsFolderNotSafe'), mbError, MB_OK);
+    end;
 
     { Before the service starts: it reads this note on start and removes it once the
       update is reported. A value of the app's key under HKLM, which only administrators
@@ -457,14 +500,15 @@ begin
     { Installing the service keeps what an administrator approved for it before
       (service-policy.json next to the program), so an update keeps everything working.
       Anything new in the settings waits for the approval prompt in the app. }
-    if ExistingServiceInstalled or WizardIsTaskSelected('installservice') then
+    if SettingsFolderSafe and (ExistingServiceInstalled or WizardIsTaskSelected('installservice')) then
     begin
-      RunHidden(ExpandConstant('{app}\{#MyAppExeName}'), '--install-service --quiet');
+      if RunApp('--install-service --quiet') <> 0 then
+        Log('The service was not installed or not started.');
     end;
 
     { As the user who started the setup, not with its administrator rights: the app runs
       the commands in the settings, which other users may be able to write. }
-    if not IsSilentUpdate() then
+    if SettingsFolderSafe and (not IsSilentUpdate()) then
       ExecAsOriginalUser(ExpandConstant('{app}\{#MyAppExeName}'), '', '', SW_SHOWNORMAL, ewNoWait, ResultCode);
   end;
 end;

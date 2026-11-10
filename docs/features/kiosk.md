@@ -26,7 +26,7 @@ HASS.Agent.NET10.exe --kiosk on USER [USER ...]
 HASS.Agent.NET10.exe --kiosk off
 ```
 
-A user from a domain or Entra ID is given as `DOMAIN\user`. The exit code is 1 when the change could not be made. The command line does not ask about an administrator the way the window does, and lets you name yourself.
+A user from a domain or Entra ID is given as `DOMAIN\user`. The exit code is 1 when the change could not be made, and 2 when the settings folder could not be made safe to use and nothing was changed. The command line does not ask about an administrator the way the window does, and lets you name yourself.
 
 ## The HASS.Agent Kiosk group
 

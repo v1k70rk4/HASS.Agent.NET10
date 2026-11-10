@@ -16,7 +16,11 @@ The settings are shared by every Windows user of the PC, and they hold the Home 
     - On a PC where someone has logged on with a domain or Entra ID account (a work PC), such a user counts as an administrator when they are in the PC's Administrators group, by their own account or through a domain group such as Domain Admins (from 10.10.1; the domain's groups need a domain controller that answers). One who cannot be shown to be an administrator keeps the update from limiting the settings, and the question comes in the app, where those users are listed as `DOMAIN\user` when Windows can name them. The check through a domain group is made by the update, which runs as SYSTEM or as an administrator; the app of a local account cannot ask the domain, so on such a PC the Home Assistant notice may name a domain administrator as not known to be one. Nothing changes until someone chooses in the app.
 - It can be changed any time under **Danger Zone → Users of this PC**.
 
-Limiting needs an administrator (UAC). It uses a local group, **HASS.Agent Users**, that an administrator can also manage with Windows' own tools; the ticked users are also given access by name, so they can go on without logging on again. Administrators and the service keep their access. Someone left out gets a note once, and HASS.Agent does not start for them. Either way the users may change what is in the folder but not delete or replace the folder itself, and before an administrator sets its rule, the app removes any link someone put there and takes over what another user owns.
+Limiting needs an administrator (UAC). It uses a local group, **HASS.Agent Users**, that an administrator can also manage with Windows' own tools; the ticked users are also given access by name, so they can go on without logging on again. Administrators and the service keep their access. Someone left out gets a note once, and HASS.Agent does not start for them. Either way the users may change what is in the folder but not delete or replace the folder itself, and before an administrator sets its rule, the app removes any link someone put there and takes over what another user owns in it.
+
+The folder also holds an empty file named `folder-….anchor`, which only administrators can touch. Leave it there: Windows turns only an empty folder into a link to another folder, and the file is what keeps the settings folder from being emptied and made one by a user of the PC. An update makes a new one and removes the old.
+
+A settings folder that a user who is not an administrator made (every user can make a folder in `ProgramData`, so one could be there before the first install) is not used, nor anything in it. The app renames it to `HASS.Agent.NET10.made-by-another-user-…`, next to where it was, and makes a new one; the log says so. Nothing is deleted, so an administrator can look at it and take from it what is theirs. If the folder cannot be renamed because a program has it open, the app stops and says so, and nothing uses that folder until it is put right: the installer installs and starts no service and does not start the app, the service does not start, and the app loads no settings from it. Sign the other users out, or restart the PC, and run the install again. A folder made by an administrator's own account (their app runs without elevation) is the PC's folder: it stays, with its settings, and only its owner becomes the Administrators group.
 
 From the command line (as administrator):
 
@@ -25,7 +29,7 @@ HASS.Agent.NET10.exe --settings-access only USER [USER ...]
 HASS.Agent.NET10.exe --settings-access everyone
 ```
 
-A user from a domain or Entra ID is given as `DOMAIN\user`. The exit code is 1 when the change could not be made, also when the folder took the rule but a file in it did not; the message names the file.
+A user from a domain or Entra ID is given as `DOMAIN\user`. The exit code is 1 when the change could not be made, also when the folder took the rule but a file in it did not; the message names the file. It is 2 when the settings folder could not be made safe to use, and nothing was changed.
 
 ## Several users signed in at once
 

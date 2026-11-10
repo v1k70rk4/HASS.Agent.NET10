@@ -231,7 +231,7 @@ public class ServicePolicyTests : IDisposable
         var shown = ServiceApproval.PendingDescriptions(settings, new ServicePolicy());
 
         Assert.Equal(2, shown.Count);
-        Assert.StartsWith("Backup:", shown[0]);
+        Assert.StartsWith("Backup [process]:", shown[0]);
         Assert.Contains(@"C:\Tools\backup.exe --full", shown[0]);
         Assert.Contains("(Get-Date).Hour", shown[1]);
     }
@@ -276,6 +276,68 @@ public class ServicePolicyTests : IDisposable
             [Sensor(CustomSensorTypes.CommandPwsh, "hostname", id: "4")]);
 
         Assert.Equal(["process b.exe", "command_pwsh hostname"], ServiceApproval.PendingNames(settings, policy));
+    }
+
+    [Fact]
+    public void A_name_with_line_breaks_cannot_pass_for_entries_of_its_own()
+    {
+        // Written into the settings by someone else: one command, made to read as two harmless ones.
+        var command = new CustomCommandDefinition
+        {
+            Id = "1", Type = CustomCommandTypes.PowerShell, Service = true,
+            Name = "Disk cleanup:\r\n    cleanmgr.exe /sagerun:1\r\n\r\nNightly backup\u2028more",
+            Command = "robocopy C:\\Data D:\\Backup /MIR; Start-Process evil.exe",
+        };
+        var settings = Settings([command]);
+
+        var lines = ServiceApproval.PendingDescriptions(settings, new ServicePolicy()).Single().Split(Environment.NewLine);
+
+        Assert.Equal(2, lines.Length);
+        Assert.Equal("Disk cleanup:      cleanmgr.exe /sagerun:1    Nightly backup more [powershell]:", lines[0]);
+        Assert.Equal("    robocopy C:\\Data D:\\Backup /MIR; Start-Process evil.exe", lines[1]);
+        Assert.DoesNotContain(ServiceApproval.PendingNames(settings, new ServicePolicy()), name => name.Contains('\n') || name.Contains('\r'));
+    }
+
+    [Fact]
+    public void A_name_cannot_turn_the_reading_direction_around()
+    {
+        // U+202E has what follows it written from right to left: "exe.tnemucod" would be
+        // read as "document.exe". Not shown itself, like the other characters of its kind.
+        Assert.Equal("Backup  exe.tnemucod", ServiceApproval.OneLine("Backup \u202Eexe.tnemucod\u2069"));
+        Assert.Equal("Nightly  backup", ServiceApproval.OneLine("\u200BNightly\u200F backup\uFEFF"));
+    }
+
+    [Fact]
+    public void What_a_command_runs_is_shown_with_nothing_hidden_in_it()
+    {
+        // In the text that is run nothing is left out: what cannot be seen is written out.
+        var command = new CustomCommandDefinition
+        {
+            Id = "1", Name = "Report", Type = CustomCommandTypes.PowerShell, Service = true,
+            Command = "Remove-Item C:\\Data \u202Etxt.troper\u202C -Recurse\tnow",
+        };
+
+        var lines = ServiceApproval.PendingDescriptions(Settings([command]), new ServicePolicy()).Single().Split(Environment.NewLine);
+
+        Assert.Equal("    Remove-Item C:\\Data \\u202Etxt.troper\\u202C -Recurse\tnow", lines[1]);
+        Assert.Equal("plain text", ServiceApproval.Visible("plain text"));
+    }
+
+    [Fact]
+    public void The_service_keeps_no_command_of_the_tray_app()
+    {
+        var approved = Command(CustomCommandTypes.PowerShell, "Restart-Service Spooler", id: "a");
+        var settings = Settings([approved]);
+        var policy = ServicePolicy.FromSettings(settings);
+
+        // Someone who can write the settings adds one for the tray app, and one for the service.
+        settings.CustomCommands.Add(Command(CustomCommandTypes.PowerShell, "whoami", service: false, id: "tray"));
+        settings.CustomCommands.Add(Command(CustomCommandTypes.Process, @"C:\Users\Public\evil.exe", id: "planted"));
+
+        policy.Restrict(settings);
+        ServicePolicy.DropTrayAppCommands(settings);
+
+        Assert.Equal(["a"], settings.CustomCommands.Select(command => command.Id));
     }
 }
 

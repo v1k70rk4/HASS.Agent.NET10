@@ -51,6 +51,16 @@ The repository's Windows workflow:
 - downloadable artifacts from manual workflow runs: `HASS.Agent.NET10-win-x64` and `HASS.Agent.NET10-Setup`
 - release assets on `v*` tags, attached to a draft release (the signed files replace them before it is published): `HASS.Agent.NET10-Setup-<version>.exe` and `HASS.Agent.NET10-win-x64-<version>.zip`
 
+Everything up to the installer runs with a read-only token, for pull requests too. Only a last job, which runs for a pushed tag alone and builds nothing, may write to the repository: it makes the draft release from the files the build handed over, and leaves a release that is already published as it is.
+
+### Packages
+
+The NuGet packages come from nuget.org only (`NuGet.config`), and the ones a build takes are written down, each with its hash, in `packages.lock.json` next to the two projects. CI and a release build restore in locked mode: if the lock files do not match what the projects ask for, the restore fails (NU1004) instead of taking something else. After changing a package, or the SDK version in `global.json` (one package comes with the SDK), write them again and commit them:
+
+```powershell
+dotnet restore src/HASS.Agent.sln --force-evaluate
+```
+
 Beside it: CodeQL on every change, the OpenSSF Scorecard, the Sigstore signing of a published release, and the website build below.
 
 ## Minimal development setup

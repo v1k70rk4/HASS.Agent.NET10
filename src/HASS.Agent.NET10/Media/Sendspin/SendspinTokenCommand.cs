@@ -34,6 +34,13 @@ internal static class SendspinTokenCommand
         var rotate = args.Any(arg => string.Equals(arg, "--new", StringComparison.OrdinalIgnoreCase));
         try
         {
+            // Run as SYSTEM by Intune, or by an administrator: like the service, it writes
+            // nothing (the log, the pairing) into a folder another user made and has a hold on.
+            if (!SettingsAccess.IsOfThePc(AppPaths.ConfigDirectoryPath))
+            {
+                throw new IOException(string.Format(Strings.Get("Access.FolderNotOfThePc"), AppPaths.ConfigDirectoryPath));
+            }
+
             using var log = new FileLog(Path.Combine(AppPaths.ConfigDirectoryPath, "hass-agent-net10.log"));
             log.Info($"Sendspin: the pairing token was asked for on the command line{(rotate ? ", a new one" : string.Empty)}.");
             var player = new SendspinPlayerService(new CompanionSettings(), log);

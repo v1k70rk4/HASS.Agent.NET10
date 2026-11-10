@@ -147,6 +147,24 @@ internal static class Program
             return;
         }
 
+        // Still before AppPaths.Create: settings in a folder another user made, who is no
+        // administrator, are that user's, with the commands this app would run for this one.
+        if (!SettingsAccess.IsOfThePc(AppPaths.ConfigDirectoryPath))
+        {
+            // Nothing can be logged there. Said to someone who started the app, not at every
+            // start a watchdog or the kiosk task makes.
+            if (!kiosk && !args.Any(arg => string.Equals(arg, "--quiet", StringComparison.OrdinalIgnoreCase)))
+            {
+                MessageBox.Show(
+                    string.Format(Localization.Strings.Get("Access.FolderNotOfThePc"), AppPaths.ConfigDirectoryPath),
+                    AppIdentity.DisplayName,
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+            }
+
+            return;
+        }
+
         var paths = AppPaths.Create();
         if (kiosk)
         {

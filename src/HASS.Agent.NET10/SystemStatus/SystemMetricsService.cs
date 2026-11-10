@@ -2393,6 +2393,11 @@ internal sealed class SystemMetricsService : IDisposable
         }
         else
         {
+            if (SystemCommandService.HasUnquotedSpaceInPath(parameter))
+            {
+                throw new InvalidOperationException(SystemCommandService.UnquotedPathMessage);
+            }
+
             var (fileName, arguments) = SystemCommandService.SplitProcessCommand(parameter);
             startInfo.FileName = fileName;
             startInfo.Arguments = arguments;

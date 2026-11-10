@@ -409,6 +409,11 @@ internal sealed class CustomCommandEditorForm : CustomEditorForm
             return S("Editor.InvalidSize");
         }
 
+        if (command.IsProcess && SystemCommandService.HasUnquotedSpaceInPath(command.Command))
+        {
+            return S("Editor.UnquotedPath");
+        }
+
         return null;
     }
 
@@ -796,12 +801,26 @@ internal sealed class CustomSensorEditorForm : CustomEditorForm
         };
     }
 
+    // What keeps the sensor from being saved, and from being tried: a test that runs nothing
+    // would show no value and not say why.
+    private string? FindProblem(CustomSensorDefinition sensor)
+    {
+        if (sensor.Parameter.Length == 0)
+        {
+            return string.Format(S("Editor.FieldMissing"), _parameterLabel.Text);
+        }
+
+        return sensor.IsCommand && SystemCommandService.HasUnquotedSpaceInPath(sensor.Parameter)
+            ? S("Editor.UnquotedPath")
+            : null;
+    }
+
     protected override bool TryAccept()
     {
         var sensor = Build();
-        if (sensor.Parameter.Length == 0)
+        if (FindProblem(sensor) is { } problem)
         {
-            ShowResult(string.Format(S("Editor.FieldMissing"), _parameterLabel.Text), ErrorRed);
+            ShowResult(problem, ErrorRed);
             return false;
         }
 
@@ -812,9 +831,9 @@ internal sealed class CustomSensorEditorForm : CustomEditorForm
     protected override async Task RunTestAsync()
     {
         var sensor = Build();
-        if (sensor.Parameter.Length == 0)
+        if (FindProblem(sensor) is { } problem)
         {
-            ShowResult(string.Format(S("Editor.FieldMissing"), _parameterLabel.Text), ErrorRed);
+            ShowResult(problem, ErrorRed);
             return;
         }
 

@@ -2,9 +2,44 @@
 
 Every release of HASS.Agent .NET10, newest first. The downloads are on the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases).
 
-## 10.13.0-beta.1
+## 10.13.0
 
-> **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered the beta, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.12.0**, below.
+A bigger release: the PC as a Sendspin player of Music Assistant; two users signed in at once share the connection instead of taking it from each other; and a security round on what a Windows user who is not an administrator can do through the app on a PC shared with others. Built on .NET 10.0.15, the .NET security update of November. Works with the Home Assistant integration **10.6.7** or newer; the integration **10.13.0** is out at the same time. Signed release.
+
+**Sendspin player**
+
+- **The PC as a Sendspin player of Music Assistant.** A new card on the Media player page: turn it on, and the PC plays what [Music Assistant](https://music-assistant.io/) sends it, in sync with the other players of its group, in another room, on a speaker, on another PC. Music Assistant finds the PC on the network and asks for a pairing token, which the page copies to the clipboard; for a network where it is not found, the PC connects to an address you give. The sound goes to the Windows default output or to a device you choose, and an output that goes away (a headset unplugged, a TV that drops its HDMI audio) is replaced by whatever is there, with the PC staying in its group. An announcement of the app silences the player meanwhile. The PC is the player, whoever is signed in at its screen: a user switch hands the player over within a few seconds, and so does an update of the app. For a PC set up by a script or by Intune, or a kiosk PC with no window, `HASS.Agent.NET10.exe --sendspin-token` gives the pairing token on the command line. Needs Music Assistant 2.10.7 or newer; the player's entity in Home Assistant comes from Music Assistant's own integration. See [Sendspin player](docs/features/media-player.md#sendspin-player-music-assistant).
+- **Setup lets the app through the Windows firewall for the player** (TCP 8928 and UDP 5353, private networks only, the same way as the Local API) and removes the rule at uninstall.
+- **The library the player brings along (libsodium) is signed with the program**; the other libraries beside the program carry Microsoft's signature. See [Signed releases](docs/getting-started/security.md#signed-releases).
+- **The program is 3 MB larger than 10.12.0, not 58.** A library of the Sendspin SDK asks for WPF, which this app does not use; it is kept out of the program.
+
+**Several users on one PC**
+
+- **Two users signed in at once no longer take turns on MQTT.** Every signed-in user has a tray app, and both connected with the PC's client id, so the broker closed one for the other every few seconds and the PC flickered in Home Assistant. One app talks now, the one in the session at the PC's screen (on a PC used over Remote Desktop only, the active session's); the other waits and says so on its General page, and a switch of users hands the connection over. See [Several users signed in at once](docs/features/users.md#several-users-signed-in-at-once).
+
+**Security**
+
+- **A security review of the app on a shared PC.** On a PC that several people use, a Windows user who is not an administrator could get more than they should through the optional service and the shared settings folder: while the service ran, at a first install, and at an update. The ways that were found are closed in this release, and each fix was tried against what it fixes.
+- **The service runs only what was approved for it.** It listens on its own MQTT topics alone, and a command marked for the tray app is not the service's to run.
+- **An update is installed only when the downloaded file says it is the installer of that release**, by its own version information; the publisher's signature alone is not enough any more. See [Updates](docs/features/updates.md#only-signed-installers).
+- **Kiosk mode cannot be switched off from a kiosk user's own environment.**
+- **The service's approval prompt shows what kind of command it asks about**, keeps a name on one line, and warns when the program or script behind a command can be changed without an administrator's rights.
+- **Smaller ones**: `--sendspin-token` and the Sendspin player's lock files refuse a folder that is a link; the picture of a notification is not fetched from the PC's own IPv6 link-local address; an update check asked for over MQTT goes to GitHub at most once in five minutes.
+- **How a release is made**: the build runs with a read-only token, and a separate last step makes the draft release; the packages are locked by hash; a release is published, and gets its Sigstore signature, only when it holds its installer and its zip and nothing else. The Sigstore check under [Signed releases](docs/getting-started/security.md#signed-releases) names the release's tag now.
+- **Built on .NET 10.0.15** (SDK 10.0.404), the .NET security update of November. Windows Update does not patch the runtime inside the app, so this release is how its fixes reach it.
+
+**What the security fixes change in use**
+
+- **The settings folder holds a file named `folder-….anchor`.** It is empty, only administrators can touch it, and it keeps the folder a folder: leave it there. An update makes a new one and removes the old.
+- **A settings folder that a user who is not an administrator made is not used.** Every user can make a folder in `ProgramData`, so one could be there before the app was installed, or after the folder was deleted. Setup, and every command an administrator runs, renames it to `HASS.Agent.NET10.made-by-another-user-…` beside where it was, with everything in it, and the app starts from new settings; an administrator can take back from it what is theirs. When it cannot be renamed because a program has it open, Setup says so and starts neither the service nor the app until the other users are signed out and Setup is run again. Where the app was used without the installer by two users who are not administrators, it now starts only for the one who made the folder; installing it puts that right. See [Users of this PC](docs/features/users.md).
+- **A command the broker kept is not run again.** A command published with MQTT's retain flag stays on the broker, which hands it to the PC again at every connect. That replay is ignored now; a command that arrives while the PC is connected runs as before. The integration publishes none with retain, and an automation of your own that publishes to a command topic should not either.
+- **A custom command with arguments needs quotes around a program path that has a space in it.** `C:\Program Files\Tool\tool.exe /x` is not run, the log says why, and the editor refuses it when it is saved; `"C:\Program Files\Tool\tool.exe" /x` is. A path with nothing after it runs as before. See [Custom commands](docs/commands/custom.md).
+- **Worth a look after the update: what the service was approved to run.** An approval covers the text of a command, not the file that text names. A program or script that someone who is not an administrator can change, a script under `C:\Scripts` for one, is theirs to change after the approval as well. The prompt warns about such a file from now on, but what was approved before stays approved: keep those files where only administrators can write. See [Windows service](docs/features/windows-service.md).
+
+**The beta before it**, with its notes as they were:
+
+<details markdown="1">
+<summary><b>10.13.0-beta.1</b>: the PC as a Sendspin player of Music Assistant</summary>
 
 The first beta of 10.13.0: the PC as a Sendspin player of Music Assistant. Works with the Home Assistant integration **10.6.7** or newer; there is no new integration with this one. Signed release.
 
@@ -13,6 +48,8 @@ The first beta of 10.13.0: the PC as a Sendspin player of Music Assistant. Works
 - **The library the player brings along (libsodium) is signed with the program**; the other libraries beside the program carry Microsoft's signature. See [Signed releases](docs/getting-started/security.md#signed-releases).
 - **The program is 3 MB larger than 10.12.0, not 58.** A library of the Sendspin SDK asks for WPF, which this app does not use; it is kept out of the program.
 - **Two users signed in at once no longer take turns on MQTT.** Every signed-in user has a tray app, and both connected with the PC's client id, so the broker closed one for the other every few seconds and the PC flickered in Home Assistant. One app talks now, the one in the session at the PC's screen (on a PC used over Remote Desktop only, the active session's); the other waits and says so on its General page, and a switch of users hands the connection over. See [Several users signed in at once](docs/features/users.md#several-users-signed-in-at-once).
+
+</details>
 
 ## 10.12.0
 

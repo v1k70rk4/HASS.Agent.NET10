@@ -1761,6 +1761,18 @@ internal sealed class MqttCompanionService : IDisposable
     private async Task HandleMessageAsync(MqttApplicationMessageReceivedEventArgs args)
     {
         var topic = args.ApplicationMessage.Topic;
+        if (!MqttTopicGate.IsForRole(_role, topic, ServiceCommandTopic, UpdateInstallTopic))
+        {
+            _log.Warning($"MQTT message on {topic} ignored: not a topic of the {_role.Token()}.");
+            return;
+        }
+
+        if (MqttTopicGate.IsReplay(topic, args.ApplicationMessage.Retain, IntegrationInfoTopic))
+        {
+            _log.Warning($"MQTT message on {topic} ignored: it was retained by the broker.");
+            return;
+        }
+
         if (args.ApplicationMessage.Payload.Length > MaxIncomingPayload)
         {
             // Read whole and decoded for every topic, so a huge one from any client on the
@@ -1799,7 +1811,7 @@ internal sealed class MqttCompanionService : IDisposable
                 var command = JsonSerializer.Deserialize<SystemCommandMessage>(payload, JsonOptions);
                 if (command is not null)
                 {
-                    await ExecuteButtonCommandAsync(command, serviceRole: false, transport: "MQTT");
+                    await ExecuteButtonCommandAsync(command, serviceRole: _role == CompanionRuntimeRole.Service, transport: "MQTT");
                 }
             }
 
@@ -2379,7 +2391,9 @@ internal sealed class MqttCompanionService : IDisposable
             if (commandName == "update_check")
             {
                 _log.Info($"Update check requested from Home Assistant over {transport}.");
-                await PublishUpdateStateAsync(forceCheck: true, _cts?.Token ?? CancellationToken.None);
+                await PublishUpdateStateAsync(
+                    forceCheck: AppUpdateService.IsRequestedCheckDue(_lastUpdateCheck, DateTimeOffset.UtcNow),
+                    _cts?.Token ?? CancellationToken.None);
                 return;
             }
 

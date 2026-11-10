@@ -221,6 +221,11 @@ internal sealed class SystemCommandService : IDisposable
         // any inline arguments so Windows does not look for a file literally named after
         // the whole line. ShellExecute resolves PATH and lets GUI apps show in the user
         // session when run from the tray app.
+        if (HasUnquotedSpaceInPath(command.Command))
+        {
+            throw new InvalidOperationException(UnquotedPathMessage);
+        }
+
         var (fileName, inlineArguments) = SplitProcessCommand(command.Command);
         var processArguments = inlineArguments;
         if (!string.IsNullOrWhiteSpace(command.Arguments))
@@ -269,6 +274,45 @@ internal sealed class SystemCommandService : IDisposable
         return firstSpace < 0
             ? (trimmed, string.Empty)
             : (trimmed[..firstSpace], trimmed[(firstSpace + 1)..].Trim());
+    }
+
+    /// <summary>For the log; the editor says the same in the user's language before it saves.</summary>
+    internal const string UnquotedPathMessage =
+        "the program's path has a space in it and no quotes around it; it was not run. Put the path in quotes.";
+
+    /// <summary>
+    /// Whether the program's path was typed without quotes although it has a space in it, as in
+    /// C:\Program Files\App\app.exe /x. Split at the first space that is C:\Program with the rest
+    /// as its arguments, and Windows starts a C:\Program.exe when someone has put one there. Such
+    /// a line is not run: which program was meant is not to be guessed, least of all as SYSTEM.
+    /// A command by its name alone (taskkill /F) and a path without spaces are not this.
+    /// </summary>
+    internal static bool HasUnquotedSpaceInPath(string? command)
+    {
+        var trimmed = (command ?? string.Empty).Trim();
+        if (trimmed.Length == 0 || trimmed[0] == '"' || System.IO.File.Exists(trimmed))
+        {
+            return false;
+        }
+
+        var firstSpace = trimmed.IndexOf(' ');
+        if (firstSpace < 0 || trimmed.AsSpan(0, firstSpace).IndexOfAny('\\', '/') < 0)
+        {
+            return false;
+        }
+
+        // The space is inside the path when the text goes on, past it, to name a folder that
+        // is there (up to a later separator) or a file that is there (up to a later space).
+        for (var index = firstSpace + 1; index < trimmed.Length; index++)
+        {
+            if (trimmed[index] is '\\' or '/' ? System.IO.Directory.Exists(trimmed[..index])
+                : trimmed[index] == ' ' && System.IO.File.Exists(trimmed[..index]))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public void Dispose()
