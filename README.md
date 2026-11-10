@@ -2,7 +2,7 @@
 
 ![Windows](https://img.shields.io/badge/Windows-10%202004%2B%20%7C%2011-0078D4?logo=windows&logoColor=white)
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet&logoColor=white)
-![Version](https://img.shields.io/badge/version-10.13.0--beta.1-orange)
+![Version](https://img.shields.io/badge/version-10.13.0-brightgreen)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-MQTT%20%7C%20WebSocket%20API-41BDF5?logo=homeassistant&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/15316/badge)](https://www.bestpractices.dev/projects/15316)
@@ -26,7 +26,7 @@ It is designed for Windows PCs you want to observe and control from Home Assista
 
 The .NET10 line starts at **version 10.0.0**. The classic client is a separate program: if you want to stay with it, it is still available from its own project, and the integration keeps a [`legacy` branch](https://github.com/v1k70rk4/HASS.Agent.NET10-Integration/tree/legacy) for it. Thinking about switching? See [Coming from HASS.Agent](docs/getting-started/migrating.md).
 
-> **Stable:** [10.12.0](https://github.com/v1k70rk4/HASS.Agent.NET10/releases/latest) &nbsp;·&nbsp; **Beta:** [10.13.0-beta.1](https://github.com/v1k70rk4/HASS.Agent.NET10/releases/tag/v10.13.0-beta.1) &nbsp;·&nbsp; [What changed](#what-changed) &nbsp;·&nbsp; [Full changelog](CHANGELOG.md)
+> **Stable:** [10.13.0](https://github.com/v1k70rk4/HASS.Agent.NET10/releases/latest) &nbsp;·&nbsp; [What changed](#what-changed) &nbsp;·&nbsp; [Full changelog](CHANGELOG.md)
 
 ---
 
@@ -175,19 +175,41 @@ No telemetry, analytics, or usage data is collected or transmitted.
 
 ## What Changed
 
-### 10.13.0-beta.1
+### 10.13.0
 
-> **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered the beta, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.12.0**, below.
+A bigger release: the PC as a Sendspin player of Music Assistant; two users signed in at once share the connection instead of taking it from each other; and a security round on what a Windows user who is not an administrator can do through the app on a PC shared with others. Built on .NET 10.0.15, the .NET security update of November. Works with the Home Assistant integration **10.6.7** or newer; the integration **10.13.0** is out at the same time. Signed release.
 
-The first beta of 10.13.0: the PC as a Sendspin player of Music Assistant. Works with the Home Assistant integration **10.6.7** or newer; there is no new integration with this one. Signed release.
+**Sendspin player**
 
 - **The PC as a Sendspin player of Music Assistant.** A new card on the Media player page: turn it on, and the PC plays what [Music Assistant](https://music-assistant.io/) sends it, in sync with the other players of its group, in another room, on a speaker, on another PC. Music Assistant finds the PC on the network and asks for a pairing token, which the page copies to the clipboard; for a network where it is not found, the PC connects to an address you give. The sound goes to the Windows default output or to a device you choose, and an output that goes away (a headset unplugged, a TV that drops its HDMI audio) is replaced by whatever is there, with the PC staying in its group. An announcement of the app silences the player meanwhile. The PC is the player, whoever is signed in at its screen: a user switch hands the player over within a few seconds, and so does an update of the app. For a PC set up by a script or by Intune, or a kiosk PC with no window, `HASS.Agent.NET10.exe --sendspin-token` gives the pairing token on the command line. Needs Music Assistant 2.10.7 or newer; the player's entity in Home Assistant comes from Music Assistant's own integration. See [Sendspin player](docs/features/media-player.md#sendspin-player-music-assistant).
 - **Setup lets the app through the Windows firewall for the player** (TCP 8928 and UDP 5353, private networks only, the same way as the Local API) and removes the rule at uninstall.
 - **The library the player brings along (libsodium) is signed with the program**; the other libraries beside the program carry Microsoft's signature. See [Signed releases](docs/getting-started/security.md#signed-releases).
 - **The program is 3 MB larger than 10.12.0, not 58.** A library of the Sendspin SDK asks for WPF, which this app does not use; it is kept out of the program.
+
+**Several users on one PC**
+
 - **Two users signed in at once no longer take turns on MQTT.** Every signed-in user has a tray app, and both connected with the PC's client id, so the broker closed one for the other every few seconds and the PC flickered in Home Assistant. One app talks now, the one in the session at the PC's screen (on a PC used over Remote Desktop only, the active session's); the other waits and says so on its General page, and a switch of users hands the connection over. See [Several users signed in at once](docs/features/users.md#several-users-signed-in-at-once).
 
-### 10.12.0
+**Security**
+
+- **A security review of the app on a shared PC.** On a PC that several people use, a Windows user who is not an administrator could get more than they should through the optional service and the shared settings folder: while the service ran, at a first install, and at an update. All of it is closed in this release, and each fix was tried against what it fixes. What was found, and from which version on, is in the [security advisory](https://github.com/v1k70rk4/HASS.Agent.NET10/security/advisories/GHSA-chm4-rq44-jh9f).
+- **The service runs only what was approved for it.** It listens on its own MQTT topics alone, and a command marked for the tray app is not the service's to run.
+- **An update is installed only when the downloaded file says it is the installer of that release**, by its own version information; the publisher's signature alone is not enough any more. See [Updates](docs/features/updates.md#only-signed-installers).
+- **Kiosk mode cannot be switched off from a kiosk user's own environment.**
+- **The service's approval prompt shows what kind of command it asks about**, keeps a name on one line, and warns when the program or script behind a command can be changed without an administrator's rights.
+- **Smaller ones**: `--sendspin-token` and the Sendspin player's lock files refuse a folder that is a link; the picture of a notification is not fetched from the PC's own IPv6 link-local address; an update check asked for over MQTT goes to GitHub at most once in five minutes.
+- **How a release is made**: the build runs with a read-only token, and a separate last step makes the draft release; the packages are locked by hash; a release is published, and gets its Sigstore signature, only when it holds its installer and its zip and nothing else. The Sigstore check under [Signed releases](docs/getting-started/security.md#signed-releases) names the release's tag now.
+- **Built on .NET 10.0.15** (SDK 10.0.404), the .NET security update of November. Windows Update does not patch the runtime inside the app, so this release is how its fixes reach it.
+
+**What the security fixes change in use**
+
+- **The settings folder holds a file named `folder-….anchor`.** It is empty, only administrators can touch it, and it keeps the folder a folder: leave it there. An update makes a new one and removes the old.
+- **A settings folder that a user who is not an administrator made is not used.** Every user can make a folder in `ProgramData`, so one could be there before the app was installed, or after the folder was deleted. Setup, and every command an administrator runs, renames it to `HASS.Agent.NET10.made-by-another-user-…` beside where it was, with everything in it, and the app starts from new settings; an administrator can take back from it what is theirs. When it cannot be renamed because a program has it open, Setup says so and starts neither the service nor the app until the other users are signed out and Setup is run again. Where the app was used without the installer by two users who are not administrators, it now starts only for the one who made the folder; installing it puts that right. See [Users of this PC](docs/features/users.md).
+- **A command published with MQTT's retain flag is ignored.** The broker hands such a message to the PC again at every connect. The integration sends none; an automation of your own that publishes to a command topic has to do it without retain.
+- **A custom command needs quotes around a program path with a space in it.** `C:\Program Files\Tool\tool.exe` without them is not run, the log says why, and the editor refuses it when it is saved. See [Custom commands](docs/commands/custom.md).
+
+<details>
+<summary><b>10.12.0</b></summary>
 
 A release for people coming from the classic HASS.Agent: the app takes over its settings. With it, the dashboard popup keeps its zoom, an uninstaller that stops the app, the service's update notes in the registry, and Russian. Works with the Home Assistant integration **10.6.7** or newer; the notice in Home Assistant for a PC on the old client is fixed in the integration **10.12.0**, out at the same time. Built on the same .NET 10.0.14 as 10.11.0. Signed release.
 
@@ -205,35 +227,6 @@ A release for people coming from the classic HASS.Agent: the app takes over its 
 - **Fixed: the uninstaller could not stop the tray app** and left its files behind. It only had Windows' Restart Manager, which cannot close a program with no window, and in kiosk mode the task started the app again at once. The uninstaller now does what Setup does before an install: pauses the kiosk task, asks the app to exit, ends it if it stays, and stops the service. This is the uninstaller of this version onwards; removing an older version still needs the app closed by hand.
 - **Removing the settings at uninstall removes the "HASS.Agent Users" group too.** It says who may use those settings; kept with them otherwise, so a reinstall finds the same users allowed.
 - **The service's update notes moved to the registry.** The version the installer replaced, and the version the service last reported, were files in the settings folder, which every user of the PC may write; they are values of the app's key under HKLM now, which only administrators and SYSTEM may write, and are taken only when they look like a version. The old files are removed once.
-
-<details>
-<summary><b>10.11.0</b></summary>
-
-A bigger release: kiosk mode, for a PC where the person in front of the screen must not change anything; German, and the kiosk texts in Simplified Chinese; a media player that cannot start no longer takes the connection down; and the .NET security update of October. Works with the Home Assistant integration **10.6.7** or newer. Signed release.
-
-**Kiosk mode**
-
-- **Kiosk mode**, for a PC where the sensors need the tray app but the person in front of the screen must not change anything. The users ticked in **Danger Zone → Kiosk mode** get only the tray icon, with *Kiosk mode* as its tooltip: no window, no menu, no **Exit**. Notifications, hotkeys and the pages Home Assistant opens with the WebView command work as before. The app starts when they log on and comes back when it is closed: at once when it closes or crashes, within a minute when it is ended in Task Manager. They can read the settings but not change them, and their app logs to a file of their own. The kiosk users are the local group **HASS.Agent Kiosk**, which an administrator can also change with Windows' own tools or a domain's group policy; a user put in it gets kiosk mode from their next logon. No password: Windows' file permissions keep the settings, and a scheduled task brings the app back. Turning it on needs an administrator (UAC), or `HASS.Agent.NET10.exe --kiosk on USER [USER ...]` / `--kiosk off`. See [Kiosk mode](docs/features/kiosk.md). Requested in [#155](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/155).
-- **An administrator can be a kiosk user too.** Asked for in the [kiosk mode discussion](https://github.com/v1k70rk4/HASS.Agent.NET10/discussions/154): on some kiosk PCs the account in front of the screen is an administrator, and hiding the window and the menu from it is what is wanted. The **HASS.Agent Kiosk** group alone decides: whoever is in it gets the kiosk tray, administrator or not, also when put there with Windows' own tools. The Kiosk mode window lets an administrator be ticked and asks first, since for them it is a cover, not a lock: it is theirs to undo, by leaving the group or turning kiosk mode off (`--kiosk off`), and the full app is back from the next logon. In the window you cannot tick yourself, as it would lock your own app; the command line lets you name yourself, on purpose.
-- **Setup pauses the kiosk task** while it replaces the files, turns it back on at the end and runs it at once, so a kiosk user has their app back right after an update; uninstalling turns kiosk mode off.
-- **The Kiosk mode window shows whether you are a kiosk user**: saving the list no longer takes a kiosk user out of the group when they open the window before their next logon.
-
-**Translations**
-
-- **German**, translated by @Schumey in [#150](https://github.com/v1k70rk4/HASS.Agent.NET10/pull/150), thank you! A Windows set to German picks it, or choose it under **UI language** on the General page. The kiosk mode texts are in English for now.
-- **The kiosk mode texts in Simplified Chinese**, translated by @natsu-tsuki in [#164](https://github.com/v1k70rk4/HASS.Agent.NET10/pull/164), thank you! Kiosk mode is 终端模式 there.
-- **Longer translations fit.** A button is at least as wide as its text on one line: in German "Installieren / aktualisieren" on the Service page and "Auf GitHub mit einem Stern markieren" on the About page were cut off. The API key label on the General page is as wide as its text ("API-Schlüssel").
-- **"Devices & services" keeps its "&"** in the help of turning the PC on and off from Home Assistant, on the Media player page, in English and German: the label took it for a keyboard shortcut.
-
-**Also in this release**
-
-- **A media player that cannot start no longer takes the connection down.** On a PC without the Windows media features (an N edition without the Media Feature Pack, Windows Server), or an app started from a scheduled task without a desktop, the media player monitor failed and took the whole MQTT connection with it: it reconnected every ten seconds and the log only showed a Windows error. The sensors and commands stay up now, the log says the player is what failed, and it is tried again on the next connect.
-- **A finished update is reported by the service when it is installed**, also while a tray app runs: the service has every right, the tray app may have few. The version that last ran is one record for the PC now, which every user may write, so the app of a user who can only read the settings does not report the same update at every start.
-- **Settings that cannot be written back no longer stop the start**: they are used as read.
-
-**Security**
-
-- **Built on .NET 10.0.14** (SDK 10.0.403), the .NET security update of October. Its runtime, inside the app, fixes CVE-2026-111497 (Brotli decoder) and completes the fix of CVE-2026-70197 (SocketAsyncEventArgs), which the October 13 update did not fully address. Windows Update does not patch the runtime inside the app, so this release is how the fixes reach it. The other two CVEs of the update are for the Linux tarball and the Blazor WebAssembly packages, which the app does not use.
 
 </details>
 
