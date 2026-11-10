@@ -1022,7 +1022,9 @@ internal static class SettingsAccess
     /// could have made this one before the first install (and kept the right to change its rule
     /// later), or made it a junction to a folder of their choosing, whose rule the administrator
     /// would then set. A link, here or under it, is removed (the link only, not where it
-    /// points); what someone else owns is taken over by the administrators.
+    /// points); a folder someone else owns is put aside and a new one made
+    /// (<see cref="PutAside"/>); what someone else owns in a folder of ours is taken over by
+    /// the administrators.
     /// </summary>
     /// <remarks>
     /// When this returns, the folder is a folder and stays one: it holds its anchor
@@ -1034,20 +1036,20 @@ internal static class SettingsAccess
     internal static IReadOnlyList<string> MakeSafe(string configDirectory) => MakeSafe(configDirectory, out _);
 
     /// <summary>
-    /// <see cref="MakeSafe(string)"/>, and whether the folder was there and someone else's: made
-    /// by a user who is neither SYSTEM, an administrator nor the one running this. Told from
-    /// its owner at the very moment it is taken over, not asked beforehand.
+    /// <see cref="MakeSafe(string)"/>, and where the folder that was there went when it was
+    /// someone else's (<see cref="PutAside"/>); null when it was not.
     /// </summary>
-    internal static IReadOnlyList<string> MakeSafe(string configDirectory, out bool wasSomeoneElses)
+    internal static IReadOnlyList<string> MakeSafe(string configDirectory, out string? putAside)
     {
-        var failures = MakeSafe(configDirectory, out var anchor, out _, out wasSomeoneElses);
+        var failures = MakeSafe(configDirectory, out var anchor, out _, out putAside);
         anchor?.Dispose();
         return failures;
     }
 
     private static IReadOnlyList<string> MakeSafe(
-        string configDirectory, out Microsoft.Win32.SafeHandles.SafeFileHandle? anchor, out string? anchorName, out bool wasSomeoneElses)
+        string configDirectory, out Microsoft.Win32.SafeHandles.SafeFileHandle? anchor, out string? anchorName, out string? putAside)
     {
+        putAside = null;
         var failures = new List<string>();
         // Backup for the read-only opens past any rule, take-ownership for the owner, restore
         // for the rule later: what an administrator has, and a test run as the owner does without.
@@ -1076,8 +1078,19 @@ internal static class SettingsAccess
                     continue;
                 }
 
-                wasSomeoneElses = !OwnerIsTrusted(OwnerOf(root));
-                TakeOver(root, isFolder: true, configDirectory);
+                if (!OwnerIsTrusted(OwnerOf(root)))
+                {
+                    if (attempt == 4)
+                    {
+                        throw new IOException($"{configDirectory} keeps being made again by a user who is no administrator; it was not made safe.");
+                    }
+
+                    // Our own handle would keep it from being renamed.
+                    root.Dispose();
+                    putAside = PutAside(configDirectory) ?? putAside;
+                    continue;
+                }
+
                 // Before the anchor: whoever could still delete it would make it worth nothing.
                 KeepOthersFromReplacing(configDirectory);
                 anchor = TryCreateAnchor(root, out anchorName);
@@ -1093,12 +1106,39 @@ internal static class SettingsAccess
         }
     }
 
-    // Entry by entry through a handle on the entry itself, like ResetContents: a link (a
-    // junction, a symbolic link) is not followed and a hard link, a file under another name
-    // elsewhere whose owner is that file's, is not touched; both go, the name only. A folder
-    // is held open, with no one allowed to delete or rename it, while what is in it is done.
-    // One entry that cannot be looked at or taken over is named among the failures and the
-    // rest is still done; SetFolderRule reports them with its own.
+    /// <summary>
+    /// A settings folder whose owner is neither SYSTEM, an administrator nor whoever runs this
+    /// is not made ours: it is renamed out of the way, with all it holds, for a new one to be
+    /// made in its place. Windows checks a right when a handle is opened, not when it is used.
+    /// Whoever made the folder owned it, and may hold a handle on it, opened then, with the
+    /// right to change its rule; a new owner and a new rule take nothing back from that
+    /// handle, through which they would give themselves the folder again whenever they liked.
+    /// No handle from before can be open on a folder that was not there before. Nothing is
+    /// taken over from the old one, a file moved would bring the handles open on it along, and
+    /// nothing is deleted: an administrator can look at it and take from it what is theirs.
+    /// </summary>
+    /// <returns>Where it is now; null when it was gone by the time it was to be renamed.</returns>
+    private static string? PutAside(string configDirectory)
+    {
+        var aside = $"{configDirectory}.made-by-another-user-{Guid.NewGuid():N}"[..^24];
+        try
+        {
+            Directory.Move(configDirectory, aside);
+            return aside;
+        }
+        catch (DirectoryNotFoundException)
+        {
+            return null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            throw new IOException(
+                $"{configDirectory} was made by a user who is no administrator, and something has it or a file in it open, " +
+                $"so it could not be put aside for a new one to be made ({ex.Message.TrimEnd('.')}). " +
+                "Sign the other users of this PC out, or restart it, and try again.", ex);
+        }
+    }
+
     // What lets its holder replace the folder, or what is in it whatever the rule of that is:
     // delete or rename the folder, delete anything in it, change the folder's rule or owner.
     private const FileSystemRights ReplacesTheFolder =
@@ -1107,12 +1147,12 @@ internal static class SettingsAccess
 
     /// <summary>
     /// Takes those rights on the folder itself away from everyone but SYSTEM, the administrators
-    /// and whoever runs this. A user who made the folder before the first install has full
-    /// control of it as its creator, and taking it over changes its owner only: until the
-    /// folder's rule is set they could still delete the anchor (the rule of a file does not
-    /// protect it from someone who may delete anything in its folder), or rename the folder out
-    /// of the way, and put a link in its place. The rest of the folder's rule stays: an update
-    /// reads from it who the folder was open to.
+    /// and whoever runs this, on a folder that is ours but whose rule gives them to others
+    /// (set by hand, or by a version before 10.9.1-beta.5). Until the folder's rule is set they
+    /// could still delete the anchor (the rule of a file does not protect it from someone who
+    /// may delete anything in its folder), or rename the folder out of the way, and put a link
+    /// in its place. The rest of the folder's rule stays: an update reads from it who the
+    /// folder was open to.
     /// </summary>
     private static void KeepOthersFromReplacing(string configDirectory)
     {
@@ -1169,6 +1209,12 @@ internal static class SettingsAccess
         SetRule(folder, bytes);
     }
 
+    // Entry by entry through a handle on the entry itself, like ResetContents: a link (a
+    // junction, a symbolic link) is not followed and a hard link, a file under another name
+    // elsewhere whose owner is that file's, is not touched; both go, the name only. A folder
+    // is held open, with no one allowed to delete or rename it, while what is in it is done.
+    // One entry that cannot be looked at or taken over is named among the failures and the
+    // rest is still done; SetFolderRule reports them with its own.
     // The anchor just made (in the settings folder itself) is left as it is; the anchors of
     // earlier runs, and anything a user put there under such a name, go.
     private static void TakeOverContents(string directory, List<string> failures, string? anchor = null)
@@ -1322,42 +1368,6 @@ internal static class SettingsAccess
             // Not there, or not to be looked at.
             return false;
         }
-    }
-
-    /// <summary>
-    /// Puts aside what a folder made by someone else held (<see cref="MakeSafe(string, out bool)"/>),
-    /// after its rule is set: the settings an install starts from are not another user's. Each
-    /// entry is renamed where it is, in the folder that can no longer be swapped for a link, so
-    /// nothing is moved to a place a user could choose; nothing is deleted, an administrator can
-    /// look at it and put it back. The anchor stays, and so does <paramref name="keep"/> (the log).
-    /// </summary>
-    /// <returns>The names that were put aside.</returns>
-    internal static IReadOnlyList<string> SetAside(string configDirectory, string? keep = null)
-    {
-        var suffix = $".found-before-install-{Guid.NewGuid():N}"[..31];
-        var aside = new List<string>();
-        foreach (var entry in new DirectoryInfo(configDirectory).EnumerateFileSystemInfos())
-        {
-            if (IsAnchorName(entry.Name) || entry.Name.Contains(".found-before-install-", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(entry.FullName, keep, StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
-            var target = entry.FullName + suffix;
-            if (entry is DirectoryInfo)
-            {
-                Directory.Move(entry.FullName, target);
-            }
-            else
-            {
-                File.Move(entry.FullName, target);
-            }
-
-            aside.Add(entry.Name);
-        }
-
-        return aside;
     }
 
     private static bool OwnerIsTrusted(FileSystemSecurity security) =>

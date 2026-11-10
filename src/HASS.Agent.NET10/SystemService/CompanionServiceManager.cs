@@ -217,9 +217,9 @@ internal static class CompanionServiceManager
     /// "HASS.Agent Users" group); "everyone": every user of the PC, as before; "open": the same
     /// without recording a choice, for a silent first install where nobody chose, so the app
     /// still asks; "keep": what the folder had, after an update. Needs an administrator.
-    /// "--first-install", which the installer adds when nothing was installed before: a settings
-    /// folder that is there all the same, made by a user who is no administrator, does not give
-    /// the install its settings (<see cref="WithoutWhatSomeoneElseLeft"/>).
+    /// A settings folder made by a user who is no administrator (before the first install, in
+    /// ProgramData, where every user can make one) is not used, nor anything in it: it is put
+    /// aside and a new one made (<see cref="SettingsAccess.MakeSafe(string, out string?)"/>).
     /// </summary>
     private static ControlCommandResult ChangeSettingsAccess(IReadOnlyList<string> arguments)
     {
@@ -229,17 +229,13 @@ internal static class CompanionServiceManager
         }
 
         var mode = arguments.FirstOrDefault()?.ToLowerInvariant();
-        var firstInstall = arguments.Any(argument => string.Equals(argument, FirstInstallSwitch, StringComparison.OrdinalIgnoreCase));
-        var users = arguments.Skip(1)
-            .Where(user => !string.IsNullOrWhiteSpace(user) && !string.Equals(user, FirstInstallSwitch, StringComparison.OrdinalIgnoreCase))
-            .ToList();
+        var users = arguments.Skip(1).Where(user => !string.IsNullOrWhiteSpace(user)).ToList();
         // Before anything is read or written there as administrator: the folder may have been
         // made by a user, as a link to a folder of their choosing or with settings of theirs.
-        bool madeBySomeoneElse;
+        string? putAside;
         try
         {
-            SettingsAccess.MakeSafe(AppPaths.ConfigDirectoryPath, out var wasSomeoneElses);
-            madeBySomeoneElse = firstInstall && wasSomeoneElses;
+            SettingsAccess.MakeSafe(AppPaths.ConfigDirectoryPath, out putAside);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception)
         {
@@ -248,6 +244,11 @@ internal static class CompanionServiceManager
 
         var paths = AppPaths.Create();
         using var log = new FileLog(paths.LogFile);
+        if (putAside is not null)
+        {
+            log.Warning($"The settings folder was made by a user who is no administrator. It was put aside as {putAside}, with what it held, and a new one made: nothing in it is used.");
+        }
+
         PrepareLastRunRecord(log);
         try
         {
@@ -255,21 +256,21 @@ internal static class CompanionServiceManager
             {
                 case "only" when users.Count > 0:
                     SettingsAccess.RestrictTo(paths.ConfigDirectory, users);
-                    paths = WithoutWhatSomeoneElseLeft(paths, madeBySomeoneElse, log);
                     RememberAccessDecision(paths, log);
                     log.Info($"Settings limited to {SettingsAccess.GroupName}: {string.Join(", ", users)}.");
                     return new ControlCommandResult(true, string.Format(S("Access.Restricted"), string.Join(", ", users)));
                 case "everyone":
                     SettingsAccess.OpenToEveryone(paths.ConfigDirectory);
-                    paths = WithoutWhatSomeoneElseLeft(paths, madeBySomeoneElse, log);
                     RememberAccessDecision(paths, log);
                     log.Info("Settings open to every user of this PC.");
                     return new ControlCommandResult(true, S("Access.Everyone"));
+                // "keep" with a new folder: there is nothing to keep, and a folder nobody but
+                // the administrators may use would stop the app for everyone else.
                 case "open":
+                case "keep" when putAside is not null:
                     SettingsAccess.OpenToEveryone(paths.ConfigDirectory);
-                    _ = WithoutWhatSomeoneElseLeft(paths, madeBySomeoneElse, log);
                     log.Info("Settings open to every user of this PC until someone chooses in the app.");
-                    return new ControlCommandResult(true, S("Access.Everyone"));
+                    return new ControlCommandResult(true, mode == "open" ? S("Access.Everyone") : string.Empty);
                 case "keep":
                     SettingsAccess.KeepAsIs(paths.ConfigDirectory);
                     return new ControlCommandResult(true, string.Empty);
@@ -282,27 +283,6 @@ internal static class CompanionServiceManager
             log.Warning($"Changing the settings access failed: {ex.Message}");
             return new ControlCommandResult(false, string.Format(S("Access.Failed"), ex.Message));
         }
-    }
-
-    private const string FirstInstallSwitch = "--first-install";
-
-    // A folder that was there before the install, made by someone who is no administrator:
-    // what it held is put aside once the folder has its rule, and the install starts from its
-    // own settings (or this user's from an earlier version), not from that user's.
-    private static AppPaths WithoutWhatSomeoneElseLeft(AppPaths paths, bool madeBySomeoneElse, FileLog log)
-    {
-        if (!madeBySomeoneElse)
-        {
-            return paths;
-        }
-
-        var aside = SettingsAccess.SetAside(paths.ConfigDirectory, keep: paths.LogFile);
-        if (aside.Count > 0)
-        {
-            log.Warning($"The settings folder was made by another user before this install; what it held was put aside, not used: {string.Join(", ", aside)}.");
-        }
-
-        return AppPaths.Create();
     }
 
     /// <summary>

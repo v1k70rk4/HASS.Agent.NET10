@@ -416,9 +416,9 @@ public class SettingsAccessTests : IDisposable
         // and be empty: all it takes to turn it into a link before anything is written there.
         var folder = Path.Combine(_folder, "not-there-yet");
 
-        SettingsAccess.MakeSafe(folder, out var wasSomeoneElses);
+        SettingsAccess.MakeSafe(folder, out var putAside);
 
-        Assert.False(wasSomeoneElses);
+        Assert.Null(putAside);
         var security = new DirectoryInfo(folder).GetAccessControl();
         Assert.True(security.AreAccessRulesProtected);
         Assert.Equal(
@@ -433,9 +433,9 @@ public class SettingsAccessTests : IDisposable
     [Fact]
     public void Someone_else_s_hold_on_the_folder_goes_when_it_is_made_safe()
     {
-        // A user who made the folder before the install has full control of it as its creator,
-        // and taking the folder over changes its owner only. With that they could delete the
-        // anchor, whatever its own rule, or rename the folder out of the way.
+        // A folder of ours whose rule gives someone else full control of it (set by hand, or by
+        // an early version): with that they could delete the anchor, whatever its own rule, or
+        // rename the folder out of the way.
         var someone = new SecurityIdentifier("S-1-5-21-1-2-3-1001");
         var users = new SecurityIdentifier(WellKnownSidType.BuiltinUsersSid, null);
         var info = new DirectoryInfo(_folder);
@@ -495,8 +495,8 @@ public class SettingsAccessTests : IDisposable
     public void Another_user_s_folder_is_told_from_one_of_our_own()
     {
         // The test's own folder is its own.
-        SettingsAccess.MakeSafe(_folder, out var wasSomeoneElses);
-        Assert.False(wasSomeoneElses);
+        SettingsAccess.MakeSafe(_folder, out var putAside);
+        Assert.Null(putAside);
 
         var file = Path.Combine(_folder, "settings.json");
         File.WriteAllText(file, "{}");
@@ -540,31 +540,97 @@ public class SettingsAccessTests : IDisposable
     }
 
     [Fact]
-    public void What_another_user_left_in_the_folder_is_put_aside_not_used_and_not_deleted()
+    public void A_folder_someone_else_made_is_put_aside_and_a_new_one_made_in_its_place()
     {
-        File.WriteAllText(Path.Combine(_folder, "settings.json"), """{"mqttHost":"their.broker"}""");
-        File.WriteAllText(Path.Combine(_folder, "device-id"), "their-serial");
-        Directory.CreateDirectory(Path.Combine(_folder, "sendspin"));
-        File.WriteAllText(Path.Combine(_folder, "sendspin", "pairing.bin"), "their-pairing");
-        var log = Path.Combine(_folder, "hass-agent-net10.log");
-        File.WriteAllText(log, "line");
-        SettingsAccess.SetFolderRule(_folder, [Me]);
+        Assert.SkipUnless(IsElevated, "Giving a folder to another user takes an administrator.");
+        var folder = Path.Combine(_folder, "theirs");
+        Directory.CreateDirectory(folder);
+        File.WriteAllText(Path.Combine(folder, "settings.json"), """{"mqttHost":"their.broker"}""");
+        GiveTo(folder, Someone);
+        // What its maker kept from before: a handle opened with the right to change the
+        // folder's rule. Windows checks that right when the handle is opened, not when it is used.
+        using var kept = CreateFile(folder, ReadControl | WriteDac, 7, IntPtr.Zero, OpenExisting, FileFlagBackupSemantics | FileFlagOpenReparsePoint, IntPtr.Zero);
+        Assert.False(kept.IsInvalid);
 
-        var aside = SettingsAccess.SetAside(_folder, keep: log);
+        SettingsAccess.MakeSafe(folder, out var putAside);
 
-        Assert.Equal(["device-id", "sendspin", "settings.json"], aside.Order());
-        Assert.False(File.Exists(Path.Combine(_folder, "settings.json")));
-        Assert.False(File.Exists(Path.Combine(_folder, "device-id")));
-        Assert.False(Directory.Exists(Path.Combine(_folder, "sendspin")));
-        Assert.True(File.Exists(log));
-        Assert.Single(Anchors());
-        // Still there, under names the app does not read.
-        var kept = Directory.GetFiles(_folder, "settings.json.found-before-install-*");
-        Assert.Equal("""{"mqttHost":"their.broker"}""", File.ReadAllText(Assert.Single(kept)));
-        Assert.Equal("their-pairing", File.ReadAllText(Path.Combine(Assert.Single(Directory.GetDirectories(_folder, "sendspin.found-before-install-*")), "pairing.bin")));
-        // A second time finds nothing left to put aside.
-        Assert.Empty(SettingsAccess.SetAside(_folder, keep: log));
+        Assert.NotNull(putAside);
+        Assert.StartsWith(folder + ".made-by-another-user-", putAside);
+        // Nothing of theirs is in the new folder; it is all still there, in the old one.
+        Assert.True(SettingsAccess.IsAnchorName(Path.GetFileName(Assert.Single(Directory.GetFileSystemEntries(folder)))));
+        Assert.Equal("""{"mqttHost":"their.broker"}""", File.ReadAllText(Path.Combine(putAside, "settings.json")));
+        Assert.Equal(new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null), OwnerOf(folder));
+
+        // Through the handle from before they give themselves the folder again: the one put aside.
+        var theirs = new RawSecurityDescriptor($"D:P(A;OICI;FA;;;{Someone})(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)");
+        var bytes = new byte[theirs.BinaryLength];
+        theirs.GetBinaryForm(bytes, 0);
+        Assert.True(SetKernelObjectSecurity(kept, 0x4, bytes), $"SetKernelObjectSecurity failed: {Marshal.GetLastWin32Error()}");
+        Assert.Contains(Someone, WhoIsNamedOn(putAside));
+        Assert.DoesNotContain(Someone, WhoIsNamedOn(folder));
+
+        // The new one is ours: nothing is put aside a second time.
+        SettingsAccess.MakeSafe(folder, out putAside);
+        Assert.Null(putAside);
     }
+
+    [Fact]
+    public void A_folder_someone_else_made_that_is_in_use_stops_it_and_the_message_says_so()
+    {
+        Assert.SkipUnless(IsElevated, "Giving a folder to another user takes an administrator.");
+        var folder = Path.Combine(_folder, "theirs");
+        Directory.CreateDirectory(folder);
+        GiveTo(folder, Someone);
+
+        // Held open, to list it, without letting anyone rename it. (A handle that asks for no
+        // more than to read or change the rule holds nothing: sharing is not checked for it.)
+        using (var held = CreateFile(folder, ReadControl | FileListDirectory, 3, IntPtr.Zero, OpenExisting, FileFlagBackupSemantics | FileFlagOpenReparsePoint, IntPtr.Zero))
+        {
+            Assert.False(held.IsInvalid);
+            var ex = Assert.Throws<IOException>(() => SettingsAccess.MakeSafe(folder));
+            Assert.Contains("could not be put aside", ex.Message);
+            // Left as it was: not taken over, nothing made in it.
+            Assert.Equal(Someone, OwnerOf(folder));
+            Assert.Empty(Directory.GetFileSystemEntries(folder));
+        }
+
+        SettingsAccess.MakeSafe(folder, out var putAside);
+        Assert.NotNull(putAside);
+    }
+
+    private static readonly SecurityIdentifier Someone = new("S-1-5-21-1-2-3-1001");
+
+    private static bool IsElevated => new WindowsPrincipal(WindowsIdentity.GetCurrent()).IsInRole(WindowsBuiltInRole.Administrator);
+
+    private static SecurityIdentifier? OwnerOf(string folder) =>
+        new DirectoryInfo(folder).GetAccessControl().GetOwner(typeof(SecurityIdentifier)) as SecurityIdentifier;
+
+    private static List<SecurityIdentifier> WhoIsNamedOn(string folder) =>
+        new DirectoryInfo(folder).GetAccessControl()
+            .GetAccessRules(includeExplicit: true, includeInherited: true, typeof(SecurityIdentifier))
+            .Cast<FileSystemAccessRule>().Select(rule => (SecurityIdentifier)rule.IdentityReference).ToList();
+
+    // Another user's, the way a folder they made in ProgramData is theirs.
+    private static void GiveTo(string folder, SecurityIdentifier owner)
+    {
+        using (HASS.Agent.Companion.Security.TokenPrivileges.Enable(
+            HASS.Agent.Companion.Security.TokenPrivileges.Restore, HASS.Agent.Companion.Security.TokenPrivileges.TakeOwnership))
+        {
+            var info = new DirectoryInfo(folder);
+            var security = info.GetAccessControl();
+            security.SetOwner(owner);
+            info.SetAccessControl(security);
+        }
+
+        Assert.Equal(owner, OwnerOf(folder));
+    }
+
+    private const uint ReadControl = 0x00020000;
+    private const uint WriteDac = 0x00040000;
+    private const uint FileListDirectory = 0x0001;
+
+    [DllImport("advapi32.dll", SetLastError = true)]
+    private static extern bool SetKernelObjectSecurity(Microsoft.Win32.SafeHandles.SafeFileHandle handle, uint information, byte[] descriptor);
 
     private const int ErrorDirectoryNotEmpty = 145;
 

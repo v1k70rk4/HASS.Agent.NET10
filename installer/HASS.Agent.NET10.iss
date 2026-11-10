@@ -253,9 +253,9 @@ end;
 
 { Who may use the shared settings. A first install asks (only the user who installs, or
   every user, as every version before 10.9.1 had it); an update, including a silent one from
-  Home Assistant that runs as SYSTEM, keeps what the PC has. The app does the work. It is told
-  when this is a first install (--first-install): a settings folder that is there all the same,
-  made by a user who is no administrator, then does not give the install its settings. }
+  Home Assistant that runs as SYSTEM, keeps what the PC has. The app does the work. A settings
+  folder that is there already, made by a user who is no administrator, is not used: the app
+  puts it aside and makes a new one. }
 procedure EnsureConfigDirectoryPermissions();
 var
   Users: string;
@@ -274,7 +274,7 @@ begin
     Original := OriginalUserName();
     if (Original <> '') and (CompareText(Original, Elevated) <> 0) then
       Users := Users + ' "' + Original + '"';
-    if not RunHidden(ExpandConstant('{app}\{#MyAppExeName}'), '--settings-access only ' + Users + ' --first-install --quiet') then
+    if not RunHidden(ExpandConstant('{app}\{#MyAppExeName}'), '--settings-access only ' + Users + ' --quiet') then
     begin
       Log('Limiting the settings to ' + Users + ' failed.');
       MsgBox(CustomMessage('AccessFailed'), mbError, MB_OK);
@@ -287,11 +287,11 @@ begin
     end;
   end
   else if (PreviousVersion = '') and WizardIsTaskSelected('accessall') and (not WizardSilent()) then
-    RunHidden(ExpandConstant('{app}\{#MyAppExeName}'), '--settings-access everyone --first-install --quiet')
+    RunHidden(ExpandConstant('{app}\{#MyAppExeName}'), '--settings-access everyone --quiet')
   else if PreviousVersion = '' then
     { Nobody chose: open as before, without recording a choice, so the app asks when its
       window is opened on a PC with a user who is not an administrator. }
-    RunHidden(ExpandConstant('{app}\{#MyAppExeName}'), '--settings-access open --first-install --quiet')
+    RunHidden(ExpandConstant('{app}\{#MyAppExeName}'), '--settings-access open --quiet')
   else
     RunHidden(ExpandConstant('{app}\{#MyAppExeName}'), '--settings-access keep --quiet');
 end;
