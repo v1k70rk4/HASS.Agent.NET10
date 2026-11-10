@@ -490,6 +490,31 @@ public class SettingsAccessTests : IDisposable
     }
 
     [Fact]
+    public void An_update_keeps_the_users_of_a_folder_limited_by_an_old_version()
+    {
+        // The same old entry on a folder that was limited to its users: what an update runs
+        // must leave the folder theirs to use, in the shape the rule has today.
+        const InheritanceFlags inherit = InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit;
+        var security = new DirectorySecurity();
+        security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
+        security.AddAccessRule(new FileSystemAccessRule(Me, FileSystemRights.FullControl, inherit, PropagationFlags.None, AccessControlType.Allow));
+        security.AddAccessRule(new FileSystemAccessRule(Someone, FileSystemRights.Modify, inherit, PropagationFlags.None, AccessControlType.Allow));
+        new DirectoryInfo(_folder).SetAccessControl(security);
+        Assert.True(SettingsAccess.RestrictionState(_folder));
+
+        SettingsAccess.KeepAsIs(_folder);
+
+        Assert.True(SettingsAccess.RestrictionState(_folder));
+        var theirs = new DirectoryInfo(_folder).GetAccessControl()
+            .GetAccessRules(includeExplicit: true, includeInherited: false, typeof(SecurityIdentifier))
+            .Cast<FileSystemAccessRule>().Where(rule => (SecurityIdentifier)rule.IdentityReference == Someone).ToList();
+        var onTheFolder = theirs.Where(rule => rule.PropagationFlags != PropagationFlags.InheritOnly).ToList();
+        Assert.Contains(onTheFolder, rule => rule.FileSystemRights.HasFlag(SettingsAccess.UsersOnTheFolder));
+        Assert.All(onTheFolder, rule => Assert.False(rule.FileSystemRights.HasFlag(FileSystemRights.Delete)));
+        Assert.Contains(theirs, rule => rule.PropagationFlags == PropagationFlags.InheritOnly && rule.FileSystemRights.HasFlag(FileSystemRights.Modify));
+    }
+
+    [Fact]
     public void A_folder_that_is_not_there_is_made_with_its_rule_and_its_anchor()
     {
         // What the service does at its start when the settings folder is missing.
