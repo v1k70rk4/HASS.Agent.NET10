@@ -409,6 +409,11 @@ internal sealed class CustomCommandEditorForm : CustomEditorForm
             return S("Editor.InvalidSize");
         }
 
+        if (command.IsProcess && SystemCommandService.HasUnquotedSpaceInPath(command.Command))
+        {
+            return S("Editor.UnquotedPath");
+        }
+
         return null;
     }
 
@@ -802,6 +807,12 @@ internal sealed class CustomSensorEditorForm : CustomEditorForm
         if (sensor.Parameter.Length == 0)
         {
             ShowResult(string.Format(S("Editor.FieldMissing"), _parameterLabel.Text), ErrorRed);
+            return false;
+        }
+
+        if (sensor.IsCommand && SystemCommandService.HasUnquotedSpaceInPath(sensor.Parameter))
+        {
+            ShowResult(S("Editor.UnquotedPath"), ErrorRed);
             return false;
         }
 

@@ -5,6 +5,8 @@ using HASS.Agent.Companion.Configuration;
 using HASS.Agent.Companion.Localization;
 using HASS.Agent.Companion.Logging;
 using HASS.Agent.Companion.Runtime;
+using HASS.Agent.Companion.Security;
+using HASS.Agent.Companion.SystemCommands;
 using HASS.Agent.Companion.SystemService;
 
 namespace HASS.Agent.Companion.Tray;
@@ -85,15 +87,45 @@ internal static class ServiceApproval
     /// </summary>
     internal static IReadOnlyList<string> PendingDescriptions(CompanionSettings settings, ServicePolicy policy) =>
         settings.CustomCommands.Where(command => ServicePolicy.NeedsApproval(command) && !policy.Allows(command))
-            .Select(command => Describe(command.Name, command.Type, string.IsNullOrEmpty(command.Arguments) ? command.Command : $"{command.Command} {command.Arguments}"))
+            .Select(command => Describe(
+                command.Name,
+                command.Type,
+                string.IsNullOrEmpty(command.Arguments) ? command.Command : $"{command.Command} {command.Arguments}",
+                TargetFile(command.Command, script: command.IsPowerShell || command.IsPwsh)))
             .Concat(settings.CustomSensors.Where(sensor => ServicePolicy.NeedsApproval(sensor) && !policy.Allows(sensor))
-                .Select(sensor => Describe(sensor.Name, sensor.Type, sensor.Parameter)))
+                .Select(sensor => Describe(
+                    sensor.Name,
+                    sensor.Type,
+                    sensor.Parameter,
+                    TargetFile(sensor.Parameter, script: sensor.IsCommandPowerShell || sensor.IsCommandPwsh))))
             .ToList();
 
-    private static string Describe(string name, string type, string? runs)
+    private static string Describe(string name, string type, string? runs, string? targetFile)
     {
-        var lines = (runs ?? string.Empty).Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
-        return $"{OneLine(name)} [{OneLine(type)}]:{Environment.NewLine}{string.Join(Environment.NewLine, lines.Select(line => "    " + line))}";
+        var lines = (runs ?? string.Empty).Replace("\r\n", "\n").Replace('\r', '\n').Split('\n').Select(line => "    " + line).ToList();
+        // What is approved is the text above, not what the file it names says at the time.
+        if (targetFile is not null && FileTrust.CanBeChangedWithoutAdministrator(targetFile))
+        {
+            lines.Add("    " + string.Format(Strings.Get("SvcMgr.ApprovalWritable"), targetFile));
+        }
+
+        return $"{OneLine(name)} [{OneLine(type)}]:{Environment.NewLine}{string.Join(Environment.NewLine, lines)}";
+    }
+
+    /// <summary>
+    /// The program, or the script file, an entry names by its full path; null when it names
+    /// none (a command by its name alone, a PowerShell command typed out).
+    /// </summary>
+    internal static string? TargetFile(string? runs, bool script)
+    {
+        var text = (runs ?? string.Empty).Trim();
+        var file = script ? text.Trim('"') : SystemCommandService.SplitProcessCommand(text).FileName;
+        if (script && !file.EndsWith(".ps1", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        return Path.IsPathFullyQualified(file) ? file : null;
     }
 
     /// <summary>The text with every line break and control character in it turned into a space.</summary>

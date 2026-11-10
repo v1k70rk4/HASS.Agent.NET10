@@ -10,6 +10,7 @@ namespace HASS.Agent.Companion.Tests;
 /// needs no administrator. Creating the group and changing its members does, so that part is
 /// tried by hand (RV-NOTE, mediaserver).
 /// </summary>
+[Collection(SettingsFolderCollection.Name)]
 public class SettingsAccessTests : IDisposable
 {
     private readonly string _folder = Directory.CreateTempSubdirectory("hass-agent-access-").FullName;

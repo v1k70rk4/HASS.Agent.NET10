@@ -13,6 +13,7 @@ namespace HASS.Agent.Companion.Tests;
 /// tried), and the kiosk task's definition. The group, the event source and the task itself
 /// need an administrator, so they are tried by hand (mediaserver).
 /// </summary>
+[Collection(SettingsFolderCollection.Name)]
 public class KioskTests : IDisposable
 {
     private readonly string _folder = Directory.CreateTempSubdirectory("hass-agent-kiosk-").FullName;
@@ -157,6 +158,18 @@ public class KioskTests : IDisposable
         Assert.Contains(selects, select => select.Contains($"@Name='{KioskEvents.Source}'") && select.Contains($"EventID={KioskEvents.Closed}"));
         Assert.Contains(selects, select => select.Contains("@Name='Application Error'") && select.Contains("Data='HASS.Agent.NET10.exe'"));
     }
+}
+
+/// <summary>
+/// The tests that set a folder's rule run one at a time. Setting it turns on the backup and
+/// restore privileges for a moment, when the tests run as an administrator, and those are the
+/// whole process's: a test that looks at what a deny keeps out would, at that moment, find
+/// that it keeps nothing out.
+/// </summary>
+[CollectionDefinition(Name, DisableParallelization = true)]
+public sealed class SettingsFolderCollection
+{
+    public const string Name = "Settings folder rules";
 }
 
 /// <summary>Changes a variable of the whole test process, so nothing else runs meanwhile.</summary>
