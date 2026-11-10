@@ -1,5 +1,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Globalization;
+using System.Text;
 using System.Windows.Forms;
 using HASS.Agent.Companion.Configuration;
 using HASS.Agent.Companion.Localization;
@@ -104,9 +106,11 @@ internal static class ServiceApproval
     {
         var lines = (runs ?? string.Empty).Replace("\r\n", "\n").Replace('\r', '\n').Split('\n').Select(line => "    " + Visible(line)).ToList();
         // What is approved is the text above, not what the file it names says at the time.
+        // The file's path is from that text: shown like it, with nothing hidden in it, or a
+        // character in a folder's name could turn this line around.
         if (targetFile is not null && FileTrust.CanBeChangedWithoutAdministrator(targetFile))
         {
-            lines.Add("    " + string.Format(Strings.Get("SvcMgr.ApprovalWritable"), targetFile));
+            lines.Add("    " + string.Format(Strings.Get("SvcMgr.ApprovalWritable"), Visible(targetFile)));
         }
 
         return $"{OneLine(name)} [{OneLine(type)}]:{Environment.NewLine}{string.Join(Environment.NewLine, lines)}";
@@ -133,27 +137,64 @@ internal static class ServiceApproval
     /// with them the characters that are not shown but change how the rest is (the ones that
     /// turn the reading direction around, for one: a name could read as something else).
     /// </summary>
-    internal static string OneLine(string? text) =>
-        new string((text ?? string.Empty).Select(character =>
-            char.IsControl(character)
-            || char.GetUnicodeCategory(character) == System.Globalization.UnicodeCategory.Format
-            || character is '\u2028' or '\u2029' ? ' ' : character).ToArray()).Trim();
+    internal static string OneLine(string? text)
+    {
+        var line = new StringBuilder();
+        foreach (var (character, shown) in Characters(text ?? string.Empty))
+        {
+            line.Append(shown ? character : " ");
+        }
+
+        return line.ToString().Trim();
+    }
 
     /// <summary>
-    /// A line of what a command runs, with the characters that are not shown written out as
-    /// their code (U+202E as a backslash, u and 202E): one that turns the reading direction
-    /// around would have the administrator read another text than the one that is approved
-    /// and run. Written out, not left out: what is shown stays the text that is approved,
-    /// with nothing missing from it.
+    /// A line of what a command runs, or the path of a file it names, with the characters that
+    /// are not shown written out as their code (U+202E as a backslash, u and 202E; one past
+    /// U+FFFF as a backslash, U and eight digits): one that turns the reading direction around
+    /// would have the administrator read another text than the one that is approved and run.
+    /// Written out, not left out: what is shown stays the text that is approved, with nothing
+    /// missing from it.
     /// </summary>
-    internal static string Visible(string line) =>
-        string.Concat(line.Select(character =>
-            character != '\t'
-            && (char.IsControl(character)
-                || char.GetUnicodeCategory(character) == System.Globalization.UnicodeCategory.Format
-                || character is '\u2028' or '\u2029')
-                ? $"\\u{(int)character:X4}"
-                : character.ToString()));
+    internal static string Visible(string line)
+    {
+        var visible = new StringBuilder(line.Length);
+        foreach (var (character, shown) in Characters(line))
+        {
+            visible.Append(shown || character == "\t" ? character : Code(character));
+        }
+
+        return visible.ToString();
+    }
+
+    // The text character by character, and whether each one is shown. By character, not by
+    // char: one past U+FFFF is two chars in a string (a surrogate pair), and neither of the
+    // two says what the character is. The tag characters (U+E0001, U+E0020 and on) are among
+    // those: not shown, and a path with one in it is another path than the one that is read.
+    // Half of a pair on its own is no character at all, and counts as not shown.
+    private static IEnumerable<(string Character, bool Shown)> Characters(string text)
+    {
+        var index = 0;
+        while (index < text.Length)
+        {
+            if (!Rune.TryGetRuneAt(text, index, out var rune))
+            {
+                yield return (text.Substring(index, 1), false);
+                index++;
+                continue;
+            }
+
+            var shown = !Rune.IsControl(rune)
+                && Rune.GetUnicodeCategory(rune) is not (UnicodeCategory.Format or UnicodeCategory.LineSeparator or UnicodeCategory.ParagraphSeparator);
+            yield return (text.Substring(index, rune.Utf16SequenceLength), shown);
+            index += rune.Utf16SequenceLength;
+        }
+    }
+
+    private static string Code(string character) =>
+        character.Length == 2
+            ? $"\\U{char.ConvertToUtf32(character, 0):X8}"
+            : $"\\u{(int)character[0]:X4}";
 
     /// <summary>The question above, and what is to be approved in a box that scrolls, as long as it is.</summary>
     private static bool Ask(IWin32Window owner, string question, string details)

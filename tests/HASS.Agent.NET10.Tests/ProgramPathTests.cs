@@ -137,6 +137,31 @@ public class ProgramPathTests : IDisposable
         Assert.Equal(2, shown[2].Split(Environment.NewLine).Length);
     }
 
+    [Fact]
+    public void The_warning_names_the_file_with_nothing_hidden_in_its_path()
+    {
+        // The path is from the command, which others can write. U+202E in a name has what
+        // follows it written from right to left: the rest of the warning's line with it.
+        var script = Path.Combine(_folder, "backup\u202E1sp.ps1");
+        File.WriteAllText(script, "Write-Output ok");
+        var info = new FileInfo(script);
+        var security = info.GetAccessControl();
+        security.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier(WellKnownSidType.BuiltinUsersSid, null), FileSystemRights.Modify, AccessControlType.Allow));
+        info.SetAccessControl(security);
+        var settings = new CompanionSettings
+        {
+            CustomCommands = [new CustomCommandDefinition { Id = "1", Name = "Backup", Type = CustomCommandTypes.PowerShell, Command = script, Service = true }],
+        };
+
+        var lines = ServiceApproval.PendingDescriptions(settings, new ServicePolicy()).Single().Split(Environment.NewLine);
+
+        Assert.Equal(3, lines.Length);   // the name, what it runs, the warning
+        // Ordinal: compared the way a language does, a character that is not shown counts as
+        // nothing, and is found in every text.
+        Assert.DoesNotContain("\u202E", lines[^1], StringComparison.Ordinal);
+        Assert.Contains(@"backup\u202E1sp.ps1", lines[^1], StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData(@"C:\Tools\app.exe /x", false, @"C:\Tools\app.exe")]
     [InlineData("\"C:\\Program Files\\App\\app.exe\" /x", false, @"C:\Program Files\App\app.exe")]

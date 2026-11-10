@@ -324,6 +324,26 @@ public class ServicePolicyTests : IDisposable
     }
 
     [Fact]
+    public void A_character_that_is_not_shown_is_found_when_it_is_written_as_two()
+    {
+        // A character past U+FFFF is two chars in a string, and neither says what it is.
+        // U+E0041 is a "tag" letter, one of those: it is not shown, and a path with it in it
+        // is another path than the one that is read.
+        const string tag = "\U000E0041";
+
+        Assert.Equal("Nightly backup", ServiceApproval.OneLine($"Nightly{tag}backup"));
+        Assert.Equal(@"C:\Tools\back\U000E0041up.exe /x", ServiceApproval.Visible($@"C:\Tools\back{tag}up.exe /x"));
+
+        // One that is shown stays as it is, whole.
+        Assert.Equal("Report \U0001F600", ServiceApproval.OneLine("Report \U0001F600"));
+        Assert.Equal("echo \U0001F600", ServiceApproval.Visible("echo \U0001F600"));
+
+        // Half of a pair on its own is no character: not left for the window to make something of.
+        Assert.Equal("a b", ServiceApproval.OneLine("a\uD83Db"));
+        Assert.Equal(@"a\uD83Db", ServiceApproval.Visible("a\uD83Db"));
+    }
+
+    [Fact]
     public void The_service_keeps_no_command_of_the_tray_app()
     {
         var approved = Command(CustomCommandTypes.PowerShell, "Restart-Service Spooler", id: "a");
