@@ -598,6 +598,90 @@ public class SettingsAccessTests : IDisposable
         Assert.NotNull(putAside);
     }
 
+    [Fact]
+    public void A_link_put_under_a_subfolder_s_name_while_it_is_being_done_leads_nowhere()
+    {
+        // The users may rename a subfolder of theirs and put a link under its name. Done while
+        // the rule is being set on what was in it, the names listed before would be opened
+        // where the link points, and a file there would get the settings' rule.
+        var outside = Directory.CreateTempSubdirectory("hass-agent-outside-").FullName;
+        var sub = Path.Combine(_folder, "a");
+        try
+        {
+            var victim = Path.Combine(outside, "victim.txt");
+            File.WriteAllText(victim, "not the settings'");
+            var before = RuleOf(victim);
+
+            Directory.CreateDirectory(sub);
+            for (var i = 0; i < 3000; i++)
+            {
+                File.WriteAllText(Path.Combine(sub, $"{i:000000}.pad"), string.Empty);
+            }
+
+            File.WriteAllText(Path.Combine(sub, "victim.txt"), "a file of that name");
+            // A rule of its own on the first file: it goes when the folder's rule reaches it.
+            var first = new FileInfo(Path.Combine(sub, "000000.pad"));
+            var security = first.GetAccessControl();
+            security.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier(WellKnownSidType.WorldSid, null), FileSystemRights.Read, AccessControlType.Allow));
+            first.SetAccessControl(security);
+            var marked = RuleOf(first.FullName);
+
+            var swapped = false;
+            var swapper = new Thread(() =>
+            {
+                var until = Environment.TickCount64 + 60_000;
+                while (RuleOf(first.FullName) == marked)
+                {
+                    if (Environment.TickCount64 > until)
+                    {
+                        return;
+                    }
+                }
+
+                for (var attempt = 0; ; attempt++)
+                {
+                    try
+                    {
+                        Directory.Move(sub, sub + "-real");
+                        break;
+                    }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException && attempt < 100_000)
+                    {
+                    }
+                }
+
+                Directory.CreateDirectory(sub);
+                swapped = SetJunction(sub, outside) == 0;
+            });
+            swapper.Start();
+
+            try
+            {
+                SettingsAccess.SetFolderRule(_folder, [Me]);
+            }
+            catch (IOException)
+            {
+                // What could no longer be opened is reported; not what this is about.
+            }
+
+            swapper.Join();
+            Assert.True(swapped, "The subfolder was not swapped for a link; the test proves nothing.");
+            Assert.Equal(before, RuleOf(victim));
+        }
+        finally
+        {
+            if (Directory.Exists(sub) && new DirectoryInfo(sub).Attributes.HasFlag(FileAttributes.ReparsePoint))
+            {
+                Directory.Delete(sub);
+            }
+
+            Directory.Delete(outside, recursive: true);
+        }
+    }
+
+    private static string RuleOf(string file) =>
+        new FileInfo(file).GetAccessControl().GetSecurityDescriptorSddlForm(AccessControlSections.Access);
+
     private static readonly SecurityIdentifier Someone = new("S-1-5-21-1-2-3-1001");
 
     private static bool IsElevated => new WindowsPrincipal(WindowsIdentity.GetCurrent()).IsInRole(WindowsBuiltInRole.Administrator);

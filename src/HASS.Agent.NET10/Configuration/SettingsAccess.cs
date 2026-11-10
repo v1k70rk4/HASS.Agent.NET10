@@ -648,8 +648,9 @@ internal static class SettingsAccess
         // stands, but the caller must not take the limiting for complete.
         var failures = new List<string>(notTakenOver);
         using (TokenPrivileges.Enable(TokenPrivileges.Backup, TokenPrivileges.Restore))
+        using (var contents = OpenToList(folder, configDirectory))
         {
-            ResetContents(configDirectory, new RawSecurityDescriptor(rule, 0).DiscretionaryAcl!, failures, anchorName);
+            ResetContents(contents, configDirectory, new RawSecurityDescriptor(rule, 0).DiscretionaryAcl!, failures, anchorName);
         }
 
         if (failures.Count > 0)
@@ -663,129 +664,230 @@ internal static class SettingsAccess
     /// by entry through a handle opened on the entry itself. A link made since MakeSafe is
     /// removed, not followed; so is a file that has another name elsewhere (a hard link), since
     /// a rule set on it here would be the rule of that other file too, which is what
-    /// icacls /reset did until 10.9.3. A subfolder is held open, with no one allowed to delete
-    /// or rename it, for as long as its contents are being done: its path cannot be swapped for
-    /// a junction in between, the way the folder itself is held by SetFolderRule. A file
-    /// another process holds open still takes the rule; one that cannot be opened or changed
-    /// is left as it is, named among the failures, and the rest is still done.
+    /// icacls /reset did until 10.9.3.
+    /// Nothing in the folder is reached by its path. A path is looked up again from the top
+    /// each time it is used, through whatever stands under each of its names at that moment,
+    /// and the users may rename a subfolder of theirs and put a link under its name while what
+    /// was in it is being done: the names listed before would then be opened where the link
+    /// points, and files there, anywhere on the PC, would get the settings' rule. A handle
+    /// stays on what it was opened on. So a folder's names are listed through its handle
+    /// (<see cref="NamesIn"/>), each is opened under that handle (<see cref="OpenIn"/>), and
+    /// what is done is done through the handle that was checked.
+    /// A file another process holds open still takes the rule; one that cannot be opened or
+    /// changed is left as it is, named among the failures, and the rest is still done.
     /// The folder's anchor (<paramref name="anchor"/>, in the settings folder itself) keeps the
     /// rule it was made with; the anchors of earlier runs go, or become ordinary files.
     /// </summary>
-    private static void ResetContents(string directory, RawAcl folderRule, List<string> failures, string? anchor = null)
+    private static void ResetContents(
+        Microsoft.Win32.SafeHandles.SafeFileHandle folder, string path, RawAcl folderRule, List<string> failures, string? anchor = null)
     {
-        foreach (var entry in new DirectoryInfo(directory).EnumerateFileSystemInfos())
+        foreach (var (name, isFolder) in NamesIn(folder, path))
         {
-            var isFolder = entry is DirectoryInfo;
-            if (anchor is not null && !isFolder && IsAnchorName(entry.Name))
+            var entryPath = Path.Combine(path, name);
+            if (anchor is not null && !isFolder && IsAnchorName(name)
+                && (string.Equals(name, anchor, StringComparison.OrdinalIgnoreCase) || TryDeleteIn(folder, name, isFolder, entryPath)))
             {
-                if (string.Equals(entry.Name, anchor, StringComparison.OrdinalIgnoreCase) || TryDelete(entry))
-                {
-                    continue;
-                }
+                continue;
             }
 
-            var inherited = InheritedFrom(folderRule, isFolder);
-            Microsoft.Win32.SafeHandles.SafeFileHandle? held;
             try
             {
-                if (!TryResetEntry(entry.FullName, isFolder, inherited, out held))
+                using var entry = OpenIn(folder, name, isFolder, ReadControl | WriteDac | (isFolder ? FileListDirectory : 0), entryPath);
+                if (IsLinkOrHasOtherNames(entry, isFolder))
                 {
-                    entry.Delete();
+                    entry.Dispose();
+                    DeleteIn(folder, name, isFolder, entryPath);
                     continue;
+                }
+
+                // Not protected, so the folder's rule keeps flowing to it later; what the kernel
+                // is handed is the rule as inherited, since it propagates nothing on its own.
+                var inherited = InheritedFrom(folderRule, isFolder);
+                var descriptor = new CommonSecurityDescriptor(
+                    isFolder, false, ControlFlags.DiscretionaryAclPresent | ControlFlags.DiscretionaryAclAutoInherited,
+                    null, null, null, new DiscretionaryAcl(isFolder, false, inherited));
+                var bytes = new byte[descriptor.BinaryLength];
+                descriptor.GetBinaryForm(bytes, 0);
+                if (!SetKernelObjectSecurity(entry, DaclSecurityInformation, bytes))
+                {
+                    throw new Win32Exception(Marshal.GetLastWin32Error(), $"{entryPath} did not take the rule");
+                }
+
+                if (isFolder)
+                {
+                    // What cannot be listed keeps what it has; the folder's own rule stands,
+                    // and the entries after it are still done.
+                    ResetContents(entry, entryPath, inherited, failures);
                 }
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or Win32Exception)
             {
-                failures.Add($"{entry.FullName}: {ex.Message}");
-                continue;
-            }
-
-            using (held)
-            {
-                if (isFolder)
-                {
-                    try
-                    {
-                        ResetContents(entry.FullName, inherited, failures);
-                    }
-                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or Win32Exception)
-                    {
-                        // What is in it keeps what it has; the folder's own rule stands, and
-                        // the entries after it are still done.
-                        failures.Add($"{entry.FullName}: {ex.Message}");
-                    }
-                }
+                failures.Add($"{entryPath}: {ex.Message}");
             }
         }
     }
 
     /// <summary>
-    /// False when the entry is a link or a hard link: to be removed, not changed. A folder's
-    /// handle is handed back open, to be held while its contents are done.
+    /// The names in a folder and whether each is a folder, read through the folder's handle
+    /// (opened to list it). What a name is, is only what the list said: whoever opens it asks
+    /// for a folder or for a file accordingly, and is refused if it has become the other.
     /// </summary>
-    private static bool TryResetEntry(string path, bool isFolder, RawAcl inherited, out Microsoft.Win32.SafeHandles.SafeFileHandle? held)
+    private static List<(string Name, bool IsFolder)> NamesIn(Microsoft.Win32.SafeHandles.SafeFileHandle folder, string path)
     {
-        held = null;
-        var share = isFolder ? FileShareRead | FileShareWrite : FileShareRead | FileShareWrite | FileShareDelete;
-        var handle = CreateFile(path, ReadControl | WriteDac, share, IntPtr.Zero,
-            OpenExisting, FileFlagBackupSemantics | FileFlagOpenReparsePoint, IntPtr.Zero);
-        if (handle.IsInvalid)
+        const int size = 64 * 1024;
+        var names = new List<(string, bool)>();
+        var buffer = Marshal.AllocHGlobal(size);
+        try
         {
+            var kind = FileFullDirectoryRestartInfo;
+            while (GetFileInformationByHandleEx(folder, kind, buffer, size))
+            {
+                kind = FileFullDirectoryInfo;
+                for (var offset = 0; ;)
+                {
+                    // FILE_FULL_DIR_INFO: the next entry's offset, then at 56 the attributes,
+                    // at 60 the name's length in bytes, at 68 the name.
+                    var next = Marshal.ReadInt32(buffer, offset);
+                    var attributes = (FileAttributes)Marshal.ReadInt32(buffer, offset + 56);
+                    var name = Marshal.PtrToStringUni(buffer + offset + 68, Marshal.ReadInt32(buffer, offset + 60) / 2);
+                    if (name is not ("." or ".."))
+                    {
+                        names.Add((name, attributes.HasFlag(FileAttributes.Directory)));
+                    }
+
+                    if (next == 0)
+                    {
+                        break;
+                    }
+
+                    offset += next;
+                }
+            }
+
             var error = Marshal.GetLastWin32Error();
-            handle.Dispose();
-            throw new Win32Exception(error, $"{path} could not be opened");
+            return error == ErrorNoMoreFiles ? names : throw new Win32Exception(error, $"{path} could not be listed");
         }
-
-        if (!GetFileInformationByHandle(handle, out var information))
+        finally
         {
-            var error = Marshal.GetLastWin32Error();
-            handle.Dispose();
-            throw new Win32Exception(error);
+            Marshal.FreeHGlobal(buffer);
         }
-
-        if ((information.FileAttributes & (uint)FileAttributes.ReparsePoint) != 0 || (!isFolder && information.NumberOfLinks > 1))
-        {
-            handle.Dispose();
-            return false;
-        }
-
-        // Not protected, so the folder's rule keeps flowing to it later; what the kernel is
-        // handed is the rule as inherited, since it propagates nothing on its own.
-        var descriptor = new CommonSecurityDescriptor(
-            isFolder, false, ControlFlags.DiscretionaryAclPresent | ControlFlags.DiscretionaryAclAutoInherited,
-            null, null, null, new DiscretionaryAcl(isFolder, false, inherited));
-        var bytes = new byte[descriptor.BinaryLength];
-        descriptor.GetBinaryForm(bytes, 0);
-        if (!SetKernelObjectSecurity(handle, DaclSecurityInformation, bytes))
-        {
-            var error = Marshal.GetLastWin32Error();
-            handle.Dispose();
-            throw new Win32Exception(error, $"{path} did not take the rule");
-        }
-
-        if (isFolder)
-        {
-            held = handle;
-        }
-        else
-        {
-            handle.Dispose();
-        }
-
-        return true;
     }
 
-    private static bool TryDelete(FileSystemInfo entry)
+    /// <summary>
+    /// What is under the name in the open folder, opened as it is: a link is not followed, and
+    /// the name is looked up in that folder, wherever the folder is by now. Shared with
+    /// everyone, so nothing is held up by it.
+    /// </summary>
+    private static Microsoft.Win32.SafeHandles.SafeFileHandle OpenIn(
+        Microsoft.Win32.SafeHandles.SafeFileHandle folder, string name, bool isFolder, uint access, string path)
+    {
+        var nameBuffer = Marshal.StringToHGlobalUni(name);
+        var nameString = Marshal.AllocHGlobal(Marshal.SizeOf<UnicodeString>());
+        var addedRef = false;
+        try
+        {
+            Marshal.StructureToPtr(new UnicodeString { Length = (ushort)(name.Length * 2), MaximumLength = (ushort)(name.Length * 2 + 2), Buffer = nameBuffer }, nameString, false);
+            folder.DangerousAddRef(ref addedRef);
+            var attributes = new ObjectAttributes
+            {
+                Length = Marshal.SizeOf<ObjectAttributes>(),
+                RootDirectory = folder.DangerousGetHandle(),
+                ObjectName = nameString,
+                Attributes = ObjCaseInsensitive,
+            };
+            var status = NtCreateFile(out var handle, access | FileReadAttributes | Synchronize, ref attributes, out _, IntPtr.Zero,
+                0, FileShareRead | FileShareWrite | FileShareDelete, FileOpen,
+                (isFolder ? FileDirectoryFile : FileNonDirectoryFile) | FileSynchronousIoNonAlert | FileOpenReparsePointOption | FileOpenForBackupIntent,
+                IntPtr.Zero, 0);
+            if (status != 0)
+            {
+                handle.Dispose();
+                throw new Win32Exception(RtlNtStatusToDosError(status), $"{path} could not be opened");
+            }
+
+            return handle;
+        }
+        finally
+        {
+            if (addedRef)
+            {
+                folder.DangerousRelease();
+            }
+
+            Marshal.FreeHGlobal(nameString);
+            Marshal.FreeHGlobal(nameBuffer);
+        }
+    }
+
+    /// <summary>A link (a junction, a symbolic link), or a file with another name elsewhere: to be removed, not changed.</summary>
+    private static bool IsLinkOrHasOtherNames(Microsoft.Win32.SafeHandles.SafeFileHandle entry, bool isFolder) =>
+        GetFileInformationByHandle(entry, out var information)
+            ? (information.FileAttributes & (uint)FileAttributes.ReparsePoint) != 0 || (!isFolder && information.NumberOfLinks > 1)
+            : throw new Win32Exception(Marshal.GetLastWin32Error());
+
+    /// <summary>
+    /// Removes the link, or the file's name here, under the name in the open folder: the name
+    /// only, through a handle on it that was looked at again, never what a link points to.
+    /// </summary>
+    private static void DeleteIn(Microsoft.Win32.SafeHandles.SafeFileHandle folder, string name, bool isFolder, string path)
+    {
+        using var entry = OpenIn(folder, name, isFolder, DeleteAccess, path);
+        if (isFolder && !IsLinkOrHasOtherNames(entry, isFolder))
+        {
+            throw new IOException($"{path} is a folder again; it was not removed.");
+        }
+
+        byte delete = 1;
+        if (!SetFileInformationByHandle(entry, FileDispositionInfo, ref delete, 1))
+        {
+            throw new Win32Exception(Marshal.GetLastWin32Error(), $"{path} could not be removed");
+        }
+    }
+
+    private static bool TryDeleteIn(Microsoft.Win32.SafeHandles.SafeFileHandle folder, string name, bool isFolder, string path)
     {
         try
         {
-            entry.Delete();
+            DeleteIn(folder, name, isFolder, path);
             return true;
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or Win32Exception)
         {
             return false;
         }
+    }
+
+    /// <summary>
+    /// The same folder as <paramref name="folder"/> is open on, opened to list what is in it.
+    /// Opened by its path and then compared, since a handle cannot be given more rights: it is
+    /// the folder that was checked, or nothing is listed.
+    /// </summary>
+    private static Microsoft.Win32.SafeHandles.SafeFileHandle OpenToList(Microsoft.Win32.SafeHandles.SafeFileHandle folder, string path)
+    {
+        var list = CreateFile(path, ReadControl | FileListDirectory, FileShareRead | FileShareWrite | FileShareDelete, IntPtr.Zero,
+            OpenExisting, FileFlagBackupSemantics | FileFlagOpenReparsePoint, IntPtr.Zero);
+        if (list.IsInvalid)
+        {
+            var error = Marshal.GetLastWin32Error();
+            list.Dispose();
+            throw new Win32Exception(error, $"{path} could not be opened to list it");
+        }
+
+        if (!GetFileInformationByHandle(folder, out var checkedOne) || !GetFileInformationByHandle(list, out var listed))
+        {
+            var error = Marshal.GetLastWin32Error();
+            list.Dispose();
+            throw new Win32Exception(error);
+        }
+
+        if (checkedOne.VolumeSerialNumber != listed.VolumeSerialNumber || checkedOne.FileIndexHigh != listed.FileIndexHigh
+            || checkedOne.FileIndexLow != listed.FileIndexLow || (listed.FileAttributes & (uint)FileAttributes.ReparsePoint) != 0)
+        {
+            list.Dispose();
+            throw new IOException($"{path} was replaced while it was being made safe.");
+        }
+
+        return list;
     }
 
     /// <summary>Whether the name is one <see cref="CreateAnchor"/> gives: folder-(random).anchor.</summary>
@@ -962,10 +1064,10 @@ internal static class SettingsAccess
 
     /// <summary>
     /// The folder itself, opened so that what is checked is what gets the rule. Opened as it
-    /// is, not followed if it is a link (and refused if it became one since MakeSafe), and
-    /// without letting anyone delete or rename it while the handle is open: under the rule of
-    /// an earlier version its users could do both, and swap in a link to a folder of their
-    /// choosing between the check and the write, which would then get the rule.
+    /// is, not followed if it is a link (and refused if it became one since MakeSafe). Under
+    /// the rule of an earlier version its users could delete or rename it, and swap in a link
+    /// to a folder of their choosing between the check and the write: the rule is set through
+    /// this handle, on the folder that was checked, and MakeSafe has taken that right away.
     /// </summary>
     private static Microsoft.Win32.SafeHandles.SafeFileHandle OpenTheFolderItself(string configDirectory)
     {
@@ -1100,7 +1202,11 @@ internal static class SettingsAccess
                     throw new IOException($"{configDirectory} was replaced with a link while it was made safe.");
                 }
 
-                TakeOverContents(configDirectory, failures, anchorName);
+                using (var contents = OpenToList(root, configDirectory))
+                {
+                    TakeOverContents(contents, configDirectory, failures, anchorName);
+                }
+
                 return failures;
             }
         }
@@ -1209,51 +1315,74 @@ internal static class SettingsAccess
         SetRule(folder, bytes);
     }
 
-    // Entry by entry through a handle on the entry itself, like ResetContents: a link (a
-    // junction, a symbolic link) is not followed and a hard link, a file under another name
-    // elsewhere whose owner is that file's, is not touched; both go, the name only. A folder
-    // is held open, with no one allowed to delete or rename it, while what is in it is done.
-    // One entry that cannot be looked at or taken over is named among the failures and the
-    // rest is still done; SetFolderRule reports them with its own.
+    // Entry by entry through a handle on the entry itself, opened under the folder's handle and
+    // never by path, like ResetContents: a link (a junction, a symbolic link) is not followed
+    // and a hard link, a file under another name elsewhere whose owner is that file's, is not
+    // touched; both go, the name only. One entry that cannot be looked at or taken over is
+    // named among the failures and the rest is still done; SetFolderRule reports them with
+    // its own.
     // The anchor just made (in the settings folder itself) is left as it is; the anchors of
     // earlier runs, and anything a user put there under such a name, go.
-    private static void TakeOverContents(string directory, List<string> failures, string? anchor = null)
+    private static void TakeOverContents(Microsoft.Win32.SafeHandles.SafeFileHandle folder, string path, List<string> failures, string? anchor = null)
     {
-        foreach (var entry in new DirectoryInfo(directory).EnumerateFileSystemInfos())
+        foreach (var (name, isFolder) in NamesIn(folder, path))
         {
-            var isFolder = entry is DirectoryInfo;
-            if (anchor is not null && !isFolder && IsAnchorName(entry.Name)
-                && (string.Equals(entry.Name, anchor, StringComparison.OrdinalIgnoreCase) || TryDelete(entry)))
+            var entryPath = Path.Combine(path, name);
+            if (anchor is not null && !isFolder && IsAnchorName(name)
+                && (string.Equals(name, anchor, StringComparison.OrdinalIgnoreCase) || TryDeleteIn(folder, name, isFolder, entryPath)))
             {
                 continue;
             }
 
             try
             {
-                using var handle = OpenEntryItself(entry.FullName, isFolder, ReadControl);
-                if (handle is null)
+                using var entry = OpenIn(folder, name, isFolder, ReadControl | (isFolder ? FileListDirectory : 0), entryPath);
+                if (IsLinkOrHasOtherNames(entry, isFolder))
                 {
-                    entry.Delete();
+                    entry.Dispose();
+                    DeleteIn(folder, name, isFolder, entryPath);
                     continue;
                 }
 
-                TakeOver(handle, isFolder, entry.FullName);
+                if (!OwnerIsTrusted(OwnerOf(entry)))
+                {
+                    // The right to set the owner is asked for only now, when it is needed: an
+                    // administrator has it by the take-ownership privilege, and an entry whose
+                    // rule grants no such right still opens for the check above. Owner only:
+                    // the rule itself is set afterwards, inherited from the folder's.
+                    using var owner = OpenIn(folder, name, isFolder, ReadControl | WriteOwner, entryPath);
+                    if (IsLinkOrHasOtherNames(owner, isFolder))
+                    {
+                        throw new IOException($"{entryPath} became a link while its owner was being set.");
+                    }
+
+                    var descriptor = new RawSecurityDescriptor(ControlFlags.None, Administrators, null, null, null);
+                    var bytes = new byte[descriptor.BinaryLength];
+                    descriptor.GetBinaryForm(bytes, 0);
+                    if (!SetKernelObjectSecurity(owner, OwnerSecurityInformation, bytes))
+                    {
+                        throw new Win32Exception(Marshal.GetLastWin32Error(), $"{entryPath} could not be taken over");
+                    }
+                }
+
                 if (isFolder)
                 {
-                    TakeOverContents(entry.FullName, failures);
+                    TakeOverContents(entry, entryPath, failures);
                 }
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or Win32Exception)
             {
-                failures.Add($"{entry.FullName}: {ex.Message}");
+                failures.Add($"{entryPath}: {ex.Message}");
             }
         }
     }
 
     /// <summary>
-    /// The entry under the name, opened as it is, or null (and nothing open) when it is a link
-    /// or a hard link. A folder is opened without delete sharing, to be held while its
-    /// contents are done.
+    /// The entry under the path, opened as it is, or null (and nothing open) when it is a link
+    /// or a hard link. For the settings folder itself and what is asked about by its path;
+    /// what is in a folder is opened under the folder's handle (<see cref="OpenIn"/>).
+    /// The handle keeps nobody from renaming or deleting what it is open on, whatever it
+    /// shares: Windows checks sharing only for a handle that reads, writes or deletes.
     /// </summary>
     private static Microsoft.Win32.SafeHandles.SafeFileHandle? OpenEntryItself(string path, bool isFolder, uint access)
     {
@@ -1281,30 +1410,6 @@ internal static class SettingsAccess
         }
 
         return handle;
-    }
-
-    // Owner only, through the handle: the rule itself is set afterwards, for the folder and
-    // (inherited) for the rest.
-    private static void TakeOver(Microsoft.Win32.SafeHandles.SafeFileHandle handle, bool isFolder, string path)
-    {
-        if (OwnerIsTrusted(OwnerOf(handle)))
-        {
-            return;
-        }
-
-        // The right to set the owner is asked for only now, when it is needed: an administrator
-        // has it by the take-ownership privilege, and a folder of the users' own rule, which
-        // grants no such right, still opens for the check above. The first handle stays open,
-        // so a folder cannot be swapped in between; a file that became a link is refused.
-        using var owner = OpenEntryItself(path, isFolder, ReadControl | WriteOwner)
-            ?? throw new IOException($"{path} became a link while its owner was being set.");
-        var descriptor = new RawSecurityDescriptor(ControlFlags.None, Administrators, null, null, null);
-        var bytes = new byte[descriptor.BinaryLength];
-        descriptor.GetBinaryForm(bytes, 0);
-        if (!SetKernelObjectSecurity(owner, OwnerSecurityInformation, bytes))
-        {
-            throw new Win32Exception(Marshal.GetLastWin32Error(), $"{path} could not be taken over");
-        }
     }
 
     private static SecurityIdentifier? OwnerOf(Microsoft.Win32.SafeHandles.SafeFileHandle handle)
@@ -1569,6 +1674,23 @@ internal static class SettingsAccess
 
     [DllImport("ntdll.dll")]
     private static extern int RtlNtStatusToDosError(int status);
+
+    private const uint FileListDirectory = 0x0001;
+    private const uint DeleteAccess = 0x00010000;
+    private const uint FileOpen = 1;
+    private const uint FileDirectoryFile = 0x01;
+    private const int ErrorNoMoreFiles = 18;
+    private const int FileDispositionInfo = 4;
+    private const int FileFullDirectoryInfo = 14;
+    private const int FileFullDirectoryRestartInfo = 15;
+
+    // A folder's entries, read through its handle.
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool GetFileInformationByHandleEx(Microsoft.Win32.SafeHandles.SafeFileHandle file, int informationClass, IntPtr buffer, uint size);
+
+    // Deletes what the handle is open on (FILE_DISPOSITION_INFO: one byte).
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool SetFileInformationByHandle(Microsoft.Win32.SafeHandles.SafeFileHandle file, int informationClass, ref byte information, uint size);
 
     [StructLayout(LayoutKind.Sequential)]
     private struct UnicodeString
