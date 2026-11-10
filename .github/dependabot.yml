@@ -27,6 +27,18 @@ updates:
     groups:
       nuget:
         patterns: ["*"]
+    # Majors of these are left out, each for its own reason:
+    #  - NAudio 3 changes the interfaces the audio code is written against (the Sendspin output, the
+    #    audio devices); moving to it is a change of its own, with the player tried on a PC.
+    #  - the System.* packages carry the number of a .NET version: they follow the .NET the app is built
+    #    on (the SDK below), not the newest one.
+    ignore:
+      - dependency-name: "NAudio"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "System.Management"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "System.ServiceProcess.ServiceController"
+        update-types: ["version-update:semver-major"]
 
   # The .NET SDK in global.json. The app is self-contained: the runtime of this SDK is built into
   # the release, and Windows Update does not patch it. A new SDK (a .NET security fix most months)
