@@ -80,9 +80,11 @@ internal sealed class OutgoingPacketCheck
     }
 
     /// <summary>
-    /// A notification and the answer to it (what was typed into it) are a person's text, not
-    /// something a bug report needs: their payload is kept as zeros of the same length, the
-    /// topic and the rest of the packet as they are.
+    /// A notification and the answer to it (what was typed into it) are a person's text, and a
+    /// screenshot is what was on their screen: not something a bug report needs. Their payload
+    /// is kept as zeros of the same length, the topic and the rest of the packet as they are.
+    /// Of a screenshot the file would otherwise hold the first kilobyte and the end, and a
+    /// small one (a dark screen, a broker with a low limit) whole.
     /// </summary>
     internal static byte[] WithoutPrivateText(byte[] packet)
     {
@@ -101,7 +103,9 @@ internal sealed class OutgoingPacketCheck
         }
 
         var topic = Encoding.UTF8.GetString(packet, position, topicLength);
-        if (!topic.Contains("/notifications/", StringComparison.Ordinal) && !topic.EndsWith("/actions", StringComparison.Ordinal))
+        if (!topic.Contains("/notifications/", StringComparison.Ordinal)
+            && !topic.EndsWith("/actions", StringComparison.Ordinal)
+            && !topic.Contains("/screenshot/", StringComparison.Ordinal))
         {
             return packet;
         }
