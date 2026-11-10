@@ -434,7 +434,7 @@ public class SendspinTests : IDisposable
         var gain = new SendspinWasapiOutput.GainSampleProvider { Volume = 0f };
         var block = Enumerable.Repeat(1f, 2 * 1000).ToArray(); // 1000 stereo frames at 48 kHz
 
-        gain.Apply(block, 0, block.Length, channels: 2, sampleRate: 48000);
+        gain.Apply(block, channels: 2, sampleRate: 48000);
 
         // From 1 down to 0 over about 10 ms (480 frames): the first frames are still near full.
         Assert.True(block[0] > 0.99f);
@@ -443,9 +443,134 @@ public class SendspinTests : IDisposable
     }
 
     [Fact]
+    public void A_block_of_the_sdk_reaches_the_device_buffer_whole_and_with_the_gain()
+    {
+        var source = new CountingSource();
+        var gain = new SendspinWasapiOutput.GainSampleProvider { Source = source };
+
+        // Two blocks of different sizes, as the device asks for them: each is the next stretch
+        // of the source, with nothing left over from the block before.
+        var first = new float[960];
+        var second = new float[480];
+        Assert.Equal(first.Length, gain.Read(first));
+        Assert.Equal(second.Length, gain.Read(second));
+
+        Assert.Equal(Enumerable.Range(0, 960).Select(i => (float)i), first);
+        Assert.Equal(Enumerable.Range(960, 480).Select(i => (float)i), second);
+
+        // Muted, the block is still asked of the source (the stream moves on) and comes out silent
+        // once the gain has eased down.
+        gain.Muted = true;
+        var third = new float[2 * 1000];
+        gain.Read(third);
+        Assert.Equal(1440 + third.Length, source.Position);
+        Assert.Equal(0f, third[^1]);
+    }
+
+    [Fact]
+    public void Without_a_stream_the_device_gets_silence()
+    {
+        var gain = new SendspinWasapiOutput.GainSampleProvider();
+        var block = Enumerable.Repeat(1f, 480).ToArray();
+
+        Assert.Equal(block.Length, gain.Read(block));
+        Assert.All(block, sample => Assert.Equal(0f, sample));
+    }
+
+    [Fact]
+    public async Task The_output_plays_on_the_default_device_and_tells_what_is_queued()
+    {
+        // The real thing, on this PC's own default output, playing silence. A PC without an
+        // output device (a build server) has nothing to try it on.
+        Assert.SkipUnless(HasDefaultOutput(), "This PC has no audio output device.");
+
+        using var log = new FileLog(Path.Combine(Path.GetTempPath(), "hass-agent-tests.log"));
+        var source = new CountingSource { Silent = true };
+        var output = new SendspinWasapiOutput(log, () => null);
+        try
+        {
+            await output.InitializeAsync(source.Format, CancellationToken.None);
+            output.SetSampleSource(source);
+            output.Play();
+            Assert.NotNull(output.CurrentDeviceName);
+
+            // The device's own thread asks for the samples.
+            var waited = Stopwatch.StartNew();
+            while (source.Position == 0 && waited.ElapsedMilliseconds < 3000)
+            {
+                await Task.Delay(20, CancellationToken.None);
+            }
+
+            Assert.True(source.Position > 0, "The device asked for no samples.");
+
+            // What is queued plus what comes after the queue: more than nothing, well under a second.
+            var latency = output.GetCurrentOutputLatencyMicroseconds();
+            Assert.NotNull(latency);
+            Assert.InRange(latency.Value, 1, 1_000_000);
+            Assert.InRange(output.OutputLatencyMs, 0, 500);
+
+            // Paused, nothing more is asked for; playing again, it is.
+            output.Pause();
+            await Task.Delay(300, CancellationToken.None);
+            var paused = source.Position;
+            await Task.Delay(300, CancellationToken.None);
+            Assert.Equal(paused, source.Position);
+
+            output.Play();
+            waited.Restart();
+            while (source.Position == paused && waited.ElapsedMilliseconds < 3000)
+            {
+                await Task.Delay(20, CancellationToken.None);
+            }
+
+            Assert.True(source.Position > paused, "The device asked for no samples after the pause.");
+            output.Stop();
+        }
+        finally
+        {
+            await output.DisposeAsync();
+        }
+    }
+
+    private static bool HasDefaultOutput()
+    {
+        try
+        {
+            using var enumerator = new NAudio.CoreAudioApi.MMDeviceEnumerator();
+            return enumerator.HasDefaultAudioEndpoint(NAudio.CoreAudioApi.DataFlow.Render, NAudio.CoreAudioApi.Role.Multimedia);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private sealed class CountingSource : Sendspin.SDK.Audio.IAudioSampleSource
+    {
+        /// <summary>Zeros instead of the count, for a test that plays on a real device.</summary>
+        public bool Silent { get; init; }
+
+        public int Position { get; private set; }
+
+        public Sendspin.SDK.Models.AudioFormat Format { get; } =
+            new() { Codec = "pcm", SampleRate = 48000, Channels = 2, BitDepth = 32 };
+
+        public int Read(float[] buffer, int offset, int count)
+        {
+            for (var i = 0; i < count; i++)
+            {
+                buffer[offset + i] = Silent ? 0f : Position;
+                Position++;
+            }
+
+            return count;
+        }
+    }
+
+    [Fact]
     public void The_queued_latency_can_still_be_read_from_naudio()
     {
-        // Read by reflection from a private field of NAudio's WasapiOut. If an NAudio update
+        // Read by reflection from a private field of NAudio's WasapiPlayer. If an NAudio update
         // renames it, the player still plays but its sync is off by the device buffer: this fails first.
         Assert.True(SendspinWasapiOutput.CanReadAudioClient);
     }

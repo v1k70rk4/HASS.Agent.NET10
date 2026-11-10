@@ -36,7 +36,7 @@ To build the installer, also install [Inno Setup](https://jrsoftware.org/isinfo.
 dotnet test --project tests/HASS.Agent.NET10.Tests -c Release
 ```
 
-`global.json` selects the Microsoft.Testing.Platform runner that xUnit v3 uses. The installer signature tests need a signed release installer, which is too big for the repository. CI downloads the installer of the latest release; locally, set `HASS_AGENT_SIGNED_INSTALLER` to one (for example `artifacts\installer\HASS.Agent.NET10-Setup-<version>.exe` after `build-exe.ps1 -Tag`), otherwise those tests are skipped.
+`global.json` selects the Microsoft.Testing.Platform runner that xUnit v3 uses. The installer signature tests need a signed release installer, which is too big for the repository. CI downloads the installer of the latest release; locally, set `HASS_AGENT_SIGNED_INSTALLER` to one (for example `artifacts\installer\HASS.Agent.NET10-Setup-<version>.exe` after `build-exe.ps1 -Tag`), otherwise those tests are skipped. The audio tests run on the PC's own default output device and are skipped where there is none; they play silence and read, and the one that turns the mute over for a moment to see the notification runs only with `HASS_AGENT_AUDIO_TESTS=1`.
 
 Every bug fix comes with a test that fails without the fix, so the same bug cannot come back unnoticed.
 
