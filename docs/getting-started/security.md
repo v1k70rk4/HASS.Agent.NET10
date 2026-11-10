@@ -47,8 +47,10 @@ From 10.9.0 on, every release also carries a [Sigstore](https://www.sigstore.dev
 cosign verify-blob HASS.Agent.NET10-Setup-<version>.exe \
   --bundle HASS.Agent.NET10-Setup-<version>.exe.sigstore.json \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  --certificate-identity-regexp '^https://github\.com/v1k70rk4/HASS\.Agent\.NET10/\.github/workflows/sign-release\.yml@'
+  --certificate-identity-regexp '^https://github\.com/v1k70rk4/HASS\.Agent\.NET10/\.github/workflows/sign-release\.yml@refs/(tags/v<version>|heads/main)$'
 ```
+
+The last line names the workflow and where it ran: on the release's own tag, or on `main` when it was started by hand for that tag. It runs nowhere else.
 
 The built-in updater runs a downloaded installer only when it carries the publisher's valid Authenticode signature; anything else is deleted and the update stops, with the reason in the log and in Home Assistant. [Updates from Home Assistant](../features/updates.md)
 

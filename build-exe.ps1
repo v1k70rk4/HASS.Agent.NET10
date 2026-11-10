@@ -334,6 +334,7 @@ $publishArgs = @(
 )
 if ($Version) { $publishArgs += "-p:Version=$Version" }
 if ($script:exportedSha) { $publishArgs += "-p:SourceRevisionId=$($script:exportedSha)" }
+$lockedRestore = $false
 
 if ($Tag) {
     # Same layout and flags as the CI workflow: the installer script's Source path and the zip contents match a
@@ -341,6 +342,11 @@ if ($Tag) {
     $Output = "artifacts\HASS.Agent.NET10\win-x64"
     if (Test-Path $Output) { Remove-Item $Output -Recurse -Force }
     Write-Host "Building $appName $appVersion  (release layout, win-x64)..." -ForegroundColor Cyan
+
+    # A release is built from the packages in packages.lock.json, by hash, as CI builds: a restore that would
+    # take anything else fails. A source from before the lock file (an older tag) has none to hold it to.
+    $lockedRestore = Test-Path (Join-Path (Split-Path $project -Parent) "packages.lock.json")
+    if ($lockedRestore) { $publishArgs += "-p:RestoreLockedMode=true" }
 }
 else {
     $publishArgs += "-p:IncludeNativeLibrariesForSelfExtract=true"
@@ -359,8 +365,20 @@ if ($signing) {
     New-Item -ItemType Directory -Force -Path $signedNativeDir | Out-Null
 
     Write-Host "Looking for native libraries that come unsigned..." -ForegroundColor Cyan
-    dotnet publish $project -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o $probeDir --nologo -v quiet
+    $probeArgs = @("publish", $project, "-c", "Release", "-r", "win-x64", "--self-contained", "true", "-p:PublishSingleFile=true", "-o", $probeDir, "--nologo", "-v", "quiet")
+    if ($lockedRestore) { $probeArgs += "-p:RestoreLockedMode=true" }
+    dotnet @probeArgs
     if ($LASTEXITCODE -ne 0) { throw "Trial publish failed (dotnet publish exit code $LASTEXITCODE)." }
+
+    # The libraries that may come unsigned and are given the release signature, each by the SHA-256 of the file
+    # as its package ships it. The certificate signs what is known here, not whatever a package brought along:
+    # anything else that arrives unsigned stops the build. When a package update brings a new build of one of
+    # these, look at where it comes from and add its hash.
+    $knownUnsignedLibraries = @{
+        'libsodium.dll' = @(
+            '64A1F143868309069F0A0A3C8141C0853C4F17243DDF734E92B11C5411739771'   # libsodium 1.0.22, win-x64 (under Sendspin.SDK)
+        )
+    }
 
     # The copies are taken by file name: two different libraries under one name would get one signed file for
     # both. Compared by the hash of the unsigned original (the signed copy's hash is another), so that the same
@@ -372,6 +390,9 @@ if ($signing) {
         # A signature that is there but broken is not papered over with ours.
         if ($status -ne 'NotSigned') { throw "Signature on $($dll.Name) is $status - refusing to sign over it." }
         $hash = (Get-FileHash $dll.FullName).Hash
+        if ($knownUnsignedLibraries[$dll.Name] -notcontains $hash) {
+            throw "$($dll.Name) came unsigned and is not a library this script signs (SHA-256 $hash). If a package update brought it, check the package and add the hash to `$knownUnsignedLibraries in build-exe.ps1."
+        }
         if ($unsignedHashes.ContainsKey($dll.Name)) {
             if ($unsignedHashes[$dll.Name] -ne $hash) { throw "Two different unsigned libraries are both named $($dll.Name); the signing step cannot tell them apart." }
             continue
@@ -429,9 +450,11 @@ if ($signing) {
 # --- Release assets: signed installer (+ uninstaller) and the zip, CI file names ----------------------------------
 $releaseFiles = @()
 if ($Tag) {
+    # The one installed for the whole PC first: its folder takes an administrator to change. The one under
+    # the user's own profile (a per-user install) only when there is no other.
     $iscc = @(
-        (Join-Path $env:LOCALAPPDATA "Programs\Inno Setup 6\ISCC.exe"),
-        (Join-Path ${env:ProgramFiles(x86)} "Inno Setup 6\ISCC.exe")
+        (Join-Path ${env:ProgramFiles(x86)} "Inno Setup 6\ISCC.exe"),
+        (Join-Path $env:LOCALAPPDATA "Programs\Inno Setup 6\ISCC.exe")
     ) | Where-Object { Test-Path $_ } | Select-Object -First 1
     if (-not $iscc) { throw "Inno Setup 6 compiler (ISCC.exe) not found." }
 
@@ -519,14 +542,24 @@ if ($Tag) {
                 Write-Host "Release assets replaced on $tagName" -ForegroundColor Green
 
                 # What is on the release must be what was just signed here, by hash.
+                # And nothing else may be on it: these two, and for each the Sigstore signature the sign-release
+                # workflow adds once the release is out. A file someone put on the draft would otherwise go
+                # public with the rest, unnoticed.
                 function Assert-SignedAssets([string] $when) {
-                    $published = gh release view $tagName -R $repo --json assets --jq '.assets[] | "\(.name) \(.digest)"' 2>$null
+                    $published = @(gh release view $tagName -R $repo --json assets --jq '.assets[] | "\(.name) \(.digest)"' 2>$null)
                     foreach ($file in $releaseFiles) {
                         $name = Split-Path $file -Leaf
                         $expected = "sha256:" + (Get-FileHash $file -Algorithm SHA256).Hash.ToLowerInvariant()
                         if (-not ($published | Where-Object { $_ -eq "$name $expected" })) {
                             throw "Release $tagName does not carry the signed $name $when (expected $expected). Check the release before anyone downloads it."
                         }
+                    }
+
+                    $allowed = @($releaseFiles | ForEach-Object { Split-Path $_ -Leaf })
+                    $allowed += @($allowed | ForEach-Object { "$_.sigstore.json" })
+                    $others = @($published | ForEach-Object { ($_ -split ' ')[0] } | Where-Object { $_ -notin $allowed })
+                    if ($others.Count -gt 0) {
+                        throw "Release $tagName carries files that are not part of it ${when}: $($others -join ', '). Find out where they came from and remove them before anyone downloads the release."
                     }
                 }
 

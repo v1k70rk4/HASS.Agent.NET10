@@ -7,11 +7,15 @@
 # a draft can never get a Sigstore signature), signs each with cosign through GitHub's OIDC identity
 # (no key, no secret) and uploads <asset>.sigstore.json beside it.
 #
+# The identity in the signature names this file and where it ran: the release's own tag, when the
+# publish started it, or main, when it was started by hand for a tag. It runs nowhere else (the first
+# step), so a copy of this file on another branch cannot make a signature that passes the check below.
+#
 # Check a download with:
 #   cosign verify-blob HASS.Agent.NET10-Setup-<version>.exe \
 #     --bundle HASS.Agent.NET10-Setup-<version>.exe.sigstore.json \
 #     --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-#     --certificate-identity-regexp '^https://github\.com/v1k70rk4/HASS\.Agent\.NET10/\.github/workflows/sign-release\.yml@'
+#     --certificate-identity-regexp '^https://github\.com/v1k70rk4/HASS\.Agent\.NET10/\.github/workflows/sign-release\.yml@refs/(tags/v<version>|heads/main)$'
 name: Sign release assets (Sigstore)
 
 on:
@@ -33,7 +37,6 @@ jobs:
       contents: write   # upload the .sigstore.json files to the release
       id-token: write   # keyless signing with the workflow's OIDC identity
     env:
-      GH_TOKEN: ${{ github.token }}
       TAG: ${{ github.event.release.tag_name || inputs.tag }}
       # The Certum code signing certificate the assets must carry (README, Code Signing).
       CERTUM_THUMBPRINT: 0C09522639318AF1069507568599DFC5B7F86EE4
@@ -42,10 +45,32 @@ jobs:
         shell: pwsh
 
     steps:
-      - name: Download the release assets
+      # The signature says where this workflow ran, and people check for the tag or for main.
+      - name: Run on the release's tag or on main only
         run: |
+          if ($env:GITHUB_REF -ne "refs/tags/$env:TAG" -and $env:GITHUB_REF -ne 'refs/heads/main') {
+            throw "This workflow signs $env:TAG only when it runs on that tag or on main, not on $env:GITHUB_REF."
+          }
+
+      # The token goes to the two steps that talk to GitHub, not to the whole job.
+      - name: Download the release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # A release is its installer and its zip, and after this workflow their signatures.
+          # Anything else on it is not signed around: someone has to look at it first.
+          $version = $env:TAG -replace '^v', ''
+          $expected = "HASS.Agent.NET10-Setup-$version.exe", "HASS.Agent.NET10-win-x64-$version.zip"
+          $allowed = $expected + ($expected | ForEach-Object { "$_.sigstore.json" })
+          $names = @(gh release view $env:TAG -R $env:GITHUB_REPOSITORY --json assets --jq '.assets[].name')
+          if ($LASTEXITCODE -ne 0) { throw "Could not list the assets of $env:TAG." }
+          $unexpected = @($names | Where-Object { $_ -notin $allowed })
+          if ($unexpected) { throw "Release $env:TAG carries files that are not its installer, its zip or their signatures: $($unexpected -join ', '). Not signing anything." }
+          $missing = @($expected | Where-Object { $_ -notin $names })
+          if ($missing) { throw "Release $env:TAG does not carry $($missing -join ' and ')." }
+
           New-Item -ItemType Directory assets | Out-Null
-          gh release download $env:TAG -R $env:GITHUB_REPOSITORY -D assets -p '*.exe' -p '*.zip'
+          gh release download $env:TAG -R $env:GITHUB_REPOSITORY -D assets -p $expected[0] -p $expected[1]
           if ($LASTEXITCODE -ne 0) { throw "Could not download the assets of $env:TAG." }
           Get-ChildItem assets | ForEach-Object { "{0}  {1}" -f (Get-FileHash $_.FullName).Hash, $_.Name }
 
@@ -112,7 +137,8 @@ jobs:
 
       - name: Check the signatures
         run: |
-          $identity = "^https://github\.com/$([regex]::Escape($env:GITHUB_REPOSITORY))/\.github/workflows/sign-release\.yml@"
+          # What the README tells people to check for, with this release's tag in it.
+          $identity = "^https://github\.com/$([regex]::Escape($env:GITHUB_REPOSITORY))/\.github/workflows/sign-release\.yml@refs/(tags/$([regex]::Escape($env:TAG))|heads/main)`$"
           foreach ($file in Get-ChildItem assets -File | Where-Object { $_.Extension -in '.exe', '.zip' }) {
             cosign verify-blob $file.FullName --bundle "$($file.FullName).sigstore.json" `
               --certificate-oidc-issuer https://token.actions.githubusercontent.com `
@@ -121,6 +147,8 @@ jobs:
           }
 
       - name: Upload the signatures to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           $bundles = @(Get-ChildItem assets -Filter '*.sigstore.json' | ForEach-Object FullName)
           gh release upload $env:TAG @bundles --clobber -R $env:GITHUB_REPOSITORY

@@ -155,8 +155,10 @@ From 10.9.0 on, every release also carries a [Sigstore](https://www.sigstore.dev
 cosign verify-blob HASS.Agent.NET10-Setup-<version>.exe \
   --bundle HASS.Agent.NET10-Setup-<version>.exe.sigstore.json \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  --certificate-identity-regexp '^https://github\.com/v1k70rk4/HASS\.Agent\.NET10/\.github/workflows/sign-release\.yml@'
+  --certificate-identity-regexp '^https://github\.com/v1k70rk4/HASS\.Agent\.NET10/\.github/workflows/sign-release\.yml@refs/(tags/v<version>|heads/main)$'
 ```
+
+The last line names the workflow and where it ran: on the release's own tag, or on `main` when it was started by hand for that tag. It runs nowhere else.
 
 ## Privacy Policy
 

@@ -17,6 +17,10 @@
     <PlatformTarget>x64</PlatformTarget>
     <Platforms>x64</Platforms>
     <RootNamespace>HASS.Agent.Companion.Tests</RootNamespace>
+    <!-- As in the app's project: the packages are the ones in packages.lock.json, and CI fails
+         on a restore that would take anything else. -->
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <RestoreLockedMode Condition="'$(CI)' == 'true'">true</RestoreLockedMode>
   </PropertyGroup>
 
   <ItemGroup>

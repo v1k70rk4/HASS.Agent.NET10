@@ -23,6 +23,18 @@
          Windows build, and a self-contained publish then carried all of WPF: 58 MB of an exe
          that uses none of it. Nothing here reaches a WPF type of Rx (its dispatcher scheduler). -->
     <DisableTransitiveFrameworkReferences>true</DisableTransitiveFrameworkReferences>
+    <!-- The packages a build takes are the ones written down in packages.lock.json, each with
+         its hash. In CI and in a release build (build-exe.ps1 -Tag) a restore that would take
+         anything else fails instead of going on. win-x64 is named so that the lock file covers
+         the publish too. After a change of a package or of the SDK in global.json, write the
+         lock files again: dotnet restore src/HASS.Agent.sln with the force-evaluate switch. -->
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
+    <!-- The single-file publish turns this analyzer on, and it comes as a package of the SDK
+         (Microsoft.NET.ILLink.Tasks). On for every build, so that a build and a publish take
+         the same packages and one lock file serves both. -->
+    <EnableSingleFileAnalyzer>true</EnableSingleFileAnalyzer>
+    <RestoreLockedMode Condition="'$(CI)' == 'true'">true</RestoreLockedMode>
   </PropertyGroup>
 
   <ItemGroup>
