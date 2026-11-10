@@ -28,8 +28,9 @@ updates:
       nuget:
         patterns: ["*"]
     # Majors of these are left out, each for its own reason:
-    #  - NAudio 3 changes the interfaces the audio code is written against (the Sendspin output, the
-    #    audio devices); moving to it is a change of its own, with the player tried on a PC.
+    #  - a new major of NAudio changes the interfaces the audio code is written against (the Sendspin
+    #    output, the audio devices), as 3 did; moving to one is a change of its own, with the player
+    #    tried on a PC.
     #  - the System.* packages carry the number of a .NET version: they follow the .NET the app is built
     #    on (the SDK below), not the newest one.
     ignore:
