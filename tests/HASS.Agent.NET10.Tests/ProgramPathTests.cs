@@ -27,9 +27,15 @@ public class ProgramPathTests : IDisposable
 
     public void Dispose() => Directory.Delete(_folder, recursive: true);
 
+    // Two of the tests name a program in a folder without a space. Under a temp folder that
+    // has one itself (a user name of two words), every path here has a space above it.
+    private void SkipWhenTheTempFolderHasASpace() =>
+        Assert.SkipWhen(_folder.Contains(' '), $"The temp folder has a space in its path: {_folder}");
+
     [Fact]
     public void A_path_with_a_space_and_no_quotes_is_not_taken_for_a_shorter_one()
     {
+        SkipWhenTheTempFolderHasASpace();
         // Split at the first space this would be "...\My" with the rest as its arguments,
         // and Windows starts a "...\My.exe" when someone has put one there.
         var typed = $"{_program} /x";
@@ -42,6 +48,7 @@ public class ProgramPathTests : IDisposable
     [Fact]
     public void Quoted_or_whole_or_without_a_space_it_is_run_as_before()
     {
+        SkipWhenTheTempFolderHasASpace();
         var plain = Path.Combine(Directory.CreateDirectory(Path.Combine(_folder, "Tools")).FullName, "app.exe");
         File.WriteAllText(plain, "x");
 

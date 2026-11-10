@@ -29,7 +29,7 @@ HASS.Agent.NET10.exe --settings-access only USER [USER ...]
 HASS.Agent.NET10.exe --settings-access everyone
 ```
 
-A user from a domain or Entra ID is given as `DOMAIN\user`. The exit code is 1 when the change could not be made, also when the folder took the rule but a file in it did not; the message names the file.
+A user from a domain or Entra ID is given as `DOMAIN\user`. The exit code is 1 when the change could not be made, also when the folder took the rule but a file in it did not; the message names the file. It is 2 when the settings folder could not be made safe to use, and nothing was changed.
 
 ## Several users signed in at once
 
