@@ -599,6 +599,65 @@ public class SettingsAccessTests : IDisposable
     }
 
     [Fact]
+    public void A_folder_an_administrator_s_own_account_made_stays_and_becomes_the_administrators()
+    {
+        // An administrator's app runs without elevation: the folder it makes is theirs by name,
+        // not the Administrators group's. A silent update runs as SYSTEM and must not take it
+        // for a stranger's and lose the settings. The built-in Administrator stands for such
+        // an account here: an administrator who is not the one running the test.
+        Assert.SkipUnless(IsElevated, "Giving a folder to another user takes an administrator.");
+        Assert.SkipUnless(
+            Me.AccountDomainSid is not null && string.Equals(Environment.UserDomainName, Environment.MachineName, StringComparison.OrdinalIgnoreCase),
+            "The account running the tests is not a local one.");
+        var administrator = new SecurityIdentifier(WellKnownSidType.AccountAdministratorSid, Me.AccountDomainSid);
+        var folder = Path.Combine(_folder, "an-administrators");
+        Directory.CreateDirectory(folder);
+        File.WriteAllText(Path.Combine(folder, "settings.json"), """{"deviceName":"kept"}""");
+        GiveTo(folder, administrator);
+        Assert.True(SettingsAccess.IsOfThePc(folder));
+
+        SettingsAccess.MakeSafe(folder, out var putAside);
+
+        Assert.Null(putAside);
+        Assert.Equal(new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null), OwnerOf(folder));
+        Assert.Equal("""{"deviceName":"kept"}""", File.ReadAllText(Path.Combine(folder, "settings.json")));
+        Assert.Empty(Directory.GetDirectories(_folder, "an-administrators.made-by-another-user-*"));
+    }
+
+    [Fact]
+    public void The_settings_folder_is_the_pc_s_when_it_is_ours_or_not_there_and_not_when_it_is_a_link()
+    {
+        Assert.True(SettingsAccess.IsOfThePc(_folder));
+        Assert.True(SettingsAccess.IsOfThePc(Path.Combine(_folder, "not-there")));
+
+        var elsewhere = Directory.CreateTempSubdirectory("hass-agent-elsewhere-").FullName;
+        var link = Path.Combine(_folder, "a-link");
+        try
+        {
+            Directory.CreateDirectory(link);
+            Assert.Equal(0, SetJunction(link, elsewhere));
+            Assert.False(SettingsAccess.IsOfThePc(link));
+        }
+        finally
+        {
+            Directory.Delete(link);
+            Directory.Delete(elsewhere, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void A_settings_folder_another_user_made_is_not_the_pc_s()
+    {
+        // What the service and the app ask before they write or read anything there.
+        Assert.SkipUnless(IsElevated, "Giving a folder to another user takes an administrator.");
+        var folder = Path.Combine(_folder, "theirs");
+        Directory.CreateDirectory(folder);
+        GiveTo(folder, Someone);
+
+        Assert.False(SettingsAccess.IsOfThePc(folder));
+    }
+
+    [Fact]
     public void A_link_put_under_a_subfolder_s_name_while_it_is_being_done_leads_nowhere()
     {
         // The users may rename a subfolder of theirs and put a link under its name. Done while

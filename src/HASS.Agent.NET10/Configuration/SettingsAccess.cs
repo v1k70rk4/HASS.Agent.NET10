@@ -873,18 +873,17 @@ internal static class SettingsAccess
             throw new Win32Exception(error, $"{path} could not be opened to list it");
         }
 
-        if (!GetFileInformationByHandle(folder, out var checkedOne) || !GetFileInformationByHandle(list, out var listed))
+        try
         {
-            var error = Marshal.GetLastWin32Error();
-            list.Dispose();
-            throw new Win32Exception(error);
+            if (!IsSameFile(folder, list) || IsLink(list))
+            {
+                throw new IOException($"{path} was replaced while it was being made safe.");
+            }
         }
-
-        if (checkedOne.VolumeSerialNumber != listed.VolumeSerialNumber || checkedOne.FileIndexHigh != listed.FileIndexHigh
-            || checkedOne.FileIndexLow != listed.FileIndexLow || (listed.FileAttributes & (uint)FileAttributes.ReparsePoint) != 0)
+        catch
         {
             list.Dispose();
-            throw new IOException($"{path} was replaced while it was being made safe.");
+            throw;
         }
 
         return list;
@@ -1180,7 +1179,16 @@ internal static class SettingsAccess
                     continue;
                 }
 
-                if (!OwnerIsTrusted(OwnerOf(root)))
+                var owner = OwnerOf(root);
+                if (!OwnerIsTrusted(owner) && IsAnAdministrator(owner))
+                {
+                    // An administrator's own: made by their app, which runs without elevation,
+                    // so what it makes is theirs by name and not the group's. It is the PC's
+                    // folder all the same, and stays, with what is in it; only its owner
+                    // becomes the group, so that changing its rule takes elevation.
+                    GiveToAdministrators(root, configDirectory);
+                }
+                else if (!OwnerIsTrusted(owner))
                 {
                     if (attempt == 4)
                     {
@@ -1210,6 +1218,38 @@ internal static class SettingsAccess
                 return failures;
             }
         }
+    }
+
+    // The folder that was checked, given to the Administrators group. Opened again for the
+    // right to set the owner, which an administrator has by the take-ownership privilege, and
+    // compared: it is that folder, or nothing is changed.
+    private static void GiveToAdministrators(Microsoft.Win32.SafeHandles.SafeFileHandle folder, string path)
+    {
+        using var owner = OpenEntryItself(path, isFolder: true, ReadControl | WriteOwner)
+            ?? throw new IOException($"{path} became a link while its owner was being set.");
+        if (!IsSameFile(folder, owner))
+        {
+            throw new IOException($"{path} was replaced while its owner was being set.");
+        }
+
+        var descriptor = new RawSecurityDescriptor(ControlFlags.None, Administrators, null, null, null);
+        var bytes = new byte[descriptor.BinaryLength];
+        descriptor.GetBinaryForm(bytes, 0);
+        if (!SetKernelObjectSecurity(owner, OwnerSecurityInformation, bytes))
+        {
+            throw new Win32Exception(Marshal.GetLastWin32Error(), $"{path} could not be taken over");
+        }
+    }
+
+    private static bool IsSameFile(Microsoft.Win32.SafeHandles.SafeFileHandle one, Microsoft.Win32.SafeHandles.SafeFileHandle other)
+    {
+        if (!GetFileInformationByHandle(one, out var first) || !GetFileInformationByHandle(other, out var second))
+        {
+            throw new Win32Exception(Marshal.GetLastWin32Error());
+        }
+
+        return first.VolumeSerialNumber == second.VolumeSerialNumber
+            && first.FileIndexHigh == second.FileIndexHigh && first.FileIndexLow == second.FileIndexLow;
     }
 
     /// <summary>
@@ -1460,13 +1500,13 @@ internal static class SettingsAccess
         try
         {
             using var folder = OpenEntryItself(directory, isFolder: true, ReadControl);
-            if (folder is null || !OwnerIsTrusted(OwnerOf(folder)))
+            if (folder is null || !OwnerIsOfThePc(OwnerOf(folder)))
             {
                 return false;
             }
 
             using var entry = OpenEntryItself(file, isFolder: false, ReadControl);
-            return entry is not null && OwnerIsTrusted(OwnerOf(entry));
+            return entry is not null && OwnerIsOfThePc(OwnerOf(entry));
         }
         catch (Exception ex) when (ex is Win32Exception or IOException or UnauthorizedAccessException)
         {
@@ -1478,8 +1518,59 @@ internal static class SettingsAccess
     private static bool OwnerIsTrusted(FileSystemSecurity security) =>
         OwnerIsTrusted(security.GetOwner(typeof(SecurityIdentifier)) as SecurityIdentifier);
 
+    /// <summary>
+    /// Whether the settings folder is the PC's to use: not there yet, or a folder (no link)
+    /// whose owner is SYSTEM, the administrators, an administrator, or whoever runs this.
+    /// ProgramData lets every user make a folder: one that another user made, who is no
+    /// administrator, is theirs to change as they like, whatever is done to it later through
+    /// a handle they kept. The service writes nothing into such a folder and the app loads no
+    /// settings from it; an elevated command puts it aside (<see cref="MakeSafe(string)"/>).
+    /// </summary>
+    internal static bool IsOfThePc(string configDirectory)
+    {
+        try
+        {
+            if (!Directory.Exists(configDirectory))
+            {
+                return true;
+            }
+
+            using var folder = OpenEntryItself(configDirectory, isFolder: true, ReadControl);
+            return folder is not null && OwnerIsOfThePc(OwnerOf(folder));
+        }
+        catch (Exception ex) when (ex is Win32Exception or IOException or UnauthorizedAccessException)
+        {
+            // Not to be looked at: not taken on trust.
+            return false;
+        }
+    }
+
+    // What is left as it is: SYSTEM's, the Administrators group's, and what whoever runs this
+    // owns themselves (a test's own folder; their own files).
     private static bool OwnerIsTrusted(SecurityIdentifier? owner) =>
         owner is not null && (owner == LocalSystem || owner == Administrators || owner == CurrentUser.Value);
+
+    // The above, or an administrator's by name: what their app made without elevation.
+    private static bool OwnerIsOfThePc(SecurityIdentifier? owner) => OwnerIsTrusted(owner) || IsAnAdministrator(owner);
+
+    // A member of this PC's Administrators group, itself or through a group from a domain.
+    // Asked once for an account: the owners of everything in the folder are looked at.
+    private static bool IsAnAdministrator(SecurityIdentifier? account) =>
+        account is not null && KnownAdministrators.GetOrAdd(account, static sid =>
+        {
+            try
+            {
+                var (group, members) = AdministratorsGroup();
+                return members.Contains(sid)
+                    || LocalGroupsOf(((NTAccount)sid.Translate(typeof(NTAccount))).Value).Contains(group, StringComparer.OrdinalIgnoreCase);
+            }
+            catch (Exception ex) when (ex is IdentityNotMappedException or SystemException)
+            {
+                return false;
+            }
+        });
+
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<SecurityIdentifier, bool> KnownAdministrators = new();
 
     private static readonly Lazy<SecurityIdentifier?> CurrentUser = new(() => WindowsIdentity.GetCurrent().User);
 

@@ -574,6 +574,8 @@
     "Access.Everyone": "已恢复默认配置，此电脑上的所有用户均可使用HASS.Agent。",
     "Access.NotChanged": "配置未变更：未授予管理员权限，或提权操作未成功。",
     "Access.Failed": "无法变更设置的访问权限：{0}",
+    "Access.FolderNotSafe": "The settings folder could not be made safe to use: {0}",
+    "Access.FolderNotOfThePc": "HASS.Agent does not use the settings folder {0}: it is a link, or it was made by another user of this PC who is not an administrator, so the settings in it are theirs.\n\nAn administrator can put it right: sign the other users out, or restart the PC, and run the HASS.Agent installer again.",
     "App.AlreadyRunning": "{0} 已经在运行中。",
     "App.SettingsNotLoaded": "无法加载配置设置：{0}",
     "Tray.LocalApiNotStarted": "LocalAPI无法启动",

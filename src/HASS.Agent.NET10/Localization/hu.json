@@ -521,6 +521,8 @@
     "Access.Everyone": "A HASS.Agentet újra a gép minden felhasználója használhatja.",
     "Access.NotChanged": "Nem változott semmi: a rendszergazdai jóváhagyás elmaradt, vagy nem sikerült.",
     "Access.Failed": "A beállításokhoz való hozzáférést nem sikerült módosítani: {0}",
+    "Access.FolderNotSafe": "A beállításmappát nem sikerült biztonságosan használhatóvá tenni: {0}",
+    "Access.FolderNotOfThePc": "A HASS.Agent nem használja a(z) {0} beállításmappát: ez egy link, vagy a gép egy másik, nem rendszergazda felhasználója hozta létre, így a benne lévő beállítások az övéi.\n\nRendszergazda tudja rendbe tenni: jelentkeztesse ki a többi felhasználót, vagy indítsa újra a gépet, és futtassa újra a HASS.Agent telepítőjét.",
     "App.AlreadyRunning": "{0} már fut.",
     "App.SettingsNotLoaded": "A beállítások nem tölthetők be: {0}",
     "Tray.LocalApiNotStarted": "A helyi HTTP API nem indult el.",

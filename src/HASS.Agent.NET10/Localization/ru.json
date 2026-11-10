@@ -574,6 +574,8 @@
     "Access.Everyone": "HASS.Agent снова доступен каждому пользователю этого ПК.",
     "Access.NotChanged": "Изменений нет: подтверждение администратора не получено или не выполнено.",
     "Access.Failed": "Не удалось изменить доступ к настройкам: {0}",
+    "Access.FolderNotSafe": "The settings folder could not be made safe to use: {0}",
+    "Access.FolderNotOfThePc": "HASS.Agent does not use the settings folder {0}: it is a link, or it was made by another user of this PC who is not an administrator, so the settings in it are theirs.\n\nAn administrator can put it right: sign the other users out, or restart the PC, and run the HASS.Agent installer again.",
     "App.AlreadyRunning": "{0} уже запущен.",
     "App.SettingsNotLoaded": "Не удалось загрузить настройки: {0}",
     "Tray.LocalApiNotStarted": "Не удалось запустить локальный API.",

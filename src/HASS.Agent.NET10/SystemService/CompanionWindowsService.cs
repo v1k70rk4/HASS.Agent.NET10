@@ -40,13 +40,17 @@ internal sealed class CompanionWindowsService : ServiceBase
 
     protected override void OnStart(string[] args)
     {
-        // Nothing is written as SYSTEM where a user pointed the settings folder. The folder's
-        // anchor (SettingsAccess.CreateAnchor) keeps it from becoming a link; this is for a
-        // folder that became one before it had an anchor. The service then does not start, and
-        // Windows writes why to the Application log.
-        if (SettingsAccess.IsLink(AppPaths.ConfigDirectoryPath))
+        // Nothing is written as SYSTEM where a user pointed the settings folder, or into a folder
+        // a user who is no administrator made there and still has a hold on. The folder's
+        // anchor (SettingsAccess.CreateAnchor) keeps it from becoming a link, and an elevated
+        // command puts another user's folder aside; this is for a folder no such command got
+        // to, or could not put right. The service then does not start, and Windows writes why
+        // to the Application log.
+        if (!SettingsAccess.IsOfThePc(AppPaths.ConfigDirectoryPath))
         {
-            throw new IOException($"{AppPaths.ConfigDirectoryPath} is a link, not the settings folder. Run the installer again to put the folder back.");
+            throw new IOException(
+                $"{AppPaths.ConfigDirectoryPath} is a link, or was made by a user who is no administrator: the service does not use it as the settings folder. " +
+                "Sign the other users of this PC out, or restart it, and run the installer again to put the folder right.");
         }
 
         _paths = AppPaths.Create();
