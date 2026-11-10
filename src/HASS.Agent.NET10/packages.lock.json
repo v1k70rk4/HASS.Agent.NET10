@@ -16,28 +16,26 @@
       },
       "Microsoft.Web.WebView2": {
         "type": "Direct",
-        "requested": "[1.0.4258.31, )",
-        "resolved": "1.0.4258.31",
-        "contentHash": "sHVZ2MQrHT1J3q5/6csn0fIP27rzpTO/RRC+wPQDrZheB7T4t2n+vVbY6SdCKr4WRV9s/gmBM3PPMWWJtoDzMg=="
+        "requested": "[1.0.4314.35, )",
+        "resolved": "1.0.4314.35",
+        "contentHash": "x5MFf2W03xueU1mMNvivXfHSsQ+ODo7vJ36qw/dLtU5Gs+8d7+7N7zzmNNDoT3ffosmcvZNBtUnlzyiDUuBkSQ=="
       },
       "MQTTnet": {
         "type": "Direct",
-        "requested": "[5.1.0.1559, )",
-        "resolved": "5.1.0.1559",
-        "contentHash": "9mkk0H+76CToIzp9ru5Uj5BuC3P5hQdkhvXM+CLmmTDdZWqajjICCHuUMbDd1yVBt9BWL77Rvzt0A+/PA4WMCA=="
+        "requested": "[5.2.0.1603, )",
+        "resolved": "5.2.0.1603",
+        "contentHash": "iNuWVo/568aRo2ExEN2qkC4J5b07ckKqt+9Uok2kIbbK7PMBsXvYiKVENPHmOBWFB5ExhlNQb/qQ8M9/IYRTdQ=="
       },
       "NAudio": {
         "type": "Direct",
-        "requested": "[2.3.0, )",
-        "resolved": "2.3.0",
-        "contentHash": "xN+Lzlu9DmXqBiL6XkP0VZmgTxZPdSGjVSWtKG9HKuar3LhIYNOIYQETieigS+QDS+nrs1QmHbBWWOru0nWA5A==",
+        "requested": "[3.3.0, )",
+        "resolved": "3.3.0",
+        "contentHash": "XSOr9vFTjY+ZxjtpD8/2MkLQLwiyd6TgdLw4GIlrBX55Gn+lDFiIkKms+d3BUftYN6sj/mrpq9HxqEYTK/ofuw==",
         "dependencies": {
-          "NAudio.Asio": "2.3.0",
-          "NAudio.Core": "2.3.0",
-          "NAudio.Midi": "2.3.0",
-          "NAudio.Wasapi": "2.3.0",
-          "NAudio.WinForms": "2.3.0",
-          "NAudio.WinMM": "2.3.0"
+          "NAudio.Core": "3.3.0",
+          "NAudio.Midi": "3.3.0",
+          "NAudio.Wasapi": "3.3.0",
+          "NAudio.WinMM": "3.3.0"
         }
       },
       "Sendspin.SDK": {
@@ -55,15 +53,21 @@
       },
       "System.Management": {
         "type": "Direct",
-        "requested": "[10.0.0, )",
-        "resolved": "10.0.0",
-        "contentHash": "LE3rDZoPzulou78Tsq+3ALhUs4vatQ03v2QWbYVIenVPneUH/+LTUmHyyl098OxIFLQI6sNkZs8YHbUnT/sm3A=="
+        "requested": "[11.0.0, )",
+        "resolved": "11.0.0",
+        "contentHash": "8x+8Jt/ASauIThRh7yT+kwiR7xmWbPMtTJ3p36EalBuOQZsq6NCqVejO3tlXaYQGb337zOATzrBqAzLgLa86Cg==",
+        "dependencies": {
+          "System.CodeDom": "11.0.0"
+        }
       },
       "System.ServiceProcess.ServiceController": {
         "type": "Direct",
-        "requested": "[10.0.0, )",
-        "resolved": "10.0.0",
-        "contentHash": "PaFmFQXX/qL1vl0CfdJUMPMYT8TOEHlcdEiOZtd4LV2rcaS/WDQM4bpECcbRM4BrD+DWkWd/jtb6iPOqAX9TWA=="
+        "requested": "[11.0.0, )",
+        "resolved": "11.0.0",
+        "contentHash": "i+z1zYbJ4zOkrsESalw2RzZ3gCPRT7+KxmTjsgKWPg0tX+20s7lq5oQ5zV3FdmXOWqFt0aiAo9cL/XjG1D5Gsw==",
+        "dependencies": {
+          "System.Diagnostics.EventLog": "11.0.0"
+        }
       },
       "Common.Logging": {
         "type": "Transitive",
@@ -120,49 +124,37 @@
         "resolved": "1.1.0",
         "contentHash": "kz0PEW2lhqygehI/d6XsPCQzD7ff7gUJaVGPVETX611eadGsA3A877GdSlU0LRVMCTH/+P3o2iDTak+S08V2+A=="
       },
-      "NAudio.Asio": {
-        "type": "Transitive",
-        "resolved": "2.3.0",
-        "contentHash": "I+rAAPT8vmSEw4d4ie+AoSkrvNK6ylRrXznnjQKS+qZgTA9Jnt1Pxe0EaU8nXxOOq5h8ucBSWccBEw6I/J0nkQ==",
-        "dependencies": {
-          "NAudio.Core": "2.3.0"
-        }
-      },
       "NAudio.Core": {
         "type": "Transitive",
-        "resolved": "2.3.0",
-        "contentHash": "jMd7r6dB6tAtXhOYL58ntPqwERNm1/Rhw5MKOIYvsnXzuX+PTGsa2VMam6n0npZYSwlSidKa4GAm4bFcXFUlcg=="
+        "resolved": "3.3.0",
+        "contentHash": "xU3f1/5jBTfdjauhcPbjo0O1Ow+PVTPnjMo0KbV7twkWRcoY3GnVmA3mbUXxAePtJ2eUbWgteHWfFjOAvGovLg==",
+        "dependencies": {
+          "System.Numerics.Tensors": "9.0.0"
+        }
       },
       "NAudio.Midi": {
         "type": "Transitive",
-        "resolved": "2.3.0",
-        "contentHash": "t8wvPFPHHQOHhoNMCaDE8OiYZoJuxmY4H6UPBtmnf+xx7oQuajFCqlG4Q00ID+tiEyj471WeVb4Nkylr4tDoow==",
+        "resolved": "3.3.0",
+        "contentHash": "ha7yD5Pf2YjBlk31T2ItNl/7rDHhksRjk3KVzxbT4NibVSO7C9IygO02U/pgbrE5CU3M48IvZArLYh7UPxR6QQ==",
         "dependencies": {
-          "NAudio.Core": "2.3.0"
+          "NAudio.Core": "3.3.0"
         }
       },
       "NAudio.Wasapi": {
         "type": "Transitive",
-        "resolved": "2.3.0",
-        "contentHash": "y5K2BxrLnvohgu5znzg5wRsai3YcuNXfrpo68i7PmCQqpK5MC/R24e5aO3OyN/XhfRr12e0QYV0OnUWEHi5SzA==",
+        "resolved": "3.3.0",
+        "contentHash": "wUFqmyrTHde79yzt68g/akvtVG9KDnOVFJ0Aawr07zlbwcGOQo/IWO/NTw9YJTuESl9WGgncZitx/Q7JWQaaBA==",
         "dependencies": {
-          "NAudio.Core": "2.3.0"
-        }
-      },
-      "NAudio.WinForms": {
-        "type": "Transitive",
-        "resolved": "2.3.0",
-        "contentHash": "vyKqFUlAZrZ0QPcCM1T+zimjYgC1cNDloHaiOdtV4S1eK4AGu3Dz1EE4yy/WgcneJwQNjGFaELY7b2TsL+g56w==",
-        "dependencies": {
-          "NAudio.WinMM": "2.3.0"
+          "NAudio.Core": "3.3.0"
         }
       },
       "NAudio.WinMM": {
         "type": "Transitive",
-        "resolved": "2.3.0",
-        "contentHash": "5G1dRjsZm50T3luyuqcmI2BSvj3K4ZJaD/x776/0Epj88qOsOryDZG40+MufwIk1UFJSFWhRobBqtJYFc8Ss4g==",
+        "resolved": "3.3.0",
+        "contentHash": "8E5LCxXDftvBe3/O8fal8HbJt1LB3odYDGvWrRoyK7qTp2i0ELrOcr3ydDR0JIqhdi7AMXPosJFR1gssT5kcuw==",
         "dependencies": {
-          "NAudio.Core": "2.3.0"
+          "NAudio.Core": "3.3.0",
+          "NAudio.Midi": "3.3.0"
         }
       },
       "NETStandard.Library": {
@@ -187,6 +179,21 @@
         "resolved": "1.3.1",
         "contentHash": "TqqQc+WFg3s10/PdnI2Dio0U7xEmVXhkf+ey4tOGZzjyd054rnNOLNVahJhMYmfBQdS7/jkVqC8xzLm/bkR3EA=="
       },
+      "System.CodeDom": {
+        "type": "Transitive",
+        "resolved": "11.0.0",
+        "contentHash": "jhvI5UbF+HuOQ5k8lyNQN+pM6fn7OSWmVK99qK+EvepjY6Ec+lg3039rvgpvXw+cT135xtzfoPpLbqppois5XA=="
+      },
+      "System.Diagnostics.EventLog": {
+        "type": "Transitive",
+        "resolved": "11.0.0",
+        "contentHash": "lKore9DXE1q8o6ss6/M7++xBpn2FMS0axaAypBspYLqY5OT1ZRPLzFGwF18l61aXfXTPpwkx5tYh4zMUHoAv/g=="
+      },
+      "System.Numerics.Tensors": {
+        "type": "Transitive",
+        "resolved": "9.0.0",
+        "contentHash": "hyJB4UlpAi19Xr9AXzu2NuagKC4lPfHObNMEAA0HmqFz2rX7wKgzeYzO/jM/eBHDhnUGFFEjk5cOoJaxqg5J4A=="
+      },
       "System.Reactive": {
         "type": "Transitive",
         "resolved": "5.0.0",
@@ -209,26 +216,37 @@
     "net10.0-windows10.0.19041/win-x64": {
       "Microsoft.Web.WebView2": {
         "type": "Direct",
-        "requested": "[1.0.4258.31, )",
-        "resolved": "1.0.4258.31",
-        "contentHash": "sHVZ2MQrHT1J3q5/6csn0fIP27rzpTO/RRC+wPQDrZheB7T4t2n+vVbY6SdCKr4WRV9s/gmBM3PPMWWJtoDzMg=="
+        "requested": "[1.0.4314.35, )",
+        "resolved": "1.0.4314.35",
+        "contentHash": "x5MFf2W03xueU1mMNvivXfHSsQ+ODo7vJ36qw/dLtU5Gs+8d7+7N7zzmNNDoT3ffosmcvZNBtUnlzyiDUuBkSQ=="
       },
       "System.Management": {
         "type": "Direct",
-        "requested": "[10.0.0, )",
-        "resolved": "10.0.0",
-        "contentHash": "LE3rDZoPzulou78Tsq+3ALhUs4vatQ03v2QWbYVIenVPneUH/+LTUmHyyl098OxIFLQI6sNkZs8YHbUnT/sm3A=="
+        "requested": "[11.0.0, )",
+        "resolved": "11.0.0",
+        "contentHash": "8x+8Jt/ASauIThRh7yT+kwiR7xmWbPMtTJ3p36EalBuOQZsq6NCqVejO3tlXaYQGb337zOATzrBqAzLgLa86Cg==",
+        "dependencies": {
+          "System.CodeDom": "11.0.0"
+        }
       },
       "System.ServiceProcess.ServiceController": {
         "type": "Direct",
-        "requested": "[10.0.0, )",
-        "resolved": "10.0.0",
-        "contentHash": "PaFmFQXX/qL1vl0CfdJUMPMYT8TOEHlcdEiOZtd4LV2rcaS/WDQM4bpECcbRM4BrD+DWkWd/jtb6iPOqAX9TWA=="
+        "requested": "[11.0.0, )",
+        "resolved": "11.0.0",
+        "contentHash": "i+z1zYbJ4zOkrsESalw2RzZ3gCPRT7+KxmTjsgKWPg0tX+20s7lq5oQ5zV3FdmXOWqFt0aiAo9cL/XjG1D5Gsw==",
+        "dependencies": {
+          "System.Diagnostics.EventLog": "11.0.0"
+        }
       },
       "libsodium": {
         "type": "Transitive",
         "resolved": "1.0.22",
         "contentHash": "KPD9SloJFclrsjnhABu7dzWrcyYkwPbvx5l1gRSPAX/0n+OBtSiVCKtGFv4n+ecWUHU0tCG9LSSwoZZx673zBQ=="
+      },
+      "System.Diagnostics.EventLog": {
+        "type": "Transitive",
+        "resolved": "11.0.0",
+        "contentHash": "lKore9DXE1q8o6ss6/M7++xBpn2FMS0axaAypBspYLqY5OT1ZRPLzFGwF18l61aXfXTPpwkx5tYh4zMUHoAv/g=="
       },
       "Tmds.LibC": {
         "type": "Transitive",
