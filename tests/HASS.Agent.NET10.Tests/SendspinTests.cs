@@ -37,6 +37,30 @@ public class SendspinTests : IDisposable
         GC.SuppressFinalize(this);
     }
 
+    [Fact]
+    public void A_lock_is_not_made_through_a_link_put_in_place_of_the_folder()
+    {
+        // A junction needs no privilege; whoever may write the settings folder can put one there.
+        var elsewhere = Directory.CreateDirectory(Path.Combine(_folder, "elsewhere")).FullName;
+        var link = Path.Combine(_folder, "sendspin");
+        var mklink = Process.Start(new ProcessStartInfo("cmd.exe", $"/c mklink /J \"{link}\" \"{elsewhere}\"")
+        {
+            UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true
+        })!;
+        mklink.WaitForExit();
+        Assert.Equal(0, mklink.ExitCode);
+        SendspinStorage.DirectoryOverride = link;
+
+        var watch = Stopwatch.StartNew();
+        Assert.Throws<IOException>(() => SendspinStorage.Lock());
+        Assert.Throws<IOException>(() => SendspinStorage.Lock("token.lock"));
+
+        Assert.Empty(Directory.EnumerateFileSystemEntries(elsewhere));
+        // Refused at once, not after the wait a held lock gets.
+        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(4));
+        Directory.Delete(link);
+    }
+
     [Theory]
     [InlineData("192.168.1.10", "ws://192.168.1.10:8927/sendspin")]
     [InlineData("  music.local  ", "ws://music.local:8927/sendspin")]

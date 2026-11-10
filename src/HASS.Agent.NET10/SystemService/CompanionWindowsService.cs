@@ -40,6 +40,15 @@ internal sealed class CompanionWindowsService : ServiceBase
 
     protected override void OnStart(string[] args)
     {
+        // Nothing is written as SYSTEM where a user pointed the settings folder. The folder's
+        // anchor (SettingsAccess.CreateAnchor) keeps it from becoming a link; this is for a
+        // folder that became one before it had an anchor. The service then does not start, and
+        // Windows writes why to the Application log.
+        if (SettingsAccess.IsLink(AppPaths.ConfigDirectoryPath))
+        {
+            throw new IOException($"{AppPaths.ConfigDirectoryPath} is a link, not the settings folder. Run the installer again to put the folder back.");
+        }
+
         _paths = AppPaths.Create();
         _log = new FileLog(_paths.LogFile);
         _log.Info($"Starting {AppIdentity.DisplayName} system service.");
@@ -202,6 +211,8 @@ internal sealed class CompanionWindowsService : ServiceBase
                 $"Not run by the service, as no administrator approved them: {string.Join(", ", restricted)}. " +
                 "Save the settings in the app and approve the prompt to let the service run them.");
         }
+
+        ServicePolicy.DropTrayAppCommands(settings);
 
         return settings;
     }

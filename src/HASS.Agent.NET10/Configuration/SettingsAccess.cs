@@ -189,7 +189,7 @@ internal static class SettingsAccess
             return sid;
         }
 
-        if (string.Equals(Environment.UserDomainName, Environment.MachineName, StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(Environment.UserDomainName, MachineName, StringComparison.OrdinalIgnoreCase))
         {
             return CurrentUser.Value?.AccountDomainSid;
         }
@@ -479,7 +479,7 @@ internal static class SettingsAccess
         try
         {
             var name = ((NTAccount)sid.Translate(typeof(NTAccount))).Value;
-            var machine = Environment.MachineName + "\\";
+            var machine = MachineName + "\\";
             return name.StartsWith(machine, StringComparison.OrdinalIgnoreCase) ? name[machine.Length..] : name;
         }
         catch (Exception ex) when (ex is IdentityNotMappedException or SystemException)
@@ -600,6 +600,7 @@ internal static class SettingsAccess
             security.AddAccessRule(new FileSystemAccessRule(user, FileSystemRights.Modify | FileSystemRights.Synchronize, inherit, PropagationFlags.InheritOnly, AccessControlType.Allow));
         }
 
+        var ruleWithoutDeny = security.GetSecurityDescriptorBinaryForm();
         if (kioskGroup is not null)
         {
             security.AddAccessRule(new FileSystemAccessRule(kioskGroup, KioskDenied, inherit, PropagationFlags.None, AccessControlType.Deny));
@@ -607,9 +608,14 @@ internal static class SettingsAccess
 
         var rule = security.GetSecurityDescriptorBinaryForm();
         using var folder = OpenTheFolderItself(configDirectory);
-        if (!SetKernelObjectSecurity(folder, DaclSecurityInformation, rule))
+        SetRule(folder, rule);
+
+        // Held open until the rest is done, so nothing can remove it meanwhile. Made through
+        // the folder's handle, so it lands in this folder whatever its path points to by now.
+        using var anchor = CreateAnchorPastTheDeny(folder, rule, ruleWithoutDeny, out var anchorName);
+        if (IsLink(folder))
         {
-            throw new Win32Exception(Marshal.GetLastWin32Error());
+            throw new IOException($"{configDirectory} was replaced with a link while its rule was being set.");
         }
 
         // With the restore privilege a file whose own rule would keep even an administrator
@@ -619,7 +625,7 @@ internal static class SettingsAccess
         var failures = new List<string>(notTakenOver);
         using (TokenPrivileges.Enable(TokenPrivileges.Backup, TokenPrivileges.Restore))
         {
-            ResetContents(configDirectory, new RawSecurityDescriptor(rule, 0).DiscretionaryAcl!, failures);
+            ResetContents(configDirectory, new RawSecurityDescriptor(rule, 0).DiscretionaryAcl!, failures, anchorName);
         }
 
         if (failures.Count > 0)
@@ -638,12 +644,22 @@ internal static class SettingsAccess
     /// a junction in between, the way the folder itself is held by SetFolderRule. A file
     /// another process holds open still takes the rule; one that cannot be opened or changed
     /// is left as it is, named among the failures, and the rest is still done.
+    /// The folder's anchor (<paramref name="anchor"/>, in the settings folder itself) keeps the
+    /// rule it was made with; the anchors of earlier runs go, or become ordinary files.
     /// </summary>
-    private static void ResetContents(string directory, RawAcl folderRule, List<string> failures)
+    private static void ResetContents(string directory, RawAcl folderRule, List<string> failures, string? anchor = null)
     {
         foreach (var entry in new DirectoryInfo(directory).EnumerateFileSystemInfos())
         {
             var isFolder = entry is DirectoryInfo;
+            if (anchor is not null && !isFolder && IsAnchorName(entry.Name))
+            {
+                if (string.Equals(entry.Name, anchor, StringComparison.OrdinalIgnoreCase) || TryDelete(entry))
+                {
+                    continue;
+                }
+            }
+
             var inherited = InheritedFrom(folderRule, isFolder);
             Microsoft.Win32.SafeHandles.SafeFileHandle? held;
             try
@@ -734,6 +750,131 @@ internal static class SettingsAccess
 
         return true;
     }
+
+    private static bool TryDelete(FileSystemInfo entry)
+    {
+        try
+        {
+            entry.Delete();
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>Whether the name is one <see cref="CreateAnchor"/> gives: folder-(random).anchor.</summary>
+    internal static bool IsAnchorName(string name) =>
+        name.StartsWith(AnchorPrefix, StringComparison.OrdinalIgnoreCase) && name.EndsWith(AnchorSuffix, StringComparison.OrdinalIgnoreCase);
+
+    private const string AnchorPrefix = "folder-";
+    private const string AnchorSuffix = ".anchor";
+
+    /// <summary>
+    /// The folder's anchor: an empty file in it that its users cannot delete, rename or change.
+    /// The users may create files in the folder and delete what is in it, and that is all it
+    /// takes to turn an empty folder into a link to a folder of their choosing: every write of
+    /// the service and of an administrator would then go there. Windows makes no link of a
+    /// folder with something in it, so with the anchor there it stays a folder.
+    /// A new one at every call, under a name of its own: it is this call's by the way it was
+    /// made, whatever a user put there under such a name before. Made through the folder's
+    /// handle, with its rule from the start: SYSTEM, the administrators and its owner (one of
+    /// those two, or a test's own user) and nobody else, nothing inherited.
+    /// </summary>
+    internal static Microsoft.Win32.SafeHandles.SafeFileHandle CreateAnchor(Microsoft.Win32.SafeHandles.SafeFileHandle folder, out string name)
+    {
+        name = $"{AnchorPrefix}{Guid.NewGuid():N}"[..(AnchorPrefix.Length + 12)] + AnchorSuffix;
+
+        var acl = new RawAcl(GenericAcl.AclRevision, 3);
+        foreach (var sid in new[] { LocalSystem, Administrators, new SecurityIdentifier(WellKnownSidType.WinCreatorOwnerRightsSid, null) })
+        {
+            acl.InsertAce(acl.Count, new CommonAce(AceFlags.None, AceQualifier.AccessAllowed, (int)FileSystemRights.FullControl, sid, false, null));
+        }
+
+        var descriptor = new RawSecurityDescriptor(ControlFlags.DiscretionaryAclPresent | ControlFlags.DiscretionaryAclProtected, null, null, null, acl);
+        var descriptorBytes = new byte[descriptor.BinaryLength];
+        descriptor.GetBinaryForm(descriptorBytes, 0);
+
+        var nameBuffer = Marshal.StringToHGlobalUni(name);
+        var nameString = Marshal.AllocHGlobal(Marshal.SizeOf<UnicodeString>());
+        var pinnedDescriptor = GCHandle.Alloc(descriptorBytes, GCHandleType.Pinned);
+        var addedRef = false;
+        try
+        {
+            Marshal.StructureToPtr(new UnicodeString { Length = (ushort)(name.Length * 2), MaximumLength = (ushort)(name.Length * 2 + 2), Buffer = nameBuffer }, nameString, false);
+            folder.DangerousAddRef(ref addedRef);
+            var attributes = new ObjectAttributes
+            {
+                Length = Marshal.SizeOf<ObjectAttributes>(),
+                RootDirectory = folder.DangerousGetHandle(),
+                ObjectName = nameString,
+                Attributes = ObjCaseInsensitive,
+                SecurityDescriptor = pinnedDescriptor.AddrOfPinnedObject(),
+            };
+            var status = NtCreateFile(out var handle, ReadControl | FileReadAttributes | Synchronize, ref attributes, out _, IntPtr.Zero,
+                (uint)FileAttributes.Normal, FileShareRead, FileCreate,
+                FileNonDirectoryFile | FileSynchronousIoNonAlert | FileOpenReparsePointOption | FileOpenForBackupIntent, IntPtr.Zero, 0);
+            if (status != 0)
+            {
+                handle.Dispose();
+                throw new Win32Exception(RtlNtStatusToDosError(status), "The folder's anchor could not be made");
+            }
+
+            return handle;
+        }
+        finally
+        {
+            if (addedRef)
+            {
+                folder.DangerousRelease();
+            }
+
+            pinnedDescriptor.Free();
+            Marshal.FreeHGlobal(nameString);
+            Marshal.FreeHGlobal(nameBuffer);
+        }
+    }
+
+    // Whoever sets the rule may be in the kiosk group themselves, and the deny just set then
+    // keeps them, too, from creating anything in the folder. An administrator's restore
+    // privilege goes past it. Without the privilege (a test, run as the folder's owner) the
+    // anchor is made under the rule without the deny, which is set again right after.
+    private static Microsoft.Win32.SafeHandles.SafeFileHandle CreateAnchorPastTheDeny(
+        Microsoft.Win32.SafeHandles.SafeFileHandle folder, byte[] rule, byte[] ruleWithoutDeny, out string name)
+    {
+        using var restore = TokenPrivileges.Enable(TokenPrivileges.Restore);
+        try
+        {
+            return CreateAnchor(folder, out name);
+        }
+        catch (Win32Exception ex) when (ex.NativeErrorCode == ErrorAccessDenied && !rule.AsSpan().SequenceEqual(ruleWithoutDeny))
+        {
+            SetRule(folder, ruleWithoutDeny);
+            try
+            {
+                return CreateAnchor(folder, out name);
+            }
+            finally
+            {
+                SetRule(folder, rule);
+            }
+        }
+    }
+
+    private static void SetRule(Microsoft.Win32.SafeHandles.SafeFileHandle folder, byte[] rule)
+    {
+        if (!SetKernelObjectSecurity(folder, DaclSecurityInformation, rule))
+        {
+            throw new Win32Exception(Marshal.GetLastWin32Error());
+        }
+    }
+
+    /// <summary>Whether what the handle is open on is a link now.</summary>
+    private static bool IsLink(Microsoft.Win32.SafeHandles.SafeFileHandle handle) =>
+        GetFileInformationByHandle(handle, out var information)
+            ? (information.FileAttributes & (uint)FileAttributes.ReparsePoint) != 0
+            : throw new Win32Exception(Marshal.GetLastWin32Error());
 
     /// <summary>The rule a folder passes on to a folder or a file in it, as Windows would inherit it.</summary>
     internal static RawAcl InheritedFrom(RawAcl folderRule, bool toFolder)
@@ -992,6 +1133,101 @@ internal static class SettingsAccess
         return information.NumberOfLinks > 1;
     }
 
+    /// <summary>Whether a link (a junction, a symbolic link) stands where the folder should be.</summary>
+    internal static bool IsLink(string directory)
+    {
+        var folder = new DirectoryInfo(directory);
+        return folder.Exists && folder.Attributes.HasFlag(FileAttributes.ReparsePoint);
+    }
+
+    /// <summary>
+    /// Whether the file, and the folder it is in, are SYSTEM's, the administrators' or the
+    /// user's who runs this, and plain: no link, no file with another name elsewhere. For a
+    /// file in a place where every user of the PC can make a folder (ProgramData): another
+    /// user's is not taken for this PC's.
+    /// </summary>
+    internal static bool IsOwnOrAdministrators(string directory, string file)
+    {
+        try
+        {
+            using var folder = OpenEntryItself(directory, isFolder: true, ReadControl);
+            if (folder is null || !OwnerIsTrusted(OwnerOf(folder)))
+            {
+                return false;
+            }
+
+            using var entry = OpenEntryItself(file, isFolder: false, ReadControl);
+            return entry is not null && OwnerIsTrusted(OwnerOf(entry));
+        }
+        catch (Exception ex) when (ex is Win32Exception or IOException or UnauthorizedAccessException)
+        {
+            // Not there, or not to be looked at.
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Before <see cref="MakeSafe"/> takes it over: whether the settings folder is there and
+    /// was made by someone who is neither SYSTEM, an administrator nor the user running this.
+    /// ProgramData lets every user make a folder, so one of them can have it waiting, with
+    /// settings of their choosing in it, for the first install.
+    /// </summary>
+    internal static bool WasMadeBySomeoneElse(string configDirectory)
+    {
+        try
+        {
+            if (!Directory.Exists(configDirectory))
+            {
+                return false;
+            }
+
+            using var folder = OpenEntryItself(configDirectory, isFolder: true, ReadControl);
+            // A link goes in MakeSafe, and what the new folder holds is nobody else's.
+            return folder is not null && !OwnerIsTrusted(OwnerOf(folder));
+        }
+        catch (Exception ex) when (ex is Win32Exception or IOException or UnauthorizedAccessException)
+        {
+            // Not to be looked at: not taken for ours.
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// Puts aside what a folder made by someone else held (<see cref="WasMadeBySomeoneElse"/>),
+    /// after its rule is set: the settings an install starts from are not another user's. Each
+    /// entry is renamed where it is, in the folder that can no longer be swapped for a link, so
+    /// nothing is moved to a place a user could choose; nothing is deleted, an administrator can
+    /// look at it and put it back. The anchor stays, and so does <paramref name="keep"/> (the log).
+    /// </summary>
+    /// <returns>The names that were put aside.</returns>
+    internal static IReadOnlyList<string> SetAside(string configDirectory, string? keep = null)
+    {
+        var suffix = $".found-before-install-{Guid.NewGuid():N}"[..31];
+        var aside = new List<string>();
+        foreach (var entry in new DirectoryInfo(configDirectory).EnumerateFileSystemInfos())
+        {
+            if (IsAnchorName(entry.Name) || entry.Name.Contains(".found-before-install-", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(entry.FullName, keep, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var target = entry.FullName + suffix;
+            if (entry is DirectoryInfo)
+            {
+                Directory.Move(entry.FullName, target);
+            }
+            else
+            {
+                File.Move(entry.FullName, target);
+            }
+
+            aside.Add(entry.Name);
+        }
+
+        return aside;
+    }
+
     private static bool OwnerIsTrusted(FileSystemSecurity security) =>
         OwnerIsTrusted(security.GetOwner(typeof(SecurityIdentifier)) as SecurityIdentifier);
 
@@ -1023,12 +1259,33 @@ internal static class SettingsAccess
         return TryGroupSid(name) ?? throw new InvalidOperationException($"The local group \"{name}\" was not found after creating it.");
     }
 
+    /// <summary>
+    /// The PC's name, for looking up its own accounts and groups. Not Environment.MachineName:
+    /// Windows answers that from the variable _CLUSTER_NETWORK_NAME_ when the process has one,
+    /// and a user sets the variables of their own processes. A kiosk user did, the lookup of
+    /// the kiosk group then found nothing, and they got the full app.
+    /// </summary>
+    internal static string MachineName => PhysicalMachineName.Value;
+
+    private static readonly Lazy<string> PhysicalMachineName = new(() =>
+    {
+        var size = 0u;
+        GetComputerNameEx(ComputerNamePhysicalNetBios, null, ref size);
+        var buffer = new char[size];
+        if (!GetComputerNameEx(ComputerNamePhysicalNetBios, buffer, ref size))
+        {
+            throw new Win32Exception(Marshal.GetLastWin32Error());
+        }
+
+        return new string(buffer, 0, (int)size);
+    });
+
     /// <summary>The SID of a local group of this PC; null when there is no such group.</summary>
     internal static SecurityIdentifier? TryGroupSid(string name)
     {
         try
         {
-            return (SecurityIdentifier)new NTAccount(Environment.MachineName, name).Translate(typeof(SecurityIdentifier));
+            return (SecurityIdentifier)new NTAccount(MachineName, name).Translate(typeof(SecurityIdentifier));
         }
         catch (IdentityNotMappedException)
         {
@@ -1043,7 +1300,7 @@ internal static class SettingsAccess
     internal static SecurityIdentifier Sid(string user) =>
         user.StartsWith("S-1-", StringComparison.Ordinal)
             ? new SecurityIdentifier(user)
-            : (SecurityIdentifier)new NTAccount(user.Contains('\\') ? user : $"{Environment.MachineName}\\{user}").Translate(typeof(SecurityIdentifier));
+            : (SecurityIdentifier)new NTAccount(user.Contains('\\') ? user : $"{MachineName}\\{user}").Translate(typeof(SecurityIdentifier));
 
     private static void ChangeMember(string group, SecurityIdentifier sid, bool add)
     {
@@ -1138,6 +1395,12 @@ internal static class SettingsAccess
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool GetFileInformationByHandle(Microsoft.Win32.SafeHandles.SafeFileHandle file, out ByHandleFileInformation information);
 
+    // The name of this PC itself; the variable that renames a process's computer does not reach it.
+    private const int ComputerNamePhysicalNetBios = 4;
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern bool GetComputerNameEx(int nameType, char[]? buffer, ref uint size);
+
     // The descriptor carries the "protected" flag set by SetAccessRuleProtection; nothing is
     // propagated to what is in the folder here, ResetContents does that afterwards.
     [DllImport("advapi32.dll", SetLastError = true)]
@@ -1145,6 +1408,51 @@ internal static class SettingsAccess
 
     [DllImport("advapi32.dll", SetLastError = true)]
     private static extern bool GetKernelObjectSecurity(Microsoft.Win32.SafeHandles.SafeFileHandle handle, uint information, byte[]? descriptor, uint length, out uint needed);
+
+    private const uint Synchronize = 0x00100000;
+    private const uint ObjCaseInsensitive = 0x40;
+    private const uint FileCreate = 2;
+    private const uint FileNonDirectoryFile = 0x40;
+    private const uint FileSynchronousIoNonAlert = 0x20;
+    private const uint FileOpenReparsePointOption = 0x00200000;
+    private const uint FileOpenForBackupIntent = 0x00004000;
+    private const int ErrorAccessDenied = 5;
+
+    // Creates a file under a name relative to an open folder: CreateFile only takes a path,
+    // and a path is looked up again from the top, through whatever the folder has become.
+    [DllImport("ntdll.dll")]
+    private static extern int NtCreateFile(
+        out Microsoft.Win32.SafeHandles.SafeFileHandle handle, uint access, ref ObjectAttributes attributes, out IoStatusBlock status,
+        IntPtr allocationSize, uint fileAttributes, uint share, uint disposition, uint options, IntPtr eaBuffer, uint eaLength);
+
+    [DllImport("ntdll.dll")]
+    private static extern int RtlNtStatusToDosError(int status);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct UnicodeString
+    {
+        public ushort Length;
+        public ushort MaximumLength;
+        public IntPtr Buffer;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct ObjectAttributes
+    {
+        public int Length;
+        public IntPtr RootDirectory;
+        public IntPtr ObjectName;
+        public uint Attributes;
+        public IntPtr SecurityDescriptor;
+        public IntPtr SecurityQualityOfService;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct IoStatusBlock
+    {
+        public IntPtr Status;
+        public IntPtr Information;
+    }
 
     [StructLayout(LayoutKind.Sequential, Pack = 4)]
     private struct ByHandleFileInformation

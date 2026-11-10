@@ -78,21 +78,28 @@ internal static class ServiceApproval
     }
 
     /// <summary>
-    /// "Name:" and below it everything it runs, whole and with its own line breaks: a script
-    /// cut short, or put on one line, could hide the part after a comment sign.
+    /// "Name [type]:" and below it everything it runs, whole and with its own line breaks: a
+    /// script cut short, or put on one line, could hide the part after a comment sign. The name
+    /// is on one line: the settings can be written by others, and a name with line breaks in it
+    /// would read as entries of its own above the one that is approved.
     /// </summary>
     internal static IReadOnlyList<string> PendingDescriptions(CompanionSettings settings, ServicePolicy policy) =>
         settings.CustomCommands.Where(command => ServicePolicy.NeedsApproval(command) && !policy.Allows(command))
-            .Select(command => Describe(command.Name, string.IsNullOrEmpty(command.Arguments) ? command.Command : $"{command.Command} {command.Arguments}"))
+            .Select(command => Describe(command.Name, command.Type, string.IsNullOrEmpty(command.Arguments) ? command.Command : $"{command.Command} {command.Arguments}"))
             .Concat(settings.CustomSensors.Where(sensor => ServicePolicy.NeedsApproval(sensor) && !policy.Allows(sensor))
-                .Select(sensor => Describe(sensor.Name, sensor.Parameter)))
+                .Select(sensor => Describe(sensor.Name, sensor.Type, sensor.Parameter)))
             .ToList();
 
-    private static string Describe(string name, string? runs)
+    private static string Describe(string name, string type, string? runs)
     {
         var lines = (runs ?? string.Empty).Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
-        return $"{name}:{Environment.NewLine}{string.Join(Environment.NewLine, lines.Select(line => "    " + line))}";
+        return $"{OneLine(name)} [{OneLine(type)}]:{Environment.NewLine}{string.Join(Environment.NewLine, lines.Select(line => "    " + line))}";
     }
+
+    /// <summary>The text with every line break and control character in it turned into a space.</summary>
+    internal static string OneLine(string? text) =>
+        new string((text ?? string.Empty).Select(character =>
+            char.IsControl(character) || character is '\u2028' or '\u2029' ? ' ' : character).ToArray()).Trim();
 
     /// <summary>The question above, and what is to be approved in a box that scrolls, as long as it is.</summary>
     private static bool Ask(IWin32Window owner, string question, string details)
@@ -116,8 +123,9 @@ internal static class ServiceApproval
         {
             Multiline = true,
             ReadOnly = true,
-            WordWrap = false,
-            ScrollBars = ScrollBars.Both,
+            // Wrapped: what is approved is what is in view, not what a long line keeps to the right.
+            WordWrap = true,
+            ScrollBars = ScrollBars.Vertical,
             Dock = DockStyle.Fill,
             Font = new Font("Consolas", 9.5F),
             BackColor = Color.FromArgb(248, 250, 252),
@@ -143,7 +151,7 @@ internal static class ServiceApproval
 
     /// <summary>The names of what the settings ask the service to run and the policy does not approve.</summary>
     internal static IReadOnlyList<string> PendingNames(CompanionSettings settings, ServicePolicy policy) =>
-        settings.CustomCommands.Where(command => ServicePolicy.NeedsApproval(command) && !policy.Allows(command)).Select(command => command.Name)
-            .Concat(settings.CustomSensors.Where(sensor => ServicePolicy.NeedsApproval(sensor) && !policy.Allows(sensor)).Select(sensor => sensor.Name))
+        settings.CustomCommands.Where(command => ServicePolicy.NeedsApproval(command) && !policy.Allows(command)).Select(command => OneLine(command.Name))
+            .Concat(settings.CustomSensors.Where(sensor => ServicePolicy.NeedsApproval(sensor) && !policy.Allows(sensor)).Select(sensor => OneLine(sensor.Name)))
             .ToList();
 }

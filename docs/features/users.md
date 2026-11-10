@@ -18,6 +18,10 @@ The settings are shared by every Windows user of the PC, and they hold the Home 
 
 Limiting needs an administrator (UAC). It uses a local group, **HASS.Agent Users**, that an administrator can also manage with Windows' own tools; the ticked users are also given access by name, so they can go on without logging on again. Administrators and the service keep their access. Someone left out gets a note once, and HASS.Agent does not start for them. Either way the users may change what is in the folder but not delete or replace the folder itself, and before an administrator sets its rule, the app removes any link someone put there and takes over what another user owns.
 
+The folder also holds an empty file named `folder-….anchor`, which only administrators can touch. Leave it there: Windows turns only an empty folder into a link to another folder, and the file is what keeps the settings folder from being emptied and made one by a user of the PC. An update makes a new one and removes the old.
+
+A first install does not take its settings from a settings folder that was already there and that a user who is not an administrator had made. What the folder held stays in it, renamed with `.found-before-install-…` at the end of each name, so an administrator can look at it and put it back.
+
 From the command line (as administrator):
 
 ```powershell

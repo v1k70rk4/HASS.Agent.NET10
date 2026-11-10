@@ -329,6 +329,197 @@ public class SettingsAccessTests : IDisposable
         Assert.All(SettingsAccess.NonAdministratorUsers(), user => Assert.Contains(user, users, StringComparer.OrdinalIgnoreCase));
     }
 
+    private string[] Anchors() =>
+        Directory.GetFiles(_folder).Where(file => SettingsAccess.IsAnchorName(Path.GetFileName(file))).ToArray();
+
+    [Fact]
+    public void The_folder_gets_an_anchor_that_is_not_its_users_to_touch()
+    {
+        File.WriteAllText(Path.Combine(_folder, "settings.json"), "{}");
+
+        SettingsAccess.SetFolderRule(_folder, [Me]);
+
+        var security = new FileInfo(Assert.Single(Anchors())).GetAccessControl();
+        var rules = security.GetAccessRules(includeExplicit: true, includeInherited: true, typeof(SecurityIdentifier))
+            .Cast<FileSystemAccessRule>().ToList();
+        // SYSTEM, the administrators and its owner, by a rule of its own: the user the folder
+        // is for (the test's own, by name) is not among them, and nothing comes from the folder.
+        Assert.True(security.AreAccessRulesProtected);
+        Assert.All(rules, rule => Assert.False(rule.IsInherited));
+        Assert.Equal(
+            new[] { WellKnownSidType.LocalSystemSid, WellKnownSidType.BuiltinAdministratorsSid, WellKnownSidType.WinCreatorOwnerRightsSid }
+                .Select(sid => new SecurityIdentifier(sid, null).Value).Order(),
+            rules.Select(rule => ((SecurityIdentifier)rule.IdentityReference).Value).Distinct().Order());
+    }
+
+    [Fact]
+    public void With_its_anchor_the_folder_cannot_be_turned_into_a_link()
+    {
+        // What a user of the folder could do before: delete what is in it, then make the empty
+        // folder a junction, and have the service write wherever it points.
+        var elsewhere = Directory.CreateTempSubdirectory("hass-agent-elsewhere-").FullName;
+        try
+        {
+            File.WriteAllText(Path.Combine(_folder, "settings.json"), "{}");
+            SettingsAccess.SetFolderRule(_folder, [Me]);
+            File.Delete(Path.Combine(_folder, "settings.json"));
+
+            Assert.Equal(ErrorDirectoryNotEmpty, SetJunction(_folder, elsewhere));
+            Assert.False(SettingsAccess.IsLink(_folder));
+
+            // And the anchor is what holds it: without it, the same call makes the link.
+            File.Delete(Assert.Single(Anchors()));
+            Assert.Equal(0, SetJunction(_folder, elsewhere));
+            Assert.True(SettingsAccess.IsLink(_folder));
+        }
+        finally
+        {
+            // The link only; setting the rule again (Dispose) then starts from a folder.
+            if (SettingsAccess.IsLink(_folder))
+            {
+                Directory.Delete(_folder);
+            }
+
+            Directory.Delete(elsewhere, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Setting_the_rule_again_leaves_one_anchor_a_new_one()
+    {
+        SettingsAccess.SetFolderRule(_folder, [Me]);
+        var first = Assert.Single(Anchors());
+
+        SettingsAccess.OpenToEveryone(_folder);
+
+        Assert.NotEqual(first, Assert.Single(Anchors()));
+    }
+
+    [Fact]
+    public void A_file_put_there_under_an_anchor_s_name_is_not_the_anchor()
+    {
+        // A user's own file under such a name would be theirs to delete again.
+        var planted = Path.Combine(_folder, "folder-000000000000.anchor");
+        File.WriteAllText(planted, "x");
+
+        SettingsAccess.SetFolderRule(_folder, [Me]);
+
+        Assert.False(File.Exists(planted));
+        Assert.Single(Anchors());
+    }
+
+    [Fact]
+    public void Another_user_s_folder_is_told_from_one_of_our_own()
+    {
+        // The test's own folder is its own; whose a folder is that cannot be looked at is not known.
+        Assert.False(SettingsAccess.WasMadeBySomeoneElse(_folder));
+        Assert.False(SettingsAccess.WasMadeBySomeoneElse(Path.Combine(_folder, "not-there")));
+
+        var file = Path.Combine(_folder, "settings.json");
+        File.WriteAllText(file, "{}");
+        Assert.True(SettingsAccess.IsOwnOrAdministrators(_folder, file));
+        Assert.False(SettingsAccess.IsOwnOrAdministrators(_folder, Path.Combine(_folder, "missing.json")));
+    }
+
+    [Fact]
+    public void A_file_with_another_name_elsewhere_is_not_taken_for_settings_to_start_from()
+    {
+        var outside = Directory.CreateTempSubdirectory("hass-agent-outside-").FullName;
+        try
+        {
+            var target = Path.Combine(outside, "target.txt");
+            File.WriteAllText(target, "x");
+            var link = Path.Combine(_folder, "settings.json");
+            Assert.True(CreateHardLink(link, target, IntPtr.Zero), $"CreateHardLink failed: {Marshal.GetLastWin32Error()}");
+
+            Assert.False(SettingsAccess.IsOwnOrAdministrators(_folder, link));
+            Assert.Null(AppPaths.LegacySource(_folder, link, Path.Combine(_folder, "no-user-file.json")));
+            File.Delete(link);
+        }
+        finally
+        {
+            Directory.Delete(outside, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Settings_of_an_earlier_version_are_taken_from_the_pc_first_then_from_the_user()
+    {
+        var pc = Directory.CreateDirectory(Path.Combine(_folder, "pc")).FullName;
+        var pcFile = Path.Combine(pc, "settings.json");
+        var userFile = Path.Combine(_folder, "user-settings.json");
+
+        Assert.Null(AppPaths.LegacySource(pc, pcFile, userFile));
+        File.WriteAllText(userFile, "{}");
+        Assert.Equal(userFile, AppPaths.LegacySource(pc, pcFile, userFile));
+        File.WriteAllText(pcFile, "{}");
+        Assert.Equal(pcFile, AppPaths.LegacySource(pc, pcFile, userFile));
+    }
+
+    [Fact]
+    public void What_another_user_left_in_the_folder_is_put_aside_not_used_and_not_deleted()
+    {
+        File.WriteAllText(Path.Combine(_folder, "settings.json"), """{"mqttHost":"their.broker"}""");
+        File.WriteAllText(Path.Combine(_folder, "device-id"), "their-serial");
+        Directory.CreateDirectory(Path.Combine(_folder, "sendspin"));
+        File.WriteAllText(Path.Combine(_folder, "sendspin", "pairing.bin"), "their-pairing");
+        var log = Path.Combine(_folder, "hass-agent-net10.log");
+        File.WriteAllText(log, "line");
+        SettingsAccess.SetFolderRule(_folder, [Me]);
+
+        var aside = SettingsAccess.SetAside(_folder, keep: log);
+
+        Assert.Equal(["device-id", "sendspin", "settings.json"], aside.Order());
+        Assert.False(File.Exists(Path.Combine(_folder, "settings.json")));
+        Assert.False(File.Exists(Path.Combine(_folder, "device-id")));
+        Assert.False(Directory.Exists(Path.Combine(_folder, "sendspin")));
+        Assert.True(File.Exists(log));
+        Assert.Single(Anchors());
+        // Still there, under names the app does not read.
+        var kept = Directory.GetFiles(_folder, "settings.json.found-before-install-*");
+        Assert.Equal("""{"mqttHost":"their.broker"}""", File.ReadAllText(Assert.Single(kept)));
+        Assert.Equal("their-pairing", File.ReadAllText(Path.Combine(Assert.Single(Directory.GetDirectories(_folder, "sendspin.found-before-install-*")), "pairing.bin")));
+        // A second time finds nothing left to put aside.
+        Assert.Empty(SettingsAccess.SetAside(_folder, keep: log));
+    }
+
+    private const int ErrorDirectoryNotEmpty = 145;
+
+    // Makes an existing folder a junction, the way a user of the folder would: with no more
+    // than the right to create files in it. 0, or the Windows error.
+    private static int SetJunction(string folder, string target)
+    {
+        using var handle = CreateFile(folder, FileWriteData, 7, IntPtr.Zero, OpenExisting, FileFlagBackupSemantics | FileFlagOpenReparsePoint, IntPtr.Zero);
+        if (handle.IsInvalid)
+        {
+            return Marshal.GetLastWin32Error();
+        }
+
+        var name = System.Text.Encoding.Unicode.GetBytes(@"\??\" + target);
+        var buffer = new byte[8 + 8 + name.Length + 2 + 2];
+        BitConverter.GetBytes(MountPointTag).CopyTo(buffer, 0);
+        BitConverter.GetBytes((ushort)(8 + name.Length + 4)).CopyTo(buffer, 4);
+        BitConverter.GetBytes((ushort)name.Length).CopyTo(buffer, 10);
+        BitConverter.GetBytes((ushort)(name.Length + 2)).CopyTo(buffer, 12);
+        name.CopyTo(buffer, 16);
+        return DeviceIoControl(handle, SetReparsePoint, buffer, buffer.Length, IntPtr.Zero, 0, out _, IntPtr.Zero) ? 0 : Marshal.GetLastWin32Error();
+    }
+
+    private const uint FileWriteData = 0x0002;
+    private const uint OpenExisting = 3;
+    private const uint FileFlagBackupSemantics = 0x02000000;
+    private const uint FileFlagOpenReparsePoint = 0x00200000;
+    private const uint MountPointTag = 0xA0000003;
+    private const uint SetReparsePoint = 0x000900A4;
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern Microsoft.Win32.SafeHandles.SafeFileHandle CreateFile(
+        string name, uint access, uint share, IntPtr security, uint disposition, uint flags, IntPtr template);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool DeviceIoControl(
+        Microsoft.Win32.SafeHandles.SafeFileHandle device, uint code, byte[] input, int inputSize, IntPtr output, int outputSize, out int returned, IntPtr overlapped);
+
     [Fact]
     public void Local_users_include_the_one_running_this()
     {

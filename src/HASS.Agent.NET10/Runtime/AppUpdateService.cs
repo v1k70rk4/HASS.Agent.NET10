@@ -189,7 +189,8 @@ internal static class AppUpdateService
         // Every way an update is installed (the About page, the tray app or the service on a
         // request from Home Assistant) goes through here, so nothing starts an installer that
         // is not signed by the publisher.
-        if (!InstallerSignature.IsTrusted(targetPath, out var reason))
+        if (!InstallerSignature.IsTrusted(targetPath, out var reason)
+            || !InstallerIdentity.IsTheRelease(targetPath, update.LatestVersion, out reason))
         {
             TryDelete(targetPath);
             throw new InvalidOperationException($"The downloaded installer was not run: {reason}.");
@@ -262,6 +263,21 @@ internal static class AppUpdateService
 
         return ComparePrerelease(latestPre, currentPre) > 0;
     }
+
+    /// <summary>The same release: neither is newer, whatever "v" or build metadata one of them carries.</summary>
+    internal static bool IsSameVersion(string left, string right) =>
+        !IsNewerVersion(left, right) && !IsNewerVersion(right, left);
+
+    /// <summary>
+    /// How soon a check asked for from outside goes to GitHub again. "Check for updates" in
+    /// Home Assistant is a message, and whoever may publish to the PC can send it in a loop;
+    /// GitHub answers a home sixty times an hour without a login, and past that no PC there
+    /// learns of an update. Asked again sooner, the last answer is sent.
+    /// </summary>
+    internal static readonly TimeSpan RequestedCheckInterval = TimeSpan.FromMinutes(5);
+
+    internal static bool IsRequestedCheckDue(DateTimeOffset lastCheck, DateTimeOffset now) =>
+        now - lastCheck >= RequestedCheckInterval;
 
     private static (Version? Core, string Prerelease) SplitVersion(string value)
     {

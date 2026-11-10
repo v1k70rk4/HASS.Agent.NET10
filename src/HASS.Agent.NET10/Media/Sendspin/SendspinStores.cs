@@ -58,7 +58,16 @@ internal static class SendspinStorage
         {
             try
             {
-                System.IO.Directory.CreateDirectory(Directory);
+                // Outside the wait below: a folder that is a link will not stop being one.
+                OwnFolder(Directory);
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return EmptyLock.Instance;
+            }
+
+            try
+            {
                 return new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None, 1, FileOptions.None);
             }
             catch (UnauthorizedAccessException)
@@ -69,6 +78,18 @@ internal static class SendspinStorage
             {
                 Thread.Sleep(25);
             }
+        }
+    }
+
+    // The player's folder, made when it is not there. The folder is shared with the other users
+    // of the PC: one of them can put a link in its place, and whatever is then made in it (a lock
+    // file as much as a key) would be made where the link points, with the rights of whoever runs this.
+    private static void OwnFolder(string path)
+    {
+        var folder = System.IO.Directory.CreateDirectory(path);
+        if (folder.Attributes.HasFlag(FileAttributes.ReparsePoint))
+        {
+            throw new IOException($"{folder.FullName} is a link, not a folder of the player's own.");
         }
     }
 
@@ -89,11 +110,7 @@ internal static class SendspinStorage
     /// </summary>
     internal static void WriteAtomic(string path, byte[] content)
     {
-        var folder = System.IO.Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        if (folder.Attributes.HasFlag(FileAttributes.ReparsePoint))
-        {
-            throw new IOException($"{folder.FullName} is a link, not a folder of the player's own.");
-        }
+        OwnFolder(Path.GetDirectoryName(path)!);
 
         var stamp = $"{Environment.ProcessId}.{Guid.NewGuid():N}";
         var temp = $"{path}.{stamp}.tmp";

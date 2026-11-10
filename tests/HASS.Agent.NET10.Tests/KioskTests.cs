@@ -158,3 +158,36 @@ public class KioskTests : IDisposable
         Assert.Contains(selects, select => select.Contains("@Name='Application Error'") && select.Contains("Data='HASS.Agent.NET10.exe'"));
     }
 }
+
+/// <summary>Changes a variable of the whole test process, so nothing else runs meanwhile.</summary>
+[CollectionDefinition(nameof(ComputerNameCollection), DisableParallelization = true)]
+public sealed class ComputerNameCollection;
+
+[Collection(nameof(ComputerNameCollection))]
+public class ComputerNameTests
+{
+    [Fact]
+    public void A_variable_of_the_users_own_does_not_hide_the_pc_s_groups()
+    {
+        // A name every PC has among its own, as the kiosk group is: the built-in administrator
+        // account, whatever it is called here. It is looked up the way the group is.
+        var machine = SettingsAccess.AccountDomainSid();
+        Assert.NotNull(machine);
+        var builtIn = new SecurityIdentifier(WellKnownSidType.AccountAdministratorSid, machine);
+        var name = ((NTAccount)builtIn.Translate(typeof(NTAccount))).Value.Split('\\')[^1];
+        Assert.Equal(builtIn, SettingsAccess.TryGroupSid(name));
+
+        // What a kiosk user set for their own app: Windows then names the PC by it, and the
+        // lookup of the kiosk group, done under that name, found nothing.
+        Environment.SetEnvironmentVariable("_CLUSTER_NETWORK_NAME_", "NOSUCHPC");
+        try
+        {
+            Assert.NotEqual("NOSUCHPC", SettingsAccess.MachineName, StringComparer.OrdinalIgnoreCase);
+            Assert.Equal(builtIn, SettingsAccess.TryGroupSid(name));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("_CLUSTER_NETWORK_NAME_", null);
+        }
+    }
+}

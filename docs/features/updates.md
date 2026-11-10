@@ -23,6 +23,10 @@ With the Windows service installed, the update is downloaded and applied **fully
 
 A downloaded installer is started only when it carries the publisher's Authenticode signature (*Open Source Developer Viktor Révész*, issued by *Certum Code Signing 2021 CA*, with a valid timestamp and a certificate that has not been revoked). Anything else, a damaged download or a release file replaced by someone else, is deleted and the update stops, with the reason in the log and in Home Assistant. The publisher is checked by name rather than by certificate, so a renewed certificate keeps updates working. [Security and privacy](../getting-started/security.md) has the certificate.
 
+The file must also be the installer of the release it was downloaded for: it says so in its version information, which the signature covers. An older installer put under a newer release, or another file the publisher signed, is refused the same way.
+
+**Check for updates** in Home Assistant asks GitHub at most once in five minutes; pressed again sooner, it sends the last answer.
+
 ## The About page
 
 You can also check for updates from the **About** page, which shows the installed version, the latest release and a one-click download. The update prompt shows the release notes, with a link to the full notes on GitHub, and asks **Download / Not now**, then **Install now / Later**.
