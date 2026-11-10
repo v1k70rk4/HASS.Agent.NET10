@@ -289,7 +289,9 @@ internal sealed class MediaSessionService : IDisposable
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                _log.Warning($"Unable to publish media state: {(string.IsNullOrWhiteSpace(ex.Message) ? ex.GetType().Name : ex.Message)}");
+                // With the kind and the place: this is a failure that comes once in a long while,
+                // and its message alone ("Object reference not set...") does not tell which call it was.
+                _log.Warning($"Unable to publish media state: {ex.GetType().Name} in {ExceptionPlace.Of(ex)}: {ex.Message}");
             }
 
             await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
@@ -421,9 +423,11 @@ internal sealed class MediaSessionService : IDisposable
             };
         }
 
+        // A session that is just closing (its app exits, a browser tab goes) is still in the
+        // list for a moment and answers these with nothing.
         var mediaProperties = await session.TryGetMediaPropertiesAsync();
         var playbackInfo = session.GetPlaybackInfo();
-        var timeline = session.GetTimelineProperties();
+        var (duration, position) = TimelineOf(session.GetTimelineProperties());
 
         return new MediaStateMessage
         {
@@ -432,8 +436,8 @@ internal sealed class MediaSessionService : IDisposable
             Artist = mediaProperties?.Artist,
             AlbumArtist = mediaProperties?.AlbumArtist,
             AlbumTitle = mediaProperties?.AlbumTitle,
-            Duration = Math.Max(0, (timeline.EndTime - timeline.StartTime).TotalSeconds),
-            CurrentPosition = Math.Max(0, timeline.Position.TotalSeconds),
+            Duration = duration,
+            CurrentPosition = position,
             Volume = _audioEndpoint.GetVolume(),
             Muted = _audioEndpoint.GetMuted()
         };
@@ -447,8 +451,21 @@ internal sealed class MediaSessionService : IDisposable
             return null;
         }
 
-        return sessions.FirstOrDefault(session =>
-            session.GetPlaybackInfo().PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing) ?? sessions[0];
+        return sessions.FirstOrDefault(session => IsPlaying(session.GetPlaybackInfo())) ?? sessions[0];
+    }
+
+    /// <summary>Whether a session plays; one that is closing has no playback info and does not.</summary>
+    internal static bool IsPlaying(GlobalSystemMediaTransportControlsSessionPlaybackInfo? playbackInfo)
+    {
+        return playbackInfo?.PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
+    }
+
+    /// <summary>The length and the position in seconds; zero for a session that has no timeline to give.</summary>
+    internal static (double Duration, double Position) TimelineOf(GlobalSystemMediaTransportControlsSessionTimelineProperties? timeline)
+    {
+        return timeline is null
+            ? (0, 0)
+            : (Math.Max(0, (timeline.EndTime - timeline.StartTime).TotalSeconds), Math.Max(0, timeline.Position.TotalSeconds));
     }
 
     private MediaPlayer CreateLocalPlayer()
@@ -598,7 +615,7 @@ internal sealed class MediaSessionService : IDisposable
             if (_settings.AnnouncementPausesMedia)
             {
                 var session = GetCurrentSession();
-                if (session?.GetPlaybackInfo().PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing)
+                if (session is not null && IsPlaying(session.GetPlaybackInfo()))
                 {
                     try
                     {
