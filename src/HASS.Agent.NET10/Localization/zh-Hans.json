@@ -622,6 +622,7 @@
     "Cmd.shutdown": "关机",
     "Cmd.restart": "重启",
     "Cmd.restart_cancel": "撤销关机和重启",
+    "Cmd.screenshot": "截取屏幕",
     "Cmd.shutdown_comment": "当前关机操作通过HomeAssistant远程执行",
     "Cmd.restart_comment": "当前重启操作通过HomeAssistant远程执行",
     "Sensor.cpu_usage": "CPU使用率",

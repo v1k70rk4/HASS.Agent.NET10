@@ -100,6 +100,7 @@ During upgrades the installer stops the running tray app, stops the system servi
 | <a id="custom-sensors"></a>**Custom sensors** | Your own: a process, a service, a drive, an attribute of a built-in sensor, the output of a command or script, a LibreHardwareMonitor value. | [Custom Sensors](docs/sensors/custom.md) |
 | <a id="system-commands"></a>**System commands** | Lock, sleep, monitor off, volume, shutdown, restart as buttons and a service call; Hibernate and Log off (off by default). | [System Commands](docs/commands/index.md) |
 | <a id="custom-commands"></a>**Custom commands** | Your own buttons: programs, PowerShell scripts, key presses, links, popup windows. | [Custom Commands](docs/commands/custom.md) |
+| **Screenshot** | A picture of the screen when Home Assistant asks for one, as an image entity. Off until you turn it on at the PC. | [Screenshot](docs/commands/screenshot.md) |
 | **Dashboard popup** | A Home Assistant dashboard, or any web page, in a small window above the tray. | [Dashboard Popup](docs/features/dashboard-popup.md) |
 | **Display and audio** | The screen as a light in Home Assistant, the default audio device as a select, the volume of a single app. | [Display and Audio](docs/features/display-and-audio.md) |
 | **Hotkeys** | A named key combination becomes an event in Home Assistant, to start automations from the keyboard. | [Hotkeys](docs/features/hotkeys.md) |

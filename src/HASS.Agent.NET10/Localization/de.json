@@ -645,6 +645,7 @@
     "Cmd.shutdown": "Herunterfahren",
     "Cmd.restart": "Neustart",
     "Cmd.restart_cancel": "Herunterfahren/Neustart abbrechen",
+    "Cmd.screenshot": "Screenshot aufnehmen",
     "Cmd.shutdown_comment": "Von Home Assistant heruntergefahren",
     "Cmd.restart_comment": "Von Home Assistant neu gestartet",
     "Sensor.cpu_usage": "CPU-Auslastung",

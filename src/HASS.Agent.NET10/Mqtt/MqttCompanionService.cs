@@ -39,9 +39,10 @@ internal sealed class MqttCompanionService : IDisposable
     private DateTimeOffset _lastUpdateCheck = DateTimeOffset.MinValue;
     private AppUpdateState? _lastUpdateState;
 
-    // A thumbnail is the one payload that can outgrow a broker's packet limit; nothing else
-    // the agent publishes comes anywhere near. The broker's own limit (MQTT 5 CONNACK) wins
-    // when it is lower, minus room for the topic and the packet header.
+    // A picture (a media thumbnail, a screenshot) is the one payload that can outgrow a
+    // broker's packet limit; nothing else the agent publishes comes anywhere near. The broker's
+    // own limit (MQTT 5 CONNACK) wins when it is lower, minus room for the topic and the
+    // packet header.
     private const int MaxThumbnailBytes = 512 * 1024;
 
     // What the integration tells the agent about itself, as a retained message on
@@ -2435,12 +2436,99 @@ internal sealed class MqttCompanionService : IDisposable
                 return;
             }
 
+            // Not a command of the system: the tray app answers it with a picture.
+            if (commandName == SystemCommandCatalog.Screenshot)
+            {
+                await SendScreenshotAsync(transport);
+                return;
+            }
+
             await _systemCommandService.HandleCommandAsync(command);
         }
         catch (Exception ex)
         {
             // The WebSocket transport invokes this without an outer handler.
             _log.Warning($"Failed to run {scope} command from {transport}: {ex.Message}");
+        }
+    }
+
+    // One screenshot at a time, and no more often than this: a button held down or an
+    // automation in a loop does not turn the PC into a camera.
+    private static readonly TimeSpan ScreenshotInterval = TimeSpan.FromSeconds(1);
+    private int _screenshotRunning;
+    private long _lastScreenshotTicks;
+
+    /// <summary>
+    /// Takes a screenshot and sends it to Home Assistant on the transport in use. Only ever
+    /// called for the Screenshot command, which is off until it is ticked on this PC.
+    /// </summary>
+    private async Task SendScreenshotAsync(string transport)
+    {
+        if (_role != CompanionRuntimeRole.App)
+        {
+            _log.Warning($"Screenshot asked for over {transport}, but only the tray app has a screen to take it of.");
+            return;
+        }
+
+        if (Interlocked.CompareExchange(ref _screenshotRunning, 1, 0) != 0)
+        {
+            return;
+        }
+
+        try
+        {
+            var now = Environment.TickCount64;
+            var last = Interlocked.Read(ref _lastScreenshotTicks);
+            if (last != 0 && now - last < ScreenshotInterval.TotalMilliseconds)
+            {
+                return;
+            }
+
+            Interlocked.Exchange(ref _lastScreenshotTicks, now);
+
+            var overWebSocket = _isOnWebSocket && _haWs is not null;
+            var limit = PayloadLimit(overWebSocket ? null : _brokerMaximumPacketSize);
+            Screenshot? shot;
+            try
+            {
+                // Off the message loop: a large desktop takes a moment to scale and pack.
+                shot = await Task.Run(() => ScreenCapture.Take(
+                    _settings.ScreenshotMonitor,
+                    _settings.ScreenshotMaxWidth,
+                    _settings.ScreenshotQuality,
+                    limit));
+            }
+            catch (Exception ex)
+            {
+                // The lock screen and the secure desktop of a UAC prompt cannot be read.
+                _log.Warning($"Screenshot not taken: {ex.Message}");
+                return;
+            }
+
+            if (shot is null)
+            {
+                _log.Warning($"Screenshot not sent: it does not fit in {limit / 1024} KB even at its smallest.");
+                return;
+            }
+
+            if (overWebSocket)
+            {
+                if (!await _haWs!.PublishScreenshotAsync(shot.Jpeg, _cts?.Token ?? CancellationToken.None))
+                {
+                    _log.Warning("Screenshot not sent: over the HA API it needs the integration 10.14.0 or newer.");
+                    return;
+                }
+            }
+            else
+            {
+                await PublishRawAsync($"hass.agent/screenshot/{TopicId}/image", shot.Jpeg, retain: false);
+            }
+
+            _log.Info($"Screenshot sent to Home Assistant over {transport}: {shot.Width}x{shot.Height}, {shot.Jpeg.Length / 1024} KB, quality {shot.Quality}.");
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _screenshotRunning, 0);
         }
     }
 
@@ -2659,6 +2747,22 @@ internal sealed class MqttCompanionService : IDisposable
     }
 
     /// <summary>
+    /// How large a picture may be to be sent: the app's own limit, or the broker's when that
+    /// is lower (MQTT 5 CONNACK), less the room for the topic and the packet header.
+    /// </summary>
+    internal static long PayloadLimit(uint? brokerMaximumPacketSize)
+    {
+        var limit = (long)MaxThumbnailBytes;
+        if (brokerMaximumPacketSize is { } brokerLimit)
+        {
+            // A limit smaller than the header room leaves no room at all.
+            limit = Math.Min(limit, Math.Max(0L, (long)brokerLimit - ThumbnailPacketOverhead));
+        }
+
+        return limit;
+    }
+
+    /// <summary>
     /// A thumbnail over the limit is dropped here rather than sent: the broker would close
     /// the connection for it, the reconnect would send the same picture again, and every
     /// entity would flap with the Last Will for as long as the track plays.
@@ -2670,13 +2774,7 @@ internal sealed class MqttCompanionService : IDisposable
             return true;
         }
 
-        var limit = (long)MaxThumbnailBytes;
-        if (brokerMaximumPacketSize is { } brokerLimit)
-        {
-            // A limit smaller than the header room leaves no room at all.
-            limit = Math.Min(limit, Math.Max(0L, (long)brokerLimit - ThumbnailPacketOverhead));
-        }
-
+        var limit = PayloadLimit(brokerMaximumPacketSize);
         if (thumbnail.Length <= limit)
         {
             return true;

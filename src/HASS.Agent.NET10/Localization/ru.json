@@ -622,6 +622,7 @@
     "Cmd.shutdown": "Завершить работу",
     "Cmd.restart": "Перезагрузить",
     "Cmd.restart_cancel": "Отменить завершение работы / перезагрузку",
+    "Cmd.screenshot": "Сделать снимок экрана",
     "Cmd.shutdown_comment": "Выключение из Home Assistant",
     "Cmd.restart_comment": "Перезагрузка из Home Assistant",
     "Sensor.cpu_usage": "Загрузка процессора",

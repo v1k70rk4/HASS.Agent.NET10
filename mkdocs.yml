@@ -120,6 +120,7 @@ nav:
   - Commands:
       - commands/index.md
       - Custom commands: commands/custom.md
+      - Screenshot: commands/screenshot.md
   - Sensors:
       - sensors/index.md
       - Attributes: sensors/attributes.md

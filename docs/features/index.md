@@ -14,6 +14,7 @@ description: Everything HASS.Agent .NET10 does for a Windows PC in Home Assistan
 | **Custom sensors** | Your own: a process, a service, a drive, an attribute of a built-in sensor, the output of a command or script, a LibreHardwareMonitor value. | [Custom sensors](../sensors/custom.md) |
 | **System commands** | Lock, sleep, monitor off, volume, shutdown, restart as buttons and an action; hibernate and log off (off by default). | [System commands](../commands/index.md) |
 | **Custom commands** | Your own buttons: programs, PowerShell scripts, key presses, links, popup windows. | [Custom commands](../commands/custom.md) |
+| **Screenshot** | A picture of the screen when Home Assistant asks for one, as an image entity. Off until you turn it on at the PC. | [Screenshot](../commands/screenshot.md) |
 | **Dashboard popup** | A Home Assistant dashboard, or any web page, in a small window above the tray. | [Dashboard popup](dashboard-popup.md) |
 | **Display and audio** | The screen as a light in Home Assistant, the default audio device as a select, the volume of a single app. | [Display and audio](display-and-audio.md) |
 | **Hotkeys** | A named key combination becomes an event in Home Assistant, to start automations from the keyboard. | [Hotkeys](hotkeys.md) |

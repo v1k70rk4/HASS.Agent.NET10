@@ -569,6 +569,7 @@
     "Cmd.shutdown": "Leállítás",
     "Cmd.restart": "Újraindítás",
     "Cmd.restart_cancel": "Leállítás/újraindítás megszakítása",
+    "Cmd.screenshot": "Képernyőkép készítése",
     "Cmd.shutdown_comment": "Home Assistantból leállítva",
     "Cmd.restart_comment": "Home Assistantból újraindítva",
     "Sensor.cpu_usage": "CPU terhelés",

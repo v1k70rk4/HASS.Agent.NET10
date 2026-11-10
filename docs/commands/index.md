@@ -20,6 +20,7 @@ Control the PC from Home Assistant through button entities or the `hass_agent.ex
 | `shutdown` | Shut down, with a delay | on | yes |
 | `restart` | Restart, with a delay | on | yes |
 | `restart_cancel` | Cancel a pending shutdown or restart | on | yes |
+| `screenshot` | Send a picture of the screen to Home Assistant: [Screenshot](screenshot.md) | off | |
 
 Shutdown and restart take a delay, a force mode and a comment that Windows shows:
 
@@ -43,5 +44,7 @@ data:
 ```
 
 When the Windows service is online and handles the command, the integration routes it to the service; otherwise the tray app runs it. Shutdown and restart from the service work with nobody logged in; the rest need the user's session. The [media player](../features/media-player.md) can also turn the PC off, with the same commands, when that is switched on in the integration's options.
+
+The screenshot is a button only, not a command of `hass_agent.execute_command`.
 
 Your own commands, as buttons: [Custom commands](custom.md).
