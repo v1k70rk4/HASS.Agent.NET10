@@ -19,7 +19,7 @@ A bigger release: the PC as a Sendspin player of Music Assistant; two users sign
 
 **Security**
 
-- **A security review of the app on a shared PC.** On a PC that several people use, a Windows user who is not an administrator could get more than they should through the optional service and the shared settings folder: while the service ran, at a first install, and at an update. All of it is closed in this release, and each fix was tried against what it fixes. What was found, and from which version on, is in the [security advisory](https://github.com/v1k70rk4/HASS.Agent.NET10/security/advisories/GHSA-chm4-rq44-jh9f).
+- **A security review of the app on a shared PC.** On a PC that several people use, a Windows user who is not an administrator could get more than they should through the optional service and the shared settings folder: while the service ran, at a first install, and at an update. All of it is closed in this release, and each fix was tried against what it fixes.
 - **The service runs only what was approved for it.** It listens on its own MQTT topics alone, and a command marked for the tray app is not the service's to run.
 - **An update is installed only when the downloaded file says it is the installer of that release**, by its own version information; the publisher's signature alone is not enough any more. See [Updates](docs/features/updates.md#only-signed-installers).
 - **Kiosk mode cannot be switched off from a kiosk user's own environment.**
