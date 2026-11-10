@@ -431,6 +431,43 @@ public class SettingsAccessTests : IDisposable
     }
 
     [Fact]
+    public void Someone_else_s_hold_on_the_folder_goes_when_it_is_made_safe()
+    {
+        // A user who made the folder before the install has full control of it as its creator,
+        // and taking the folder over changes its owner only. With that they could delete the
+        // anchor, whatever its own rule, or rename the folder out of the way.
+        var someone = new SecurityIdentifier("S-1-5-21-1-2-3-1001");
+        var users = new SecurityIdentifier(WellKnownSidType.BuiltinUsersSid, null);
+        var info = new DirectoryInfo(_folder);
+        var security = info.GetAccessControl();
+        security.AddAccessRule(new FileSystemAccessRule(someone, FileSystemRights.FullControl, AccessControlType.Allow));
+        security.AddAccessRule(new FileSystemAccessRule(users, FileSystemRights.ReadAndExecute | FileSystemRights.CreateFiles, AccessControlType.Allow));
+        info.SetAccessControl(security);
+
+        SettingsAccess.MakeSafe(_folder);
+
+        var rules = new DirectoryInfo(_folder).GetAccessControl()
+            .GetAccessRules(includeExplicit: true, includeInherited: true, typeof(SecurityIdentifier))
+            .Cast<FileSystemAccessRule>().ToList();
+        Assert.DoesNotContain(rules, rule => (SecurityIdentifier)rule.IdentityReference == someone);
+        // What lets nobody replace the folder stays: an update reads from it who the folder was open to.
+        Assert.Contains(rules, rule => (SecurityIdentifier)rule.IdentityReference == users
+            && rule.FileSystemRights.HasFlag(FileSystemRights.CreateFiles));
+        Assert.Single(Anchors());
+    }
+
+    [Fact]
+    public void A_folder_whose_rule_lets_nobody_replace_it_keeps_its_rule()
+    {
+        SettingsAccess.SetFolderRule(_folder, [Me]);
+        var before = new DirectoryInfo(_folder).GetAccessControl().GetSecurityDescriptorSddlForm(AccessControlSections.Access);
+
+        SettingsAccess.MakeSafe(_folder);
+
+        Assert.Equal(before, new DirectoryInfo(_folder).GetAccessControl().GetSecurityDescriptorSddlForm(AccessControlSections.Access));
+    }
+
+    [Fact]
     public void A_folder_is_anchored_before_anything_is_read_or_written_in_it()
     {
         // An empty folder that was there already, as the installer makes it: what is written

@@ -1078,6 +1078,8 @@ internal static class SettingsAccess
 
                 wasSomeoneElses = !OwnerIsTrusted(OwnerOf(root));
                 TakeOver(root, isFolder: true, configDirectory);
+                // Before the anchor: whoever could still delete it would make it worth nothing.
+                KeepOthersFromReplacing(configDirectory);
                 anchor = TryCreateAnchor(root, out anchorName);
                 if (IsLink(root))
                 {
@@ -1097,6 +1099,76 @@ internal static class SettingsAccess
     // is held open, with no one allowed to delete or rename it, while what is in it is done.
     // One entry that cannot be looked at or taken over is named among the failures and the
     // rest is still done; SetFolderRule reports them with its own.
+    // What lets its holder replace the folder, or what is in it whatever the rule of that is:
+    // delete or rename the folder, delete anything in it, change the folder's rule or owner.
+    private const FileSystemRights ReplacesTheFolder =
+        FileSystemRights.Delete | FileSystemRights.DeleteSubdirectoriesAndFiles
+        | FileSystemRights.ChangePermissions | FileSystemRights.TakeOwnership;
+
+    /// <summary>
+    /// Takes those rights on the folder itself away from everyone but SYSTEM, the administrators
+    /// and whoever runs this. A user who made the folder before the first install has full
+    /// control of it as its creator, and taking it over changes its owner only: until the
+    /// folder's rule is set they could still delete the anchor (the rule of a file does not
+    /// protect it from someone who may delete anything in its folder), or rename the folder out
+    /// of the way, and put a link in its place. The rest of the folder's rule stays: an update
+    /// reads from it who the folder was open to.
+    /// </summary>
+    private static void KeepOthersFromReplacing(string configDirectory)
+    {
+        using var folder = OpenEntryItself(configDirectory, isFolder: true, ReadControl | WriteDac)
+            ?? throw new IOException($"{configDirectory} was replaced with a link while it was made safe.");
+        GetKernelObjectSecurity(folder, DaclSecurityInformation, null, 0, out var needed);
+        var buffer = new byte[Math.Max(needed, 1u)];
+        if (!GetKernelObjectSecurity(folder, DaclSecurityInformation, buffer, (uint)buffer.Length, out _))
+        {
+            throw new Win32Exception(Marshal.GetLastWin32Error());
+        }
+
+        // No rule at all lets everyone do everything: SYSTEM and the administrators it is, then.
+        var rule = new RawSecurityDescriptor(buffer, 0).DiscretionaryAcl;
+        var kept = new RawAcl(GenericAcl.AclRevision, rule?.Count ?? 2);
+        var changed = rule is null;
+        if (rule is null)
+        {
+            const AceFlags inherit = AceFlags.ContainerInherit | AceFlags.ObjectInherit;
+            kept.InsertAce(0, new CommonAce(inherit, AceQualifier.AccessAllowed, (int)FileSystemRights.FullControl, LocalSystem, false, null));
+            kept.InsertAce(1, new CommonAce(inherit, AceQualifier.AccessAllowed, (int)FileSystemRights.FullControl, Administrators, false, null));
+        }
+
+        foreach (var ace in rule?.Cast<GenericAce>() ?? [])
+        {
+            if (ace is not CommonAce common)
+            {
+                kept.InsertAce(kept.Count, ace);
+                continue;
+            }
+
+            if (common.AceQualifier == AceQualifier.AccessAllowed
+                && !common.AceFlags.HasFlag(AceFlags.InheritOnly)
+                && ((FileSystemRights)common.AccessMask & ReplacesTheFolder) != 0
+                && !OwnerIsTrusted(common.SecurityIdentifier) && common.SecurityIdentifier != OwnerRights)
+            {
+                changed = true;
+                continue;
+            }
+
+            // The folder's own from here on, not what ProgramData passes down to it.
+            kept.InsertAce(kept.Count, new CommonAce(
+                common.AceFlags & ~AceFlags.Inherited, common.AceQualifier, common.AccessMask, common.SecurityIdentifier, common.IsCallback, common.GetOpaque()));
+        }
+
+        if (!changed)
+        {
+            return;
+        }
+
+        var descriptor = new RawSecurityDescriptor(ControlFlags.DiscretionaryAclPresent | ControlFlags.DiscretionaryAclProtected, null, null, null, kept);
+        var bytes = new byte[descriptor.BinaryLength];
+        descriptor.GetBinaryForm(bytes, 0);
+        SetRule(folder, bytes);
+    }
+
     // The anchor just made (in the settings folder itself) is left as it is; the anchors of
     // earlier runs, and anything a user put there under such a name, go.
     private static void TakeOverContents(string directory, List<string> failures, string? anchor = null)
