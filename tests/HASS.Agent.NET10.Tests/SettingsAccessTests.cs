@@ -449,11 +449,59 @@ public class SettingsAccessTests : IDisposable
         var rules = new DirectoryInfo(_folder).GetAccessControl()
             .GetAccessRules(includeExplicit: true, includeInherited: true, typeof(SecurityIdentifier))
             .Cast<FileSystemAccessRule>().ToList();
-        Assert.DoesNotContain(rules, rule => (SecurityIdentifier)rule.IdentityReference == someone);
+        // What lets them replace the folder is gone; the rest of what they had is not.
+        var theirs = rules.Where(rule => (SecurityIdentifier)rule.IdentityReference == someone).ToList();
+        Assert.NotEmpty(theirs);
+        Assert.All(theirs, rule => Assert.Equal(
+            (FileSystemRights)0,
+            rule.FileSystemRights & (FileSystemRights.Delete | FileSystemRights.DeleteSubdirectoriesAndFiles | FileSystemRights.ChangePermissions | FileSystemRights.TakeOwnership)));
+        Assert.Contains(theirs, rule => rule.FileSystemRights.HasFlag(FileSystemRights.ReadData));
         // What lets nobody replace the folder stays: an update reads from it who the folder was open to.
         Assert.Contains(rules, rule => (SecurityIdentifier)rule.IdentityReference == users
             && rule.FileSystemRights.HasFlag(FileSystemRights.CreateFiles));
         Assert.Single(Anchors());
+    }
+
+    [Fact]
+    public void A_folder_with_the_rule_of_an_old_version_stays_open_to_its_users()
+    {
+        // Before 10.9.1-beta.5 the users had Modify on the folder itself and on what is in it,
+        // in one entry. Modify has the right to delete in it: taken from the folder, with the
+        // rest of the entry kept, or an update would read the folder as one nobody may use.
+        var users = new SecurityIdentifier(WellKnownSidType.AuthenticatedUserSid, null);
+        var info = new DirectoryInfo(_folder);
+        var security = info.GetAccessControl();
+        security.AddAccessRule(new FileSystemAccessRule(
+            users, FileSystemRights.Modify, InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit, PropagationFlags.None, AccessControlType.Allow));
+        info.SetAccessControl(security);
+
+        SettingsAccess.MakeSafe(_folder);
+
+        Assert.False(SettingsAccess.RestrictionState(_folder));
+        var rules = new DirectoryInfo(_folder).GetAccessControl()
+            .GetAccessRules(includeExplicit: true, includeInherited: true, typeof(SecurityIdentifier))
+            .Cast<FileSystemAccessRule>().Where(rule => (SecurityIdentifier)rule.IdentityReference == users).ToList();
+        var onTheFolder = rules.Where(rule => rule.PropagationFlags != PropagationFlags.InheritOnly).ToList();
+        Assert.NotEmpty(onTheFolder);
+        Assert.All(onTheFolder, rule => Assert.False(rule.FileSystemRights.HasFlag(FileSystemRights.Delete)));
+        Assert.Contains(onTheFolder, rule => rule.FileSystemRights.HasFlag(FileSystemRights.ReadData | FileSystemRights.CreateFiles));
+        // What is in the folder is theirs to change as before.
+        Assert.Contains(rules, rule => rule.PropagationFlags == PropagationFlags.InheritOnly && rule.FileSystemRights.HasFlag(FileSystemRights.Modify));
+    }
+
+    [Fact]
+    public void A_folder_that_is_not_there_is_made_with_its_rule_and_its_anchor()
+    {
+        // What the service does at its start when the settings folder is missing.
+        var folder = Path.Combine(_folder, "made-by-the-service");
+
+        SettingsAccess.OpenToEveryone(folder);
+
+        var security = new DirectoryInfo(folder).GetAccessControl();
+        Assert.True(security.AreAccessRulesProtected);
+        Assert.False(SettingsAccess.RestrictionState(folder));
+        Assert.True(SettingsAccess.IsOfThePc(folder));
+        Assert.Single(Directory.GetFiles(folder), file => SettingsAccess.IsAnchorName(Path.GetFileName(file)));
     }
 
     [Fact]

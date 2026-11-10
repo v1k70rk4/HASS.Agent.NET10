@@ -303,8 +303,24 @@ public class ServicePolicyTests : IDisposable
     {
         // U+202E has what follows it written from right to left: "exe.tnemucod" would be
         // read as "document.exe". Not shown itself, like the other characters of its kind.
-        Assert.Equal("Backup  exe.tnemucod", ServiceApproval.OneLine("Backup ‮exe.tnemucod⁩"));
-        Assert.Equal("Nightly  backup", ServiceApproval.OneLine("​Nightly‏ backup﻿"));
+        Assert.Equal("Backup  exe.tnemucod", ServiceApproval.OneLine("Backup \u202Eexe.tnemucod\u2069"));
+        Assert.Equal("Nightly  backup", ServiceApproval.OneLine("\u200BNightly\u200F backup\uFEFF"));
+    }
+
+    [Fact]
+    public void What_a_command_runs_is_shown_with_nothing_hidden_in_it()
+    {
+        // In the text that is run nothing is left out: what cannot be seen is written out.
+        var command = new CustomCommandDefinition
+        {
+            Id = "1", Name = "Report", Type = CustomCommandTypes.PowerShell, Service = true,
+            Command = "Remove-Item C:\\Data \u202Etxt.troper\u202C -Recurse\tnow",
+        };
+
+        var lines = ServiceApproval.PendingDescriptions(Settings([command]), new ServicePolicy()).Single().Split(Environment.NewLine);
+
+        Assert.Equal("    Remove-Item C:\\Data \\u202Etxt.troper\\u202C -Recurse\tnow", lines[1]);
+        Assert.Equal("plain text", ServiceApproval.Visible("plain text"));
     }
 
     [Fact]

@@ -46,6 +46,15 @@ internal sealed class CompanionWindowsService : ServiceBase
         // command puts another user's folder aside; this is for a folder no such command got
         // to, or could not put right. The service then does not start, and Windows writes why
         // to the Application log.
+        // A folder that is not there is made with its rule and its anchor from the start, open
+        // to every user as a silent first install leaves it. Made the usual way it would take
+        // ProgramData's rule and be empty for a moment: a user waiting for that could make it
+        // a link before the first line of the log is written.
+        if (!Directory.Exists(AppPaths.ConfigDirectoryPath))
+        {
+            SettingsAccess.OpenToEveryone(AppPaths.ConfigDirectoryPath);
+        }
+
         if (!SettingsAccess.IsOfThePc(AppPaths.ConfigDirectoryPath))
         {
             throw new IOException(

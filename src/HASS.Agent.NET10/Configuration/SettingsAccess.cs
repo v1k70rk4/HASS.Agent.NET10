@@ -1307,8 +1307,11 @@ internal static class SettingsAccess
     /// (set by hand, or by a version before 10.9.1-beta.5). Until the folder's rule is set they
     /// could still delete the anchor (the rule of a file does not protect it from someone who
     /// may delete anything in its folder), or rename the folder out of the way, and put a link
-    /// in its place. The rest of the folder's rule stays: an update reads from it who the
-    /// folder was open to.
+    /// in its place. Only those rights go, and only on the folder itself: what the entry gave
+    /// besides them stays, and so does what it passes on to what is in the folder. An update
+    /// reads from the rule who the folder was open to, and the rule of a version before
+    /// 10.9.1-beta.5 gave its users Modify on the folder, which has the right to delete in it:
+    /// with the whole entry gone, such a folder would read as one that nobody may use.
     /// </summary>
     private static void KeepOthersFromReplacing(string configDirectory)
     {
@@ -1340,18 +1343,36 @@ internal static class SettingsAccess
                 continue;
             }
 
+            // The folder's own from here on, not what ProgramData passes down to it.
+            var flags = common.AceFlags & ~AceFlags.Inherited;
+            var onTheFolder = WithoutGenericRights(common.AccessMask);
             if (common.AceQualifier == AceQualifier.AccessAllowed
-                && !common.AceFlags.HasFlag(AceFlags.InheritOnly)
-                && ((FileSystemRights)common.AccessMask & ReplacesTheFolder) != 0
+                && !flags.HasFlag(AceFlags.InheritOnly)
+                && ((FileSystemRights)onTheFolder & ReplacesTheFolder) != 0
                 && !OwnerIsTrusted(common.SecurityIdentifier) && common.SecurityIdentifier != OwnerRights)
             {
                 changed = true;
+                // On the folder itself: what the entry gave, without those rights.
+                var left = onTheFolder & ~(int)ReplacesTheFolder;
+                if (left != 0)
+                {
+                    kept.InsertAce(kept.Count, new CommonAce(
+                        flags & ~(AceFlags.ContainerInherit | AceFlags.ObjectInherit | AceFlags.NoPropagateInherit),
+                        common.AceQualifier, left, common.SecurityIdentifier, common.IsCallback, common.GetOpaque()));
+                }
+
+                // For what is in the folder: as it was.
+                if ((flags & (AceFlags.ContainerInherit | AceFlags.ObjectInherit)) != 0)
+                {
+                    kept.InsertAce(kept.Count, new CommonAce(
+                        flags | AceFlags.InheritOnly, common.AceQualifier, common.AccessMask, common.SecurityIdentifier, common.IsCallback, common.GetOpaque()));
+                }
+
                 continue;
             }
 
-            // The folder's own from here on, not what ProgramData passes down to it.
             kept.InsertAce(kept.Count, new CommonAce(
-                common.AceFlags & ~AceFlags.Inherited, common.AceQualifier, common.AccessMask, common.SecurityIdentifier, common.IsCallback, common.GetOpaque()));
+                flags, common.AceQualifier, common.AccessMask, common.SecurityIdentifier, common.IsCallback, common.GetOpaque()));
         }
 
         if (!changed)
@@ -1363,6 +1384,36 @@ internal static class SettingsAccess
         var bytes = new byte[descriptor.BinaryLength];
         descriptor.GetBinaryForm(bytes, 0);
         SetRule(folder, bytes);
+    }
+
+    // The rights an entry gives on a folder, with the generic ones (all, read, write, execute)
+    // written out as what they stand for on a file or folder: "all" has the rights that
+    // replace the folder in it, and would pass for having none.
+    private static int WithoutGenericRights(int mask)
+    {
+        const int genericRead = unchecked((int)0x80000000), genericWrite = 0x40000000, genericExecute = 0x20000000, genericAll = 0x10000000;
+        var rights = mask & ~(genericRead | genericWrite | genericExecute | genericAll);
+        if ((mask & genericAll) != 0)
+        {
+            rights |= (int)FileSystemRights.FullControl;
+        }
+
+        if ((mask & genericRead) != 0)
+        {
+            rights |= (int)(FileSystemRights.Read | FileSystemRights.Synchronize);
+        }
+
+        if ((mask & genericWrite) != 0)
+        {
+            rights |= (int)(FileSystemRights.Write | FileSystemRights.ReadPermissions | FileSystemRights.Synchronize);
+        }
+
+        if ((mask & genericExecute) != 0)
+        {
+            rights |= (int)(FileSystemRights.ExecuteFile | FileSystemRights.ReadAttributes | FileSystemRights.ReadPermissions | FileSystemRights.Synchronize);
+        }
+
+        return rights;
     }
 
     // Entry by entry through a handle on the entry itself, opened under the folder's handle and

@@ -102,7 +102,7 @@ internal static class ServiceApproval
 
     private static string Describe(string name, string type, string? runs, string? targetFile)
     {
-        var lines = (runs ?? string.Empty).Replace("\r\n", "\n").Replace('\r', '\n').Split('\n').Select(line => "    " + line).ToList();
+        var lines = (runs ?? string.Empty).Replace("\r\n", "\n").Replace('\r', '\n').Split('\n').Select(line => "    " + Visible(line)).ToList();
         // What is approved is the text above, not what the file it names says at the time.
         if (targetFile is not null && FileTrust.CanBeChangedWithoutAdministrator(targetFile))
         {
@@ -138,6 +138,22 @@ internal static class ServiceApproval
             char.IsControl(character)
             || char.GetUnicodeCategory(character) == System.Globalization.UnicodeCategory.Format
             || character is '\u2028' or '\u2029' ? ' ' : character).ToArray()).Trim();
+
+    /// <summary>
+    /// A line of what a command runs, with the characters that are not shown written out as
+    /// their code (U+202E as a backslash, u and 202E): one that turns the reading direction
+    /// around would have the administrator read another text than the one that is approved
+    /// and run. Written out, not left out: what is shown stays the text that is approved,
+    /// with nothing missing from it.
+    /// </summary>
+    internal static string Visible(string line) =>
+        string.Concat(line.Select(character =>
+            character != '\t'
+            && (char.IsControl(character)
+                || char.GetUnicodeCategory(character) == System.Globalization.UnicodeCategory.Format
+                || character is '\u2028' or '\u2029')
+                ? $"\\u{(int)character:X4}"
+                : character.ToString()));
 
     /// <summary>The question above, and what is to be approved in a box that scrolls, as long as it is.</summary>
     private static bool Ask(IWin32Window owner, string question, string details)
