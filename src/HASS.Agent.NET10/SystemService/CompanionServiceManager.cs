@@ -238,8 +238,8 @@ internal static class CompanionServiceManager
         bool madeBySomeoneElse;
         try
         {
-            madeBySomeoneElse = firstInstall && SettingsAccess.WasMadeBySomeoneElse(AppPaths.ConfigDirectoryPath);
-            SettingsAccess.MakeSafe(AppPaths.ConfigDirectoryPath);
+            SettingsAccess.MakeSafe(AppPaths.ConfigDirectoryPath, out var wasSomeoneElses);
+            madeBySomeoneElse = firstInstall && wasSomeoneElses;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception)
         {

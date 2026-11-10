@@ -26,22 +26,29 @@ internal static class KioskMode
     /// <summary>Whether the user running this gets the kiosk tray: in the group by their logon.</summary>
     public static bool AppliesToCurrentUser()
     {
+        bool? inGroup = null;
         try
         {
-            if (GroupSid() is not { } group)
+            if (GroupSid() is { } group)
             {
-                return false;
+                using var identity = WindowsIdentity.GetCurrent();
+                inGroup = identity.Groups?.Contains(group) == true;
             }
-
-            using var identity = WindowsIdentity.GetCurrent();
-            return IsKioskUser(identity.Groups?.Contains(group) == true);
         }
         catch (Exception)
         {
-            // The group cannot be looked up: the app the user had before.
-            return false;
+            // The group could not be looked up: not known, see IsKioskUser.
         }
+
+        return IsKioskUser(inGroup, inGroup is null && Runtime.KioskWatchdog.IsThereForCurrentUser());
     }
 
-    internal static bool IsKioskUser(bool inGroup) => inGroup;
+    /// <summary>
+    /// In the group: the kiosk tray. Not in it: the app. When the group was not found (no kiosk
+    /// mode on this PC, or a lookup that failed), the kiosk task decides: only the kiosk users
+    /// and the administrators can see it, so a user who sees it without the group to go by is
+    /// taken for a kiosk user. A lookup that fails, for whatever reason, must not be the way
+    /// to the full app.
+    /// </summary>
+    internal static bool IsKioskUser(bool? inGroup, bool kioskTaskIsThere) => inGroup ?? kioskTaskIsThere;
 }

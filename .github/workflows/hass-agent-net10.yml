@@ -124,6 +124,12 @@ jobs:
           if ([string]::IsNullOrWhiteSpace($version)) {
             throw "Project version not found."
           }
+          # The app installs an update only when the installer says it is of the release it was
+          # downloaded for (InstallerIdentity), and the installer takes its version from the
+          # project: under a tag that names another version, no PC would take the update.
+          if ($env:GITHUB_REF -like 'refs/tags/*' -and $env:GITHUB_REF_NAME -ne "v$version") {
+            throw "The tag $env:GITHUB_REF_NAME does not match the project version $version."
+          }
           "APP_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Publish self-contained win-x64

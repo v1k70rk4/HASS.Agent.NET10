@@ -44,6 +44,14 @@ internal static class KioskWatchdog
         }
     }
 
+    /// <summary>
+    /// Whether the task is there, as far as the user running this can tell. Task Scheduler
+    /// keeps a task as a file that only those it is for, and the administrators, may read:
+    /// for anyone else it is not there.
+    /// </summary>
+    public static bool IsThereForCurrentUser() =>
+        File.Exists(Path.Combine(Environment.SystemDirectory, "Tasks", TaskName));
+
     public static void Remove(FileLog log) =>
         DetachedTaskRunner.RunSchtasks($"/delete /tn \"{TaskName}\" /f", log, ignoreErrors: true);
 

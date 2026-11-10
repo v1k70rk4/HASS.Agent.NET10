@@ -410,11 +410,56 @@ public class SettingsAccessTests : IDisposable
     }
 
     [Fact]
+    public void A_folder_made_for_the_settings_is_nobody_else_s_from_its_first_moment()
+    {
+        // Made the usual way under ProgramData it would let every user create files in it,
+        // and be empty: all it takes to turn it into a link before anything is written there.
+        var folder = Path.Combine(_folder, "not-there-yet");
+
+        SettingsAccess.MakeSafe(folder, out var wasSomeoneElses);
+
+        Assert.False(wasSomeoneElses);
+        var security = new DirectoryInfo(folder).GetAccessControl();
+        Assert.True(security.AreAccessRulesProtected);
+        Assert.Equal(
+            new[] { WellKnownSidType.LocalSystemSid, WellKnownSidType.BuiltinAdministratorsSid, WellKnownSidType.WinCreatorOwnerRightsSid }
+                .Select(sid => new SecurityIdentifier(sid, null).Value).Order(),
+            security.GetAccessRules(includeExplicit: true, includeInherited: true, typeof(SecurityIdentifier))
+                .Cast<FileSystemAccessRule>().Select(rule => ((SecurityIdentifier)rule.IdentityReference).Value).Distinct().Order());
+        // And it is not empty when this returns.
+        Assert.Single(Directory.GetFiles(folder), file => SettingsAccess.IsAnchorName(Path.GetFileName(file)));
+    }
+
+    [Fact]
+    public void A_folder_is_anchored_before_anything_is_read_or_written_in_it()
+    {
+        // An empty folder that was there already, as the installer makes it: what is written
+        // into it next (the log) must not land where a link put in its place would point.
+        var elsewhere = Directory.CreateTempSubdirectory("hass-agent-elsewhere-").FullName;
+        try
+        {
+            SettingsAccess.MakeSafe(_folder);
+
+            Assert.Single(Anchors());
+            Assert.Equal(ErrorDirectoryNotEmpty, SetJunction(_folder, elsewhere));
+
+            // Again, and the anchor is a new one; there is still only one.
+            var first = Anchors()[0];
+            SettingsAccess.MakeSafe(_folder);
+            Assert.NotEqual(first, Assert.Single(Anchors()));
+        }
+        finally
+        {
+            Directory.Delete(elsewhere, recursive: true);
+        }
+    }
+
+    [Fact]
     public void Another_user_s_folder_is_told_from_one_of_our_own()
     {
-        // The test's own folder is its own; whose a folder is that cannot be looked at is not known.
-        Assert.False(SettingsAccess.WasMadeBySomeoneElse(_folder));
-        Assert.False(SettingsAccess.WasMadeBySomeoneElse(Path.Combine(_folder, "not-there")));
+        // The test's own folder is its own.
+        SettingsAccess.MakeSafe(_folder, out var wasSomeoneElses);
+        Assert.False(wasSomeoneElses);
 
         var file = Path.Combine(_folder, "settings.json");
         File.WriteAllText(file, "{}");

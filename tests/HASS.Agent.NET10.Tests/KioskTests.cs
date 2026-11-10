@@ -30,11 +30,15 @@ public class KioskTests : IDisposable
     }
 
     [Theory]
-    [InlineData(true, true)]    // in the group, an administrator too
-    [InlineData(false, false)]  // anyone else
-    public void Who_gets_the_kiosk_tray(bool inGroup, bool kiosk)
+    [InlineData(true, false, true)]    // in the group, an administrator too
+    [InlineData(true, true, true)]
+    [InlineData(false, true, false)]   // anyone else, whatever they can see
+    [InlineData(false, false, false)]
+    [InlineData(null, false, false)]   // no group, no task: a PC without kiosk mode
+    [InlineData(null, true, true)]     // the group could not be looked up, and the kiosk task is there for this user
+    public void Who_gets_the_kiosk_tray(bool? inGroup, bool kioskTaskIsThere, bool kiosk)
     {
-        Assert.Equal(kiosk, KioskMode.IsKioskUser(inGroup));
+        Assert.Equal(kiosk, KioskMode.IsKioskUser(inGroup, kioskTaskIsThere));
     }
 
     [Fact]
