@@ -128,10 +128,16 @@ internal static class ServiceApproval
         return Path.IsPathFullyQualified(file) ? file : null;
     }
 
-    /// <summary>The text with every line break and control character in it turned into a space.</summary>
+    /// <summary>
+    /// The text with every line break and control character in it turned into a space, and
+    /// with them the characters that are not shown but change how the rest is (the ones that
+    /// turn the reading direction around, for one: a name could read as something else).
+    /// </summary>
     internal static string OneLine(string? text) =>
         new string((text ?? string.Empty).Select(character =>
-            char.IsControl(character) || character is '\u2028' or '\u2029' ? ' ' : character).ToArray()).Trim();
+            char.IsControl(character)
+            || char.GetUnicodeCategory(character) == System.Globalization.UnicodeCategory.Format
+            || character is '\u2028' or '\u2029' ? ' ' : character).ToArray()).Trim();
 
     /// <summary>The question above, and what is to be approved in a box that scrolls, as long as it is.</summary>
     private static bool Ask(IWin32Window owner, string question, string details)

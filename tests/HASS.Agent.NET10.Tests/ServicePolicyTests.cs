@@ -299,6 +299,15 @@ public class ServicePolicyTests : IDisposable
     }
 
     [Fact]
+    public void A_name_cannot_turn_the_reading_direction_around()
+    {
+        // U+202E has what follows it written from right to left: "exe.tnemucod" would be
+        // read as "document.exe". Not shown itself, like the other characters of its kind.
+        Assert.Equal("Backup  exe.tnemucod", ServiceApproval.OneLine("Backup ‮exe.tnemucod⁩"));
+        Assert.Equal("Nightly  backup", ServiceApproval.OneLine("​Nightly‏ backup﻿"));
+    }
+
+    [Fact]
     public void The_service_keeps_no_command_of_the_tray_app()
     {
         var approved = Command(CustomCommandTypes.PowerShell, "Restart-Service Spooler", id: "a");
