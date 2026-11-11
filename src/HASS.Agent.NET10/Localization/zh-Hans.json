@@ -4,6 +4,10 @@
     "name": "中文(简体)",
     "cultures": [
       "zh-Hans"
+    ],
+    "todo": [
+      "Editor.UnquotedPath",
+      "SvcMgr.ApprovalRightToLeft"
     ]
   },
   "strings": {

@@ -56,7 +56,9 @@
       "Mp.SendspinNotConsole",
       "Mp.SendspinReadOnly",
       "General.OtherSessionTalks",
-      "General.SettingsReloaded"
+      "General.SettingsReloaded",
+      "Editor.UnquotedPath",
+      "SvcMgr.ApprovalRightToLeft"
     ]
   },
   "strings": {
