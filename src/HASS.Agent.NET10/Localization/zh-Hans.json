@@ -542,6 +542,7 @@
     "SvcMgr.InstalledNotStarted": "服务已安装，但未能成功启动。",
     "SvcMgr.InstalledAndStarted": "{0}已成功安装并顺利启动",
     "SvcMgr.ApprovalNeedsAdmin": "服务的命令执行需要提升至管理员权限",
+    "SvcMgr.InstallNeedsAdmin": "安装服务需要管理员权限。",
     "SvcMgr.Approved": "该服务现在已可允许运行为其配置的命令及命令传感器。",
     "SvcMgr.ApprovalFailed": "该服务的命令执行权限不足：{0}",
     "SvcMgr.ApprovalNeeded": "由于该服务以SYSTEM身份运行，它所执行的命令或命令传感器需要管理员手动授权；点击确定后Windows将弹出权限请求。请仔细核对下方列表中的完整执行内容，授权后即代表允许执行上述全部项目。若拒绝授权，服务将直接跳过这些任务，仅由托盘应用尽力尝试执行其有权运行的部分。",

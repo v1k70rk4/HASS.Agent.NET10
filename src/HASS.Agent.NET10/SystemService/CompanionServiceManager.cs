@@ -158,7 +158,15 @@ internal static class CompanionServiceManager
 
     private static ControlCommandResult Install()
     {
-        // First of all: no service is made, or started, over a settings folder that is not the PC's.
+        // As the other commands: said first, and nothing is touched. Without it the folder
+        // step below ran as the user, and "the settings folder could not be made safe" was
+        // the answer, with the installer's exit code for that.
+        if (!IsAdministrator())
+        {
+            return new ControlCommandResult(false, S("SvcMgr.InstallNeedsAdmin"));
+        }
+
+        // Then: no service is made, or started, over a settings folder that is not the PC's.
         if (MakeSettingsFolderSafe() is { } notSafe)
         {
             return notSafe;

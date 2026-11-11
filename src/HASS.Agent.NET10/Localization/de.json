@@ -565,6 +565,7 @@
     "SvcMgr.InstalledNotStarted": "Der Dienst wurde installiert, aber nicht gestartet.",
     "SvcMgr.InstalledAndStarted": "{0} installiert und gestartet.",
     "SvcMgr.ApprovalNeedsAdmin": "Das Genehmigen von Befehlen für den Dienst erfordert einen Administrator.",
+    "SvcMgr.InstallNeedsAdmin": "Das Installieren des Dienstes erfordert einen Administrator.",
     "SvcMgr.Approved": "Der Dienst darf jetzt die für ihn festgelegten Befehle und Befehlssensoren ausführen.",
     "SvcMgr.ApprovalFailed": "Die Befehle für den Dienst konnten nicht genehmigt werden: {0}",
     "SvcMgr.ApprovalNeeded": "Der Dienst läuft als SYSTEM, daher braucht jeder Befehl oder Befehlssensor, den er ausführt, die Genehmigung eines Administrators; Windows fragt danach nach OK. Prüfe unten, was jeder einzelne ausführt, und zwar vollständig: Das wird genehmigt. Ohne Genehmigung überspringt der Dienst diese, und die Tray-App führt aus, was sie kann.",
