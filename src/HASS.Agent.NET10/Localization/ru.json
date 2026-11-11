@@ -547,6 +547,7 @@
     "SvcMgr.ApprovalFailed": "Не удалось разрешить команды для службы: {0}",
     "SvcMgr.ApprovalNeeded": "Служба работает от имени SYSTEM, поэтому для выполнения команд и командных датчиков требуется разрешение администратора. Windows запросит его после нажатия OK. Проверьте ниже все команды целиком: именно они будут разрешены. Без подтверждения служба пропустит их, а приложение в трее выполнит доступные ему команды.",
     "SvcMgr.ApprovalWritable": "Warning: {0} can be changed without an administrator's rights. Whoever changes it decides what the service runs as SYSTEM.",
+    "SvcMgr.ApprovalRightToLeft": "Warning: this text has letters that are written from right to left. Its parts may be shown in another order than the one they are run in.",
     "SvcMgr.ApprovalChanged": "Не разрешено: настройки изменились после запроса подтверждения. Сохраните их снова для повторного запроса.",
     "SvcMgr.ApprovalDeclined": "Разрешение не получено. Служба пропускает эти команды, пока настройки не будут сохранены повторно и запрос не будет подтверждён: {0}",
     "HaApi.TokenNotSaved": "(ещё не сохранён)",

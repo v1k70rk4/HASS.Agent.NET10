@@ -319,8 +319,103 @@ public class ServicePolicyTests : IDisposable
 
         var lines = ServiceApproval.PendingDescriptions(Settings([command]), new ServicePolicy()).Single().Split(Environment.NewLine);
 
-        Assert.Equal("    Remove-Item C:\\Data \\u202Etxt.troper\\u202C -Recurse\tnow", lines[1]);
+        Assert.Equal("    Remove-Item C:\\Data <U+202E>txt.troper<U+202C> -Recurse\tnow", lines[1]);
         Assert.Equal("plain text", ServiceApproval.Visible("plain text"));
+    }
+
+    [Fact]
+    public void What_only_looks_like_a_space_or_like_nothing_is_written_out()
+    {
+        // Not a format character, any of these, and each reads as nothing or as a plain
+        // space: a no-break space in "Program Files" is a folder a user can make on drive C.
+        Assert.Equal(@"C:\Program<U+00A0>Files\App\app.exe", ServiceApproval.Visible(@"C:\Program" + "\u00A0" + @"Files\App\app.exe"));
+        Assert.Equal("a<U+3000>b", ServiceApproval.Visible("a\u3000b"));                        // the wide space
+        Assert.Equal(@"C:\Tools\back<U+E0100>up.exe", ServiceApproval.Visible(@"C:\Tools\back" + "\U000E0100" + "up.exe"));   // a variation selector
+        Assert.Equal("back<U+FE0F>up", ServiceApproval.Visible("back\uFE0Fup"));
+        Assert.Equal("back<U+3164>up", ServiceApproval.Visible("back\u3164up"));                // a Hangul filler: a letter that is blank
+        Assert.Equal("back<U+2800>up", ServiceApproval.Visible("back\u2800up"));                // the blank Braille pattern: a symbol
+        Assert.Equal("back<U+034F>up", ServiceApproval.Visible("back\u034Fup"));
+        Assert.Equal("back<U+E000>up", ServiceApproval.Visible("back\uE000up"));                // private use: whatever a font makes of it
+        Assert.Equal("back<U+E0080>up", ServiceApproval.Visible("back\U000E0080up"));           // not assigned
+        Assert.Equal("Program Files", ServiceApproval.OneLine("Program\u00A0Files"));
+        Assert.Equal("back up", ServiceApproval.OneLine("back\u3164up"));
+
+        // What is seen stays as it is: letters of any script, an accent written as a
+        // character of its own (a file name that came from a Mac), digits, signs.
+        foreach (var seen in new[]
+        {
+            "\u00E1rv\u00EDzt\u0171r\u0151 t\u00FCk\u00F6rf\u00FAr\u00F3g\u00E9p.ps1",
+            "a\u0301rvi\u0301z.ps1",
+            "\u5907\u4EFD.ps1",
+            "\u0440\u0435\u0437\u0435\u0440\u0432.ps1",
+            "echo \U0001F600 \u20AC5 \u00BD \u2192 (x) [y] {z} #1 -a_b",
+            @"C:\Program Files\App\app.exe /x ""two words""",
+        })
+        {
+            Assert.Equal(seen, ServiceApproval.Visible(seen));
+            Assert.Equal(seen, ServiceApproval.OneLine(seen));
+        }
+    }
+
+    [Fact]
+    public void The_code_of_a_character_cannot_be_read_as_a_part_of_the_path()
+    {
+        // Written with a backslash and a letter, "backup" + U+202E + "1sp.ps1" read as the
+        // file u202E1sp.ps1 in the folder backup, which can be there too. No name of a file
+        // or a folder has an angle bracket in it.
+        Assert.Equal(@"C:\Scripts\backup<U+202E>1sp.ps1", ServiceApproval.Visible(@"C:\Scripts\backup" + "\u202E" + "1sp.ps1"));
+        Assert.Contains('<', Path.GetInvalidFileNameChars());
+        Assert.Contains('>', Path.GetInvalidFileNameChars());
+    }
+
+    [Fact]
+    public void Letters_written_from_right_to_left_are_said_below_the_entry()
+    {
+        // No character is hidden here. The window lays Hebrew and Arabic letters out from the
+        // right and takes the digits and the separators next to them along: the script 12.ps1
+        // in a folder with a Hebrew name is shown as a script with a Hebrew name in a folder 12.
+        const string hebrew = @"C:\Data\" + "\u05D0\u05D1" + @"\12.ps1";
+        Assert.True(ServiceApproval.HasRightToLeftLetters(hebrew));
+        Assert.True(ServiceApproval.HasRightToLeftLetters("echo \u0628\u0627\u0628"));            // Arabic
+        Assert.True(ServiceApproval.HasRightToLeftLetters("x \U0001E900 y"));                     // Adlam, past U+FFFF
+        Assert.False(ServiceApproval.HasRightToLeftLetters(@"C:\Data\backup.ps1 -Force"));
+        Assert.False(ServiceApproval.HasRightToLeftLetters("\u00E1rv\u00EDz \u5907\u4EFD \u0440\u0435\u0437\u0435\u0440\u0432"));
+        Assert.False(ServiceApproval.HasRightToLeftLetters(null));
+
+        var settings = Settings(
+        [
+            new CustomCommandDefinition { Id = "1", Name = "Report", Type = CustomCommandTypes.PowerShell, Service = true, Command = hebrew },
+            new CustomCommandDefinition { Id = "2", Name = "Plain", Type = CustomCommandTypes.PowerShell, Service = true, Command = "Restart-Service Spooler" },
+        ]);
+
+        var shown = ServiceApproval.PendingDescriptions(settings, new ServicePolicy());
+
+        // The letters stay as they are (as codes the name could not be read at all), and a
+        // line below says what they do.
+        var lines = shown[0].Split(Environment.NewLine);
+        Assert.Equal("    " + hebrew, lines[1]);
+        Assert.Equal("    " + HASS.Agent.Companion.Localization.Strings.Get("SvcMgr.ApprovalRightToLeft"), lines[^1]);
+        Assert.Equal(lines.Length - 1, shown[1].Split(Environment.NewLine).Length);
+    }
+
+    [Fact]
+    public void A_character_that_is_not_shown_is_found_when_it_is_written_as_two()
+    {
+        // A character past U+FFFF is two chars in a string, and neither says what it is.
+        // U+E0041 is a "tag" letter, one of those: it is not shown, and a path with it in it
+        // is another path than the one that is read.
+        const string tag = "\U000E0041";
+
+        Assert.Equal("Nightly backup", ServiceApproval.OneLine($"Nightly{tag}backup"));
+        Assert.Equal(@"C:\Tools\back<U+E0041>up.exe /x", ServiceApproval.Visible($@"C:\Tools\back{tag}up.exe /x"));
+
+        // One that is shown stays as it is, whole.
+        Assert.Equal("Report \U0001F600", ServiceApproval.OneLine("Report \U0001F600"));
+        Assert.Equal("echo \U0001F600", ServiceApproval.Visible("echo \U0001F600"));
+
+        // Half of a pair on its own is no character: not left for the window to make something of.
+        Assert.Equal("a b", ServiceApproval.OneLine("a\uD83Db"));
+        Assert.Equal("a<U+D83D>b", ServiceApproval.Visible("a\uD83Db"));
     }
 
     [Fact]

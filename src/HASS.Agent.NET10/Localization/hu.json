@@ -494,6 +494,7 @@
     "SvcMgr.ApprovalFailed": "A szolgáltatás parancsait nem sikerült jóváhagyni: {0}",
     "SvcMgr.ApprovalNeeded": "A szolgáltatás SYSTEM-ként fut, ezért az általa futtatott parancsokhoz és parancs-szenzorokhoz rendszergazdai jóváhagyás kell; az OK után a Windows kéri. Nézd meg lent, melyik mit futtat, az egészet: pontosan ez lesz jóváhagyva. Jóváhagyás nélkül a szolgáltatás ezeket kihagyja, és amit tud, a tálcaalkalmazás futtatja.",
     "SvcMgr.ApprovalWritable": "Figyelem: a(z) {0} rendszergazdai jog nélkül is módosítható. Aki módosítja, az dönti el, mit futtat a szolgáltatás SYSTEM-ként.",
+    "SvcMgr.ApprovalRightToLeft": "Figyelem: ebben a szövegben jobbról balra írt betűk vannak. A részei más sorrendben látszhatnak, mint ahogy lefutnak.",
     "SvcMgr.ApprovalChanged": "Nincs jóváhagyva: a beállítások megváltoztak, miután a jóváhagyást kérted. Mentsd el őket újra, és újra megkérdezi.",
     "SvcMgr.ApprovalDeclined": "Nincs jóváhagyva. A szolgáltatás kihagyja ezeket, amíg a beállításokat újra nem mented és a kérést jóvá nem hagyod: {0}",
     "HaApi.TokenNotSaved": "(még nincs mentve)",
