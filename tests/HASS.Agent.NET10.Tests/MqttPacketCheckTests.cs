@@ -112,6 +112,24 @@ public class MqttPacketCheckTests
     }
 
     [Fact]
+    public void A_screenshot_is_left_out_of_the_packet_file()
+    {
+        // What was on the screen. A packet this small would be in the file whole.
+        byte[] picture = [0xFF, 0xD8, 0xFF, 0xE0, 0x11, 0x22, 0x33, 0x44, 0xFF, 0xD9];
+        var screenshot = Publish("hass.agent/screenshot/abc/image", picture);
+
+        var kept = OutgoingPacketCheck.WithoutPrivateText(screenshot);
+
+        Assert.Equal(screenshot.Length, kept.Length);
+        Assert.Contains("hass.agent/screenshot/abc/image", Encoding.UTF8.GetString(kept));
+        Assert.Equal(new byte[picture.Length], kept[^picture.Length..]);
+
+        // The thumbnail of what is playing is a picture of an album, not of the screen: kept.
+        var thumbnail = Publish("hass.agent/media_player/abc/thumbnail", picture);
+        Assert.Equal(thumbnail, OutgoingPacketCheck.WithoutPrivateText(thumbnail));
+    }
+
+    [Fact]
     public void What_mqttnet_encodes_passes()
     {
         // The bytes MQTTnet itself puts on the wire for a PUBLISH like ours.
