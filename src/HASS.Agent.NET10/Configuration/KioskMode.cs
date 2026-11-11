@@ -51,4 +51,17 @@ internal static class KioskMode
     /// to the full app.
     /// </summary>
     internal static bool IsKioskUser(bool? inGroup, bool kioskTaskIsThere) => inGroup ?? kioskTaskIsThere;
+
+    /// <summary>
+    /// Whether the kiosk task starts the app: for a kiosk user, and only when the app would
+    /// stay. It stops at once when the settings are limited away from the user, and when the
+    /// settings folder is not the PC's (a link, or made by a user who is no administrator);
+    /// started then, it would only stop again, at every run of the task, once a minute.
+    /// Asked in this order, and no further than the first "no": the task runs once a minute
+    /// for every user who can see it, mostly with the app running, and the settings folder
+    /// is not looked at then.
+    /// </summary>
+    internal static bool TaskStartsTheApp(
+        Func<bool> kioskUser, Func<bool> appIsRunning, Func<bool> userCanUseTheSettings, Func<bool> settingsFolderIsOfThePc) =>
+        kioskUser() && !appIsRunning() && userCanUseTheSettings() && settingsFolderIsOfThePc();
 }

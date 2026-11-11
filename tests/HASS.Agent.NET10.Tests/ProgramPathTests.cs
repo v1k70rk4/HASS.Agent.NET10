@@ -60,6 +60,27 @@ public class ProgramPathTests : IDisposable
         Assert.False(SystemCommandService.HasUnquotedSpaceInPath(Path.Combine(_folder, "Tools", "app") + " --flag"));
     }
 
+    [Fact]
+    public void More_than_one_space_before_the_arguments_is_no_space_in_the_path()
+    {
+        SkipWhenTheTempFolderHasASpace();
+        // Windows drops spaces and periods from the end of a path: the program's path with a
+        // space after it is the program again, and a folder's is the folder.
+        var tools = Directory.CreateDirectory(Path.Combine(_folder, "Tools")).FullName;
+        var plain = Path.Combine(tools, "app.exe");
+        File.WriteAllText(plain, "x");
+        var folderOfThatName = Directory.CreateDirectory(Path.Combine(tools, "run")).FullName;
+
+        Assert.False(SystemCommandService.HasUnquotedSpaceInPath($"{plain}  /x"));
+        Assert.False(SystemCommandService.HasUnquotedSpaceInPath($"{plain}   --flag value"));
+        Assert.False(SystemCommandService.HasUnquotedSpaceInPath($"{plain} . /x"));
+        Assert.False(SystemCommandService.HasUnquotedSpaceInPath($"{folderOfThatName} /x"));
+        Assert.Equal((plain, "/x"), SystemCommandService.SplitProcessCommand($"{plain}  /x"));
+
+        // A path that does have a space in it is still found, however many follow it.
+        Assert.True(SystemCommandService.HasUnquotedSpaceInPath($"{_program}  /x"));
+    }
+
     [Theory]
     [InlineData("taskkill /F /IM notepad.exe /T")]
     [InlineData("shutdown.exe /s /t 0")]

@@ -36,6 +36,18 @@ internal static class SendspinTokenCommand
         {
             // Run as SYSTEM by Intune, or by an administrator: like the service, it writes
             // nothing (the log, the pairing) into a folder another user made and has a hold on.
+            // As the service at its start: a folder that is not there is made with its rule
+            // and its anchor from the start, open to every user as a silent first install
+            // leaves it. Made the usual way, by the log below, it would take ProgramData's
+            // rule and be empty for a moment: a user waiting for that could make it a link
+            // before the log's first line is written as SYSTEM. Only with an administrator's
+            // rights, which setting the rule takes; run by a user, it is their own folder,
+            // made as their app makes it.
+            if (!Directory.Exists(AppPaths.ConfigDirectoryPath) && SystemService.CompanionServiceManager.IsAdministrator())
+            {
+                SettingsAccess.OpenToEveryone(AppPaths.ConfigDirectoryPath);
+            }
+
             if (!SettingsAccess.IsOfThePc(AppPaths.ConfigDirectoryPath))
             {
                 throw new IOException(string.Format(Strings.Get("Access.FolderNotOfThePc"), AppPaths.ConfigDirectoryPath));

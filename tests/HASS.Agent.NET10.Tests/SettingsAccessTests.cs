@@ -530,6 +530,95 @@ public class SettingsAccessTests : IDisposable
     }
 
     [Fact]
+    public void A_folder_made_for_a_command_is_open_to_every_user()
+    {
+        // What "--install-service", "--kiosk on" or "--settings-access keep" find when the
+        // settings folder is not there (deleted, or the app from its zip). Made the
+        // administrators' alone and left so, the app would start for nobody, and an update
+        // would take the one rule it has for a limit someone chose.
+        var folder = Path.Combine(_folder, "made-for-a-command");
+
+        var opened = SettingsAccess.MakeSafeForCommand(folder, setsTheFoldersRule: false, out var putAside, out var made);
+
+        Assert.True(made);
+        Assert.True(opened);
+        Assert.Null(putAside);
+        Assert.False(SettingsAccess.RestrictionState(folder));
+        Assert.True(SettingsAccess.IsOfThePc(folder));
+        Assert.Single(Directory.GetFiles(folder), file => SettingsAccess.IsAnchorName(Path.GetFileName(file)));
+    }
+
+    [Fact]
+    public void Only_a_folder_made_for_the_command_is_opened_and_not_for_one_that_sets_the_rule()
+    {
+        // A folder that was there keeps the rule it has: limited stays limited.
+        SettingsAccess.SetFolderRule(_folder, [Me]);
+
+        Assert.False(SettingsAccess.IsAsItWasMade(_folder));
+
+        var opened = SettingsAccess.MakeSafeForCommand(_folder, setsTheFoldersRule: false, out _, out var made);
+
+        Assert.False(made);
+        Assert.False(opened);
+        Assert.True(SettingsAccess.RestrictionState(_folder));
+
+        // A command that sets the rule itself gets the new folder as it was made.
+        var folder = Path.Combine(_folder, "made-for-a-command-with-a-rule");
+
+        opened = SettingsAccess.MakeSafeForCommand(folder, setsTheFoldersRule: true, out _, out made);
+
+        Assert.True(made);
+        Assert.False(opened);
+        Assert.True(SettingsAccess.RestrictionState(folder));
+    }
+
+    [Theory]
+    [InlineData(true, true, false, false, true)]     // its groups are known, the administrators among them
+    [InlineData(true, false, true, true, false)]     // known, and not among them: no, also for one from a domain
+    [InlineData(false, false, true, true, null)]     // from a domain, has logged on here, the domain not reached: not known
+    [InlineData(false, true, true, true, null)]      // what an answer that is not one holds does not count
+    [InlineData(false, false, true, false, false)]   // a SID from elsewhere that never logged on here
+    [InlineData(false, false, false, true, false)]   // an account of this PC
+    public void An_owner_from_a_domain_whose_groups_are_not_known_is_not_taken_for_no_administrator(
+        bool groupsKnown, bool administratorsAmongThem, bool directoryAccount, bool hasAProfileHere, bool? administrator)
+    {
+        // Not known (null): the folder is neither used nor put aside. A laptop off the
+        // network, updated as SYSTEM, with a folder its user from the domain made, who is an
+        // administrator through a domain group: put aside, the settings were gone from the app.
+        Assert.Equal(administrator, SettingsAccess.AdministratorThroughAGroup(
+            groupsKnown, administratorsAmongThem, directoryAccount, hasAProfileHere));
+    }
+
+    [Fact]
+    public void A_folder_left_with_the_rule_it_was_made_with_is_opened_by_the_next_command()
+    {
+        // "--settings-access only" made the folder and could not set its rule (a name that is
+        // nobody's), or 10.13.0 made it for a command and left it: the administrators' alone,
+        // with nobody having chosen that. What the folder is like says so, not which command
+        // made it: "--install-service" or the next update's "keep" finds it there already.
+        // Started from a shell that makes the user the owner of what an elevated program
+        // creates (Git Bash), the new folder is given to the administrators, and Windows drops
+        // the owner's entry with the change of owner: nothing tells it from a rule set by hand.
+        Assert.SkipWhen(
+            IsElevated && WindowsIdentity.GetCurrent().Owner == Me,
+            "Run elevated from a shell that makes the user the owner of what is created.");
+        var folder = Path.Combine(_folder, "left-as-it-was-made");
+        SettingsAccess.MakeSafeForCommand(folder, setsTheFoldersRule: true, out _, out _);
+        Assert.True(SettingsAccess.IsAsItWasMade(folder));
+
+        var opened = SettingsAccess.MakeSafeForCommand(folder, setsTheFoldersRule: false, out var putAside, out var made);
+
+        Assert.False(made);
+        Assert.Null(putAside);
+        Assert.True(opened);
+        Assert.False(SettingsAccess.RestrictionState(folder));
+        Assert.False(SettingsAccess.IsAsItWasMade(folder));
+
+        // Open, it is left alone from then on.
+        Assert.False(SettingsAccess.MakeSafeForCommand(folder, setsTheFoldersRule: false, out _, out _));
+    }
+
+    [Fact]
     public void A_folder_whose_rule_lets_nobody_replace_it_keeps_its_rule()
     {
         SettingsAccess.SetFolderRule(_folder, [Me]);

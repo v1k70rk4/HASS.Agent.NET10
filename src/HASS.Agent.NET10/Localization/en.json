@@ -489,6 +489,7 @@
     "SvcMgr.InstalledNotStarted": "Service installed but did not start.",
     "SvcMgr.InstalledAndStarted": "{0} installed and started.",
     "SvcMgr.ApprovalNeedsAdmin": "Approving commands for the service needs an administrator.",
+    "SvcMgr.InstallNeedsAdmin": "Installing the service needs an administrator.",
     "SvcMgr.Approved": "The service may now run the commands and command sensors set for it.",
     "SvcMgr.ApprovalFailed": "The commands for the service could not be approved: {0}",
     "SvcMgr.ApprovalNeeded": "The service runs as SYSTEM, so a command or command sensor it runs needs an administrator's approval; Windows asks for it after OK. Check below what each one runs, all of it: that is what gets approved. Without the approval the service skips these, and the tray app runs what it can.",

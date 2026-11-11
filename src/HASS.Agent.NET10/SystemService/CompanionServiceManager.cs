@@ -111,30 +111,39 @@ internal static class CompanionServiceManager
     /// Before an elevated command reads or writes anything in the settings folder, and before
     /// a service is made that will: the folder is made safe (<see cref="SettingsAccess.MakeSafe(string)"/>).
     /// The one place for every command. A folder a user who is no administrator had made is
-    /// put aside there and a new one made, which only administrators can use: the log says
-    /// where the old one went, and unless the command sets the folder's rule itself
-    /// (<paramref name="setsTheFoldersRule"/>), the new one is opened to every user, as a
-    /// silent first install leaves it, so the app asks who it is for.
+    /// put aside there and a new one made; a folder that is not there (deleted, or never made:
+    /// the app from its zip) is made as well. A folder made there is one only administrators
+    /// can use: unless the command sets the folder's rule itself
+    /// (<paramref name="setsTheFoldersRule"/>), it is opened to every user, as a silent first
+    /// install leaves it, so the app asks who it is for
+    /// (<see cref="SettingsAccess.MakeSafeForCommand"/>). The log says what was done.
     /// </summary>
     /// <returns>Null, or why the folder is not safe to use: the command then does nothing.</returns>
     private static ControlCommandResult? MakeSettingsFolderSafe(bool setsTheFoldersRule = false)
     {
         try
         {
-            SettingsAccess.MakeSafe(AppPaths.ConfigDirectoryPath, out var putAside);
-            if (putAside is null)
+            var opened = SettingsAccess.MakeSafeForCommand(AppPaths.ConfigDirectoryPath, setsTheFoldersRule, out var putAside, out var made);
+            if (!made && !opened && putAside is null)
             {
                 return null;
             }
 
-            if (!setsTheFoldersRule)
+            using var log = new FileLog(AppPaths.Create().LogFile);
+            if (putAside is not null)
             {
-                SettingsAccess.OpenToEveryone(AppPaths.ConfigDirectoryPath);
+                log.Warning($"The settings folder was made by a user who is no administrator. It was put aside as {putAside}, with what it held{(made ? ", and a new one made" : string.Empty)}: nothing in it is used.");
+            }
+            else if (made)
+            {
+                log.Info("The settings folder was not there, or was a link: a new one was made.");
+            }
+            else
+            {
+                log.Info("The settings folder had the rule it was made with, for the administrators alone: nobody chose that.");
             }
 
-            using var log = new FileLog(AppPaths.Create().LogFile);
-            log.Warning($"The settings folder was made by a user who is no administrator. It was put aside as {putAside}, with what it held, and a new one made: nothing in it is used.");
-            if (!setsTheFoldersRule)
+            if (opened)
             {
                 log.Info("Settings open to every user of this PC until someone chooses in the app.");
             }
@@ -149,7 +158,15 @@ internal static class CompanionServiceManager
 
     private static ControlCommandResult Install()
     {
-        // First of all: no service is made, or started, over a settings folder that is not the PC's.
+        // As the other commands: said first, and nothing is touched. Without it the folder
+        // step below ran as the user, and "the settings folder could not be made safe" was
+        // the answer, with the installer's exit code for that.
+        if (!IsAdministrator())
+        {
+            return new ControlCommandResult(false, S("SvcMgr.InstallNeedsAdmin"));
+        }
+
+        // Then: no service is made, or started, over a settings folder that is not the PC's.
         if (MakeSettingsFolderSafe() is { } notSafe)
         {
             return notSafe;
@@ -269,7 +286,7 @@ internal static class CompanionServiceManager
     /// still asks; "keep": what the folder had, after an update. Needs an administrator.
     /// A settings folder made by a user who is no administrator (before the first install, in
     /// ProgramData, where every user can make one) is not used, nor anything in it: it is put
-    /// aside and a new one made (<see cref="SettingsAccess.MakeSafe(string, out string?)"/>).
+    /// aside and a new one made (<see cref="SettingsAccess.MakeSafeForCommand"/>).
     /// </summary>
     private static ControlCommandResult ChangeSettingsAccess(IReadOnlyList<string> arguments)
     {
@@ -280,11 +297,17 @@ internal static class CompanionServiceManager
 
         var mode = arguments.FirstOrDefault()?.ToLowerInvariant();
         var users = arguments.Skip(1).Where(user => !string.IsNullOrWhiteSpace(user)).ToList();
+        // A command that asks for nothing changes nothing on the PC, the folder included.
+        var setsTheFoldersRule = mode is "everyone" or "open" || (mode == "only" && users.Count > 0);
+        if (!setsTheFoldersRule && mode != "keep")
+        {
+            return new ControlCommandResult(false, S("Access.Usage"));
+        }
+
         // Before anything is read or written there as administrator: the folder may have been
         // made by a user, as a link to a folder of their choosing or with settings of theirs.
         // "keep" over a folder that was put aside finds the new one open to every user, and
         // does with it what an update does with such a folder.
-        var setsTheFoldersRule = mode is "everyone" or "open" || (mode == "only" && users.Count > 0);
         if (MakeSettingsFolderSafe(setsTheFoldersRule) is { } notSafe)
         {
             return notSafe;
@@ -339,6 +362,12 @@ internal static class CompanionServiceManager
 
         var mode = arguments.FirstOrDefault()?.ToLowerInvariant();
         var users = arguments.Skip(1).Where(user => !string.IsNullOrWhiteSpace(user)).ToList();
+        // A command that asks for nothing changes nothing on the PC, the folder included.
+        if (mode != "off" && !(mode == "on" && users.Count > 0))
+        {
+            return new ControlCommandResult(false, S("Kiosk.Usage"));
+        }
+
         // Before anything is read or written there as administrator.
         if (MakeSettingsFolderSafe() is { } notSafe)
         {

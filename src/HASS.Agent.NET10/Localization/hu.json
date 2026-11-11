@@ -489,6 +489,7 @@
     "SvcMgr.InstalledNotStarted": "A szolgáltatás települt, de nem indult el.",
     "SvcMgr.InstalledAndStarted": "A {0} telepítve és elindítva.",
     "SvcMgr.ApprovalNeedsAdmin": "A szolgáltatás parancsainak jóváhagyásához rendszergazda kell.",
+    "SvcMgr.InstallNeedsAdmin": "A szolgáltatás telepítéséhez rendszergazda kell.",
     "SvcMgr.Approved": "A szolgáltatás mostantól futtathatja a neki beállított parancsokat és parancs-szenzorokat.",
     "SvcMgr.ApprovalFailed": "A szolgáltatás parancsait nem sikerült jóváhagyni: {0}",
     "SvcMgr.ApprovalNeeded": "A szolgáltatás SYSTEM-ként fut, ezért az általa futtatott parancsokhoz és parancs-szenzorokhoz rendszergazdai jóváhagyás kell; az OK után a Windows kéri. Nézd meg lent, melyik mit futtat, az egészet: pontosan ez lesz jóváhagyva. Jóváhagyás nélkül a szolgáltatás ezeket kihagyja, és amit tud, a tálcaalkalmazás futtatja.",
