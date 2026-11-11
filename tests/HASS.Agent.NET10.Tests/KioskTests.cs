@@ -41,6 +41,16 @@ public class KioskTests : IDisposable
         Assert.Equal(kiosk, KioskMode.IsKioskUser(inGroup, kioskTaskIsThere));
     }
 
+    [Theory]
+    [InlineData(true, true, true, true)]
+    [InlineData(false, true, true, false)]   // not a kiosk user: left alone
+    [InlineData(true, false, true, false)]   // the settings are limited away from them
+    [InlineData(true, true, false, false)]   // the folder is a link or another user's: the app would stop at once
+    public void The_kiosk_task_starts_the_app_only_when_it_would_stay(bool kioskUser, bool canUseTheSettings, bool folderIsOfThePc, bool starts)
+    {
+        Assert.Equal(starts, KioskMode.TaskStartsTheApp(kioskUser, canUseTheSettings, folderIsOfThePc));
+    }
+
     [Fact]
     public void A_kiosk_user_can_read_the_settings_but_not_change_replace_or_delete_them()
     {

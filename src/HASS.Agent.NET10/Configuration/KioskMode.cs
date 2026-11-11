@@ -51,4 +51,13 @@ internal static class KioskMode
     /// to the full app.
     /// </summary>
     internal static bool IsKioskUser(bool? inGroup, bool kioskTaskIsThere) => inGroup ?? kioskTaskIsThere;
+
+    /// <summary>
+    /// Whether the kiosk task starts the app: for a kiosk user, and only when the app would
+    /// stay. It stops at once when the settings are limited away from the user, and when the
+    /// settings folder is not the PC's (a link, or made by a user who is no administrator);
+    /// started then, it would only stop again, at every run of the task, once a minute.
+    /// </summary>
+    internal static bool TaskStartsTheApp(bool kioskUser, bool userCanUseTheSettings, bool settingsFolderIsOfThePc) =>
+        kioskUser && userCanUseTheSettings && settingsFolderIsOfThePc;
 }
