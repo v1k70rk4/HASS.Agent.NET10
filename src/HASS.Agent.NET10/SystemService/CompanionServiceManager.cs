@@ -111,30 +111,35 @@ internal static class CompanionServiceManager
     /// Before an elevated command reads or writes anything in the settings folder, and before
     /// a service is made that will: the folder is made safe (<see cref="SettingsAccess.MakeSafe(string)"/>).
     /// The one place for every command. A folder a user who is no administrator had made is
-    /// put aside there and a new one made, which only administrators can use: the log says
-    /// where the old one went, and unless the command sets the folder's rule itself
-    /// (<paramref name="setsTheFoldersRule"/>), the new one is opened to every user, as a
-    /// silent first install leaves it, so the app asks who it is for.
+    /// put aside there and a new one made; a folder that is not there (deleted, or never made:
+    /// the app from its zip) is made as well. A folder made there is one only administrators
+    /// can use: unless the command sets the folder's rule itself
+    /// (<paramref name="setsTheFoldersRule"/>), it is opened to every user, as a silent first
+    /// install leaves it, so the app asks who it is for
+    /// (<see cref="SettingsAccess.MakeSafeForCommand"/>). The log says what was done.
     /// </summary>
     /// <returns>Null, or why the folder is not safe to use: the command then does nothing.</returns>
     private static ControlCommandResult? MakeSettingsFolderSafe(bool setsTheFoldersRule = false)
     {
         try
         {
-            SettingsAccess.MakeSafe(AppPaths.ConfigDirectoryPath, out var putAside);
-            if (putAside is null)
+            SettingsAccess.MakeSafeForCommand(AppPaths.ConfigDirectoryPath, setsTheFoldersRule, out var putAside, out var made);
+            if (!made && putAside is null)
             {
                 return null;
             }
 
-            if (!setsTheFoldersRule)
+            using var log = new FileLog(AppPaths.Create().LogFile);
+            if (putAside is not null)
             {
-                SettingsAccess.OpenToEveryone(AppPaths.ConfigDirectoryPath);
+                log.Warning($"The settings folder was made by a user who is no administrator. It was put aside as {putAside}, with what it held, and a new one made: nothing in it is used.");
+            }
+            else
+            {
+                log.Info("The settings folder was not there, or was a link: a new one was made.");
             }
 
-            using var log = new FileLog(AppPaths.Create().LogFile);
-            log.Warning($"The settings folder was made by a user who is no administrator. It was put aside as {putAside}, with what it held, and a new one made: nothing in it is used.");
-            if (!setsTheFoldersRule)
+            if (made && !setsTheFoldersRule)
             {
                 log.Info("Settings open to every user of this PC until someone chooses in the app.");
             }

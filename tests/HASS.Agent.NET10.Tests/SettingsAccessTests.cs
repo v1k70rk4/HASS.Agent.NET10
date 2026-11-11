@@ -530,6 +530,44 @@ public class SettingsAccessTests : IDisposable
     }
 
     [Fact]
+    public void A_folder_made_for_a_command_is_open_to_every_user()
+    {
+        // What "--install-service", "--kiosk on" or "--settings-access keep" find when the
+        // settings folder is not there (deleted, or the app from its zip). Made the
+        // administrators' alone and left so, the app would start for nobody, and an update
+        // would take the one rule it has for a limit someone chose.
+        var folder = Path.Combine(_folder, "made-for-a-command");
+
+        SettingsAccess.MakeSafeForCommand(folder, setsTheFoldersRule: false, out var putAside, out var made);
+
+        Assert.True(made);
+        Assert.Null(putAside);
+        Assert.False(SettingsAccess.RestrictionState(folder));
+        Assert.True(SettingsAccess.IsOfThePc(folder));
+        Assert.Single(Directory.GetFiles(folder), file => SettingsAccess.IsAnchorName(Path.GetFileName(file)));
+    }
+
+    [Fact]
+    public void Only_a_folder_made_for_the_command_is_opened_and_not_for_one_that_sets_the_rule()
+    {
+        // A folder that was there keeps the rule it has: limited stays limited.
+        SettingsAccess.SetFolderRule(_folder, [Me]);
+
+        SettingsAccess.MakeSafeForCommand(_folder, setsTheFoldersRule: false, out _, out var made);
+
+        Assert.False(made);
+        Assert.True(SettingsAccess.RestrictionState(_folder));
+
+        // A command that sets the rule itself gets the new folder as it was made.
+        var folder = Path.Combine(_folder, "made-for-a-command-with-a-rule");
+
+        SettingsAccess.MakeSafeForCommand(folder, setsTheFoldersRule: true, out _, out made);
+
+        Assert.True(made);
+        Assert.True(SettingsAccess.RestrictionState(folder));
+    }
+
+    [Fact]
     public void A_folder_whose_rule_lets_nobody_replace_it_keeps_its_rule()
     {
         SettingsAccess.SetFolderRule(_folder, [Me]);

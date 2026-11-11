@@ -591,7 +591,7 @@ internal static class SettingsAccess
     internal static void SetFolderRule(string configDirectory, IEnumerable<SecurityIdentifier> users, SecurityIdentifier? kioskGroup = null)
     {
         // The anchor is held open until the rest is done, so nothing can remove it meanwhile.
-        var notTakenOver = MakeSafe(configDirectory, out var anchor, out var anchorName, out _);
+        var notTakenOver = MakeSafe(configDirectory, out var anchor, out var anchorName, out _, out _);
         try
         {
             SetFolderRule(configDirectory, users, kioskGroup, notTakenOver, ref anchor, anchorName);
@@ -985,12 +985,13 @@ internal static class SettingsAccess
     // the administrators and whoever makes it. Made the usual way it would take ProgramData's
     // rule, under which every user may create files in it, and be empty: a user waiting for
     // that moment could turn it into a link before anything else is done with it.
-    private static void CreateForAdministrators(string configDirectory)
+    /// <returns>Whether it was made here: false when a folder was there already.</returns>
+    private static bool CreateForAdministrators(string configDirectory)
     {
         var folder = new DirectoryInfo(configDirectory);
         if (folder.Exists)
         {
-            return;
+            return false;
         }
 
         const InheritanceFlags inherit = InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit;
@@ -1000,6 +1001,7 @@ internal static class SettingsAccess
         security.AddAccessRule(new FileSystemAccessRule(Administrators, FileSystemRights.FullControl, inherit, PropagationFlags.None, AccessControlType.Allow));
         security.AddAccessRule(new FileSystemAccessRule(OwnerRights, FileSystemRights.FullControl, AccessControlType.Allow));
         folder.Create(security);
+        return true;
     }
 
     private static void SetRule(Microsoft.Win32.SafeHandles.SafeFileHandle folder, byte[] rule)
@@ -1142,15 +1144,40 @@ internal static class SettingsAccess
     /// </summary>
     internal static IReadOnlyList<string> MakeSafe(string configDirectory, out string? putAside)
     {
-        var failures = MakeSafe(configDirectory, out var anchor, out _, out putAside);
+        var failures = MakeSafe(configDirectory, out var anchor, out _, out putAside, out _);
         anchor?.Dispose();
         return failures;
     }
 
+    /// <summary>
+    /// What an elevated command does before it reads or writes anything in the settings folder:
+    /// <see cref="MakeSafe(string)"/>, and a folder that had to be made for it is opened to
+    /// every user, as a silent first install leaves it, so the app asks who it is for. Made
+    /// when there was none, when what was there was a link, and when it was another user's
+    /// and was put aside. A folder made there is the administrators' alone: left so, the app
+    /// would start for nobody, and an update would keep it that way, taking the one rule it
+    /// has for a limit someone chose. Not when the command sets the folder's rule itself
+    /// (<paramref name="setsTheFoldersRule"/>).
+    /// </summary>
+    /// <param name="putAside">Where another user's folder went; null when there was none.</param>
+    /// <param name="made">Whether the folder is a new one, made here.</param>
+    internal static void MakeSafeForCommand(string configDirectory, bool setsTheFoldersRule, out string? putAside, out bool made)
+    {
+        // What could not be taken over in the folder is the caller's to find, as before: a
+        // command that sets the rule reports it, the others go on.
+        _ = MakeSafe(configDirectory, out var anchor, out _, out putAside, out made);
+        anchor?.Dispose();
+        if (made && !setsTheFoldersRule)
+        {
+            OpenToEveryone(configDirectory);
+        }
+    }
+
     private static IReadOnlyList<string> MakeSafe(
-        string configDirectory, out Microsoft.Win32.SafeHandles.SafeFileHandle? anchor, out string? anchorName, out string? putAside)
+        string configDirectory, out Microsoft.Win32.SafeHandles.SafeFileHandle? anchor, out string? anchorName, out string? putAside, out bool made)
     {
         putAside = null;
+        made = false;
         var failures = new List<string>();
         // Backup for the read-only opens past any rule, take-ownership for the owner, restore
         // for the rule later: what an administrator has, and a test run as the owner does without.
@@ -1164,7 +1191,7 @@ internal static class SettingsAccess
                     folder.Delete();
                 }
 
-                CreateForAdministrators(configDirectory);
+                made |= CreateForAdministrators(configDirectory);
 
                 // The folder itself, held open while its contents are done.
                 using var root = OpenEntryItself(configDirectory, isFolder: true, ReadControl);
