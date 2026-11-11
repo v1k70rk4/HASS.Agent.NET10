@@ -2486,7 +2486,12 @@ internal sealed class MqttCompanionService : IDisposable
 
             Interlocked.Exchange(ref _lastScreenshotTicks, now);
 
-            var overWebSocket = _isOnWebSocket && _haWs is not null;
+            // What it was asked on: this run of the connection, and over the HA API this very
+            // connection. Saving the settings ends the run and starts another, maybe to another
+            // Home Assistant or broker; a picture taken meanwhile is not sent there.
+            var run = _cts;
+            var haWs = _isOnWebSocket ? _haWs : null;
+            var overWebSocket = haWs is not null;
             var limit = PayloadLimit(overWebSocket ? null : _brokerMaximumPacketSize);
             Screenshot? shot;
             try
@@ -2511,9 +2516,16 @@ internal sealed class MqttCompanionService : IDisposable
                 return;
             }
 
+            if (run is null || run.IsCancellationRequested || !ReferenceEquals(run, _cts)
+                || (overWebSocket && !ReferenceEquals(haWs, _haWs)))
+            {
+                _log.Info("Screenshot not sent: the connection it was asked on has ended meanwhile.");
+                return;
+            }
+
             if (overWebSocket)
             {
-                if (!await _haWs!.PublishScreenshotAsync(shot.Jpeg, _cts?.Token ?? CancellationToken.None))
+                if (!await haWs!.PublishScreenshotAsync(shot.Jpeg, run.Token))
                 {
                     _log.Warning("Screenshot not sent: over the HA API it needs the integration 10.13.1 or newer.");
                     return;

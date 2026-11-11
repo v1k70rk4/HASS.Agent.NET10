@@ -396,6 +396,13 @@ public class ServicePolicyTests : IDisposable
         Assert.Equal("    " + hebrew, lines[1]);
         Assert.Equal("    " + HASS.Agent.Companion.Localization.Strings.Get("SvcMgr.ApprovalRightToLeft"), lines[^1]);
         Assert.Equal(lines.Length - 1, shown[1].Split(Environment.NewLine).Length);
+
+        // A name in such letters stands in one line with the type after it: said as well,
+        // though what the command runs has none.
+        var named = ServiceApproval.PendingDescriptions(
+            Settings([new CustomCommandDefinition { Id = "3", Name = "\u05D2\u05D9\u05D1\u05D5\u05D9", Type = CustomCommandTypes.PowerShell, Service = true, Command = "Restart-Service Spooler" }]),
+            new ServicePolicy());
+        Assert.Equal("    " + HASS.Agent.Companion.Localization.Strings.Get("SvcMgr.ApprovalRightToLeft"), named[0].Split(Environment.NewLine)[^1]);
     }
 
     [Fact]

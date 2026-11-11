@@ -619,6 +619,45 @@ public class SettingsAccessTests : IDisposable
     }
 
     [Fact]
+    public void A_rule_with_a_deny_someone_set_is_not_the_rule_a_folder_is_made_with()
+    {
+        // Set by hand: the owner's entry as a new folder has it, and a deny for a group (the
+        // guests here, so that the test can still read its own folder). Nobody is named besides
+        // the owner, and still someone chose this: it is not opened.
+        Assert.SkipWhen(
+            IsElevated && WindowsIdentity.GetCurrent().Owner == Me,
+            "Run elevated from a shell that makes the user the owner of what is created.");
+        var folder = Path.Combine(_folder, "denied-by-hand");
+        SettingsAccess.MakeSafeForCommand(folder, setsTheFoldersRule: true, out _, out _);
+        Assert.True(SettingsAccess.IsAsItWasMade(folder));
+        var info = new DirectoryInfo(folder);
+        var rule = info.GetAccessControl();
+        rule.AddAccessRule(new FileSystemAccessRule(
+            new SecurityIdentifier(WellKnownSidType.BuiltinGuestsSid, null), FileSystemRights.ReadData, AccessControlType.Deny));
+        info.SetAccessControl(rule);
+
+        Assert.False(SettingsAccess.IsAsItWasMade(folder));
+        Assert.False(SettingsAccess.MakeSafeForCommand(folder, setsTheFoldersRule: false, out _, out var made));
+        Assert.False(made);
+        Assert.True(SettingsAccess.RestrictionState(folder));
+    }
+
+    [Fact]
+    public void A_folder_is_made_by_one_call_only()
+    {
+        // Two elevated commands at the same moment: the one that did not make the folder
+        // must not take it for one nobody set a rule on.
+        var folder = Path.Combine(_folder, "made-once");
+
+        Assert.True(SettingsAccess.CreateForAdministrators(folder));
+        Assert.False(SettingsAccess.CreateForAdministrators(folder));
+        Assert.True(SettingsAccess.IsAsItWasMade(folder));
+
+        var there = Directory.CreateDirectory(Path.Combine(_folder, "there-already")).FullName;
+        Assert.False(SettingsAccess.CreateForAdministrators(there));
+    }
+
+    [Fact]
     public void A_folder_whose_rule_lets_nobody_replace_it_keeps_its_rule()
     {
         SettingsAccess.SetFolderRule(_folder, [Me]);

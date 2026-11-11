@@ -81,6 +81,23 @@ public class ProgramPathTests : IDisposable
         Assert.True(SystemCommandService.HasUnquotedSpaceInPath($"{_program}  /x"));
     }
 
+    [Fact]
+    public void A_folder_named_after_the_program_and_a_word_is_a_space_in_the_path_with_a_period_too()
+    {
+        SkipWhenTheTempFolderHasASpace();
+        // "...\app.exe Folder" is a folder, and "...\app.exe" a program beside it: typed without
+        // quotes, the text names something in the folder and Windows would start the program.
+        // With a period after the folder's name it is the same folder to Windows.
+        var tools = Directory.CreateDirectory(Path.Combine(_folder, "Tools")).FullName;
+        var plain = Path.Combine(tools, "app.exe");
+        File.WriteAllText(plain, "x");
+        Directory.CreateDirectory(plain + " Folder");
+
+        Assert.True(SystemCommandService.HasUnquotedSpaceInPath($@"{plain} Folder\missing.exe /x"));
+        Assert.True(SystemCommandService.HasUnquotedSpaceInPath($@"{plain} Folder.\missing.exe /x"));
+        Assert.True(SystemCommandService.HasUnquotedSpaceInPath($@"{plain} Folder. \missing.exe /x"));
+    }
+
     [Theory]
     [InlineData("taskkill /F /IM notepad.exe /T")]
     [InlineData("shutdown.exe /s /t 0")]

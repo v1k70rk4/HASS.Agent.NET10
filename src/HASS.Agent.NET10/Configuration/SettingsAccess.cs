@@ -989,23 +989,47 @@ internal static class SettingsAccess
     // the administrators and whoever makes it. Made the usual way it would take ProgramData's
     // rule, under which every user may create files in it, and be empty: a user waiting for
     // that moment could turn it into a link before anything else is done with it.
-    /// <returns>Whether it was made here: false when a folder was there already.</returns>
-    private static bool CreateForAdministrators(string configDirectory)
+    /// <returns>
+    /// Whether it was made here: false when a folder was there already. Asked of the one call
+    /// that makes it, not looked up first: of two elevated commands at the same moment only
+    /// one makes the folder, and only that one may take it for a folder nobody set a rule on.
+    /// </returns>
+    internal static bool CreateForAdministrators(string configDirectory)
     {
-        var folder = new DirectoryInfo(configDirectory);
-        if (folder.Exists)
-        {
-            return false;
-        }
-
         const InheritanceFlags inherit = InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit;
         var security = new DirectorySecurity();
         security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
         security.AddAccessRule(new FileSystemAccessRule(LocalSystem, FileSystemRights.FullControl, inherit, PropagationFlags.None, AccessControlType.Allow));
         security.AddAccessRule(new FileSystemAccessRule(Administrators, FileSystemRights.FullControl, inherit, PropagationFlags.None, AccessControlType.Allow));
         security.AddAccessRule(new FileSystemAccessRule(OwnerRights, FileSystemRights.FullControl, AccessControlType.Allow));
-        folder.Create(security);
-        return true;
+
+        // Windows' own call, which says when the name was taken already; .NET's Create
+        // returns the same way whether it made the folder or found one.
+        var descriptor = GCHandle.Alloc(security.GetSecurityDescriptorBinaryForm(), GCHandleType.Pinned);
+        try
+        {
+            var attributes = new SecurityAttributes
+            {
+                Length = Marshal.SizeOf<SecurityAttributes>(),
+                SecurityDescriptor = descriptor.AddrOfPinnedObject()
+            };
+            if (CreateDirectory(configDirectory, ref attributes))
+            {
+                return true;
+            }
+
+            var error = Marshal.GetLastWin32Error();
+            if (error == ErrorAlreadyExists)
+            {
+                return false;
+            }
+
+            throw new Win32Exception(error);
+        }
+        finally
+        {
+            descriptor.Free();
+        }
     }
 
     private static void SetRule(Microsoft.Win32.SafeHandles.SafeFileHandle folder, byte[] rule)
@@ -1206,6 +1230,20 @@ internal static class SettingsAccess
         try
         {
             if (RestrictionState(configDirectory) is not true)
+            {
+                return false;
+            }
+
+            // A deny is someone's doing: a folder is made without one, and the only one the
+            // app writes is the kiosk group's. With any other, the rule is not the one the
+            // folder was made with, whatever else it says.
+            var kioskGroup = KioskMode.GroupSid();
+            var deniedBySomeone = new DirectoryInfo(configDirectory).GetAccessControl()
+                .GetAccessRules(includeExplicit: true, includeInherited: true, typeof(SecurityIdentifier))
+                .Cast<FileSystemAccessRule>()
+                .Any(rule => rule.AccessControlType == AccessControlType.Deny
+                    && !(rule.IdentityReference is SecurityIdentifier sid && kioskGroup is not null && sid == kioskGroup));
+            if (deniedBySomeone)
             {
                 return false;
             }
@@ -1763,7 +1801,9 @@ internal static class SettingsAccess
         : directoryAccount && hasAProfileHere ? null
         : false;
 
-    // Whether the account has logged on to this PC: its profile is listed.
+    // Whether the account has logged on to this PC: its profile is listed. When the list
+    // cannot be read, the account may have: said so, or a folder of an administrator from a
+    // domain would be put aside on the strength of a list nobody saw.
     private static bool HasAProfileHere(SecurityIdentifier account)
     {
         try
@@ -1773,7 +1813,7 @@ internal static class SettingsAccess
         }
         catch (Exception ex) when (ex is System.Security.SecurityException or UnauthorizedAccessException or IOException)
         {
-            return false;
+            return true;
         }
     }
 
@@ -1949,6 +1989,19 @@ internal static class SettingsAccess
 
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern bool GetComputerNameEx(int nameType, char[]? buffer, ref uint size);
+
+    private const int ErrorAlreadyExists = 183;
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct SecurityAttributes
+    {
+        public int Length;
+        public IntPtr SecurityDescriptor;
+        public int InheritHandle;
+    }
+
+    [DllImport("kernel32.dll", EntryPoint = "CreateDirectoryW", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern bool CreateDirectory(string path, ref SecurityAttributes attributes);
 
     // The descriptor carries the "protected" flag set by SetAccessRuleProtection; nothing is
     // propagated to what is in the folder here, ResetContents does that afterwards.

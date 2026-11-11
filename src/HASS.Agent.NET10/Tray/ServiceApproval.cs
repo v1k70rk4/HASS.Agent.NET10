@@ -115,7 +115,8 @@ internal static class ServiceApproval
 
         // Letters written from right to left are shown as they are, and can have the parts
         // around them shown in another order than they are in: said, in a line of its own.
-        if (HasRightToLeftLetters(runs))
+        // In the name as well, which stands in one line with the type after it.
+        if (HasRightToLeftLetters(runs) || HasRightToLeftLetters(name))
         {
             lines.Add("    " + Strings.Get("SvcMgr.ApprovalRightToLeft"));
         }
