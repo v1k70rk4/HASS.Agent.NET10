@@ -761,16 +761,11 @@ internal static class Program
             // A kiosk user the settings are limited away from would only get the app to stop
             // again, once a minute; so would anyone while the settings folder is not the PC's.
             if (!KioskMode.TaskStartsTheApp(
-                    KioskMode.AppliesToCurrentUser(),
-                    SettingsAccess.CurrentUserCanUse(AppPaths.ConfigDirectoryPath),
-                    SettingsAccess.IsOfThePc(AppPaths.ConfigDirectoryPath)))
+                    KioskMode.AppliesToCurrentUser,
+                    AppIsRunning,
+                    () => SettingsAccess.CurrentUserCanUse(AppPaths.ConfigDirectoryPath),
+                    () => SettingsAccess.IsOfThePc(AppPaths.ConfigDirectoryPath)))
             {
-                return;
-            }
-
-            if (Mutex.TryOpenExisting(MutexName, out var running))
-            {
-                running.Dispose();
                 return;
             }
 
@@ -784,6 +779,17 @@ internal static class Program
         catch
         {
             // The next trigger of the task tries again.
+        }
+
+        static bool AppIsRunning()
+        {
+            if (!Mutex.TryOpenExisting(MutexName, out var running))
+            {
+                return false;
+            }
+
+            running.Dispose();
+            return true;
         }
     }
 

@@ -42,13 +42,25 @@ public class KioskTests : IDisposable
     }
 
     [Theory]
-    [InlineData(true, true, true, true)]
-    [InlineData(false, true, true, false)]   // not a kiosk user: left alone
-    [InlineData(true, false, true, false)]   // the settings are limited away from them
-    [InlineData(true, true, false, false)]   // the folder is a link or another user's: the app would stop at once
-    public void The_kiosk_task_starts_the_app_only_when_it_would_stay(bool kioskUser, bool canUseTheSettings, bool folderIsOfThePc, bool starts)
+    [InlineData(true, false, true, true, true, 4)]
+    [InlineData(false, false, true, true, false, 1)]   // not a kiosk user: left alone, and nothing else is asked
+    [InlineData(true, true, true, true, false, 2)]     // the app is running: the settings folder is not looked at
+    [InlineData(true, false, false, true, false, 3)]   // the settings are limited away from them
+    [InlineData(true, false, true, false, false, 4)]   // the folder is a link or another user's: the app would stop at once
+    public void The_kiosk_task_starts_the_app_only_when_it_would_stay(
+        bool kioskUser, bool appIsRunning, bool canUseTheSettings, bool folderIsOfThePc, bool starts, int asked)
     {
-        Assert.Equal(starts, KioskMode.TaskStartsTheApp(kioskUser, canUseTheSettings, folderIsOfThePc));
+        // The task runs once a minute: no further than the first "no".
+        var count = 0;
+        Func<bool> Counted(bool answer) => () =>
+        {
+            count++;
+            return answer;
+        };
+
+        Assert.Equal(starts, KioskMode.TaskStartsTheApp(
+            Counted(kioskUser), Counted(appIsRunning), Counted(canUseTheSettings), Counted(folderIsOfThePc)));
+        Assert.Equal(asked, count);
     }
 
     [Fact]
