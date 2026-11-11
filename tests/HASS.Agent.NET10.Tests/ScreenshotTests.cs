@@ -155,6 +155,31 @@ public sealed class ScreenshotTests
     }
 
     [Fact]
+    public void A_picture_goes_out_only_on_the_connection_it_was_asked_on()
+    {
+        using var run = new CancellationTokenSource();
+        using var next = new CancellationTokenSource();
+        object haApi = new(), another = new();
+
+        // MQTT, and the HA API, while nothing changed.
+        Assert.True(MqttCompanionService.ScreenshotStillHasItsConnection(run, run, null, null));
+        Assert.True(MqttCompanionService.ScreenshotStillHasItsConnection(run, run, haApi, haApi));
+
+        // The settings were saved meanwhile: the run ended and another began, maybe to another
+        // Home Assistant or broker.
+        Assert.False(MqttCompanionService.ScreenshotStillHasItsConnection(run, next, null, null));
+        Assert.False(MqttCompanionService.ScreenshotStillHasItsConnection(run, null, null, null));
+        Assert.False(MqttCompanionService.ScreenshotStillHasItsConnection(run, next, haApi, another));
+        Assert.False(MqttCompanionService.ScreenshotStillHasItsConnection(run, run, haApi, another));
+        Assert.False(MqttCompanionService.ScreenshotStillHasItsConnection(run, run, haApi, null));
+        Assert.False(MqttCompanionService.ScreenshotStillHasItsConnection(null, null, null, null));
+
+        // Stopping: the run is the same one still, and it is over.
+        run.Cancel();
+        Assert.False(MqttCompanionService.ScreenshotStillHasItsConnection(run, run, null, null));
+    }
+
+    [Fact]
     public void The_screen_of_this_pc_makes_a_picture_that_can_be_sent()
     {
         // The real thing, where there is a desktop to take: a build server may have none.

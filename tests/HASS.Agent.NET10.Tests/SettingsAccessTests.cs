@@ -643,6 +643,81 @@ public class SettingsAccessTests : IDisposable
     }
 
     [Fact]
+    public void A_rule_that_only_names_the_same_accounts_is_not_the_rule_a_folder_is_made_with()
+    {
+        // The owner's entry is there and nobody else is named, but with other rights, or
+        // passed on to the contents: someone wrote this, it is not what a new folder has.
+        Assert.SkipWhen(
+            IsElevated && WindowsIdentity.GetCurrent().Owner == Me,
+            "Run elevated from a shell that makes the user the owner of what is created.");
+        var ownerRights = new SecurityIdentifier(WellKnownSidType.WinCreatorOwnerRightsSid, null);
+        const InheritanceFlags contents = InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit;
+        (string Name, FileSystemAccessRule Entry)[] cases =
+        [
+            ("other-rights", new FileSystemAccessRule(
+                ownerRights, FileSystemRights.FullControl & ~FileSystemRights.DeleteSubdirectoriesAndFiles, AccessControlType.Allow)),
+            ("passed-on", new FileSystemAccessRule(
+                ownerRights, FileSystemRights.FullControl, contents, PropagationFlags.None, AccessControlType.Allow)),
+        ];
+
+        foreach (var (name, entry) in cases)
+        {
+            var folder = Path.Combine(_folder, name);
+            SettingsAccess.MakeSafeForCommand(folder, setsTheFoldersRule: true, out _, out _);
+            Assert.True(SettingsAccess.IsAsItWasMade(folder));
+            var info = new DirectoryInfo(folder);
+            var rule = info.GetAccessControl();
+            rule.PurgeAccessRules(ownerRights);
+            rule.AddAccessRule(entry);
+            info.SetAccessControl(rule);
+
+            Assert.False(SettingsAccess.IsAsItWasMade(folder));
+            Assert.False(SettingsAccess.MakeSafeForCommand(folder, setsTheFoldersRule: false, out _, out _));
+            Assert.True(SettingsAccess.RestrictionState(folder));
+        }
+    }
+
+    [Fact]
+    public void What_keep_of_10_13_0_made_of_a_new_folder_is_still_one_nobody_chose()
+    {
+        // 10.13.0 made the folder for a command, left it, and its "keep" at a repair wrote the
+        // owner's entry again in the shape of a user's: still nobody's choice. The rule as
+        // "keep" writes it for the owner's entry alone, which is how it reads back from a
+        // folder (looked at once on a real one); a test run as the owner cannot go on from
+        // such a folder, since that entry takes the owner's own rights on it.
+        var ownerRights = new SecurityIdentifier(WellKnownSidType.WinCreatorOwnerRightsSid, null);
+        var kiosk = new SecurityIdentifier(WellKnownSidType.BuiltinGuestsSid, null);
+        const InheritanceFlags contents = InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit;
+
+        DirectorySecurity Kept()
+        {
+            var rule = new DirectorySecurity();
+            rule.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
+            rule.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null), FileSystemRights.FullControl, contents, PropagationFlags.None, AccessControlType.Allow));
+            rule.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null), FileSystemRights.FullControl, contents, PropagationFlags.None, AccessControlType.Allow));
+            rule.AddAccessRule(new FileSystemAccessRule(ownerRights, SettingsAccess.UsersOnTheFolder, InheritanceFlags.None, PropagationFlags.None, AccessControlType.Allow));
+            rule.AddAccessRule(new FileSystemAccessRule(ownerRights, FileSystemRights.Modify | FileSystemRights.Synchronize, contents, PropagationFlags.InheritOnly, AccessControlType.Allow));
+            return rule;
+        }
+
+        Assert.True(SettingsAccess.HasTheRuleOfANewFolder(Kept(), kioskGroup: null));
+
+        // With the kiosk group's deny, which the app writes itself; anyone else's is a choice.
+        var denied = Kept();
+        denied.AddAccessRule(new FileSystemAccessRule(kiosk, FileSystemRights.Write, contents, PropagationFlags.None, AccessControlType.Deny));
+        Assert.True(SettingsAccess.HasTheRuleOfANewFolder(denied, kiosk));
+        Assert.False(SettingsAccess.HasTheRuleOfANewFolder(denied, kioskGroup: null));
+
+        // One more account in it, or what is above passed down into it: not this rule.
+        var withAUser = Kept();
+        withAUser.AddAccessRule(new FileSystemAccessRule(Me, FileSystemRights.Read, AccessControlType.Allow));
+        Assert.False(SettingsAccess.HasTheRuleOfANewFolder(withAUser, kioskGroup: null));
+        var open = Kept();
+        open.SetAccessRuleProtection(isProtected: false, preserveInheritance: true);
+        Assert.False(SettingsAccess.HasTheRuleOfANewFolder(open, kioskGroup: null));
+    }
+
+    [Fact]
     public void A_folder_is_made_by_one_call_only()
     {
         // Two elevated commands at the same moment: the one that did not make the folder

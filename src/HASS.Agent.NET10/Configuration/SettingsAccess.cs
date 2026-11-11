@@ -1219,8 +1219,10 @@ internal static class SettingsAccess
     /// (<see cref="CreateForAdministrators"/>): it names nobody but SYSTEM, the administrators
     /// and the folder's owner. No choice leaves that: a limit names its users or their group.
     /// It is also what "--settings-access keep" of 10.13.0 made of such a folder, keeping the
-    /// owner's entry as if it were a user's. A rule that names nobody at all is not this:
-    /// someone may have set it by hand, and it stays. (A folder made by a command started
+    /// owner's entry as if it were a user's. The rule is compared entry by entry with these
+    /// two, rights and inheritance included (<see cref="HasTheRuleOfANewFolder"/>): one that
+    /// only names the same accounts is someone's own. A rule that names nobody at all is not
+    /// this either: someone may have set it by hand, and it stays. (A folder made by a command started
     /// from a shell that makes the user the owner of what it creates, as Git Bash does, is
     /// given to the administrators, and Windows drops the owner's entry when the owner
     /// changes: it is opened by the command that made it, and not found here later.)
@@ -1234,28 +1236,71 @@ internal static class SettingsAccess
                 return false;
             }
 
-            // A deny is someone's doing: a folder is made without one, and the only one the
-            // app writes is the kiosk group's. With any other, the rule is not the one the
-            // folder was made with, whatever else it says.
-            var kioskGroup = KioskMode.GroupSid();
-            var deniedBySomeone = new DirectoryInfo(configDirectory).GetAccessControl()
-                .GetAccessRules(includeExplicit: true, includeInherited: true, typeof(SecurityIdentifier))
-                .Cast<FileSystemAccessRule>()
-                .Any(rule => rule.AccessControlType == AccessControlType.Deny
-                    && !(rule.IdentityReference is SecurityIdentifier sid && kioskGroup is not null && sid == kioskGroup));
-            if (deniedBySomeone)
-            {
-                return false;
-            }
-
-            var users = ExplicitUsers(configDirectory);
-            return users.Count == 1 && users[0] == OwnerRights;
+            return HasTheRuleOfANewFolder(new DirectoryInfo(configDirectory).GetAccessControl(), KioskMode.GroupSid());
         }
         catch (Exception)
         {
             // Not to be read: not taken for a folder nobody chose a rule for.
             return false;
         }
+    }
+
+    /// <summary>
+    /// Whether the rule is, entry for entry, one of the two the app itself leaves on a folder
+    /// nobody chose a rule for: the one a new folder is made with, or what "keep" of 10.13.0
+    /// made of that. Who is named, with which rights, and what is passed on to the contents
+    /// must all be the same; nothing may be inherited from above, and nothing else may be in
+    /// it. A deny is someone's doing, save the kiosk group's, the only one the app writes.
+    /// </summary>
+    internal static bool HasTheRuleOfANewFolder(DirectorySecurity rule, SecurityIdentifier? kioskGroup)
+    {
+        if (!rule.AreAccessRulesProtected)
+        {
+            return false;
+        }
+
+        var allowed = new HashSet<(SecurityIdentifier Who, FileSystemRights Rights, InheritanceFlags Inherited, PropagationFlags Passed)>();
+        foreach (FileSystemAccessRule entry in rule.GetAccessRules(includeExplicit: true, includeInherited: true, typeof(SecurityIdentifier)))
+        {
+            if (entry.IsInherited || entry.IdentityReference is not SecurityIdentifier who)
+            {
+                return false;
+            }
+
+            if (entry.AccessControlType == AccessControlType.Deny)
+            {
+                if (kioskGroup is null || who != kioskGroup)
+                {
+                    return false;
+                }
+
+                continue;
+            }
+
+            // Synchronize comes and goes with how a rule is written and read; it lets nobody in.
+            if (!allowed.Add((who, entry.FileSystemRights | FileSystemRights.Synchronize, entry.InheritanceFlags, entry.PropagationFlags)))
+            {
+                return false;
+            }
+        }
+
+        const InheritanceFlags contents = InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit;
+        (SecurityIdentifier, FileSystemRights, InheritanceFlags, PropagationFlags)[] always =
+        [
+            (LocalSystem, FileSystemRights.FullControl, contents, PropagationFlags.None),
+            (Administrators, FileSystemRights.FullControl, contents, PropagationFlags.None),
+        ];
+        (SecurityIdentifier, FileSystemRights, InheritanceFlags, PropagationFlags)[] asMade =
+        [
+            (OwnerRights, FileSystemRights.FullControl, InheritanceFlags.None, PropagationFlags.None),
+        ];
+        (SecurityIdentifier, FileSystemRights, InheritanceFlags, PropagationFlags)[] asKept =
+        [
+            (OwnerRights, UsersOnTheFolder | FileSystemRights.Synchronize, InheritanceFlags.None, PropagationFlags.None),
+            (OwnerRights, FileSystemRights.Modify | FileSystemRights.Synchronize, contents, PropagationFlags.InheritOnly),
+        ];
+
+        return allowed.SetEquals(always.Concat(asMade)) || allowed.SetEquals(always.Concat(asKept));
     }
 
     private static IReadOnlyList<string> MakeSafe(

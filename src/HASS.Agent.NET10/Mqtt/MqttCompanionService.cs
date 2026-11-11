@@ -2516,8 +2516,7 @@ internal sealed class MqttCompanionService : IDisposable
                 return;
             }
 
-            if (run is null || run.IsCancellationRequested || !ReferenceEquals(run, _cts)
-                || (overWebSocket && !ReferenceEquals(haWs, _haWs)))
+            if (!ScreenshotStillHasItsConnection(run, _cts, haWs, _haWs))
             {
                 _log.Info("Screenshot not sent: the connection it was asked on has ended meanwhile.");
                 return;
@@ -2525,7 +2524,7 @@ internal sealed class MqttCompanionService : IDisposable
 
             if (overWebSocket)
             {
-                if (!await haWs!.PublishScreenshotAsync(shot.Jpeg, run.Token))
+                if (!await haWs!.PublishScreenshotAsync(shot.Jpeg, run!.Token))
                 {
                     _log.Warning("Screenshot not sent: over the HA API it needs the integration 10.13.1 or newer.");
                     return;
@@ -2543,6 +2542,21 @@ internal sealed class MqttCompanionService : IDisposable
             Interlocked.Exchange(ref _screenshotRunning, 0);
         }
     }
+
+    /// <summary>
+    /// Whether a screenshot that is ready may still go out: the run of the connection it was
+    /// asked on is the one that is on now, and over the HA API so is that very connection.
+    /// Saving the settings ends the run and starts another, with what is set then: another
+    /// Home Assistant or broker, maybe. A connection that dropped and came back within the
+    /// same run went to the same Home Assistant with the same settings, where the picture
+    /// was asked for: that one is not a reason to drop it.
+    /// </summary>
+    internal static bool ScreenshotStillHasItsConnection(
+        CancellationTokenSource? askedOnRun, CancellationTokenSource? runNow, object? askedOnHaApi, object? haApiNow) =>
+        askedOnRun is not null
+        && !askedOnRun.IsCancellationRequested
+        && ReferenceEquals(askedOnRun, runNow)
+        && (askedOnHaApi is null || ReferenceEquals(askedOnHaApi, haApiNow));
 
     // The hass_agent.set_app_volume service: belongs to the audio sessions sensor.
     private void HandleAppVolumeCommand(SystemCommandMessage command, bool serviceRole, string transport)
