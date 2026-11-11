@@ -339,7 +339,7 @@ internal sealed class HaWebSocketService : IDisposable
     }
 
     /// <summary>
-    /// Hands a screenshot to this PC's image entity (integration 10.14.0+). Through a command
+    /// Hands a screenshot to this PC's image entity (integration 10.13.1+). Through a command
     /// of the integration and not as an event: on the bus, everything that listens to all
     /// events would be given the picture. False when it was not sent.
     /// </summary>

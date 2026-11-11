@@ -9,7 +9,7 @@ A button in Home Assistant that makes the PC take a picture of its screen, and a
 
 The PC takes a picture only when it is asked to. It never sends one on its own, and there is no interval to set in the app.
 
-Needs the app and the Home Assistant integration **10.14.0** or newer.
+Needs the app and the Home Assistant integration **10.13.1** or newer.
 
 ## Turning it on
 

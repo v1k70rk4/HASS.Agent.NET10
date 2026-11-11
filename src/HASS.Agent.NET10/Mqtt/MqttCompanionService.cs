@@ -2515,7 +2515,7 @@ internal sealed class MqttCompanionService : IDisposable
             {
                 if (!await _haWs!.PublishScreenshotAsync(shot.Jpeg, _cts?.Token ?? CancellationToken.None))
                 {
-                    _log.Warning("Screenshot not sent: over the HA API it needs the integration 10.14.0 or newer.");
+                    _log.Warning("Screenshot not sent: over the HA API it needs the integration 10.13.1 or newer.");
                     return;
                 }
             }
