@@ -1,7 +1,6 @@
 using System.Reflection;
 using HASS.Agent.Companion.Logging;
 using NAudio.CoreAudioApi;
-using NAudio.CoreAudioApi.Interfaces;
 using NAudio.Wave;
 using Sendspin.SDK.Audio;
 using Sendspin.SDK.Models;
@@ -33,19 +32,21 @@ internal sealed class SendspinWasapiOutput : IAudioPlayer
     private static readonly TimeSpan RetryInterval = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan RebuildDelay = TimeSpan.FromMilliseconds(500);
 
-    // NAudio keeps the AudioClient of a WasapiOut private; the queued-latency report needs it.
+    // NAudio keeps the AudioClient of a WasapiPlayer private. What the player itself tells of it is
+    // too coarse for the sync: the stream latency in whole milliseconds, and the requested latency
+    // in its place when the driver reports none.
     private static readonly FieldInfo? AudioClientField =
-        typeof(WasapiOut).GetField("audioClient", BindingFlags.Instance | BindingFlags.NonPublic);
+        typeof(WasapiPlayer).GetField("audioClient", BindingFlags.Instance | BindingFlags.NonPublic);
 
     private readonly FileLog _log;
     private readonly Func<string?> _deviceName;
     private readonly object _gate = new();
     private readonly MMDeviceEnumerator _enumerator = new();
-    private readonly DeviceWatcher _watcher;
+    private readonly MMDeviceNotificationClient? _notifications;
     private readonly GainSampleProvider _gain;
 
     private AudioFormat? _format;
-    private WasapiOut? _out;
+    private WasapiPlayer? _out;
     private LatencyProbe? _probe;
     private string? _deviceId;
     private bool _wantPlaying;
@@ -59,10 +60,21 @@ internal sealed class SendspinWasapiOutput : IAudioPlayer
         _log = log;
         _deviceName = deviceName;
         _gain = new GainSampleProvider();
-        _watcher = new DeviceWatcher(this);
         try
         {
-            _enumerator.RegisterEndpointNotificationCallback(_watcher);
+            // As they come, on Windows' own thread and not through a window's message loop: the
+            // handlers only note that a rebuild is due.
+            _notifications = _enumerator.CreateNotificationClient(useSynchronizationContext: false);
+            _notifications.DefaultDeviceChanged += (_, e) =>
+            {
+                if (e.Flow == DataFlow.Render && e.Role == Role.Multimedia)
+                {
+                    OnDeviceNotification(e.DeviceId, defaultChanged: true);
+                }
+            };
+            _notifications.DeviceStateChanged += (_, e) => OnDeviceNotification(e.DeviceId, defaultChanged: false);
+            _notifications.DeviceAdded += (_, e) => OnDeviceNotification(e.DeviceId, defaultChanged: false);
+            _notifications.DeviceRemoved += (_, e) => OnDeviceNotification(e.DeviceId, defaultChanged: false);
         }
         catch (Exception ex)
         {
@@ -223,7 +235,7 @@ internal sealed class SendspinWasapiOutput : IAudioPlayer
             DisposeOutput();
         }
 
-        try { _enumerator.UnregisterEndpointNotificationCallback(_watcher); } catch { }
+        try { _notifications?.Dispose(); } catch { }
         try { _enumerator.Dispose(); } catch { }
         return ValueTask.CompletedTask;
     }
@@ -233,7 +245,7 @@ internal sealed class SendspinWasapiOutput : IAudioPlayer
 
     // Never from a device notification: the callback holds a WASAPI lock, and COM work there
     // deadlocks (see AudioEndpointService). Neither from NAudio's PlaybackStopped: disposing a
-    // WasapiOut on its own play thread waits for that thread.
+    // WasapiPlayer on its own play thread waits for that thread.
     private void ScheduleRebuild(string reason)
     {
         if (Interlocked.Exchange(ref _rebuildScheduled, 1) == 1)
@@ -283,7 +295,14 @@ internal sealed class SendspinWasapiOutput : IAudioPlayer
 
         try
         {
-            var output = new WasapiOut(device, AudioClientShareMode.Shared, useEventSync: true, latency: RequestedLatencyMs);
+            // Plain shared mode on purpose, not the low-latency one: its short buffer leaves no
+            // room for a late wake-up, and the sync is told how much is queued anyway.
+            var output = new WasapiPlayerBuilder()
+                .WithDevice(device)
+                .WithSharedMode()
+                .WithEventSync()
+                .WithLatency(RequestedLatencyMs)
+                .Build();
             // Ours before Init: an Init that throws leaves it to the catch below to dispose.
             _out = output;
             output.PlaybackStopped += OnPlaybackStopped;
@@ -323,7 +342,7 @@ internal sealed class SendspinWasapiOutput : IAudioPlayer
             .FirstOrDefault(d => string.Equals(d.FriendlyName, name, StringComparison.OrdinalIgnoreCase));
     }
 
-    private void MeasureLatency(WasapiOut output)
+    private void MeasureLatency(WasapiPlayer output)
     {
         if (AudioClientField?.GetValue(output) is not AudioClient client)
         {
@@ -420,27 +439,6 @@ internal sealed class SendspinWasapiOutput : IAudioPlayer
 
     private sealed record LatencyProbe(AudioClient Client, int SampleRate, long FixedLatencyMicros);
 
-    private sealed class DeviceWatcher(SendspinWasapiOutput owner) : IMMNotificationClient
-    {
-        public void OnDefaultDeviceChanged(DataFlow flow, Role role, string defaultDeviceId)
-        {
-            if (flow == DataFlow.Render && role == Role.Multimedia)
-            {
-                owner.OnDeviceNotification(defaultDeviceId, defaultChanged: true);
-            }
-        }
-
-        public void OnDeviceStateChanged(string deviceId, DeviceState newState) => owner.OnDeviceNotification(deviceId, defaultChanged: false);
-
-        public void OnDeviceAdded(string pwstrDeviceId) => owner.OnDeviceNotification(pwstrDeviceId, defaultChanged: false);
-
-        public void OnDeviceRemoved(string deviceId) => owner.OnDeviceNotification(deviceId, defaultChanged: false);
-
-        public void OnPropertyValueChanged(string pwstrDeviceId, PropertyKey key)
-        {
-        }
-    }
-
     /// <summary>
     /// The SDK's samples as NAudio's, with the gain applied: the volume, mute and the announcement
     /// duck, eased over about 10 ms so a change does not click. The volume is an amplitude
@@ -452,6 +450,10 @@ internal sealed class SendspinWasapiOutput : IAudioPlayer
     {
         private IAudioSampleSource? _source;
         private float _current = 1f;
+
+        // The SDK fills an array, NAudio asks for a span of the device's own buffer: the block
+        // goes through this, which grows to the largest block asked for and stays.
+        private float[] _block = [];
 
         public float Volume { get; set; } = 1f;
 
@@ -476,22 +478,28 @@ internal sealed class SendspinWasapiOutput : IAudioPlayer
 
         internal float Target => Muted ? 0f : Math.Clamp(Volume, 0f, 1f) * Duck;
 
-        public int Read(float[] buffer, int offset, int count)
+        public int Read(Span<float> buffer)
         {
             var source = _source;
             if (source is null)
             {
-                Array.Clear(buffer, offset, count);
-                return count;
+                buffer.Clear();
+                return buffer.Length;
+            }
+
+            if (_block.Length < buffer.Length)
+            {
+                _block = new float[buffer.Length];
             }
 
             // The source fills the whole block itself, padding a shortfall with silence.
-            source.Read(buffer, offset, count);
-            Apply(buffer, offset, count, WaveFormat.Channels, WaveFormat.SampleRate);
-            return count;
+            source.Read(_block, 0, buffer.Length);
+            _block.AsSpan(0, buffer.Length).CopyTo(buffer);
+            Apply(buffer, WaveFormat.Channels, WaveFormat.SampleRate);
+            return buffer.Length;
         }
 
-        internal void Apply(float[] buffer, int offset, int count, int channels, int sampleRate)
+        internal void Apply(Span<float> buffer, int channels, int sampleRate)
         {
             var target = Target;
             var current = _current;
@@ -501,7 +509,7 @@ internal sealed class SendspinWasapiOutput : IAudioPlayer
             }
 
             var step = 1f / Math.Max(1, sampleRate / 100);
-            for (var i = offset; i + channels <= offset + count; i += channels)
+            for (var i = 0; i + channels <= buffer.Length; i += channels)
             {
                 if (current < target)
                 {

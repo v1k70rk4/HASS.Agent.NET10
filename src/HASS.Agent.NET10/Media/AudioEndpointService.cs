@@ -9,7 +9,7 @@ internal sealed class AudioEndpointService : IDisposable
 {
     private readonly FileLog _log;
     private readonly MMDeviceEnumerator _enumerator;
-    private readonly NotificationClient _notificationClient;
+    private readonly MMDeviceNotificationClient? _notifications;
     private MMDevice? _renderDevice;
     private readonly object _gate = new();
     private bool _disposed;
@@ -26,11 +26,23 @@ internal sealed class AudioEndpointService : IDisposable
     {
         _log = log;
         _enumerator = new MMDeviceEnumerator();
-        _notificationClient = new NotificationClient(this);
 
         try
         {
-            _enumerator.RegisterEndpointNotificationCallback(_notificationClient);
+            // As they come, on Windows' own thread: the handler below hands the work on at once.
+            _notifications = _enumerator.CreateNotificationClient(useSynchronizationContext: false);
+            _notifications.DefaultDeviceChanged += (_, e) =>
+            {
+                if (e.Flow == DataFlow.Render && e.Role == Role.Multimedia)
+                {
+                    OnDefaultRenderDeviceChanged();
+                }
+                else
+                {
+                    // Capture device (microphone) change — still worth a refresh.
+                    StateChanged?.Invoke(this, EventArgs.Empty);
+                }
+            };
         }
         catch (Exception ex)
         {
@@ -478,7 +490,7 @@ internal sealed class AudioEndpointService : IDisposable
             try
             {
                 _renderDevice = _enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
-                _renderDevice.AudioEndpointVolume.OnVolumeNotification += OnVolumeNotification;
+                VolumeNotificationsOf(_renderDevice).OnVolumeNotification += OnVolumeNotification;
                 RenderDeviceFound();
             }
             catch (Exception ex)
@@ -515,6 +527,23 @@ internal sealed class AudioEndpointService : IDisposable
         }
     }
 
+    // NAudio posts the volume notifications to the synchronization context it finds when a device's
+    // volume object is first asked for, which here can be the window's. They are wanted as they come:
+    // a push update must not wait for a busy window.
+    private static AudioEndpointVolume VolumeNotificationsOf(MMDevice device)
+    {
+        var context = SynchronizationContext.Current;
+        SynchronizationContext.SetSynchronizationContext(null);
+        try
+        {
+            return device.AudioEndpointVolume;
+        }
+        finally
+        {
+            SynchronizationContext.SetSynchronizationContext(context);
+        }
+    }
+
     private void UnsubscribeRenderDevice()
     {
         if (_renderDevice is null)
@@ -540,10 +569,10 @@ internal sealed class AudioEndpointService : IDisposable
         StateChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    // Called by the notification client when the default output device changes.
-    internal void OnDefaultRenderDeviceChanged()
+    // Called from the device notification when the default output device changes.
+    private void OnDefaultRenderDeviceChanged()
     {
-        // CRITICAL: this runs inside an IMMNotificationClient callback, which holds a
+        // CRITICAL: this runs inside Windows' device notification callback, which holds a
         // WASAPI lock. Doing COM work here (re-subscribe disposes MMDevice →
         // ReleaseComObject) deadlocks against that lock. Defer to a background thread
         // so the callback returns immediately and frees the WASAPI lock.
@@ -573,35 +602,11 @@ internal sealed class AudioEndpointService : IDisposable
             _disposed = true;
             UnsubscribeRenderDevice();
 
-            try { _enumerator.UnregisterEndpointNotificationCallback(_notificationClient); } catch { }
+            try { _notifications?.Dispose(); } catch { }
             try { _enumerator.Dispose(); } catch { }
         }
     }
 
-    // Watches for default-device changes so we can re-subscribe volume notifications.
-    private sealed class NotificationClient(AudioEndpointService owner) : IMMNotificationClient
-    {
-        public void OnDefaultDeviceChanged(DataFlow flow, Role role, string defaultDeviceId)
-        {
-            if (flow == DataFlow.Render && role == Role.Multimedia)
-            {
-                owner.OnDefaultRenderDeviceChanged();
-            }
-            else
-            {
-                // Capture device (microphone) change — still worth a refresh.
-                owner.StateChanged?.Invoke(owner, EventArgs.Empty);
-            }
-        }
-
-        public void OnDeviceStateChanged(string deviceId, DeviceState newState) { }
-
-        public void OnDeviceAdded(string pwstrDeviceId) { }
-
-        public void OnDeviceRemoved(string deviceId) { }
-
-        public void OnPropertyValueChanged(string pwstrDeviceId, PropertyKey key) { }
-    }
 }
 
 // Windows has no documented call for choosing the default audio device; this is the

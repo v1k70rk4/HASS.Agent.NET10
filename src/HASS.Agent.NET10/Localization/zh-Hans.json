@@ -4,6 +4,10 @@
     "name": "中文(简体)",
     "cultures": [
       "zh-Hans"
+    ],
+    "todo": [
+      "Editor.UnquotedPath",
+      "SvcMgr.ApprovalRightToLeft"
     ]
   },
   "strings": {
@@ -489,10 +493,12 @@
     "SvcMgr.InstalledNotStarted": "服务已安装，但未能成功启动。",
     "SvcMgr.InstalledAndStarted": "{0}已成功安装并顺利启动",
     "SvcMgr.ApprovalNeedsAdmin": "服务的命令执行需要提升至管理员权限",
+    "SvcMgr.InstallNeedsAdmin": "安装服务需要管理员权限。",
     "SvcMgr.Approved": "该服务现在已可允许运行为其配置的命令及命令传感器。",
     "SvcMgr.ApprovalFailed": "该服务的命令执行权限不足：{0}",
     "SvcMgr.ApprovalNeeded": "由于该服务以SYSTEM身份运行，它所执行的命令或命令传感器需要管理员手动授权；点击确定后Windows将弹出权限请求。请仔细核对下方列表中的完整执行内容，授权后即代表允许执行上述全部项目。若拒绝授权，服务将直接跳过这些任务，仅由托盘应用尽力尝试执行其有权运行的部分。",
     "SvcMgr.ApprovalWritable": "警告：{0}可以在没有管理员权限的情况下被修改。任何对其进行修改的人都将决定该服务以SYSTEM权限运行时的内容。",
+    "SvcMgr.ApprovalRightToLeft": "Warning: this text has letters that are written from right to left. Its parts may be shown in another order than the one they are run in.",
     "SvcMgr.ApprovalChanged": "授权失效，上次授权后设置发生了更改。如需重新触发授权请再次保存设置。",
     "SvcMgr.ApprovalDeclined": "授权被拒绝。在重新保存设置并成功通过授权之前，服务会直接跳过这些任务：{0}",
     "HaApi.TokenNotSaved": "(更改未保存)",
@@ -569,6 +575,7 @@
     "Cmd.shutdown": "关机",
     "Cmd.restart": "重启",
     "Cmd.restart_cancel": "撤销关机和重启",
+    "Cmd.screenshot": "截取屏幕",
     "Cmd.shutdown_comment": "当前关机操作通过HomeAssistant远程执行",
     "Cmd.restart_comment": "当前重启操作通过HomeAssistant远程执行",
     "Sensor.cpu_usage": "CPU使用率",

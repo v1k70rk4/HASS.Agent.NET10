@@ -2,6 +2,25 @@
 
 Every release of HASS.Agent .NET10, newest first. The downloads are on the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases).
 
+## 10.13.1-beta.1
+
+> **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered the beta, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.13.0**, below.
+
+The first beta of 10.13.1: a screenshot of the PC when Home Assistant asks for one, the audio code on NAudio 3, and fixes to what 10.13.0 changed around the settings folder. Works with the Home Assistant integration **10.6.7** or newer; the screenshot needs the integration **10.13.1-beta.1**, out at the same time. Signed release.
+
+- **A screenshot when Home Assistant asks for one.** A new command, **Take a screenshot**, on the Capabilities page under System commands, off until it is ticked at the PC. Ticked, the PC's device in Home Assistant gets a button and an image entity; a press of the button makes the PC take a picture of its screen (every monitor, no wider than 1920 pixels, at most 512 KB) and send it. The PC never takes one on its own: a picture at regular times is an automation that presses the button. The picture is not kept on the broker, over the HA API it does not go on Home Assistant's event bus, and with the MQTT debug switch on it is left out of the packet file. See [Screenshot](docs/commands/screenshot.md).
+- **The audio code is on NAudio 3.** The Sendspin player's output, and the audio device sensors and selects, were moved to the new major version of the library under them. Nothing to set, and nothing should sound different: say so if the player, the volume or the device selects behave in another way than before.
+- **Fixed: "Unable to publish media state" in the log now and then.** A media session whose app was just closing failed that round's update of the media player. When an update does fail, the log now also says what kind of failure it was and where it came from.
+- **Fixed: a custom command with two spaces before its arguments was refused.** `C:\Tools\app.exe  /x` was taken for a path with a space in it, which 10.13.0 does not run without quotes.
+- **Fixed: a settings folder made by an elevated command stayed the administrators' alone.** Where there was no settings folder yet (the app used from its zip, or the folder deleted) and `--install-service`, `--kiosk` or an approval made it, the app then started for nobody who was not elevated. Such a folder is now open to every user, as a silent first install leaves it, and the app asks who it is for. A folder that 10.13.0 left that way is opened by the next elevated command or update.
+- **Fixed: on a PC in a domain, an update could put the settings folder aside when the domain could not be asked.** A folder made by a user who is an administrator through a domain group was taken for one made by a user who is no administrator, when Windows could not tell the user's groups (a laptop away from the network). The command now stops and says so, and the folder stays as it is; with the domain in reach it goes through as before.
+- **Kiosk mode: the app is not started every minute while it would only stop again.** With a settings folder that is not the PC's, the kiosk task started the app once a minute until an administrator put the folder right.
+- **`--install-service` run without an administrator's rights says so**, and touches nothing; it used to answer that the settings folder could not be made safe.
+- **The service's approval prompt writes out every character that is not seen**, as `<U+202E>`: also the ones past the first 65 536, the spaces that are not the plain one, and the blank ones among letters and symbols. Letters written from right to left are shown as they are, with a line below the entry saying that its parts may be shown in another order.
+- **`--sendspin-token` run as SYSTEM makes a missing settings folder the way the service does**, with its rule from the first moment.
+- **Simplified Chinese for the texts of 10.13.0**, by @natsu-tsuki in [#188](https://github.com/v1k70rk4/HASS.Agent.NET10/pull/188), thank you!
+- **Libraries**: WebView2 1.0.4314.35, MQTTnet 5.2, and the 10.0.15 builds of the two System packages.
+
 ## 10.13.0
 
 A bigger release: the PC as a Sendspin player of Music Assistant; two users signed in at once share the connection instead of taking it from each other; and a security round on what a Windows user who is not an administrator can do through the app on a PC shared with others. Built on .NET 10.0.15, the .NET security update of November. Works with the Home Assistant integration **10.6.7** or newer; the integration **10.13.0** is out at the same time. Signed release.

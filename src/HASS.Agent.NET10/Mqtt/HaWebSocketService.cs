@@ -338,6 +338,28 @@ internal sealed class HaWebSocketService : IDisposable
         }, cancellationToken);
     }
 
+    /// <summary>
+    /// Hands a screenshot to this PC's image entity (integration 10.13.1+). Through a command
+    /// of the integration and not as an event: on the bus, everything that listens to all
+    /// events would be given the picture. False when it was not sent.
+    /// </summary>
+    public async Task<bool> PublishScreenshotAsync(byte[] jpeg, CancellationToken cancellationToken)
+    {
+        if (!IsConnected || !_ownCommands)
+        {
+            return false;
+        }
+
+        await SendWithIdAsync(id => new
+        {
+            id,
+            type = "hass_agent/screenshot",
+            serial_number = _settings.SerialNumber,
+            image = Convert.ToBase64String(jpeg)
+        }, cancellationToken);
+        return true;
+    }
+
     /// <summary>Publishes a notification action response.</summary>
     public async Task PublishNotificationActionAsync(
         string action,

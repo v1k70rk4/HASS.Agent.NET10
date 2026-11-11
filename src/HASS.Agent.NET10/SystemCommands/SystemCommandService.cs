@@ -303,8 +303,18 @@ internal sealed class SystemCommandService : IDisposable
 
         // The space is inside the path when the text goes on, past it, to name a folder that
         // is there (up to a later separator) or a file that is there (up to a later space).
+        // Not a text that is the program again: Windows drops spaces and periods from the end
+        // of a path, so "C:\Tools\app.exe " and "C:\Tools\app.exe ." are the program itself,
+        // and two spaces before the arguments would read as a space in the path. A text that
+        // goes on past the program and then ends in a period ("C:\Tools\app.exe Folder.") is
+        // looked at: Windows finds the folder of that name without the period.
         for (var index = firstSpace + 1; index < trimmed.Length; index++)
         {
+            if (trimmed.AsSpan(0, index).TrimEnd(" .").Length <= firstSpace)
+            {
+                continue;
+            }
+
             if (trimmed[index] is '\\' or '/' ? System.IO.Directory.Exists(trimmed[..index])
                 : trimmed[index] == ' ' && System.IO.File.Exists(trimmed[..index]))
             {

@@ -220,6 +220,18 @@ internal sealed class CompanionSettings
 
     public const int MaxSendspinNameLength = 64;
 
+    /// <summary>
+    /// What the Screenshot command takes: 0 for every monitor in one picture, or one monitor,
+    /// counted from 1 in the order Windows lists them.
+    /// </summary>
+    public int ScreenshotMonitor { get; set; } = ScreenCapture.AllMonitors;
+
+    /// <summary>The screenshot is made no wider than this, in pixels; 0 leaves it as large as the screen.</summary>
+    public int ScreenshotMaxWidth { get; set; } = ScreenCapture.DefaultMaxWidth;
+
+    /// <summary>The JPEG quality of the screenshot, 30 to 95.</summary>
+    public int ScreenshotQuality { get; set; } = ScreenCapture.DefaultQuality;
+
     [JsonIgnore]
     public string EffectiveSendspinPlayerName =>
         string.IsNullOrWhiteSpace(SendspinPlayerName) ? DeviceName : SendspinPlayerName.Trim();
@@ -388,6 +400,14 @@ internal sealed class CompanionSettings
         {
             SendspinPlayerName = SendspinPlayerName[..MaxSendspinNameLength];
         }
+
+        ScreenshotMonitor = Math.Clamp(ScreenshotMonitor, ScreenCapture.AllMonitors, 16);
+        ScreenshotMaxWidth = ScreenshotMaxWidth <= 0
+            ? 0
+            : Math.Clamp(ScreenshotMaxWidth, ScreenCapture.SmallestWidth, ScreenCapture.LargestWidth);
+        ScreenshotQuality = ScreenshotQuality <= 0
+            ? ScreenCapture.DefaultQuality
+            : Math.Clamp(ScreenshotQuality, ScreenCapture.LowestQuality, ScreenCapture.HighestQuality);
 
         SendspinOutputDevice = (SendspinOutputDevice ?? string.Empty).Trim();
         SendspinServerAddress = (SendspinServerAddress ?? string.Empty).Trim();

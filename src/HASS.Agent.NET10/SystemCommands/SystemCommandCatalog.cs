@@ -4,6 +4,9 @@ namespace HASS.Agent.Companion.SystemCommands;
 
 internal static class SystemCommandCatalog
 {
+    /// <summary>The command the tray app answers with a picture of the screen, not one of the system's.</summary>
+    public const string Screenshot = "screenshot";
+
     public static IReadOnlyList<SystemCommandDefinition> Commands { get; } =
     [
         new("lock", SupportsTrayApp: true, SupportsService: false, DefaultTrayApp: true, DefaultService: false),
@@ -17,7 +20,10 @@ internal static class SystemCommandCatalog
         new("toggle_mute", SupportsTrayApp: true, SupportsService: false, DefaultTrayApp: true, DefaultService: false),
         new("shutdown", SupportsTrayApp: true, SupportsService: true, DefaultTrayApp: true, DefaultService: true),
         new("restart", SupportsTrayApp: true, SupportsService: true, DefaultTrayApp: true, DefaultService: true),
-        new("restart_cancel", SupportsTrayApp: true, SupportsService: true, DefaultTrayApp: true, DefaultService: true)
+        new("restart_cancel", SupportsTrayApp: true, SupportsService: true, DefaultTrayApp: true, DefaultService: true),
+        // Off by default: it sends what is on the screen to Home Assistant, which is for the
+        // user of the PC to decide. The service has no desktop to take a picture of.
+        new(Screenshot, SupportsTrayApp: true, SupportsService: false, DefaultTrayApp: false, DefaultService: false)
     ];
 
     public static IReadOnlyList<string> AllCommandNames { get; } = Commands.Select(command => command.Name).ToArray();

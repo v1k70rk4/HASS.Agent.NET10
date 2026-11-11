@@ -304,10 +304,14 @@ internal static class SettingsAccess
 
     // The local groups the user is in, also through a domain group (the domain groups come from
     // a domain controller). Empty when Windows cannot tell.
-    private static List<string> LocalGroupsOf(string user)
+    private static List<string> LocalGroupsOf(string user) => LocalGroupsOf(user, out _);
+
+    // The same, saying whether Windows could tell (known): an empty list is then no groups.
+    private static List<string> LocalGroupsOf(string user, out bool known)
     {
         var groups = new List<string>();
         var status = NetUserGetLocalGroups(null, user, 0, LgIncludeIndirect, out var buffer, MaxPreferredLength, out var read, out _);
+        known = status == 0;
         try
         {
             if (status != 0)
@@ -591,7 +595,7 @@ internal static class SettingsAccess
     internal static void SetFolderRule(string configDirectory, IEnumerable<SecurityIdentifier> users, SecurityIdentifier? kioskGroup = null)
     {
         // The anchor is held open until the rest is done, so nothing can remove it meanwhile.
-        var notTakenOver = MakeSafe(configDirectory, out var anchor, out var anchorName, out _);
+        var notTakenOver = MakeSafe(configDirectory, out var anchor, out var anchorName, out _, out _);
         try
         {
             SetFolderRule(configDirectory, users, kioskGroup, notTakenOver, ref anchor, anchorName);
@@ -985,21 +989,47 @@ internal static class SettingsAccess
     // the administrators and whoever makes it. Made the usual way it would take ProgramData's
     // rule, under which every user may create files in it, and be empty: a user waiting for
     // that moment could turn it into a link before anything else is done with it.
-    private static void CreateForAdministrators(string configDirectory)
+    /// <returns>
+    /// Whether it was made here: false when a folder was there already. Asked of the one call
+    /// that makes it, not looked up first: of two elevated commands at the same moment only
+    /// one makes the folder, and only that one may take it for a folder nobody set a rule on.
+    /// </returns>
+    internal static bool CreateForAdministrators(string configDirectory)
     {
-        var folder = new DirectoryInfo(configDirectory);
-        if (folder.Exists)
-        {
-            return;
-        }
-
         const InheritanceFlags inherit = InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit;
         var security = new DirectorySecurity();
         security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
         security.AddAccessRule(new FileSystemAccessRule(LocalSystem, FileSystemRights.FullControl, inherit, PropagationFlags.None, AccessControlType.Allow));
         security.AddAccessRule(new FileSystemAccessRule(Administrators, FileSystemRights.FullControl, inherit, PropagationFlags.None, AccessControlType.Allow));
         security.AddAccessRule(new FileSystemAccessRule(OwnerRights, FileSystemRights.FullControl, AccessControlType.Allow));
-        folder.Create(security);
+
+        // Windows' own call, which says when the name was taken already; .NET's Create
+        // returns the same way whether it made the folder or found one.
+        var descriptor = GCHandle.Alloc(security.GetSecurityDescriptorBinaryForm(), GCHandleType.Pinned);
+        try
+        {
+            var attributes = new SecurityAttributes
+            {
+                Length = Marshal.SizeOf<SecurityAttributes>(),
+                SecurityDescriptor = descriptor.AddrOfPinnedObject()
+            };
+            if (CreateDirectory(configDirectory, ref attributes))
+            {
+                return true;
+            }
+
+            var error = Marshal.GetLastWin32Error();
+            if (error == ErrorAlreadyExists)
+            {
+                return false;
+            }
+
+            throw new Win32Exception(error);
+        }
+        finally
+        {
+            descriptor.Free();
+        }
     }
 
     private static void SetRule(Microsoft.Win32.SafeHandles.SafeFileHandle folder, byte[] rule)
@@ -1142,15 +1172,142 @@ internal static class SettingsAccess
     /// </summary>
     internal static IReadOnlyList<string> MakeSafe(string configDirectory, out string? putAside)
     {
-        var failures = MakeSafe(configDirectory, out var anchor, out _, out putAside);
+        var failures = MakeSafe(configDirectory, out var anchor, out _, out putAside, out _);
         anchor?.Dispose();
         return failures;
     }
 
+    /// <summary>
+    /// What an elevated command does before it reads or writes anything in the settings folder:
+    /// <see cref="MakeSafe(string)"/>, and a folder nobody chose a rule for is opened to every
+    /// user, as a silent first install leaves it, so the app asks who it is for. That is a
+    /// folder made here, when there was none or what was there was a link; the folder in the
+    /// place of another user's, which was put aside; and one that still has the rule it was
+    /// made with (<see cref="IsAsItWasMade"/>), left so before by a command that was to set
+    /// the rule and failed, or by 10.13.0, which did not open it. A folder made here is the
+    /// administrators' alone: left so, the app would start for nobody, and an update would
+    /// keep it that way, taking the one rule it has for a limit someone chose. Not when the
+    /// command sets the folder's rule itself (<paramref name="setsTheFoldersRule"/>).
+    /// </summary>
+    /// <param name="putAside">Where another user's folder went; null when there was none.</param>
+    /// <param name="made">Whether the folder is a new one, made here.</param>
+    /// <returns>Whether the folder was opened to every user.</returns>
+    internal static bool MakeSafeForCommand(string configDirectory, bool setsTheFoldersRule, out string? putAside, out bool made)
+    {
+        // The anchor is held open until the rule is set, as SetFolderRule does.
+        var notTakenOver = MakeSafe(configDirectory, out var anchor, out var anchorName, out putAside, out made);
+        try
+        {
+            if (setsTheFoldersRule || (!made && putAside is null && !IsAsItWasMade(configDirectory)))
+            {
+                // What could not be taken over in the folder is the caller's to find, as
+                // before: a command that sets the rule reports it, the others go on.
+                return false;
+            }
+
+            SetFolderRule(configDirectory, [AuthenticatedUsers], KioskMode.GroupSid(), notTakenOver, ref anchor, anchorName);
+            return true;
+        }
+        finally
+        {
+            anchor?.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Whether the folder's rule is still the one a new folder is made with
+    /// (<see cref="CreateForAdministrators"/>): it names nobody but SYSTEM, the administrators
+    /// and the folder's owner. No choice leaves that: a limit names its users or their group.
+    /// It is also what "--settings-access keep" of 10.13.0 made of such a folder, keeping the
+    /// owner's entry as if it were a user's. The rule is compared entry by entry with these
+    /// two, rights and inheritance included (<see cref="HasTheRuleOfANewFolder"/>): one that
+    /// only names the same accounts is someone's own. A rule that names nobody at all is not
+    /// this either: someone may have set it by hand, and it stays. (A folder made by a command started
+    /// from a shell that makes the user the owner of what it creates, as Git Bash does, is
+    /// given to the administrators, and Windows drops the owner's entry when the owner
+    /// changes: it is opened by the command that made it, and not found here later.)
+    /// </summary>
+    internal static bool IsAsItWasMade(string configDirectory)
+    {
+        try
+        {
+            if (RestrictionState(configDirectory) is not true)
+            {
+                return false;
+            }
+
+            return HasTheRuleOfANewFolder(new DirectoryInfo(configDirectory).GetAccessControl(), KioskMode.GroupSid());
+        }
+        catch (Exception)
+        {
+            // Not to be read: not taken for a folder nobody chose a rule for.
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Whether the rule is, entry for entry, one of the two the app itself leaves on a folder
+    /// nobody chose a rule for: the one a new folder is made with, or what "keep" of 10.13.0
+    /// made of that. Who is named, with which rights, and what is passed on to the contents
+    /// must all be the same; nothing may be inherited from above, and nothing else may be in
+    /// it. A deny is someone's doing, save the kiosk group's, the only one the app writes.
+    /// </summary>
+    internal static bool HasTheRuleOfANewFolder(DirectorySecurity rule, SecurityIdentifier? kioskGroup)
+    {
+        if (!rule.AreAccessRulesProtected)
+        {
+            return false;
+        }
+
+        var allowed = new HashSet<(SecurityIdentifier Who, FileSystemRights Rights, InheritanceFlags Inherited, PropagationFlags Passed)>();
+        foreach (FileSystemAccessRule entry in rule.GetAccessRules(includeExplicit: true, includeInherited: true, typeof(SecurityIdentifier)))
+        {
+            if (entry.IsInherited || entry.IdentityReference is not SecurityIdentifier who)
+            {
+                return false;
+            }
+
+            if (entry.AccessControlType == AccessControlType.Deny)
+            {
+                if (kioskGroup is null || who != kioskGroup)
+                {
+                    return false;
+                }
+
+                continue;
+            }
+
+            // Synchronize comes and goes with how a rule is written and read; it lets nobody in.
+            if (!allowed.Add((who, entry.FileSystemRights | FileSystemRights.Synchronize, entry.InheritanceFlags, entry.PropagationFlags)))
+            {
+                return false;
+            }
+        }
+
+        const InheritanceFlags contents = InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit;
+        (SecurityIdentifier, FileSystemRights, InheritanceFlags, PropagationFlags)[] always =
+        [
+            (LocalSystem, FileSystemRights.FullControl, contents, PropagationFlags.None),
+            (Administrators, FileSystemRights.FullControl, contents, PropagationFlags.None),
+        ];
+        (SecurityIdentifier, FileSystemRights, InheritanceFlags, PropagationFlags)[] asMade =
+        [
+            (OwnerRights, FileSystemRights.FullControl, InheritanceFlags.None, PropagationFlags.None),
+        ];
+        (SecurityIdentifier, FileSystemRights, InheritanceFlags, PropagationFlags)[] asKept =
+        [
+            (OwnerRights, UsersOnTheFolder | FileSystemRights.Synchronize, InheritanceFlags.None, PropagationFlags.None),
+            (OwnerRights, FileSystemRights.Modify | FileSystemRights.Synchronize, contents, PropagationFlags.InheritOnly),
+        ];
+
+        return allowed.SetEquals(always.Concat(asMade)) || allowed.SetEquals(always.Concat(asKept));
+    }
+
     private static IReadOnlyList<string> MakeSafe(
-        string configDirectory, out Microsoft.Win32.SafeHandles.SafeFileHandle? anchor, out string? anchorName, out string? putAside)
+        string configDirectory, out Microsoft.Win32.SafeHandles.SafeFileHandle? anchor, out string? anchorName, out string? putAside, out bool made)
     {
         putAside = null;
+        made = false;
         var failures = new List<string>();
         // Backup for the read-only opens past any rule, take-ownership for the owner, restore
         // for the rule later: what an administrator has, and a test run as the owner does without.
@@ -1164,7 +1321,7 @@ internal static class SettingsAccess
                     folder.Delete();
                 }
 
-                CreateForAdministrators(configDirectory);
+                made |= CreateForAdministrators(configDirectory);
 
                 // The folder itself, held open while its contents are done.
                 using var root = OpenEntryItself(configDirectory, isFolder: true, ReadControl);
@@ -1185,7 +1342,15 @@ internal static class SettingsAccess
                 {
                     // As it should be.
                 }
-                else if (ownedByWhoeverRunsThis ? IsElevated.Value : IsAnAdministrator(owner))
+                else if ((ownedByWhoeverRunsThis ? IsElevated.Value : AdministratorState(owner)) is not { } ofAnAdministrator)
+                {
+                    // Not known, and it could be an administrator's: a folder with someone's
+                    // settings is not put aside on a guess. Nothing is run over it either.
+                    throw new IOException(
+                        $"{configDirectory} was made by {NameOf(owner!)}, an account from a domain or Entra ID, and whether that is an administrator of this PC could not be found out: it takes the domain to tell. " +
+                        "The folder was left as it is. Run this again when the domain can be reached; if it never can, give the folder to the Administrators group to keep its settings, or delete it.");
+                }
+                else if (ofAnAdministrator)
                 {
                     // An administrator's own: made by their app, which runs without elevation,
                     // so what it makes is theirs by name and not the group's. It is the PC's
@@ -1615,21 +1780,87 @@ internal static class SettingsAccess
     private static bool OwnerIsOfThePc(SecurityIdentifier? owner) => OwnerIsTrusted(owner) || IsAnAdministrator(owner);
 
     // A member of this PC's Administrators group, itself or through a group from a domain.
-    // Asked once for an account: the owners of everything in the folder are looked at.
-    private static bool IsAnAdministrator(SecurityIdentifier? account) =>
-        account is not null && KnownAdministrators.GetOrAdd(account, static sid =>
+    // Not known counts as no: nothing is run over a folder on the strength of a guess.
+    private static bool IsAnAdministrator(SecurityIdentifier? account) => AdministratorState(account) is true;
+
+    // The same, with what is not known kept apart (null), for the one place that acts on a
+    // "no" by putting a folder aside (MakeSafe). Asked once for an account whose answer is
+    // known: the owners of everything in the folder are looked at.
+    private static bool? AdministratorState(SecurityIdentifier? account)
+    {
+        if (account is null)
         {
-            try
+            return false;
+        }
+
+        if (KnownAdministrators.TryGetValue(account, out var known))
+        {
+            return known;
+        }
+
+        var state = FindAdministratorState(account);
+        if (state is { } found)
+        {
+            KnownAdministrators[account] = found;
+        }
+
+        return state;
+    }
+
+    private static bool? FindAdministratorState(SecurityIdentifier account)
+    {
+        var groupsKnown = false;
+        var administratorsAmongThem = false;
+        try
+        {
+            var (group, members) = AdministratorsGroup();
+            if (members.Contains(account))
             {
-                var (group, members) = AdministratorsGroup();
-                return members.Contains(sid)
-                    || LocalGroupsOf(((NTAccount)sid.Translate(typeof(NTAccount))).Value).Contains(group, StringComparer.OrdinalIgnoreCase);
+                return true;
             }
-            catch (Exception ex) when (ex is IdentityNotMappedException or SystemException)
-            {
-                return false;
-            }
-        });
+
+            var name = ((NTAccount)account.Translate(typeof(NTAccount))).Value;
+            administratorsAmongThem = LocalGroupsOf(name, out groupsKnown).Contains(group, StringComparer.OrdinalIgnoreCase);
+        }
+        catch (Exception ex) when (ex is IdentityNotMappedException or SystemException)
+        {
+            // No name for the account, or no answer: its groups are not known.
+            groupsKnown = false;
+        }
+
+        return AdministratorThroughAGroup(
+            groupsKnown, administratorsAmongThem, IsDirectoryAccount(account.Value), HasAProfileHere(account));
+    }
+
+    /// <summary>
+    /// Whether an account that the Administrators group does not name itself is an
+    /// administrator through a group, by what Windows said of its groups. Null when that is
+    /// not known and could be yes: an account from a domain or Entra ID that has logged on to
+    /// this PC, whose groups come from a domain controller that was not reached (a laptop off
+    /// the network, an update run as SYSTEM). An account of this PC whose groups Windows does
+    /// not tell, and one that never logged on here (a deleted account's leftover, a SID from
+    /// another PC), is no administrator.
+    /// </summary>
+    internal static bool? AdministratorThroughAGroup(bool groupsKnown, bool administratorsAmongThem, bool directoryAccount, bool hasAProfileHere) =>
+        groupsKnown ? administratorsAmongThem
+        : directoryAccount && hasAProfileHere ? null
+        : false;
+
+    // Whether the account has logged on to this PC: its profile is listed. When the list
+    // cannot be read, the account may have: said so, or a folder of an administrator from a
+    // domain would be put aside on the strength of a list nobody saw.
+    private static bool HasAProfileHere(SecurityIdentifier account)
+    {
+        try
+        {
+            using var profile = Registry.LocalMachine.OpenSubKey($@"SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\{account.Value}");
+            return profile is not null;
+        }
+        catch (Exception ex) when (ex is System.Security.SecurityException or UnauthorizedAccessException or IOException)
+        {
+            return true;
+        }
+    }
 
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<SecurityIdentifier, bool> KnownAdministrators = new();
 
@@ -1803,6 +2034,19 @@ internal static class SettingsAccess
 
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern bool GetComputerNameEx(int nameType, char[]? buffer, ref uint size);
+
+    private const int ErrorAlreadyExists = 183;
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct SecurityAttributes
+    {
+        public int Length;
+        public IntPtr SecurityDescriptor;
+        public int InheritHandle;
+    }
+
+    [DllImport("kernel32.dll", EntryPoint = "CreateDirectoryW", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern bool CreateDirectory(string path, ref SecurityAttributes attributes);
 
     // The descriptor carries the "protected" flag set by SetAccessRuleProtection; nothing is
     // propagated to what is in the folder here, ResetContents does that afterwards.
