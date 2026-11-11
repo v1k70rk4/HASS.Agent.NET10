@@ -73,7 +73,7 @@
     "Danger.ImportDone": "已成功导入配置文件的设置，接下来应用需要重启。",
     "Danger.ImportClassic": "从HASS.Agent传统版本导入",
     "Classic.Heading": "发现传统版本HASS.Agent的配置。",
-    "Classic.Offer": "在当前设备上检测到了传统版本HASS.Agent的配置。其设备名称、连接设置以及在此处有对应项目的床干起和指令均可以直接导入，无需重新配置。\n\n传统版本HASS.Agent中的配置仅作读取处理，其配置中的内容不会被修改。此处的操作也可稍后在“调试>备份和恢复”中继续。",
+    "Classic.Offer": "在当前设备上检测到了传统版本HASS.Agent的配置。其设备名称、连接设置以及在此处有对应项目的传感器和指令均可以直接导入，无需重新配置。\n\n传统版本HASS.Agent中的配置仅作读取处理，其配置中的内容不会被修改。此处的操作也可稍后在“调试>备份和恢复”中继续。",
     "Classic.Import": "直接导入",
     "Classic.NotNow": "我想重新开始",
     "Classic.NotFound": "在当前Windows用户下，未找到传统版本HASS.Agent的配置。",
