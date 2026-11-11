@@ -1151,25 +1151,68 @@ internal static class SettingsAccess
 
     /// <summary>
     /// What an elevated command does before it reads or writes anything in the settings folder:
-    /// <see cref="MakeSafe(string)"/>, and a folder that had to be made for it is opened to
-    /// every user, as a silent first install leaves it, so the app asks who it is for. Made
-    /// when there was none, when what was there was a link, and when it was another user's
-    /// and was put aside. A folder made there is the administrators' alone: left so, the app
-    /// would start for nobody, and an update would keep it that way, taking the one rule it
-    /// has for a limit someone chose. Not when the command sets the folder's rule itself
-    /// (<paramref name="setsTheFoldersRule"/>).
+    /// <see cref="MakeSafe(string)"/>, and a folder nobody chose a rule for is opened to every
+    /// user, as a silent first install leaves it, so the app asks who it is for. That is a
+    /// folder made here, when there was none or what was there was a link; the folder in the
+    /// place of another user's, which was put aside; and one that still has the rule it was
+    /// made with (<see cref="IsAsItWasMade"/>), left so before by a command that was to set
+    /// the rule and failed, or by 10.13.0, which did not open it. A folder made here is the
+    /// administrators' alone: left so, the app would start for nobody, and an update would
+    /// keep it that way, taking the one rule it has for a limit someone chose. Not when the
+    /// command sets the folder's rule itself (<paramref name="setsTheFoldersRule"/>).
     /// </summary>
     /// <param name="putAside">Where another user's folder went; null when there was none.</param>
     /// <param name="made">Whether the folder is a new one, made here.</param>
-    internal static void MakeSafeForCommand(string configDirectory, bool setsTheFoldersRule, out string? putAside, out bool made)
+    /// <returns>Whether the folder was opened to every user.</returns>
+    internal static bool MakeSafeForCommand(string configDirectory, bool setsTheFoldersRule, out string? putAside, out bool made)
     {
-        // What could not be taken over in the folder is the caller's to find, as before: a
-        // command that sets the rule reports it, the others go on.
-        _ = MakeSafe(configDirectory, out var anchor, out _, out putAside, out made);
-        anchor?.Dispose();
-        if (made && !setsTheFoldersRule)
+        // The anchor is held open until the rule is set, as SetFolderRule does.
+        var notTakenOver = MakeSafe(configDirectory, out var anchor, out var anchorName, out putAside, out made);
+        try
         {
-            OpenToEveryone(configDirectory);
+            if (setsTheFoldersRule || (!made && putAside is null && !IsAsItWasMade(configDirectory)))
+            {
+                // What could not be taken over in the folder is the caller's to find, as
+                // before: a command that sets the rule reports it, the others go on.
+                return false;
+            }
+
+            SetFolderRule(configDirectory, [AuthenticatedUsers], KioskMode.GroupSid(), notTakenOver, ref anchor, anchorName);
+            return true;
+        }
+        finally
+        {
+            anchor?.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Whether the folder's rule is still the one a new folder is made with
+    /// (<see cref="CreateForAdministrators"/>): it names nobody but SYSTEM, the administrators
+    /// and the folder's owner. No choice leaves that: a limit names its users or their group.
+    /// It is also what "--settings-access keep" of 10.13.0 made of such a folder, keeping the
+    /// owner's entry as if it were a user's. A rule that names nobody at all is not this:
+    /// someone may have set it by hand, and it stays. (A folder made by a command started
+    /// from a shell that makes the user the owner of what it creates, as Git Bash does, is
+    /// given to the administrators, and Windows drops the owner's entry when the owner
+    /// changes: it is opened by the command that made it, and not found here later.)
+    /// </summary>
+    internal static bool IsAsItWasMade(string configDirectory)
+    {
+        try
+        {
+            if (RestrictionState(configDirectory) is not true)
+            {
+                return false;
+            }
+
+            var users = ExplicitUsers(configDirectory);
+            return users.Count == 1 && users[0] == OwnerRights;
+        }
+        catch (Exception)
+        {
+            // Not to be read: not taken for a folder nobody chose a rule for.
+            return false;
         }
     }
 

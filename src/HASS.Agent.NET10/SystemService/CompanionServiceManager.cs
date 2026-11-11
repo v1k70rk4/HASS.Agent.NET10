@@ -123,8 +123,8 @@ internal static class CompanionServiceManager
     {
         try
         {
-            SettingsAccess.MakeSafeForCommand(AppPaths.ConfigDirectoryPath, setsTheFoldersRule, out var putAside, out var made);
-            if (!made && putAside is null)
+            var opened = SettingsAccess.MakeSafeForCommand(AppPaths.ConfigDirectoryPath, setsTheFoldersRule, out var putAside, out var made);
+            if (!made && !opened && putAside is null)
             {
                 return null;
             }
@@ -132,14 +132,18 @@ internal static class CompanionServiceManager
             using var log = new FileLog(AppPaths.Create().LogFile);
             if (putAside is not null)
             {
-                log.Warning($"The settings folder was made by a user who is no administrator. It was put aside as {putAside}, with what it held, and a new one made: nothing in it is used.");
+                log.Warning($"The settings folder was made by a user who is no administrator. It was put aside as {putAside}, with what it held{(made ? ", and a new one made" : string.Empty)}: nothing in it is used.");
             }
-            else
+            else if (made)
             {
                 log.Info("The settings folder was not there, or was a link: a new one was made.");
             }
+            else
+            {
+                log.Info("The settings folder had the rule it was made with, for the administrators alone: nobody chose that.");
+            }
 
-            if (made && !setsTheFoldersRule)
+            if (opened)
             {
                 log.Info("Settings open to every user of this PC until someone chooses in the app.");
             }
@@ -274,7 +278,7 @@ internal static class CompanionServiceManager
     /// still asks; "keep": what the folder had, after an update. Needs an administrator.
     /// A settings folder made by a user who is no administrator (before the first install, in
     /// ProgramData, where every user can make one) is not used, nor anything in it: it is put
-    /// aside and a new one made (<see cref="SettingsAccess.MakeSafe(string, out string?)"/>).
+    /// aside and a new one made (<see cref="SettingsAccess.MakeSafeForCommand"/>).
     /// </summary>
     private static ControlCommandResult ChangeSettingsAccess(IReadOnlyList<string> arguments)
     {
@@ -285,11 +289,17 @@ internal static class CompanionServiceManager
 
         var mode = arguments.FirstOrDefault()?.ToLowerInvariant();
         var users = arguments.Skip(1).Where(user => !string.IsNullOrWhiteSpace(user)).ToList();
+        // A command that asks for nothing changes nothing on the PC, the folder included.
+        var setsTheFoldersRule = mode is "everyone" or "open" || (mode == "only" && users.Count > 0);
+        if (!setsTheFoldersRule && mode != "keep")
+        {
+            return new ControlCommandResult(false, S("Access.Usage"));
+        }
+
         // Before anything is read or written there as administrator: the folder may have been
         // made by a user, as a link to a folder of their choosing or with settings of theirs.
         // "keep" over a folder that was put aside finds the new one open to every user, and
         // does with it what an update does with such a folder.
-        var setsTheFoldersRule = mode is "everyone" or "open" || (mode == "only" && users.Count > 0);
         if (MakeSettingsFolderSafe(setsTheFoldersRule) is { } notSafe)
         {
             return notSafe;
@@ -344,6 +354,12 @@ internal static class CompanionServiceManager
 
         var mode = arguments.FirstOrDefault()?.ToLowerInvariant();
         var users = arguments.Skip(1).Where(user => !string.IsNullOrWhiteSpace(user)).ToList();
+        // A command that asks for nothing changes nothing on the PC, the folder included.
+        if (mode != "off" && !(mode == "on" && users.Count > 0))
+        {
+            return new ControlCommandResult(false, S("Kiosk.Usage"));
+        }
+
         // Before anything is read or written there as administrator.
         if (MakeSettingsFolderSafe() is { } notSafe)
         {
