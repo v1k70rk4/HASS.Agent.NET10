@@ -569,6 +569,7 @@
     "SvcMgr.ApprovalFailed": "Die Befehle für den Dienst konnten nicht genehmigt werden: {0}",
     "SvcMgr.ApprovalNeeded": "Der Dienst läuft als SYSTEM, daher braucht jeder Befehl oder Befehlssensor, den er ausführt, die Genehmigung eines Administrators; Windows fragt danach nach OK. Prüfe unten, was jeder einzelne ausführt, und zwar vollständig: Das wird genehmigt. Ohne Genehmigung überspringt der Dienst diese, und die Tray-App führt aus, was sie kann.",
     "SvcMgr.ApprovalWritable": "Warning: {0} can be changed without an administrator's rights. Whoever changes it decides what the service runs as SYSTEM.",
+    "SvcMgr.ApprovalRightToLeft": "Warning: this text has letters that are written from right to left. Its parts may be shown in another order than the one they are run in.",
     "SvcMgr.ApprovalChanged": "Nicht genehmigt: Die Einstellungen haben sich geändert, nachdem die Genehmigung angefragt wurde. Speichere sie erneut, um erneut gefragt zu werden.",
     "SvcMgr.ApprovalDeclined": "Nicht genehmigt. Der Dienst überspringt diese, bis die Einstellungen erneut gespeichert und die Abfrage genehmigt wurde: {0}",
     "HaApi.TokenNotSaved": "(noch nicht gespeichert)",

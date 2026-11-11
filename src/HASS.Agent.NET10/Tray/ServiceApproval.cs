@@ -113,6 +113,13 @@ internal static class ServiceApproval
             lines.Add("    " + string.Format(Strings.Get("SvcMgr.ApprovalWritable"), Visible(targetFile)));
         }
 
+        // Letters written from right to left are shown as they are, and can have the parts
+        // around them shown in another order than they are in: said, in a line of its own.
+        if (HasRightToLeftLetters(runs))
+        {
+            lines.Add("    " + Strings.Get("SvcMgr.ApprovalRightToLeft"));
+        }
+
         return $"{OneLine(name)} [{OneLine(type)}]:{Environment.NewLine}{string.Join(Environment.NewLine, lines)}";
     }
 
@@ -139,10 +146,18 @@ internal static class ServiceApproval
     /// </summary>
     internal static string OneLine(string? text)
     {
-        var line = new StringBuilder();
-        foreach (var (character, shown) in Characters(text ?? string.Empty))
+        text ??= string.Empty;
+        var line = new StringBuilder(text.Length);
+        foreach (var (index, length, _, shown) in Characters(text))
         {
-            line.Append(shown ? character : " ");
+            if (shown)
+            {
+                line.Append(text, index, length);
+            }
+            else
+            {
+                line.Append(' ');
+            }
         }
 
         return line.ToString().Trim();
@@ -150,51 +165,119 @@ internal static class ServiceApproval
 
     /// <summary>
     /// A line of what a command runs, or the path of a file it names, with the characters that
-    /// are not shown written out as their code (U+202E as a backslash, u and 202E; one past
-    /// U+FFFF as a backslash, U and eight digits): one that turns the reading direction around
-    /// would have the administrator read another text than the one that is approved and run.
-    /// Written out, not left out: what is shown stays the text that is approved, with nothing
-    /// missing from it.
+    /// are not shown written out as their code, U+202E as &lt;U+202E&gt;: one that turns the
+    /// reading direction around would have the administrator read another text than the one
+    /// that is approved and run. Written out, not left out: what is shown stays the text that
+    /// is approved, with nothing missing from it. Between angle brackets, which no name of a
+    /// file or folder can have: in a path the code cannot be read as a part of the path, as a
+    /// backslash and a letter before it could (a folder, and a file named u202E...). A command
+    /// that has the code typed out in it, brackets and all, reads the same as one with the
+    /// character; nothing is hidden by that.
     /// </summary>
     internal static string Visible(string line)
     {
         var visible = new StringBuilder(line.Length);
-        foreach (var (character, shown) in Characters(line))
+        foreach (var (index, length, code, shown) in Characters(line))
         {
-            visible.Append(shown || character == "\t" ? character : Code(character));
+            if (shown || code == '\t')
+            {
+                visible.Append(line, index, length);
+            }
+            else
+            {
+                visible.Append("<U+").Append(code.ToString("X4", CultureInfo.InvariantCulture)).Append('>');
+            }
         }
 
         return visible.ToString();
     }
 
-    // The text character by character, and whether each one is shown. By character, not by
-    // char: one past U+FFFF is two chars in a string (a surrogate pair), and neither of the
-    // two says what the character is. The tag characters (U+E0001, U+E0020 and on) are among
-    // those: not shown, and a path with one in it is another path than the one that is read.
-    // Half of a pair on its own is no character at all, and counts as not shown.
-    private static IEnumerable<(string Character, bool Shown)> Characters(string text)
+    /// <summary>
+    /// Whether the text has letters of a script written from right to left (Hebrew, Arabic and
+    /// the others). No character has to be hidden for those to change what is read: the window
+    /// lays them out from the right, and takes digits and separators next to them along, so
+    /// the parts of a path can be shown in another order than they are in. They are shown as
+    /// they are, since written out as codes a name in such a script could not be read at all;
+    /// the prompt says so below the entry instead.
+    /// </summary>
+    internal static bool HasRightToLeftLetters(string? text)
+    {
+        foreach (var (_, _, code, _) in Characters(text ?? string.Empty))
+        {
+            // The blocks whose characters are right to left by default (Unicode's
+            // bidirectional algorithm, UAX #9), assigned or not yet.
+            if (code is (>= 0x0590 and <= 0x08FF) or (>= 0xFB1D and <= 0xFDFF) or (>= 0xFE70 and <= 0xFEFF)
+                or (>= 0x10800 and <= 0x10FFF) or (>= 0x1E800 and <= 0x1EFFF))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // The text character by character: where it is, how many chars long, its code, and
+    // whether it is shown. By character, not by char: one past U+FFFF is two chars in a
+    // string (a surrogate pair), and neither of the two says what the character is. Half of a
+    // pair on its own is no character at all, and counts as not shown, under its own code.
+    private static IEnumerable<(int Index, int Length, int Code, bool Shown)> Characters(string text)
     {
         var index = 0;
         while (index < text.Length)
         {
             if (!Rune.TryGetRuneAt(text, index, out var rune))
             {
-                yield return (text.Substring(index, 1), false);
+                yield return (index, 1, text[index], false);
                 index++;
                 continue;
             }
 
-            var shown = !Rune.IsControl(rune)
-                && Rune.GetUnicodeCategory(rune) is not (UnicodeCategory.Format or UnicodeCategory.LineSeparator or UnicodeCategory.ParagraphSeparator);
-            yield return (text.Substring(index, rune.Utf16SequenceLength), shown);
+            yield return (index, rune.Utf16SequenceLength, rune.Value, IsShown(rune));
             index += rune.Utf16SequenceLength;
         }
     }
 
-    private static string Code(string character) =>
-        character.Length == 2
-            ? $"\\U{char.ConvertToUtf32(character, 0):X8}"
-            : $"\\u{(int)character[0]:X4}";
+    /// <summary>
+    /// Whether the character is one that is seen: a letter, a mark on one (an accent written
+    /// as a character of its own), a digit, punctuation, a symbol, or the plain space. Asked
+    /// this way round, by what is known to be seen, and not by a list of what is not: the
+    /// rest is control and format characters (the ones that turn the reading direction
+    /// around), separators, the other spaces (a no-break space in a folder's name reads as
+    /// "Program Files"), private and unassigned characters (the unassigned tags). Among
+    /// the letters, marks and symbols a few are blank all the same, and are named here.
+    /// </summary>
+    internal static bool IsShown(Rune rune)
+    {
+        var code = rune.Value;
+        if (code == ' ')
+        {
+            return true;
+        }
+
+        switch (Rune.GetUnicodeCategory(rune))
+        {
+            case UnicodeCategory.UppercaseLetter or UnicodeCategory.LowercaseLetter or UnicodeCategory.TitlecaseLetter
+                or UnicodeCategory.ModifierLetter or UnicodeCategory.OtherLetter
+                or UnicodeCategory.NonSpacingMark or UnicodeCategory.SpacingCombiningMark or UnicodeCategory.EnclosingMark
+                or UnicodeCategory.DecimalDigitNumber or UnicodeCategory.LetterNumber or UnicodeCategory.OtherNumber
+                or UnicodeCategory.ConnectorPunctuation or UnicodeCategory.DashPunctuation
+                or UnicodeCategory.OpenPunctuation or UnicodeCategory.ClosePunctuation
+                or UnicodeCategory.InitialQuotePunctuation or UnicodeCategory.FinalQuotePunctuation or UnicodeCategory.OtherPunctuation
+                or UnicodeCategory.MathSymbol or UnicodeCategory.CurrencySymbol or UnicodeCategory.ModifierSymbol or UnicodeCategory.OtherSymbol:
+                break;
+            default:
+                return false;
+        }
+
+        return code is not (
+            0x034F                              // combining grapheme joiner
+            or 0x115F or 0x1160 or 0x3164 or 0xFFA0   // the Hangul fillers
+            or 0x17B4 or 0x17B5                 // Khmer inherent vowels
+            or (>= 0x180B and <= 0x180D) or 0x180F    // Mongolian variation selectors
+            or 0x2800                           // the blank Braille pattern
+            or (>= 0xFE00 and <= 0xFE0F)        // variation selectors
+            or (>= 0xE0100 and <= 0xE01EF));    // variation selectors, the supplement
+    }
 
     /// <summary>The question above, and what is to be approved in a box that scrolls, as long as it is.</summary>
     private static bool Ask(IWin32Window owner, string question, string details)

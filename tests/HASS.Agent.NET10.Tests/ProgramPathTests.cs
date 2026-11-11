@@ -109,15 +109,21 @@ public class ProgramPathTests : IDisposable
         Assert.True(FileTrust.CanBeChangedWithoutAdministrator(_program));
     }
 
-    [Fact]
-    public void The_approval_prompt_warns_about_a_script_that_can_be_changed_afterwards()
+    // A script an ordinary user may change, whoever owns it: as one in C:\Scripts is by default.
+    private static void WriteAScriptAUserMayChange(string script)
     {
-        var script = Path.Combine(_folder, "backup.ps1");
         File.WriteAllText(script, "Write-Output ok");
         var info = new FileInfo(script);
         var security = info.GetAccessControl();
         security.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier(WellKnownSidType.BuiltinUsersSid, null), FileSystemRights.Modify, AccessControlType.Allow));
         info.SetAccessControl(security);
+    }
+
+    [Fact]
+    public void The_approval_prompt_warns_about_a_script_that_can_be_changed_afterwards()
+    {
+        var script = Path.Combine(_folder, "backup.ps1");
+        WriteAScriptAUserMayChange(script);
         var settings = new CompanionSettings
         {
             CustomCommands =
@@ -131,7 +137,7 @@ public class ProgramPathTests : IDisposable
         var shown = ServiceApproval.PendingDescriptions(settings, new ServicePolicy());
 
         Assert.Equal(3, shown.Count);
-        Assert.Contains(script, shown[0].Split(Environment.NewLine)[^1]);
+        Assert.Contains(ServiceApproval.Visible(script), shown[0].Split(Environment.NewLine)[^1], StringComparison.Ordinal);
         Assert.Equal(3, shown[0].Split(Environment.NewLine).Length);   // the name, what it runs, the warning
         Assert.Equal(2, shown[1].Split(Environment.NewLine).Length);
         Assert.Equal(2, shown[2].Split(Environment.NewLine).Length);
@@ -143,11 +149,7 @@ public class ProgramPathTests : IDisposable
         // The path is from the command, which others can write. U+202E in a name has what
         // follows it written from right to left: the rest of the warning's line with it.
         var script = Path.Combine(_folder, "backup\u202E1sp.ps1");
-        File.WriteAllText(script, "Write-Output ok");
-        var info = new FileInfo(script);
-        var security = info.GetAccessControl();
-        security.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier(WellKnownSidType.BuiltinUsersSid, null), FileSystemRights.Modify, AccessControlType.Allow));
-        info.SetAccessControl(security);
+        WriteAScriptAUserMayChange(script);
         var settings = new CompanionSettings
         {
             CustomCommands = [new CustomCommandDefinition { Id = "1", Name = "Backup", Type = CustomCommandTypes.PowerShell, Command = script, Service = true }],
@@ -159,7 +161,7 @@ public class ProgramPathTests : IDisposable
         // Ordinal: compared the way a language does, a character that is not shown counts as
         // nothing, and is found in every text.
         Assert.DoesNotContain("\u202E", lines[^1], StringComparison.Ordinal);
-        Assert.Contains(@"backup\u202E1sp.ps1", lines[^1], StringComparison.Ordinal);
+        Assert.Contains("backup<U+202E>1sp.ps1", lines[^1], StringComparison.Ordinal);
     }
 
     [Theory]
