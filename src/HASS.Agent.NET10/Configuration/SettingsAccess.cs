@@ -304,10 +304,14 @@ internal static class SettingsAccess
 
     // The local groups the user is in, also through a domain group (the domain groups come from
     // a domain controller). Empty when Windows cannot tell.
-    private static List<string> LocalGroupsOf(string user)
+    private static List<string> LocalGroupsOf(string user) => LocalGroupsOf(user, out _);
+
+    // The same, saying whether Windows could tell (known): an empty list is then no groups.
+    private static List<string> LocalGroupsOf(string user, out bool known)
     {
         var groups = new List<string>();
         var status = NetUserGetLocalGroups(null, user, 0, LgIncludeIndirect, out var buffer, MaxPreferredLength, out var read, out _);
+        known = status == 0;
         try
         {
             if (status != 0)
@@ -1255,7 +1259,15 @@ internal static class SettingsAccess
                 {
                     // As it should be.
                 }
-                else if (ownedByWhoeverRunsThis ? IsElevated.Value : IsAnAdministrator(owner))
+                else if ((ownedByWhoeverRunsThis ? IsElevated.Value : AdministratorState(owner)) is not { } ofAnAdministrator)
+                {
+                    // Not known, and it could be an administrator's: a folder with someone's
+                    // settings is not put aside on a guess. Nothing is run over it either.
+                    throw new IOException(
+                        $"{configDirectory} was made by {NameOf(owner!)}, an account from a domain or Entra ID, and whether that is an administrator of this PC could not be found out: it takes the domain to tell. " +
+                        "The folder was left as it is. Run this again when the domain can be reached; if it never can, give the folder to the Administrators group to keep its settings, or delete it.");
+                }
+                else if (ofAnAdministrator)
                 {
                     // An administrator's own: made by their app, which runs without elevation,
                     // so what it makes is theirs by name and not the group's. It is the PC's
@@ -1685,21 +1697,85 @@ internal static class SettingsAccess
     private static bool OwnerIsOfThePc(SecurityIdentifier? owner) => OwnerIsTrusted(owner) || IsAnAdministrator(owner);
 
     // A member of this PC's Administrators group, itself or through a group from a domain.
-    // Asked once for an account: the owners of everything in the folder are looked at.
-    private static bool IsAnAdministrator(SecurityIdentifier? account) =>
-        account is not null && KnownAdministrators.GetOrAdd(account, static sid =>
+    // Not known counts as no: nothing is run over a folder on the strength of a guess.
+    private static bool IsAnAdministrator(SecurityIdentifier? account) => AdministratorState(account) is true;
+
+    // The same, with what is not known kept apart (null), for the one place that acts on a
+    // "no" by putting a folder aside (MakeSafe). Asked once for an account whose answer is
+    // known: the owners of everything in the folder are looked at.
+    private static bool? AdministratorState(SecurityIdentifier? account)
+    {
+        if (account is null)
         {
-            try
+            return false;
+        }
+
+        if (KnownAdministrators.TryGetValue(account, out var known))
+        {
+            return known;
+        }
+
+        var state = FindAdministratorState(account);
+        if (state is { } found)
+        {
+            KnownAdministrators[account] = found;
+        }
+
+        return state;
+    }
+
+    private static bool? FindAdministratorState(SecurityIdentifier account)
+    {
+        var groupsKnown = false;
+        var administratorsAmongThem = false;
+        try
+        {
+            var (group, members) = AdministratorsGroup();
+            if (members.Contains(account))
             {
-                var (group, members) = AdministratorsGroup();
-                return members.Contains(sid)
-                    || LocalGroupsOf(((NTAccount)sid.Translate(typeof(NTAccount))).Value).Contains(group, StringComparer.OrdinalIgnoreCase);
+                return true;
             }
-            catch (Exception ex) when (ex is IdentityNotMappedException or SystemException)
-            {
-                return false;
-            }
-        });
+
+            var name = ((NTAccount)account.Translate(typeof(NTAccount))).Value;
+            administratorsAmongThem = LocalGroupsOf(name, out groupsKnown).Contains(group, StringComparer.OrdinalIgnoreCase);
+        }
+        catch (Exception ex) when (ex is IdentityNotMappedException or SystemException)
+        {
+            // No name for the account, or no answer: its groups are not known.
+            groupsKnown = false;
+        }
+
+        return AdministratorThroughAGroup(
+            groupsKnown, administratorsAmongThem, IsDirectoryAccount(account.Value), HasAProfileHere(account));
+    }
+
+    /// <summary>
+    /// Whether an account that the Administrators group does not name itself is an
+    /// administrator through a group, by what Windows said of its groups. Null when that is
+    /// not known and could be yes: an account from a domain or Entra ID that has logged on to
+    /// this PC, whose groups come from a domain controller that was not reached (a laptop off
+    /// the network, an update run as SYSTEM). An account of this PC whose groups Windows does
+    /// not tell, and one that never logged on here (a deleted account's leftover, a SID from
+    /// another PC), is no administrator.
+    /// </summary>
+    internal static bool? AdministratorThroughAGroup(bool groupsKnown, bool administratorsAmongThem, bool directoryAccount, bool hasAProfileHere) =>
+        groupsKnown ? administratorsAmongThem
+        : directoryAccount && hasAProfileHere ? null
+        : false;
+
+    // Whether the account has logged on to this PC: its profile is listed.
+    private static bool HasAProfileHere(SecurityIdentifier account)
+    {
+        try
+        {
+            using var profile = Registry.LocalMachine.OpenSubKey($@"SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\{account.Value}");
+            return profile is not null;
+        }
+        catch (Exception ex) when (ex is System.Security.SecurityException or UnauthorizedAccessException or IOException)
+        {
+            return false;
+        }
+    }
 
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<SecurityIdentifier, bool> KnownAdministrators = new();
 

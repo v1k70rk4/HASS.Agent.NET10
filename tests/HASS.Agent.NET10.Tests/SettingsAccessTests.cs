@@ -572,6 +572,23 @@ public class SettingsAccessTests : IDisposable
         Assert.True(SettingsAccess.RestrictionState(folder));
     }
 
+    [Theory]
+    [InlineData(true, true, false, false, true)]     // its groups are known, the administrators among them
+    [InlineData(true, false, true, true, false)]     // known, and not among them: no, also for one from a domain
+    [InlineData(false, false, true, true, null)]     // from a domain, has logged on here, the domain not reached: not known
+    [InlineData(false, true, true, true, null)]      // what an answer that is not one holds does not count
+    [InlineData(false, false, true, false, false)]   // a SID from elsewhere that never logged on here
+    [InlineData(false, false, false, true, false)]   // an account of this PC
+    public void An_owner_from_a_domain_whose_groups_are_not_known_is_not_taken_for_no_administrator(
+        bool groupsKnown, bool administratorsAmongThem, bool directoryAccount, bool hasAProfileHere, bool? administrator)
+    {
+        // Not known (null): the folder is neither used nor put aside. A laptop off the
+        // network, updated as SYSTEM, with a folder its user from the domain made, who is an
+        // administrator through a domain group: put aside, the settings were gone from the app.
+        Assert.Equal(administrator, SettingsAccess.AdministratorThroughAGroup(
+            groupsKnown, administratorsAmongThem, directoryAccount, hasAProfileHere));
+    }
+
     [Fact]
     public void A_folder_left_with_the_rule_it_was_made_with_is_opened_by_the_next_command()
     {
