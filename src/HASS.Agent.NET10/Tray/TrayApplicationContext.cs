@@ -30,6 +30,10 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
     private MainForm? _mainForm;
     private ToolStripMenuItem? _copyUrlItem;
     private readonly PopupWindows _popups;
+
+    // Goes up each time the popups are told the settings; a press from a connection thread
+    // that waited across one is looked up again before its window is opened.
+    private int _popupSettingsGeneration;
     private readonly HotkeyService _hotkeys;
 
     public event EventHandler<NotificationActionRequestedEventArgs>? NotificationActionRequested;
@@ -200,7 +204,16 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
                 return false;
             }
 
-            _uiInvoker.BeginInvoke(() => _popups.ShowForCommand(request));
+            var askedAt = Volatile.Read(ref _popupSettingsGeneration);
+            _uiInvoker.BeginInvoke(() =>
+            {
+                var current = PopupWindows.StillAskedFor(
+                    request, askedAt == _popupSettingsGeneration, _settings.CustomCommands);
+                if (current is not null)
+                {
+                    _popups.ShowForCommand(current);
+                }
+            });
             return true;
         };
         SystemCommandService.WebViewCloseHandler = target =>
@@ -427,10 +440,13 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
         }
     }
 
-    private void TellThePopupsTheSettings() =>
+    private void TellThePopupsTheSettings()
+    {
+        Interlocked.Increment(ref _popupSettingsGeneration);
         _popups.SettingsChanged(
             _settings.WebViewUrl, new Size(_settings.WebViewWidth, _settings.WebViewHeight), _settings.WebViewKeepLoaded,
             _settings.CustomCommands);
+    }
 
     /// <summary>The dashboard popup above the tray: brings it up, or sends away the one that is up.</summary>
     private void ToggleDashboard()

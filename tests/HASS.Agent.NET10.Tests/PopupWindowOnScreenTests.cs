@@ -291,7 +291,7 @@ public sealed class PopupWindowOnScreenTests
 
             var window = Assert.Single(Windows());
             Assert.True(window.IsPopup);
-            Assert.True(window.TopMost);
+            Assert.NotEqual(0, GetWindowLong(window.Handle, -20) & 0x8); // over every other window
             Assert.Equal(FormBorderStyle.None, window.FormBorderStyle);
             Assert.False(window.ShowInTaskbar);
 
@@ -305,6 +305,51 @@ public sealed class PopupWindowOnScreenTests
             Pump(400);
             Assert.True(window.IsDisposed);
             Assert.False(Assert.Single(Windows()).IsPopup);
+        });
+    }
+
+    [Fact]
+    public void A_window_of_a_command_never_takes_the_focus_and_the_dashboard_does()
+    {
+        OnAWindowThread(log =>
+        {
+            // A window of the app's own that has the focus, as the settings window would.
+            using var typedInto = new Form { Text = "typed into", Size = new Size(240, 160), StartPosition = FormStartPosition.Manual, Location = new Point(40, 40) };
+            typedInto.Show();
+            typedInto.Activate();
+            Pump(300);
+            Assert.SkipUnless(GetActiveWindow() == typedInto.Handle, "A window of the tests cannot be made the active one here.");
+
+            using var popups = new PopupWindows(log);
+            var ordinary = new PopupWindowRequest("custom_1", "Camera", Blank, new PopupWindowOptions(Small, KeepLoaded: true, CloseAfter: null));
+            var aboveTray = new PopupWindowRequest("custom_2", "Player", Blank, new PopupWindowOptions(Small, KeepLoaded: true, CloseAfter: null, AboveTray: true));
+
+            // New, hidden and asked for again, and asked for again while it is up.
+            foreach (var request in new[] { ordinary, aboveTray })
+            {
+                popups.ShowForCommand(request);
+                Pump(400);
+                Assert.Equal(typedInto.Handle, GetActiveWindow());
+
+                Assert.Equal(1, popups.Close(request.CommandName));
+                Pump(200);
+                popups.ShowForCommand(request);
+                Pump(300);
+                Assert.Equal(typedInto.Handle, GetActiveWindow());
+
+                popups.ShowForCommand(request);
+                Pump(200);
+                Assert.Equal(typedInto.Handle, GetActiveWindow());
+            }
+
+            Assert.Equal(2, Windows().Count(window => window.Visible));
+
+            // The dashboard popup is asked for by a click at this PC: it takes the focus, which
+            // is what lets a click elsewhere send it away.
+            popups.ShowDashboard(Blank, Small, keepLoaded: true);
+            Pump(300);
+            var dashboard = Assert.Single(Windows(), window => window.IsPopup && window.TopMost);
+            Assert.Equal(dashboard.Handle, GetActiveWindow());
         });
     }
 
@@ -324,6 +369,9 @@ public sealed class PopupWindowOnScreenTests
 
     [DllImport("user32.dll")]
     private static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetActiveWindow();
 
     [DllImport("user32.dll")]
     private static extern IntPtr GetWindow(IntPtr window, uint which);

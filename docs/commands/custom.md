@@ -43,7 +43,7 @@ The editor has four fields for the window:
 | **Keep the page loaded** | `keep` | The page stays loaded when the window is closed: closing only hides it, and the next press shows it at once and as it was. For a page that takes long to load and has nothing live to restart, such as a player or a dashboard. It keeps the memory of a browser tab until the app exits. |
 | **Closes after** | `30s` | The window closes by itself this many seconds after it was shown, up to 24 hours; 0 leaves it open. A window that keeps its page is hidden instead. |
 
-The list shows the four in short in its **Arguments** column, for example `800x600 popup keep 30s`, and they can be typed there the same way: in any order, each of them optional, the time also in minutes or hours (`5m`, `1h`).
+The list shows the four in short in its **Arguments** column, for example `800x600 popup keep 30s`; to change them, open the command with **Edit** or a double click on its row. The settings file keeps them as that text.
 
 A **Close popup windows** command closes them from Home Assistant, as their own X would. Its field takes the name of the Popup window command whose window is to go, as it stands in the list, or `*` for all of them and the [dashboard popup](../features/dashboard-popup.md). When there is nothing open, nothing happens. Both need 10.13.1 or newer.
 

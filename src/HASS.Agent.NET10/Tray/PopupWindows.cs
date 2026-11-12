@@ -59,6 +59,30 @@ internal sealed class PopupWindows : IDisposable
     internal static bool StaysAfterSave(bool commandIsThere, bool itKeepsItsPage, bool askedTheSameWay) =>
         commandIsThere && (!itKeepsItsPage || askedTheSameWay);
 
+    /// <summary>
+    /// A press that waited for the UI thread while the settings were being saved: the command
+    /// is looked up again, so a window is not opened for one that was just removed or switched
+    /// off, and one that was changed opens as it is now. A press that did not meet a save is
+    /// taken as it came, which is also how the editor tries a command that is not saved yet.
+    /// </summary>
+    internal static PopupWindowRequest? StillAskedFor(
+        PopupWindowRequest request, bool settingsAreAsTheyWere, IReadOnlyList<CustomCommandDefinition> commands)
+    {
+        if (settingsAreAsTheyWere)
+        {
+            return request;
+        }
+
+        var command = commands.FirstOrDefault(candidate =>
+            candidate.IsWebView && candidate.Enabled && candidate.TrayApp
+            && string.Equals(candidate.Id, request.CommandId, StringComparison.OrdinalIgnoreCase));
+        return command is not null
+            && WebViewOptions.IsWebAddress(command.Command)
+            && WebViewOptions.TryParseWindow(command.Arguments, out var options)
+                ? new PopupWindowRequest(command.Id, command.Name, command.Command, options)
+                : null;
+    }
+
     /// <summary>Whether a "close" names no command: it is for every window there is.</summary>
     internal static bool IsForEveryWindow(string? target) =>
         string.IsNullOrWhiteSpace(target) || target.Trim() == WebViewOptions.EveryWindow;
@@ -236,8 +260,10 @@ internal sealed class PopupWindows : IDisposable
         }
 
         existing?.CloseForGood();
+        // Asked for from Home Assistant, not by whoever sits at the PC: it never takes the focus.
         var window = new WebViewForm(
-            request.Url, request.Options.Size, request.Options.AboveTray, _log, request.Options.KeepLoaded, request.Options.CloseAfter);
+            request.Url, request.Options.Size, request.Options.AboveTray, _log, request.Options.KeepLoaded, request.Options.CloseAfter,
+            takesFocus: false);
         window.FormClosed += (_, _) =>
         {
             if (_byCommand.TryGetValue(request.CommandId, out var current) && ReferenceEquals(current.Window, window))

@@ -132,6 +132,53 @@ public sealed class PopupWindowTests : IDisposable
         Assert.Equal(stays, PopupWindows.StaysAfterSave(commandIsThere, itKeepsItsPage, askedTheSameWay));
     }
 
+    private static readonly PopupWindowRequest Pressed = new(
+        "custom_1", "Doorbell camera", "http://homeassistant.local:8123/lovelace/camera",
+        new PopupWindowOptions(new Size(800, 600), KeepLoaded: false, CloseAfter: null));
+
+    private static CustomCommandDefinition Saved(Action<CustomCommandDefinition>? change = null)
+    {
+        var command = new CustomCommandDefinition
+        {
+            Id = "custom_1", Name = "Front door", Type = CustomCommandTypes.WebView,
+            Command = "http://homeassistant.local:8123/lovelace/door", Arguments = "420x640 popup keep 30s"
+        };
+        change?.Invoke(command);
+        return command;
+    }
+
+    [Fact]
+    public void A_press_that_met_no_save_is_taken_as_it_came()
+    {
+        // Also when the list does not have the command: the editor tries one that is not saved yet.
+        Assert.Equal(Pressed, PopupWindows.StillAskedFor(Pressed, settingsAreAsTheyWere: true, []));
+        Assert.Equal(Pressed, PopupWindows.StillAskedFor(Pressed, settingsAreAsTheyWere: true, [Saved()]));
+    }
+
+    [Fact]
+    public void A_press_that_waited_across_a_save_opens_the_command_as_it_is_now()
+    {
+        var current = PopupWindows.StillAskedFor(Pressed, settingsAreAsTheyWere: false, [Saved()]);
+
+        Assert.Equal(
+            new PopupWindowRequest(
+                "custom_1", "Front door", "http://homeassistant.local:8123/lovelace/door",
+                new PopupWindowOptions(new Size(420, 640), KeepLoaded: true, CloseAfter: TimeSpan.FromSeconds(30), AboveTray: true)),
+            current);
+    }
+
+    [Fact]
+    public void A_press_that_waited_across_a_save_opens_nothing_for_a_command_that_is_gone()
+    {
+        Assert.Null(PopupWindows.StillAskedFor(Pressed, settingsAreAsTheyWere: false, []));
+        Assert.Null(PopupWindows.StillAskedFor(Pressed, false, [Saved(command => command.Id = "custom_2")]));
+        Assert.Null(PopupWindows.StillAskedFor(Pressed, false, [Saved(command => command.Enabled = false)]));
+        Assert.Null(PopupWindows.StillAskedFor(Pressed, false, [Saved(command => command.TrayApp = false)]));
+        Assert.Null(PopupWindows.StillAskedFor(Pressed, false, [Saved(command => command.Type = CustomCommandTypes.Url)]));
+        Assert.Null(PopupWindows.StillAskedFor(Pressed, false, [Saved(command => command.Command = "file:///C:/x.html")]));
+        Assert.Null(PopupWindows.StillAskedFor(Pressed, false, [Saved(command => command.Arguments = "800x600 forever")]));
+    }
+
     private static readonly (string Id, string Name)[] Open =
     [
         ("custom_1", "Doorbell camera"),

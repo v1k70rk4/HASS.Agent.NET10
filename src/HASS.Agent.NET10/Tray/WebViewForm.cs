@@ -20,6 +20,7 @@ internal sealed class WebViewForm : Form
 {
     private readonly FileLog _log;
     private readonly bool _popup;
+    private readonly bool _takesFocus;
     private readonly WebView2 _webView = new() { Dock = DockStyle.Fill };
     private readonly System.Windows.Forms.Timer? _closeTimer;
     private bool _closingForGood;
@@ -27,8 +28,14 @@ internal sealed class WebViewForm : Form
     /// <param name="size">Logical (96 DPI) pixels; clamped to the screen.</param>
     /// <param name="keepLoaded">Going away hides the window with its page, instead of closing it.</param>
     /// <param name="closeAfter">The window goes away by itself this long after it is shown; null for never.</param>
-    public WebViewForm(string url, Size size, bool popup, FileLog log, bool keepLoaded = false, TimeSpan? closeAfter = null)
+    /// <param name="takesFocus">
+    /// False for a window nobody at the PC asked for just now (a command from Home Assistant):
+    /// it comes over the other windows and leaves the keyboard where it is.
+    /// </param>
+    public WebViewForm(
+        string url, Size size, bool popup, FileLog log, bool keepLoaded = false, TimeSpan? closeAfter = null, bool takesFocus = true)
     {
+        _takesFocus = takesFocus;
         Url = url;
         RequestedSize = size;
         KeepLoaded = keepLoaded;
@@ -50,7 +57,9 @@ internal sealed class WebViewForm : Form
         if (popup)
         {
             FormBorderStyle = FormBorderStyle.None;
-            TopMost = true;
+            // The property would activate the window when it is shown: one that is not to take
+            // the focus is over the others through its window style (see CreateParams).
+            TopMost = takesFocus;
             Padding = new Padding(1);
             BackColor = Color.FromArgb(148, 163, 184);
             // Like a flyout: a click anywhere else, or Alt+Tab, sends it away.
@@ -123,12 +132,39 @@ internal sealed class WebViewForm : Form
 
         if (WindowState == FormWindowState.Minimized)
         {
-            WindowState = FormWindowState.Normal;
+            if (_takesFocus)
+            {
+                WindowState = FormWindowState.Normal;
+            }
+            else
+            {
+                ShowWindow(Handle, 4); // SW_SHOWNOACTIVATE: back from the taskbar, not into the focus
+            }
         }
 
-        Activate();
+        if (_takesFocus)
+        {
+            Activate();
+        }
+
         RaiseWithoutFocus();
         RestartCloseTimer();
+    }
+
+    protected override bool ShowWithoutActivation => !_takesFocus;
+
+    protected override CreateParams CreateParams
+    {
+        get
+        {
+            var parameters = base.CreateParams;
+            if (_popup && !_takesFocus)
+            {
+                parameters.ExStyle |= 0x00000008; // WS_EX_TOPMOST
+            }
+
+            return parameters;
+        }
     }
 
     /// <summary>Closes the window and frees its page, also when it keeps its page loaded.</summary>
@@ -186,6 +222,10 @@ internal sealed class WebViewForm : Form
     [System.Runtime.InteropServices.DllImport("user32.dll")]
     [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
     private static extern bool SetWindowPos(IntPtr window, IntPtr insertAfter, int x, int y, int width, int height, uint flags);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static extern bool ShowWindow(IntPtr window, int command);
 
     private void RestartCloseTimer()
     {
