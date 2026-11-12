@@ -53,7 +53,23 @@ public sealed class PopupWindowTests : IDisposable
     }
 
     [Theory]
+    [InlineData("popup", 1024, 720, true, false)]
+    [InlineData("420x640 POPUP keep 30s", 420, 640, true, true)]
+    [InlineData("keep 800x600", 800, 600, false, true)]
+    public void A_window_is_of_the_usual_kind_unless_it_asks_to_be_one_above_the_tray(
+        string text, int width, int height, bool aboveTray, bool keep)
+    {
+        Assert.True(WebViewOptions.TryParseWindow(text, out var window));
+
+        Assert.Equal(new Size(width, height), window.Size);
+        Assert.Equal(aboveTray, window.AboveTray);
+        Assert.Equal(keep, window.KeepLoaded);
+    }
+
+    [Theory]
     [InlineData("keep keep")]
+    [InlineData("popup popup")]
+    [InlineData("popups")]
     [InlineData("30s 5m")]
     [InlineData("0s")]
     [InlineData("25h")]

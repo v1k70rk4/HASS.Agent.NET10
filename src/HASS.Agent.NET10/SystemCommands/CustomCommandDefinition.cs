@@ -116,6 +116,9 @@ internal static class WebViewOptions
     /// <summary>In a Popup window command: the page stays loaded when its window goes away.</summary>
     public const string KeepWord = "keep";
 
+    /// <summary>In a Popup window command: the window is one like the dashboard popup, above the tray.</summary>
+    public const string PopupWord = "popup";
+
     /// <summary>In a Close popup windows command: every window, not one command's.</summary>
     public const string EveryWindow = "*";
 
@@ -123,14 +126,17 @@ internal static class WebViewOptions
 
     /// <summary>
     /// What a Popup window command says about its window, in any order and each of them
-    /// optional: a size ("1024x720"), "keep" (the page stays loaded when the window goes
-    /// away, and comes back as it was), and a time after which the window goes away by
-    /// itself ("30s", "5m", "1h"). Nothing at all is the window as it always was.
+    /// optional: a size ("1024x720"), "popup" (no frame, above the tray and over the other
+    /// windows, gone at a click elsewhere, like the dashboard popup), "keep" (the page stays
+    /// loaded when the window goes away, and comes back as it was), and a time after which
+    /// the window goes away by itself ("30s", "5m", "1h"). Nothing at all is the window as it
+    /// always was.
     /// </summary>
     public static bool TryParseWindow(string? text, out PopupWindowOptions options)
     {
         options = new PopupWindowOptions(DefaultWindowSize, KeepLoaded: false, CloseAfter: null);
         var keep = false;
+        var aboveTray = false;
         TimeSpan? closeAfter = null;
         var rest = new List<string>();
         foreach (var word in (text ?? string.Empty).Split([' ', ',', ';'], StringSplitOptions.RemoveEmptyEntries))
@@ -143,6 +149,15 @@ internal static class WebViewOptions
                 }
 
                 keep = true;
+            }
+            else if (string.Equals(word, PopupWord, StringComparison.OrdinalIgnoreCase))
+            {
+                if (aboveTray)
+                {
+                    return false;
+                }
+
+                aboveTray = true;
             }
             else if (word.Length > 1 && char.ToLowerInvariant(word[^1]) is 's' or 'm' or 'h' && word[..^1].All(char.IsAsciiDigit))
             {
@@ -178,7 +193,7 @@ internal static class WebViewOptions
             return false;
         }
 
-        options = new PopupWindowOptions(size, keep, closeAfter);
+        options = new PopupWindowOptions(size, keep, closeAfter, aboveTray);
         return true;
     }
 
@@ -201,8 +216,11 @@ internal static class WebViewOptions
     }
 }
 
-/// <summary>The window of a Popup window command: how big, whether its page stays loaded, when it closes by itself.</summary>
-internal readonly record struct PopupWindowOptions(Size Size, bool KeepLoaded, TimeSpan? CloseAfter);
+/// <summary>
+/// The window of a Popup window command: how big, whether its page stays loaded, when it closes
+/// by itself, and whether it is a window of the usual kind or one like the dashboard popup.
+/// </summary>
+internal readonly record struct PopupWindowOptions(Size Size, bool KeepLoaded, TimeSpan? CloseAfter, bool AboveTray = false);
 
 /// <summary>A Popup window command asking the tray app for its window.</summary>
 internal sealed record PopupWindowRequest(string CommandId, string CommandName, string Url, PopupWindowOptions Options);

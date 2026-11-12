@@ -76,6 +76,9 @@ internal sealed class WebViewForm : Form
 
     public bool KeepLoaded { get; }
 
+    /// <summary>The borderless shape above the tray, not a window of the usual kind.</summary>
+    public bool IsPopup => _popup;
+
     public TimeSpan? CloseAfter { get; }
 
     /// <summary>Raised when the window goes out of sight: closed, or hidden with its page kept.</summary>
@@ -124,6 +127,7 @@ internal sealed class WebViewForm : Form
         }
 
         Activate();
+        RaiseWithoutFocus();
         RestartCloseTimer();
     }
 
@@ -153,6 +157,7 @@ internal sealed class WebViewForm : Form
         base.OnVisibleChanged(e);
         if (Visible)
         {
+            RaiseWithoutFocus();
             RestartCloseTimer();
         }
         else
@@ -161,6 +166,26 @@ internal sealed class WebViewForm : Form
             Dismissed?.Invoke(this, EventArgs.Empty);
         }
     }
+
+    // A window asked for from Home Assistant comes while another program is in front, and
+    // Windows then shows it behind that one: a camera nobody sees. This puts it over the other
+    // windows without taking the keyboard from the one that is being typed into. The popup is
+    // over everything anyway.
+    private void RaiseWithoutFocus()
+    {
+        if (_popup || !IsHandleCreated)
+        {
+            return;
+        }
+
+        const uint keepPlaceSizeAndFocus = 0x0001 | 0x0002 | 0x0010; // SWP_NOSIZE, SWP_NOMOVE, SWP_NOACTIVATE
+        SetWindowPos(Handle, new IntPtr(-1), 0, 0, 0, 0, keepPlaceSizeAndFocus); // HWND_TOPMOST
+        SetWindowPos(Handle, new IntPtr(-2), 0, 0, 0, 0, keepPlaceSizeAndFocus); // HWND_NOTOPMOST
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static extern bool SetWindowPos(IntPtr window, IntPtr insertAfter, int x, int y, int width, int height, uint flags);
 
     private void RestartCloseTimer()
     {

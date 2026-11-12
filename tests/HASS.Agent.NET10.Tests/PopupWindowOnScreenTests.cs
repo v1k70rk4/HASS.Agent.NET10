@@ -1,4 +1,5 @@
 using System.Drawing;
+using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using HASS.Agent.Companion.Logging;
 using HASS.Agent.Companion.SystemCommands;
@@ -247,6 +248,88 @@ public sealed class PopupWindowOnScreenTests
             Assert.Single(Windows());
         });
     }
+
+    [Fact]
+    public void A_window_asked_for_while_another_program_is_in_front_comes_over_it()
+    {
+        OnAWindowThread(log =>
+        {
+            // The tests run from a console or a build, never as the program in front: the place
+            // a press from Home Assistant finds the app in.
+            var inFront = GetForegroundWindow();
+            Assert.SkipWhen(inFront == IntPtr.Zero, "No window is in front.");
+            Assert.SkipWhen((GetWindowLong(inFront, -20) & 0x8) != 0, "The window in front is one that stays over all others.");
+
+            using var popups = new PopupWindows(log);
+            popups.ShowForCommand(new PopupWindowRequest("custom_1", "Camera", Blank, new PopupWindowOptions(Small, KeepLoaded: true, CloseAfter: null)));
+            Pump(400);
+            var window = Assert.Single(Windows());
+            Assert.False(window.IsPopup);
+            Assert.False(window.TopMost);
+            Assert.True(IsOver(window.Handle, inFront));
+            Assert.Equal(inFront, GetForegroundWindow());
+
+            // Hidden and asked for again, it is over the others again.
+            popups.Close("*");
+            Pump(200);
+            popups.ShowForCommand(new PopupWindowRequest("custom_1", "Camera", Blank, new PopupWindowOptions(Small, KeepLoaded: true, CloseAfter: null)));
+            Pump(300);
+            Assert.True(window.Visible);
+            Assert.True(IsOver(window.Handle, inFront));
+        });
+    }
+
+    [Fact]
+    public void A_window_that_asks_for_it_is_one_like_the_dashboard_popup()
+    {
+        OnAWindowThread(log =>
+        {
+            using var popups = new PopupWindows(log);
+            var request = new PopupWindowRequest("custom_1", "Camera", Blank, new PopupWindowOptions(Small, KeepLoaded: true, CloseAfter: null, AboveTray: true));
+            popups.ShowForCommand(request);
+            Pump(400);
+
+            var window = Assert.Single(Windows());
+            Assert.True(window.IsPopup);
+            Assert.True(window.TopMost);
+            Assert.Equal(FormBorderStyle.None, window.FormBorderStyle);
+            Assert.False(window.ShowInTaskbar);
+
+            // In the corner of the screen the pointer is on, where the tray is, not in the middle.
+            var area = Screen.FromPoint(Cursor.Position).WorkingArea;
+            Assert.InRange(area.Right - window.Bounds.Right, 0, 40);
+            Assert.InRange(area.Bottom - window.Bounds.Bottom, 0, 40);
+
+            // Asked for as an ordinary window instead, it is made anew.
+            popups.ShowForCommand(request with { Options = request.Options with { AboveTray = false } });
+            Pump(400);
+            Assert.True(window.IsDisposed);
+            Assert.False(Assert.Single(Windows()).IsPopup);
+        });
+    }
+
+    // Whether a window is above another in the order Windows draws them in.
+    private static bool IsOver(IntPtr window, IntPtr other)
+    {
+        for (var above = GetWindow(other, 3); above != IntPtr.Zero; above = GetWindow(above, 3)) // GW_HWNDPREV
+        {
+            if (above == window)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetWindow(IntPtr window, uint which);
+
+    [DllImport("user32.dll")]
+    private static extern int GetWindowLong(IntPtr window, int index);
 
     private static List<WebViewForm> Windows() =>
         Application.OpenForms.OfType<WebViewForm>().Where(window => !window.IsDisposed).ToList();

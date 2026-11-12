@@ -384,8 +384,20 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
         _mainForm = new MainForm(_settings, _paths, _log, page);
         _mainForm.DiscoveryRepublishHandler = () => DiscoveryRepublishHandler?.Invoke() ?? Task.FromResult(false);
         _mainForm.UpdateStateHandler = state => UpdateStateHandler?.Invoke(state) ?? Task.CompletedTask;
-        // "Open now" shows what is in the fields, saved or not, and leaves a kept page alone.
-        _mainForm.DashboardPreviewHandler = _popups.ShowPreview;
+        // "Open now" shows what is in the fields, saved or not. With the tick for keeping the
+        // page it is the dashboard itself, which then comes up as it was the next time; without
+        // it a popup of its own with a fresh page, which leaves a kept page alone.
+        _mainForm.DashboardPreviewHandler = (url, size, keepLoaded) =>
+        {
+            if (keepLoaded)
+            {
+                _popups.ShowDashboard(url, size, keepLoaded: true);
+            }
+            else
+            {
+                _popups.ShowPreview(url, size);
+            }
+        };
         _mainForm.HaTokenProbe = () => HaTokenProbe?.Invoke() ?? (null, false);
         _mainForm.HaUserProvisioner = HaUserProvisioner;
         _mainForm.SendspinPlayer = SendspinPlayer;
@@ -394,7 +406,12 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
             ApplyTraySettings();
             SettingsSaved?.Invoke(this, EventArgs.Empty);
         };
-        _mainForm.FormClosed += (_, _) => _mainForm = null;
+        _mainForm.FormClosed += (_, _) =>
+        {
+            _mainForm = null;
+            // A page "Open now" kept for fields that were never saved is let go.
+            TellThePopupsTheSettings();
+        };
         _mainForm.Show();
     }
 
@@ -403,14 +420,17 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
     {
         _hotkeys.Apply(_settings.Hotkeys);
         ApplyNotificationName();
-        _popups.SettingsChanged(
-            _settings.WebViewUrl, new Size(_settings.WebViewWidth, _settings.WebViewHeight), _settings.WebViewKeepLoaded,
-            _settings.CustomCommands);
+        TellThePopupsTheSettings();
         if (_copyUrlItem is not null)
         {
             _copyUrlItem.Visible = _settings.LocalApiEnabled;
         }
     }
+
+    private void TellThePopupsTheSettings() =>
+        _popups.SettingsChanged(
+            _settings.WebViewUrl, new Size(_settings.WebViewWidth, _settings.WebViewHeight), _settings.WebViewKeepLoaded,
+            _settings.CustomCommands);
 
     /// <summary>The dashboard popup above the tray: brings it up, or sends away the one that is up.</summary>
     private void ToggleDashboard()

@@ -330,7 +330,7 @@
     "CmdField.webview_close": "Popup window",
     "CmdHint.webview_close": "Closes the window of a Popup window command: write the name of that command, or * for every popup window and the dashboard popup. A window that keeps its page loaded is only hidden. Tray app only.\nExample: Doorbell camera   or   *",
     "Editor.Window": "Window",
-    "Editor.InvalidWindow": "The window looks like 1024x720 keep 30s, each part optional: a size (200 to 4000 each way), keep, and a time to close after (1s to 24h).",
+    "Editor.InvalidWindow": "The window looks like 1024x720 popup keep 30s, each part optional: a size (200 to 4000 each way), popup, keep, and a time to close after (1s to 24h).",
     "Editor.InvalidWebAddress": "Hier ist eine Webadresse nötig, die mit http:// oder https:// beginnt",
     "Cap.WebView": "Dashboard-Popup",
     "Cap.WebViewHelp": "Ein Home-Assistant-Dashboard in einem kleinen Fenster über dem Tray. Es schließt sich, wenn du woanders hinklickst.",

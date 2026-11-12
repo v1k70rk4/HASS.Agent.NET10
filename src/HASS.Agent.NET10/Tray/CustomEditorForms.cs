@@ -263,8 +263,8 @@ internal sealed class CustomCommandEditorForm : CustomEditorForm
         _type = AddOptionBox(y, CustomCommandTypes.InOrder.Select(type => new Option(type, S($"CmdType.{type}"))));
 
         y += RowHeight;
-        // Five lines: what a Popup window command can say about its window takes that many.
-        const int hintHeight = 92;
+        // Six lines: what a Popup window command can say about its window takes that many.
+        const int hintHeight = 108;
         _hint = AddHint(y, hintHeight);
 
         y += hintHeight + 12;
@@ -326,7 +326,7 @@ internal sealed class CustomCommandEditorForm : CustomEditorForm
         _argumentsLabel.Text = type == CustomCommandTypes.WebView ? S("Editor.Window") : S("Cap.ArgumentsColumn");
         _argumentsLabel.Visible = HasArguments(type);
         _arguments.Visible = HasArguments(type);
-        _arguments.PlaceholderText = type == CustomCommandTypes.WebView ? "1024x720 keep 30s" : string.Empty;
+        _arguments.PlaceholderText = type == CustomCommandTypes.WebView ? "1024x720 popup keep 30s" : string.Empty;
         _command.PlaceholderText = type == CustomCommandTypes.WebViewClose ? WebViewOptions.EveryWindow : string.Empty;
 
         // Keys, addresses and windows act on the user's desktop; the service cannot run them.

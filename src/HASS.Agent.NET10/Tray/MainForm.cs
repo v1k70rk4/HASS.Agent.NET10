@@ -145,7 +145,8 @@ internal sealed class MainForm : Form
     /// <summary>Set by the tray context: shows the dashboard popup with the values on the page (address, size).</summary>
     [System.ComponentModel.Browsable(false)]
     [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
-    public Action<string, Size>? DashboardPreviewHandler { get; set; }
+    /// <summary>"Open now" of the dashboard popup: address, size, and whether the page is to be kept loaded.</summary>
+    public Action<string, Size, bool>? DashboardPreviewHandler { get; set; }
 
     /// <summary>Wired by TrayApplicationContext: tells Home Assistant what a manual update check found.</summary>
     [System.ComponentModel.Browsable(false)]
@@ -1262,7 +1263,8 @@ internal sealed class MainForm : Form
                 return;
             }
 
-            DashboardPreviewHandler?.Invoke(url, new Size((int)_webViewWidth.Value, (int)_webViewHeight.Value));
+            DashboardPreviewHandler?.Invoke(
+                url, new Size((int)_webViewWidth.Value, (int)_webViewHeight.Value), _webViewKeepLoaded.Checked);
         };
         card4.Controls.Add(previewBtn);
 

@@ -203,7 +203,7 @@ internal sealed class SystemCommandService : IDisposable
             CustomCommandOutcome.NoKeys => "no keys to press.",
             CustomCommandOutcome.InputRefused => "Windows did not accept the key presses (the active window runs elevated, or the desktop is locked).",
             CustomCommandOutcome.InvalidAddress => $"'{result.Detail}' is not an address that can be opened (expected something like https://example.com).",
-            CustomCommandOutcome.InvalidSize => $"'{result.Detail}' does not say what the window is like (expected something like 1024x720 keep 30s, each part optional).",
+            CustomCommandOutcome.InvalidSize => $"'{result.Detail}' does not say what the window is like (expected something like 1024x720 popup keep 30s, each part optional).",
             CustomCommandOutcome.NotStarted => "could not be started.",
             _ => $"failed: {result.Detail}"
         };

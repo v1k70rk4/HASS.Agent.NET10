@@ -138,8 +138,9 @@ internal sealed class PopupWindows : IDisposable
     }
 
     /// <summary>
-    /// "Open now" on the settings page: what is in the fields, saved or not, in a popup of its
-    /// own with a fresh page. A dashboard kept loaded is left as it is.
+    /// "Open now" on the settings page without the tick for keeping the page: what is in the
+    /// fields, saved or not, in a popup of its own with a fresh page. A dashboard kept loaded
+    /// is left as it is. With the tick, "Open now" is the dashboard itself.
     /// </summary>
     public void ShowPreview(string url, Size size)
     {
@@ -195,6 +196,7 @@ internal sealed class PopupWindows : IDisposable
                 && options.KeepLoaded == window.KeepLoaded
                 && options.Size == window.RequestedSize
                 && options.CloseAfter == window.CloseAfter
+                && options.AboveTray == window.IsPopup
                 && string.Equals(command.Command, window.Url, StringComparison.Ordinal);
 
             if (StaysAfterSave(command is not null, window.KeepLoaded, askedTheSameWay))
@@ -222,7 +224,9 @@ internal sealed class PopupWindows : IDisposable
             existing?.KeepLoaded == true,
             request.Options.KeepLoaded,
             existing is not null && string.Equals(existing.Url, request.Url, StringComparison.Ordinal),
-            existing?.RequestedSize == request.Options.Size && existing?.CloseAfter == request.Options.CloseAfter);
+            existing?.RequestedSize == request.Options.Size
+                && existing?.CloseAfter == request.Options.CloseAfter
+                && existing?.IsPopup == request.Options.AboveTray);
 
         if (reuse == PopupReuse.ShowAgain)
         {
@@ -233,7 +237,7 @@ internal sealed class PopupWindows : IDisposable
 
         existing?.CloseForGood();
         var window = new WebViewForm(
-            request.Url, request.Options.Size, popup: false, _log, request.Options.KeepLoaded, request.Options.CloseAfter);
+            request.Url, request.Options.Size, request.Options.AboveTray, _log, request.Options.KeepLoaded, request.Options.CloseAfter);
         window.FormClosed += (_, _) =>
         {
             if (_byCommand.TryGetValue(request.CommandId, out var current) && ReferenceEquals(current.Window, window))
