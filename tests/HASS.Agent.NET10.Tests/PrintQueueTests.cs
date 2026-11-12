@@ -1,4 +1,7 @@
+using System.Security.Principal;
 using System.Text.Json;
+using HASS.Agent.Companion.Configuration;
+using HASS.Agent.Companion.Localization;
 using HASS.Agent.Companion.Logging;
 using HASS.Agent.Companion.SystemStatus;
 
@@ -12,40 +15,42 @@ public sealed class PrintQueueTests
 {
     private static readonly PrinterRow[] Printers =
     [
-        new("Office, 2nd floor", Default: false, WorkOffline: false, PrinterStatus: 3, PrinterState: 0),
-        new("Brother HL-L2350DW", Default: true, WorkOffline: false, PrinterStatus: 3, PrinterState: 0),
-        new("Microsoft Print to PDF", Default: false, WorkOffline: false, PrinterStatus: 3, PrinterState: 0)
+        new(@"\\server\Office", WorkOffline: false, State: 0, Jobs: 1),
+        new("Brother HL-L2350DW", WorkOffline: false, State: 0, Jobs: 2),
+        new("Microsoft Print to PDF", WorkOffline: false, State: 0, Jobs: 0)
     ];
 
     private static readonly PrintJobRow[] Jobs =
     [
-        new("Brother HL-L2350DW, 12", "Invoice.pdf", "viktor", StatusMask: 0x10, TotalPages: 2),
-        new("Brother HL-L2350DW, 13", "Label", "viktor", StatusMask: 0, TotalPages: 1),
-        new("Office, 2nd floor, 4", "Report.docx", "anna", StatusMask: 0x20, TotalPages: 12)
+        new("Brother HL-L2350DW", "Invoice.pdf", "viktor", StatusMask: 0x10, TotalPages: 2),
+        new("Brother HL-L2350DW", "Label", "viktor", StatusMask: 0, TotalPages: 1),
+        new(@"\\server\Office", "Report.docx", "anna", StatusMask: 0x20, TotalPages: 12)
     ];
 
     [Fact]
     public void Every_printer_has_the_number_of_jobs_in_its_own_queue_and_the_value_is_all_of_them()
     {
-        var queues = PrintQueues.Compose(Printers, Jobs);
+        var queues = PrintQueues.Compose(Printers, Jobs, "Brother HL-L2350DW");
 
-        // By name, so an index stays on its printer.
-        Assert.Equal(["Brother HL-L2350DW", "Microsoft Print to PDF", "Office, 2nd floor"], queues.Printers.Select(printer => printer.Name));
+        // By name, so an index stays on its printer; one from a print server comes last, as its
+        // backslashes sort after the letters.
+        Assert.Equal(["Brother HL-L2350DW", "Microsoft Print to PDF", @"\\server\Office"], queues.Printers.Select(printer => printer.Name));
         Assert.Equal([2, 0, 1], queues.Printers.Select(printer => printer.Jobs));
         Assert.Equal(3, queues.JobCount);
         Assert.Equal("Brother HL-L2350DW", queues.DefaultPrinter?.Name);
+        Assert.Equal(2, queues.Attributes()["default_printer_jobs"]);
 
-        // In the order they print in, each with its printer, also one whose name has a comma.
+        // In the order they print in, each with its printer.
         Assert.Equal(["Invoice.pdf", "Label", "Report.docx"], queues.Jobs.Select(job => job.Document));
         Assert.Equal(["printing", "waiting", "offline"], queues.Jobs.Select(job => job.Status));
-        Assert.Equal("Office, 2nd floor", queues.Jobs[2].Printer);
+        Assert.Equal(@"\\server\Office", queues.Jobs[2].Printer);
         Assert.Equal(("anna", 12), (queues.Jobs[2].Owner, queues.Jobs[2].Pages));
     }
 
     [Fact]
     public void A_pc_without_printers_or_jobs_has_nothing_waiting()
     {
-        var queues = PrintQueues.Compose([], []);
+        var queues = PrintQueues.Compose([], [], defaultPrinter: null);
 
         Assert.Equal(0, queues.JobCount);
         Assert.Empty(queues.Printers);
@@ -55,46 +60,38 @@ public sealed class PrintQueueTests
     }
 
     [Fact]
-    public void The_list_of_jobs_is_cut_and_the_count_is_not()
+    public void The_list_of_jobs_is_cut_and_the_count_is_what_the_spooler_counts()
     {
-        var many = Enumerable.Range(1, 50).Select(number => new PrintJobRow($"Brother HL-L2350DW, {number}", $"Page {number}", "viktor", 0, 1)).ToList();
+        var many = Enumerable.Range(1, 50).Select(number => new PrintJobRow("Brother HL-L2350DW", $"Page {number}", "viktor", 0, 1)).ToList();
+        PrinterRow[] busy = [new("Brother HL-L2350DW", WorkOffline: false, State: 0, Jobs: 50)];
 
-        var queues = PrintQueues.Compose(Printers, many);
+        var queues = PrintQueues.Compose(busy, many, defaultPrinter: null);
 
         Assert.Equal(50, queues.JobCount);
         Assert.Equal(50, queues.Printers[0].Jobs);
         Assert.Equal(PrintQueues.MaximumJobsListed, queues.Jobs.Count);
         Assert.Equal("Page 1", queues.Jobs[0].Document);
+
+        // A queue whose jobs could not be listed still counts: the number is the spooler's.
+        Assert.Equal(50, PrintQueues.Compose(busy, [], defaultPrinter: null).JobCount);
     }
 
     [Theory]
-    [InlineData("Brother HL-L2350DW, 12", "Brother HL-L2350DW")]
-    [InlineData("Office, 2nd floor, 4", "Office, 2nd floor")]
-    [InlineData("Office, 2nd floor", "Office, 2nd floor")]   // no number: the whole of it is the name
-    [InlineData("Printer,7", "Printer")]
-    [InlineData("Printer, ", "Printer,")]
-    public void A_job_is_named_after_its_printer_and_its_number(string jobName, string printer)
+    [InlineData(0L, "idle")]
+    [InlineData(0x400L, "printing")]
+    [InlineData(0x4000L, "printing")]
+    [InlineData(0x10000L, "warming_up")]
+    [InlineData(0x1L, "paused")]
+    [InlineData(0x480L, "offline")]               // offline wins over what it was doing
+    [InlineData(0x2000000L, "offline")]           // its print server is away
+    [InlineData(0x410L, "error")]                 // out of paper while printing
+    [InlineData(0x20000L, "idle")]                // low toner still prints
+    [InlineData(0x40000L, "error")]               // no toner does not
+    [InlineData(0x400000L, "error")]              // the door is open
+    [InlineData(0x800000L, "unknown")]            // the spooler could not say
+    public void A_printer_s_state_in_one_word_names_what_stops_it_first(long states, string word)
     {
-        Assert.Equal(printer, PrintQueues.PrinterOf(jobName));
-    }
-
-    [Theory]
-    [InlineData(3, 0L, "idle")]
-    [InlineData(4, 0L, "printing")]
-    [InlineData(3, 0x400L, "printing")]
-    [InlineData(5, 0L, "warming_up")]
-    [InlineData(6, 0L, "stopped")]
-    [InlineData(3, 0x1L, "paused")]
-    [InlineData(4, 0x80L, "offline")]             // offline wins over what it was doing
-    [InlineData(4, 0x10L, "error")]               // out of paper while printing
-    [InlineData(3, 0x20000L, "idle")]             // low toner still prints
-    [InlineData(3, 0x40000L, "error")]            // no toner does not
-    [InlineData(3, 0x400000L, "error")]           // the door is open
-    [InlineData(1, 0L, "unknown")]
-    [InlineData(2, 0L, "unknown")]
-    public void A_printer_s_state_in_one_word_names_what_stops_it_first(int printerStatus, long states, string word)
-    {
-        Assert.Equal(word, PrintQueues.PrinterStatus(printerStatus, states));
+        Assert.Equal(word, PrintQueues.PrinterStatus(states));
     }
 
     [Fact]
@@ -102,14 +99,22 @@ public sealed class PrintQueueTests
     {
         var queues = PrintQueues.Compose(
         [
-            new("A", false, WorkOffline: true, PrinterStatus: 3, PrinterState: 0),
-            new("B", false, WorkOffline: false, PrinterStatus: 7, PrinterState: 0),
-            new("C", false, WorkOffline: false, PrinterStatus: 3, PrinterState: 0x80),
-            new("D", false, WorkOffline: false, PrinterStatus: 3, PrinterState: 0)
-        ], []);
+            new("A", WorkOffline: true, State: 0, Jobs: 0),
+            new("B", WorkOffline: false, State: 0x80, Jobs: 0),
+            new("C", WorkOffline: false, State: 0, Jobs: 0)
+        ], [], defaultPrinter: null);
 
-        Assert.Equal(["offline", "offline", "offline", "idle"], queues.Printers.Select(printer => printer.Status));
-        Assert.Equal([true, true, true, false], queues.Printers.Select(printer => printer.Is("offline")));
+        Assert.Equal(["offline", "offline", "idle"], queues.Printers.Select(printer => printer.Status));
+        Assert.Equal([true, true, false], queues.Printers.Select(printer => printer.Is("offline")));
+    }
+
+    [Fact]
+    public void An_idle_printer_has_no_state_flag_up()
+    {
+        var queues = PrintQueues.Compose([new("Idle", WorkOffline: false, State: 0, Jobs: 0)], [], "Idle");
+
+        Assert.Equal("idle", queues.Printers[0].Status);
+        Assert.All(PrintQueues.StateFlags, flag => Assert.False(queues.Printers[0].Is(flag.Name), flag.Name));
     }
 
     [Theory]
@@ -119,6 +124,7 @@ public sealed class PrintQueueTests
     [InlineData(0x18L, "printing")]
     [InlineData(0x1L, "paused")]
     [InlineData(0x12L, "error")]
+    [InlineData(0x2012L, "error")]                // what a job sent to a printer that is switched off has
     [InlineData(0x50L, "paper_out")]
     [InlineData(0x20L, "offline")]
     [InlineData(0x200L, "blocked")]
@@ -135,9 +141,9 @@ public sealed class PrintQueueTests
     {
         var queues = PrintQueues.Compose(
         [
-            new("Brother HL-L2350DW", Default: true, WorkOffline: false, PrinterStatus: 4, PrinterState: 0x400 | 0x20000),
-            new("Kitchen", Default: false, WorkOffline: false, PrinterStatus: 3, PrinterState: 0x10 | 0x400000)
-        ], Jobs);
+            new("Brother HL-L2350DW", WorkOffline: false, State: 0x400 | 0x20000, Jobs: 2),
+            new("Kitchen", WorkOffline: false, State: 0x10 | 0x400000, Jobs: 0)
+        ], Jobs, "Brother HL-L2350DW");
         var attributes = new Dictionary<string, IReadOnlyDictionary<string, object?>> { ["print_jobs"] = queues.Attributes() };
 
         object? Value(string path) => SystemMetricsService.ReadBuiltInAttributeValue(path, attributes);
@@ -169,6 +175,64 @@ public sealed class PrintQueueTests
     };
 
     [Fact]
+    public void The_default_printer_is_the_user_s_and_not_what_the_asking_account_has()
+    {
+        // The service is told the printers as the logged-in user sees them, and the default
+        // printer by its name from that user's registry: SYSTEM's own never comes into it.
+        var forTheUser = PrintQueues.Compose(Printers, Jobs, "brother hl-l2350dw");
+        Assert.Equal("Brother HL-L2350DW", forTheUser.DefaultPrinter?.Name);
+        Assert.Single(forTheUser.Printers, printer => printer.Default);
+
+        // A user's default may be one from a print server.
+        Assert.Equal(@"\\server\Office", PrintQueues.Compose(Printers, Jobs, @"\\SERVER\office").DefaultPrinter?.Name);
+
+        // Nobody logged in, or a default that is not among the printers: none.
+        Assert.Null(PrintQueues.Compose(Printers, [], defaultPrinter: null).DefaultPrinter);
+        Assert.Null(PrintQueues.Compose(Printers, [], "").DefaultPrinter);
+        Assert.Null(PrintQueues.Compose(Printers, [], "Gone").DefaultPrinter);
+    }
+
+    [Theory]
+    [InlineData("KX DRIVER for Universal Printing,winspool,LPT1:", "KX DRIVER for Universal Printing")]
+    [InlineData("Microsoft Print to PDF,winspool,Ne00:", "Microsoft Print to PDF")]
+    [InlineData(@"\\server\Office,winspool,Ne03:", @"\\server\Office")]
+    [InlineData(" Brother ,winspool,USB001", "Brother")]
+    [InlineData("Brother", "Brother")]
+    [InlineData(",winspool,Ne00:", null)]
+    [InlineData("", null)]
+    [InlineData(null, null)]
+    public void The_default_printer_is_the_name_in_front_of_what_Windows_keeps(string? device, string? printer)
+    {
+        Assert.Equal(printer, PrintQueues.PrinterOfDevice(device));
+    }
+
+    [Theory]
+    // the sensor is ticked for: tray, service -> its attribute sensors: tray, service
+    [InlineData(true, false, true, false)]
+    [InlineData(false, true, false, true)]
+    [InlineData(true, true, true, true)]
+    [InlineData(false, false, true, true)]     // not ticked at all: wherever it can be read
+    public void The_sensors_the_attributes_button_makes_are_read_where_the_sensor_is(
+        bool trayTicked, bool serviceTicked, bool tray, bool service)
+    {
+        var printJobs = BuiltInSensorCatalog.Find("print_jobs")!;
+
+        Assert.Equal((tray, service), BuiltInSensorCatalog.AttributeSensorRoles(printJobs, trayTicked, serviceTicked));
+    }
+
+    [Fact]
+    public void A_role_that_cannot_read_a_sensor_does_not_get_its_attribute_sensors()
+    {
+        // Drive health is the service's, the active displays are the tray app's, whatever is ticked.
+        var driveHealth = BuiltInSensorCatalog.Find("drive_health")!;
+        var displays = BuiltInSensorCatalog.Find("active_display")!;
+
+        Assert.Equal((false, true), BuiltInSensorCatalog.AttributeSensorRoles(driveHealth, trayTicked: true, serviceTicked: true));
+        Assert.Equal((false, true), BuiltInSensorCatalog.AttributeSensorRoles(driveHealth, trayTicked: true, serviceTicked: false));
+        Assert.Equal((true, false), BuiltInSensorCatalog.AttributeSensorRoles(displays, trayTicked: false, serviceTicked: true));
+    }
+
+    [Fact]
     public void The_attributes_button_offers_the_main_ones_and_the_editor_every_state()
     {
         var sensor = BuiltInSensorCatalog.Find("print_jobs")!;
@@ -184,7 +248,7 @@ public sealed class PrintQueueTests
         Assert.DoesNotContain(button, path => path.StartsWith("print_jobs.jobs", StringComparison.Ordinal));
 
         // What the button makes a sensor of has a name in the language of Home Assistant.
-        using (var stream = typeof(HASS.Agent.Companion.Localization.Strings).Assembly.GetManifestResourceStream("lang.en.json")!)
+        using (var stream = typeof(Strings).Assembly.GetManifestResourceStream("lang.en.json")!)
         using (var document = JsonDocument.Parse(stream))
         {
             var english = document.RootElement.GetProperty("strings");
@@ -205,8 +269,8 @@ public sealed class PrintQueueTests
     [Fact]
     public void A_printer_sensor_that_was_never_read_still_gets_a_path_for_every_printer()
     {
-        // What the Attributes button falls back on right after the sensor is ticked: the
-        // printers counted on their own, the way the drives are.
+        // What the Attributes button falls back on right after the sensor is ticked, or while
+        // only the service reads it: the printers counted on their own, the way the drives are.
         Assert.Equal(PrintQueues.PrinterCount(), BuiltInSensorCatalog.CountedOnItsOwn("print_jobs.printers"));
         Assert.Equal(PrintQueues.PrinterCount(), BuiltInSensorCatalog.CountedOnItsOwn("PRINT_JOBS.PRINTERS"));
         Assert.Null(BuiltInSensorCatalog.CountedOnItsOwn("print_jobs.jobs"));
@@ -267,7 +331,7 @@ public sealed class PrintQueueTests
             PrintQueueReader = () =>
             {
                 asked++;
-                return PrintQueues.Compose(Printers, Jobs.Take(asked).ToList());
+                return PrintQueues.Compose([new("Brother HL-L2350DW", WorkOffline: false, State: 0, Jobs: asked)], [], defaultPrinter: null);
             }
         };
         BuiltInSensorSetting[] settings = [new() { Key = "print_jobs", TrayApp = true }];
@@ -279,17 +343,6 @@ public sealed class PrintQueueTests
     }
 
     [Fact]
-    public void An_idle_printer_has_no_state_flag_up()
-    {
-        // 0 is "no flag", not the first name in Windows' list of them (paused): what the three
-        // idle printers of a PC report.
-        var queues = PrintQueues.Compose([new("Idle", Default: true, WorkOffline: false, PrinterStatus: 3, PrinterState: 0)], []);
-
-        Assert.Equal("idle", queues.Printers[0].Status);
-        Assert.All(PrintQueues.StateFlags, flag => Assert.False(queues.Printers[0].Is(flag.Name), flag.Name));
-    }
-
-    [Fact]
     public void The_print_queues_of_this_pc_can_be_read()
     {
         PrintQueueSnapshot queues;
@@ -297,33 +350,64 @@ public sealed class PrintQueueTests
         {
             queues = PrintQueues.Read();
         }
-        catch (Exception ex) when (ex is System.Management.ManagementException or System.Runtime.InteropServices.COMException)
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or TimeoutException)
         {
             Assert.Skip($"The print spooler of this PC does not answer: {ex.Message}");
             return;
         }
 
-        Assert.InRange(queues.Printers.Sum(printer => printer.Jobs), 0, queues.JobCount);
-        Assert.All(queues.Printers, printer => Assert.False(string.IsNullOrWhiteSpace(printer.Name)));
-        Assert.InRange(queues.Printers.Count(printer => printer.Default), 0, 1);
+        // The printers Windows itself lists for this user, in the order of their names.
+        var installed = System.Drawing.Printing.PrinterSettings.InstalledPrinters.Cast<string>()
+            .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        Assert.Equal(installed, queues.Printers.Select(printer => printer.Name));
+        Assert.Equal(installed.Count, PrintQueues.PrinterCount());
+        Assert.Equal(queues.Printers.Sum(printer => printer.Jobs), queues.JobCount);
+        Assert.InRange(queues.Jobs.Count, 0, Math.Min(queues.JobCount, PrintQueues.MaximumJobsListed));
+        Assert.All(queues.Jobs, job => Assert.Contains(job.Printer, installed));
+
+        // The default printer is the one Windows names for this user.
+        var byWindows = new System.Drawing.Printing.PrinterSettings();
+        if (installed.Count > 0 && byWindows.IsDefaultPrinter)
+        {
+            Assert.Equal(byWindows.PrinterName, PrintSpooler.DefaultPrinter());
+            Assert.Equal(byWindows.PrinterName, queues.DefaultPrinter?.Name);
+        }
+
+        Assert.Null(PrintQueues.DefaultPrinterOf("S-1-5-21-1-2-3-4"));
+        Assert.Null(PrintQueues.DefaultPrinterOf(null));
 
         // Through the sensor cycle, as the tray app reads it: a value, and the attributes.
         using var log = new FileLog(Path.Combine(Path.GetTempPath(), "hass-agent-tests.log"));
         using var metrics = new SystemMetricsService(log, null);
         var message = metrics.Read(builtInSensors: [new BuiltInSensorSetting { Key = "print_jobs", TrayApp = true }]);
 
-        // The settings window is asked for the printers' attributes before the sensor was ever
-        // read; the count it falls back on is the one the sensor then finds.
-        Assert.Equal(queues.Printers.Count, PrintQueues.PrinterCount());
-
         Assert.NotNull(message.PrintJobs);
         Assert.True(message.Attributes.ContainsKey("print_jobs"));
-        Assert.Equal(queues.Printers.Count, SystemMetricsService.ListCount("print_jobs.printers"));
+        Assert.Equal(installed.Count, SystemMetricsService.ListCount("print_jobs.printers"));
 
         // Switched off, it is neither read nor reported.
         using var without = new SystemMetricsService(log, null);
         var off = without.Read(builtInSensors: [new BuiltInSensorSetting { Key = "cpu_usage", TrayApp = true }]);
         Assert.Null(off.PrintJobs);
         Assert.False(off.Attributes.ContainsKey("print_jobs"));
+    }
+
+    [Fact]
+    public void The_token_of_a_session_is_for_the_service_only()
+    {
+        // Windows gives a user's token to an account that is part of the operating system; the
+        // tests, like the tray app, are not, and must not get one.
+        using var identity = WindowsIdentity.GetCurrent();
+        Assert.SkipWhen(identity.IsSystem, "Run as SYSTEM, which is given the token.");
+
+        using var token = PrintSpooler.UserTokenOf((uint)System.Diagnostics.Process.GetCurrentProcess().SessionId);
+        Assert.Null(token);
+    }
+
+    [Fact]
+    public void The_classic_client_s_printer_sensors_come_over_to_this_one()
+    {
+        Assert.Equal(["print_jobs"], ClassicImport.BuiltInSensorsFor["PrintersSensors"]);
     }
 }

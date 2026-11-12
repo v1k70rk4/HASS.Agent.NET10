@@ -1,5 +1,6 @@
-using System.Management;
+using System.Security.Principal;
 using System.Text.Json.Serialization;
+using Microsoft.Win32;
 
 namespace HASS.Agent.Companion.SystemStatus;
 
@@ -22,11 +23,11 @@ internal sealed record PrintJobInfo(
     [property: JsonPropertyName("status")] string Status,
     [property: JsonPropertyName("pages")] int Pages);
 
-/// <summary>What Windows says about a printer (Win32_Printer), before it is put into words.</summary>
-internal sealed record PrinterRow(string Name, bool Default, bool WorkOffline, int PrinterStatus, long PrinterState);
+/// <summary>What the spooler says about a printer, before it is put into words: its status word and the jobs in its queue.</summary>
+internal sealed record PrinterRow(string Name, bool WorkOffline, long State, int Jobs);
 
-/// <summary>What Windows says about a print job (Win32_PrintJob); its name is "printer, job number".</summary>
-internal sealed record PrintJobRow(string Name, string Document, string Owner, long StatusMask, int TotalPages);
+/// <summary>What the spooler says about a print job.</summary>
+internal sealed record PrintJobRow(string Printer, string Document, string Owner, long StatusMask, int TotalPages);
 
 /// <summary>The printers by name, and the jobs in their queues; <see cref="JobCount"/> is every job, the list the first few.</summary>
 internal sealed record PrintQueueSnapshot(IReadOnlyList<PrinterInfo> Printers, IReadOnlyList<PrintJobInfo> Jobs, int JobCount)
@@ -68,10 +69,14 @@ internal sealed record PrintQueueSnapshot(IReadOnlyList<PrinterInfo> Printers, I
 /// <summary>
 /// The print queues of the PC: which printers there are, what state they are in and what waits
 /// in them. A job stays in its queue while the printer is switched off, which is what lets
-/// Home Assistant switch a printer on when something is sent to it. Read from Windows' own
-/// tables (Win32_Printer, Win32_PrintJob), which the spooler fills; anyone may read them. The
-/// service, which runs as SYSTEM, sees the printers installed on the PC, but not a user's own
-/// network printers or which one that user made the default: the tray app sees those.
+/// Home Assistant switch a printer on when something is sent to it.
+///
+/// The printers are a user's own in two ways: which one is the default, and the ones connected
+/// from a print server, which are there for that user alone. The tray app and the service
+/// publish to one topic, so both have to see the same printers: the tray app asks the spooler
+/// as its user, and the service asks it as the user who is logged in, with that user's rights
+/// for the length of the question and not its own. With nobody logged in, the service reports
+/// the printers installed on the PC, and no default printer.
 /// </summary>
 internal static class PrintQueues
 {
@@ -81,11 +86,9 @@ internal static class PrintQueues
     private const int MaximumTextLength = 120;
 
     /// <summary>
-    /// The state flags the spooler keeps for a printer, by the name they are reported under.
-    /// How many of them a printer ever raises is up to its driver: many only know "offline".
-    /// Win32_Printer.PrinterState is the spooler's own status word (PRINTER_INFO_6.dwStatus,
-    /// the PRINTER_STATUS_* bits): the class lists the names in the order of the bits, and an
-    /// idle printer reports 0, no bit set, not the first name of that list.
+    /// The state flags the spooler keeps for a printer (the PRINTER_STATUS_* bits of its status
+    /// word), by the name they are reported under. How many of them a printer ever raises is
+    /// up to its driver: many only know "offline". An idle printer has none up.
     /// </summary>
     internal static readonly IReadOnlyList<(string Name, long Bit)> StateFlags =
     [
@@ -113,50 +116,89 @@ internal static class PrintQueues
         ("power_save", 0x1000000),
         ("page_punt", 0x80000),
         ("pending_deletion", 0x4),
-        ("server_unknown", 0x800000)
+        ("server_unknown", PrintSpooler.StatusUnknown),
+        ("server_offline", 0x2000000)
     ];
 
-    private const long OfflineBit = 0x80;
+    // The printer itself, "use printer offline" in Windows, or the print server it hangs on.
+    private const long OfflineBits = 0x80 | 0x2000000;
 
     // Whatever keeps a printer from printing until someone does something about it.
     private const long ProblemBits = 0x2 | 0x8 | 0x10 | 0x40 | 0x20 | 0x40000 | 0x400000 | 0x800 | 0x100000 | 0x200000 | 0x1000;
 
-    // A network printer that does not answer must not hold up every other sensor. The query
-    // returns at once and each step through its results waits ten seconds at most; that alone
-    // does not bound the whole of it, so the two queries together also run against a deadline.
-    private static readonly System.Management.EnumerationOptions QueryOptions = new() { Timeout = TimeSpan.FromSeconds(10), ReturnImmediately = true };
-
+    // A print server that does not answer must not hold up every other sensor: the read runs
+    // against a deadline, and the sensor cycle goes on without it after that.
     private static readonly BoundedRead<PrintQueueSnapshot> Bounded = new(TimeSpan.FromSeconds(15));
 
-    /// <summary>The printers and their queues, or a <see cref="TimeoutException"/> when Windows does not answer in time.</summary>
-    public static PrintQueueSnapshot Read() => Bounded.Run(ReadFromWindows);
+    /// <summary>The printers and their queues, or a <see cref="TimeoutException"/> when the spooler does not answer in time.</summary>
+    public static PrintQueueSnapshot Read() => Bounded.Run(ReadFromTheSpooler);
 
-    private static PrintQueueSnapshot ReadFromWindows()
+    private static PrintQueueSnapshot ReadFromTheSpooler()
     {
-        var printers = Query("SELECT Name, Default, WorkOffline, PrinterStatus, PrinterState FROM Win32_Printer")
-            .Select(item => new PrinterRow(
-                Text(item["Name"]),
-                item["Default"] is true,
-                item["WorkOffline"] is true,
-                (int)Number(item["PrinterStatus"]),
-                Number(item["PrinterState"])))
-            .ToList();
-        var jobs = Query("SELECT Name, Document, Owner, StatusMask, TotalPages FROM Win32_PrintJob")
-            .Select(item => new PrintJobRow(
-                Text(item["Name"]),
-                Text(item["Document"]),
-                Text(item["Owner"]),
-                Number(item["StatusMask"]),
-                (int)Math.Min(Number(item["TotalPages"]), int.MaxValue)))
-            .ToList();
-        return Compose(printers, jobs);
+        using var asking = WindowsIdentity.GetCurrent();
+        if (!asking.IsSystem)
+        {
+            // The tray app: the spooler answers for its user. Windows' own answer for the
+            // default first: with "let Windows manage my default printer" on, the registry
+            // may not hold it.
+            var (ownPrinters, ownJobs, ownDefault) = PrintSpooler.Read(MaximumJobsListed, asUser: null);
+            return Compose(ownPrinters, ownJobs, ownDefault ?? DefaultPrinterOf(asking.User?.Value));
+        }
+
+        // The service. SYSTEM has printers of its own view and a default printer of its own;
+        // what is wanted are those of the user who is logged in.
+        using var token = SystemMetricsService.LoggedInUserSessionId() is { } session ? PrintSpooler.UserTokenOf(session) : null;
+        if (token is null)
+        {
+            var (installed, waiting, _) = PrintSpooler.Read(MaximumJobsListed, asUser: null);
+            return Compose(installed, waiting, defaultPrinter: null);
+        }
+
+        using var user = new WindowsIdentity(token.DangerousGetHandle());
+        var (printers, jobs, asked) = PrintSpooler.Read(MaximumJobsListed, user);
+
+        // The user's registry first: what Windows answers a thread that only borrows a user's
+        // rights depends on whose part of the registry it takes for the current user.
+        return Compose(printers, jobs, DefaultPrinterOf(user.User?.Value) ?? asked);
     }
 
     /// <summary>
-    /// How many printers this user has, without reading the queues: for the attribute list in
+    /// The name in the text Windows keeps a user's default printer as: "name,winspool,port".
+    /// A printer's name cannot have a comma in it.
+    /// </summary>
+    internal static string? PrinterOfDevice(string? device)
+    {
+        var name = device?.Split(',')[0].Trim();
+        return string.IsNullOrEmpty(name) ? null : name;
+    }
+
+    /// <summary>
+    /// The default printer of the user with this SID, from that user's part of the registry,
+    /// which is there while the user is logged in. Null when it is not, or says nothing.
+    /// </summary>
+    internal static string? DefaultPrinterOf(string? sid)
+    {
+        if (string.IsNullOrEmpty(sid))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var key = Registry.Users.OpenSubKey($@"{sid}\Software\Microsoft\Windows NT\CurrentVersion\Windows");
+            return PrinterOfDevice(key?.GetValue("Device") as string);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// How many printers this user has, without asking any of them: for the attribute list in
     /// the settings window, which is asked for the printers' attributes right after the sensor
-    /// is ticked, before it was ever read. Null when Windows does not say. Counted at most
-    /// once a minute.
+    /// is ticked, before it was ever read, or while only the service reads it. Null when the
+    /// spooler does not say. Counted at most once a minute.
     /// </summary>
     public static int? PrinterCount()
     {
@@ -167,7 +209,7 @@ internal static class PrintQueues
 
         try
         {
-            _printerCount = System.Drawing.Printing.PrinterSettings.InstalledPrinters.Count;
+            _printerCount = PrintSpooler.PrinterNames().Count;
         }
         catch
         {
@@ -183,69 +225,56 @@ internal static class PrintQueues
 
     /// <summary>
     /// The printers in the order of their names, so that an index stays on a printer for as
-    /// long as none is added before it, each with the number of jobs in its queue; and the
-    /// jobs in the order Windows gave them, which is the order they print in.
+    /// long as none is added before it, with the user's default marked by its name; and the
+    /// jobs in the order the spooler gave them, which is the order they print in. The number
+    /// of jobs is what the spooler counts in each queue, the list only the first few of them.
     /// </summary>
-    internal static PrintQueueSnapshot Compose(IReadOnlyList<PrinterRow> printers, IReadOnlyList<PrintJobRow> jobs)
+    internal static PrintQueueSnapshot Compose(IReadOnlyList<PrinterRow> printers, IReadOnlyList<PrintJobRow> jobs, string? defaultPrinter)
     {
-        var listed = jobs
-            .Select(job => new PrintJobInfo(PrinterOf(job.Name), Limit(job.Document), Limit(job.Owner), JobStatus(job.StatusMask), Math.Max(0, job.TotalPages)))
+        var listed = printers
+            .Where(printer => printer.Name.Length > 0)
+            .OrderBy(printer => printer.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(printer =>
+            {
+                // "Use printer offline" is a switch of Windows' own, kept apart from the flags.
+                var states = printer.State | (printer.WorkOffline ? 0x80L : 0);
+                return new PrinterInfo(
+                    Limit(printer.Name),
+                    !string.IsNullOrEmpty(defaultPrinter) && string.Equals(printer.Name, defaultPrinter, StringComparison.OrdinalIgnoreCase),
+                    PrinterStatus(states),
+                    Math.Max(0, printer.Jobs),
+                    states);
+            })
             .ToList();
-        var perPrinter = listed
-            .GroupBy(job => job.Printer, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(group => group.Key, group => group.Count(), StringComparer.OrdinalIgnoreCase);
 
         return new PrintQueueSnapshot(
-            printers
-                .Where(printer => printer.Name.Length > 0)
-                .OrderBy(printer => printer.Name, StringComparer.OrdinalIgnoreCase)
-                .Select(printer =>
-                {
-                    // "Use printer offline" is a switch of Windows' own, kept apart from the flags.
-                    var states = printer.PrinterState | (printer.WorkOffline || printer.PrinterStatus == 7 ? OfflineBit : 0);
-                    return new PrinterInfo(
-                        Limit(printer.Name),
-                        printer.Default,
-                        PrinterStatus(printer.PrinterStatus, states),
-                        perPrinter.GetValueOrDefault(printer.Name),
-                        states);
-                })
+            listed,
+            jobs
+                .Take(MaximumJobsListed)
+                .Select(job => new PrintJobInfo(Limit(job.Printer), Limit(job.Document), Limit(job.Owner), JobStatus(job.StatusMask), Math.Max(0, job.TotalPages)))
                 .ToList(),
-            listed.Take(MaximumJobsListed).ToList(),
-            listed.Count);
-    }
-
-    /// <summary>The printer of a job: Windows names a job "printer, number", and a printer's own name may have commas.</summary>
-    internal static string PrinterOf(string jobName)
-    {
-        var comma = jobName.LastIndexOf(',');
-        return comma > 0 && jobName[(comma + 1)..].Trim() is { Length: > 0 } number && number.All(char.IsAsciiDigit)
-            ? jobName[..comma].Trim()
-            : jobName.Trim();
+            listed.Sum(printer => printer.Jobs));
     }
 
     /// <summary>
     /// A printer's state in one word: what keeps it from printing comes first, then what it is
-    /// doing. Many drivers only ever say "idle": what the device itself is doing is not
-    /// something Windows always knows.
+    /// doing. Many drivers never raise a flag, and their printer is "idle" whatever it does:
+    /// what the device itself is doing is not something Windows always knows.
     /// </summary>
-    internal static string PrinterStatus(int printerStatus, long states) => printerStatus switch
+    internal static string PrinterStatus(long states) => states switch
     {
-        _ when (states & OfflineBit) != 0 => "offline",
+        _ when (states & OfflineBits) != 0 => "offline",
         _ when (states & ProblemBits) != 0 => "error",
+        _ when (states & PrintSpooler.StatusUnknown) != 0 => "unknown",
         _ when (states & 0x1) != 0 => "paused",
         _ when (states & (0x400 | 0x4000)) != 0 => "printing",
-        4 => "printing",
         _ when (states & (0x8000 | 0x10000)) != 0 => "warming_up",
-        5 => "warming_up",
-        6 => "stopped",
-        3 => "idle",
-        _ => "unknown"
+        _ => "idle"
     };
 
     /// <summary>
-    /// A job's state in one word, from the flags Windows keeps for it: what stops it comes
-    /// first, then what it is doing. Without any flag it waits for its turn.
+    /// A job's state in one word, from the flags the spooler keeps for it: what stops it comes
+    /// first, then what it is doing. Without any of these it waits for its turn.
     /// </summary>
     internal static string JobStatus(long statusMask) => statusMask switch
     {
@@ -263,21 +292,4 @@ internal static class PrintQueues
 
     private static string Limit(string text) =>
         text.Length <= MaximumTextLength ? text : text[..MaximumTextLength];
-
-    private static IEnumerable<ManagementBaseObject> Query(string query)
-    {
-        using var searcher = new ManagementObjectSearcher(new ManagementScope(@"root\cimv2"), new ObjectQuery(query), QueryOptions);
-        using var results = searcher.Get();
-        foreach (var item in results)
-        {
-            using (item)
-            {
-                yield return item;
-            }
-        }
-    }
-
-    private static string Text(object? value) => value?.ToString()?.Trim() ?? string.Empty;
-
-    private static long Number(object? value) => value is null ? 0 : Convert.ToInt64(value, System.Globalization.CultureInfo.InvariantCulture);
 }
