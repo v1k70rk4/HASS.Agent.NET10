@@ -599,6 +599,7 @@
     "Sensor.gpu_usage": "GPU-használat",
     "Sensor.drive_health": "Meghajtó állapota",
     "Sensor.drive_space": "Meghajtók tárhelye",
+    "Sensor.print_jobs": "Nyomtatási feladatok",
     "Sensor.boot_time": "Boot idő",
     "Sensor.battery_time_remaining": "Akkumulátor hátralévő idő",
     "Sensor.vpn_connected": "VPN csatlakozva",

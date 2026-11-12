@@ -92,7 +92,8 @@
       "Editor.WindowPopup",
       "Editor.WindowKeep",
       "Editor.WindowCloseAfter",
-      "Editor.WindowCloseAfterUnit"
+      "Editor.WindowCloseAfterUnit",
+      "Sensor.print_jobs"
     ]
   },
   "strings": {
@@ -688,6 +689,7 @@
     "Sensor.gpu_usage": "GPU-Auslastung",
     "Sensor.drive_health": "Laufwerkszustand",
     "Sensor.drive_space": "Laufwerksspeicher",
+    "Sensor.print_jobs": "Print jobs",
     "Sensor.boot_time": "Startzeitpunkt",
     "Sensor.battery_time_remaining": "Verbleibende Akkulaufzeit",
     "Sensor.vpn_connected": "VPN verbunden",

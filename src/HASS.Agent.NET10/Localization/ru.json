@@ -69,7 +69,8 @@
       "Editor.WindowPopup",
       "Editor.WindowKeep",
       "Editor.WindowCloseAfter",
-      "Editor.WindowCloseAfterUnit"
+      "Editor.WindowCloseAfterUnit",
+      "Sensor.print_jobs"
     ]
   },
   "strings": {
@@ -665,6 +666,7 @@
     "Sensor.gpu_usage": "Загрузка видеокарты",
     "Sensor.drive_health": "Состояние диска",
     "Sensor.drive_space": "Место на дисках",
+    "Sensor.print_jobs": "Print jobs",
     "Sensor.boot_time": "Время загрузки",
     "Sensor.battery_time_remaining": "Оставшееся время работы от батареи",
     "Sensor.vpn_connected": "VPN подключён",

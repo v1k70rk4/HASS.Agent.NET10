@@ -126,6 +126,10 @@ The editor's list offers every path this PC has, with the unit filled in when it
 | Drive health | `drive_health.temperature` | The system drive's temperature (°C) |
 | Drive health | `drive_health.drives[0].power_on_hours` | The first drive's power-on hours (h) |
 | Drive health | `drive_health.drives[1].health` | The second drive's health |
+| Print jobs | `print_jobs.printers[0].jobs` | Jobs waiting on the first printer |
+| Print jobs | `print_jobs.printers[0].status` | The first printer's state in one word |
+| Print jobs | `print_jobs.printers[1].paper_out` | Whether the second printer is out of paper |
+| Print jobs | `print_jobs.jobs[0].document` | The document that prints next |
 | Audio sessions | `audio_sessions.apps[0].volume` | The first app's volume (%) |
 | Camera in use | `camera_in_use.apps[0]` | App using the camera |
 | Microphone in use | `microphone_in_use.apps[0]` | App using the microphone |

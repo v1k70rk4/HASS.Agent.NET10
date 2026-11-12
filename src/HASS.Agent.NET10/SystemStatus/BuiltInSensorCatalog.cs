@@ -13,7 +13,10 @@ internal sealed record BuiltInSensorDefinition(
     bool PushDriven = false,
     // Off for new installs and for sensors added in a later version; a setting the user
     // already has is never touched. For sensors that are useful, but not to everyone.
-    bool EnabledByDefault = true)
+    bool EnabledByDefault = true,
+    // Attributes the editor of a custom sensor offers as well, but the Attributes button does
+    // not make sensors of: there are too many of them to want them all.
+    IReadOnlyList<string>? MoreAttributePaths = null)
 {
     public bool HasMultipleValues => AttributePaths is { Count: > 0 };
 
@@ -149,6 +152,26 @@ internal static class BuiltInSensorCatalog
             "event_log_errors_recent.events[0].level",
             "event_log_errors_recent.events[0].created_at"
         ], EnabledByDefault: false),
+        // Every print queue of the PC in one sensor: its value is the number of jobs that wait,
+        // on whichever printer. Each printer's own queue and state are in the attributes.
+        new("print_jobs", SupportsService: true, SupportsTrayApp: true, SensorPollingProfile.Normal,
+        [
+            "print_jobs.default_printer",
+            "print_jobs.default_printer_jobs",
+            "print_jobs.printers[0].name",
+            "print_jobs.printers[0].jobs",
+            "print_jobs.printers[0].status"
+        ], EnabledByDefault: false, MoreAttributePaths:
+        [
+            "print_jobs.printer_count",
+            "print_jobs.printers[0].default",
+            .. PrintQueues.StateFlags.Select(flag => $"print_jobs.printers[0].{flag.Name}"),
+            "print_jobs.jobs[0].printer",
+            "print_jobs.jobs[0].document",
+            "print_jobs.jobs[0].owner",
+            "print_jobs.jobs[0].status",
+            "print_jobs.jobs[0].pages"
+        ]),
         new("last_shutdown_reason", SupportsService: true, SupportsTrayApp: true, SensorPollingProfile.Startup,
         [
             "last_shutdown_reason.reason",
@@ -271,7 +294,9 @@ internal static class BuiltInSensorCatalog
     /// </summary>
     public static IReadOnlyList<string> EditorAttributePaths(BuiltInSensorDefinition definition)
     {
-        var suggested = SuggestedAttributePaths(definition);
+        var suggested = SuggestedAttributePaths(definition)
+            .Concat(ExpandAttributePaths(definition.MoreAttributePaths ?? [], ListCount, DriveSpace.Letters))
+            .ToList();
         return suggested
             .Concat(suggested
                 .Where(path => path.EndsWith("_gb", StringComparison.Ordinal) && !path.Contains("total_gb") && !path.Contains("used_gb") && !path.Contains("free_gb") && !path.Contains("available_gb"))

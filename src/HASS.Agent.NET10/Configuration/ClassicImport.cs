@@ -299,6 +299,7 @@ internal static class ClassicImport
         ["StorageSensors"] = ["drive_space"],
         ["DisplaySensors"] = ["active_display"],
         ["WindowsUpdatesSensors"] = ["windows_update_pending"],
+        ["PrintersSensors"] = ["print_jobs"],
         ["LastActiveSensor"] = ["idle_time_seconds"],
     };
 

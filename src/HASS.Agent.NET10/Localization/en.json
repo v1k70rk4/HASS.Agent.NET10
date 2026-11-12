@@ -599,6 +599,7 @@
     "Sensor.gpu_usage": "GPU usage",
     "Sensor.drive_health": "Drive health",
     "Sensor.drive_space": "Drive space",
+    "Sensor.print_jobs": "Print jobs",
     "Sensor.boot_time": "Boot time",
     "Sensor.battery_time_remaining": "Battery time remaining",
     "Sensor.vpn_connected": "VPN connected",
