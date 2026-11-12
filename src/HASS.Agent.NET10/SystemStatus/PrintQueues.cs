@@ -140,7 +140,9 @@ internal static class PrintQueues
         {
             // The tray app: the spooler answers for its user.
             var (ownPrinters, ownJobs) = PrintSpooler.Read(MaximumJobsListed);
-            return Compose(ownPrinters, ownJobs, DefaultPrinterOf(asking.User?.Value));
+            // Windows' own answer first: with "let Windows manage my default printer" on, the
+            // registry may not hold it.
+            return Compose(ownPrinters, ownJobs, PrintSpooler.DefaultPrinter() ?? DefaultPrinterOf(asking.User?.Value));
         }
 
         // The service. SYSTEM has printers of its own view and a default printer of its own;
@@ -153,8 +155,15 @@ internal static class PrintQueues
         }
 
         using var user = new WindowsIdentity(token.DangerousGetHandle());
-        var (printers, jobs) = WindowsIdentity.RunImpersonated(token, () => PrintSpooler.Read(MaximumJobsListed));
-        return Compose(printers, jobs, DefaultPrinterOf(user.User?.Value));
+        var (printers, jobs, asked) = WindowsIdentity.RunImpersonated(token, () =>
+        {
+            var (found, waiting) = PrintSpooler.Read(MaximumJobsListed);
+            return (found, waiting, PrintSpooler.DefaultPrinter());
+        });
+
+        // The user's registry first: what Windows answers a thread that only borrows a user's
+        // rights depends on whose part of the registry it takes for the current user.
+        return Compose(printers, jobs, DefaultPrinterOf(user.User?.Value) ?? asked);
     }
 
     /// <summary>

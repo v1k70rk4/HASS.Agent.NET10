@@ -183,6 +183,20 @@ internal static class PrintSpooler
         throw new Win32Exception(InsufficientBuffer, $"The print spooler could not {what}: its answer kept growing.");
     }
 
+    /// <summary>The default printer of whoever asks, as Windows answers it; null when there is none.</summary>
+    internal static string? DefaultPrinter()
+    {
+        uint size = 0;
+        GetDefaultPrinter(null, ref size);
+        if (size == 0)
+        {
+            return null;
+        }
+
+        var name = new System.Text.StringBuilder((int)size);
+        return GetDefaultPrinter(name, ref size) && name.ToString().Trim() is { Length: > 0 } found ? found : null;
+    }
+
     /// <summary>
     /// The token of the user logged in to a session, for the service to ask the spooler as
     /// that user. Only an account that is part of the operating system (SYSTEM) is given one.
@@ -279,6 +293,10 @@ internal static class PrintSpooler
     [DllImport("winspool.drv", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool ClosePrinter(IntPtr printer);
+
+    [DllImport("winspool.drv", EntryPoint = "GetDefaultPrinterW", CharSet = CharSet.Unicode, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetDefaultPrinter(System.Text.StringBuilder? buffer, ref uint size);
 
     [DllImport("wtsapi32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]

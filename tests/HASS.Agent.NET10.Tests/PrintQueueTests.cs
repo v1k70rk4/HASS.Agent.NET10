@@ -370,6 +370,7 @@ public sealed class PrintQueueTests
         var byWindows = new System.Drawing.Printing.PrinterSettings();
         if (installed.Count > 0 && byWindows.IsDefaultPrinter)
         {
+            Assert.Equal(byWindows.PrinterName, PrintSpooler.DefaultPrinter());
             Assert.Equal(byWindows.PrinterName, queues.DefaultPrinter?.Name);
         }
 
