@@ -54,25 +54,35 @@ public sealed class BoundedReadTests
     [Fact]
     public void A_read_that_hangs_is_left_at_the_deadline_and_not_started_again_while_it_hangs()
     {
-        var bounded = new BoundedRead<int>(TimeSpan.FromMilliseconds(150));
+        // A deadline long enough to tell "waited for it" from "did not wait" on a busy build
+        // machine, where a thread may take its time to start.
+        var deadline = TimeSpan.FromSeconds(1);
+        var bounded = new BoundedRead<int>(deadline);
         using var release = new ManualResetEventSlim();
+        using var underWay = new ManualResetEventSlim();
         var started = 0;
         int Hangs()
         {
             Interlocked.Increment(ref started);
-            release.Wait(TimeSpan.FromSeconds(30));
+            underWay.Set();
+            release.Wait(TimeSpan.FromSeconds(60));
             return 1;
         }
 
         var watch = Stopwatch.StartNew();
         Assert.Throws<TimeoutException>(() => bounded.Run(Hangs));
-        Assert.InRange(watch.ElapsedMilliseconds, 100, 5000);
+        Assert.InRange(watch.ElapsedMilliseconds, 900, 30_000);
 
-        // The next cycles do not wait for it and do not start another.
+        // The next cycles do not wait for it: two of them take less than one deadline.
         watch.Restart();
         Assert.Throws<TimeoutException>(() => bounded.Run(Hangs));
         Assert.Throws<TimeoutException>(() => bounded.Run(Hangs));
-        Assert.InRange(watch.ElapsedMilliseconds, 0, 100);
+        Assert.InRange(watch.ElapsedMilliseconds, 0, 900);
+
+        // And they do not start another: the one read is all there is, however late its
+        // thread got going.
+        Assert.True(underWay.Wait(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken));
+        Assert.Throws<TimeoutException>(() => bounded.Run(Hangs));
         Assert.Equal(1, Volatile.Read(ref started));
 
         // Once it has come back, a new read is made; what the late one found is not used.
@@ -87,7 +97,7 @@ public sealed class BoundedReadTests
             {
                 return false;
             }
-        }, TimeSpan.FromSeconds(5)));
+        }, TimeSpan.FromSeconds(30)));
         Assert.Equal(1, Volatile.Read(ref started));
     }
 }
