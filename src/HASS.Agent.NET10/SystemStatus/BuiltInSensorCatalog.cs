@@ -284,11 +284,17 @@ internal static class BuiltInSensorCatalog
     // tray app, which never reads the drive health (that takes administrator rights), so the
     // number of drives is counted on its own: that much Windows tells anyone.
     private static int? ListCount(string listPath) =>
-        SystemMetricsService.ListCount(listPath)
-        ?? (string.Equals(listPath, "drive_health.drives", StringComparison.OrdinalIgnoreCase) ? DriveHealth.DiskCount()
-            // A sensor that was only just ticked has not been read yet; the printers are counted for it.
-            : string.Equals(listPath, "print_jobs.printers", StringComparison.OrdinalIgnoreCase) ? PrintQueues.PrinterCount()
-            : null);
+        SystemMetricsService.ListCount(listPath) ?? CountedOnItsOwn(listPath);
+
+    /// <summary>
+    /// The item count of a list that this process has not read: the drives, which the tray app
+    /// never reads, and the printers, which a sensor that was only just ticked has not read
+    /// yet. Null for any other list.
+    /// </summary>
+    internal static int? CountedOnItsOwn(string listPath) =>
+        string.Equals(listPath, "drive_health.drives", StringComparison.OrdinalIgnoreCase) ? DriveHealth.DiskCount()
+        : string.Equals(listPath, "print_jobs.printers", StringComparison.OrdinalIgnoreCase) ? PrintQueues.PrinterCount()
+        : null;
 
     /// <summary>
     /// The list the editor offers to type from: the suggested paths, then the _mb twin of every

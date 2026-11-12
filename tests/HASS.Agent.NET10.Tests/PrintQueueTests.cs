@@ -203,6 +203,93 @@ public sealed class PrintQueueTests
     }
 
     [Fact]
+    public void A_printer_sensor_that_was_never_read_still_gets_a_path_for_every_printer()
+    {
+        // What the Attributes button falls back on right after the sensor is ticked: the
+        // printers counted on their own, the way the drives are.
+        Assert.Equal(PrintQueues.PrinterCount(), BuiltInSensorCatalog.CountedOnItsOwn("print_jobs.printers"));
+        Assert.Equal(PrintQueues.PrinterCount(), BuiltInSensorCatalog.CountedOnItsOwn("PRINT_JOBS.PRINTERS"));
+        Assert.Null(BuiltInSensorCatalog.CountedOnItsOwn("print_jobs.jobs"));
+        Assert.Null(BuiltInSensorCatalog.CountedOnItsOwn("gpu_usage.adapters"));
+
+        // With three printers counted, the button offers each of them.
+        var sensor = BuiltInSensorCatalog.Find("print_jobs")!;
+        var paths = BuiltInSensorCatalog.ExpandAttributePaths(sensor.AttributePaths!, path => path == "print_jobs.printers" ? 3 : null);
+        Assert.Equal(
+            ["print_jobs.printers[0].jobs", "print_jobs.printers[1].jobs", "print_jobs.printers[2].jobs"],
+            paths.Where(path => path.EndsWith(".jobs", StringComparison.Ordinal) && path.Contains("printers", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public void A_read_that_fails_is_tried_again_at_the_sensor_s_own_pace_only()
+    {
+        var asked = 0;
+        PrintQueueSnapshot Fails()
+        {
+            asked++;
+            throw new TimeoutException("No answer.");
+        }
+
+        using var log = new FileLog(Path.Combine(Path.GetTempPath(), "hass-agent-tests.log"));
+        using var metrics = new SystemMetricsService(log, null) { PrintQueueReader = Fails };
+        BuiltInSensorSetting[] settings = [new() { Key = "print_jobs", TrayApp = true }];
+        IReadOnlySet<SensorPollingProfile> fast = new HashSet<SensorPollingProfile> { SensorPollingProfile.Fast };
+        IReadOnlySet<SensorPollingProfile> normal = new HashSet<SensorPollingProfile> { SensorPollingProfile.Fast, SensorPollingProfile.Normal };
+
+        // The first read of the app takes everything.
+        var first = metrics.Read(builtInSensors: settings);
+        Assert.Equal(1, asked);
+        Assert.Null(first.PrintJobs);
+
+        // Fast cycles and pushes are not the sensor's turn: nothing is asked again.
+        metrics.Read(dueProfiles: fast, builtInSensors: settings);
+        metrics.Read(dueProfiles: fast, builtInSensors: settings);
+        metrics.Read(dueProfiles: fast, builtInSensors: settings, pushOnly: true);
+        Assert.Equal(1, asked);
+
+        // Its own cycle is.
+        metrics.Read(dueProfiles: normal, builtInSensors: settings);
+        Assert.Equal(2, asked);
+
+        // Switched off and on again, it is read at once, as a sensor that has just been ticked.
+        metrics.Read(dueProfiles: fast, builtInSensors: [new() { Key = "cpu_usage", TrayApp = true }]);
+        metrics.Read(dueProfiles: fast, builtInSensors: settings);
+        Assert.Equal(3, asked);
+    }
+
+    [Fact]
+    public void A_read_that_works_is_reported_and_kept_between_its_turns()
+    {
+        var asked = 0;
+        using var log = new FileLog(Path.Combine(Path.GetTempPath(), "hass-agent-tests.log"));
+        using var metrics = new SystemMetricsService(log, null)
+        {
+            PrintQueueReader = () =>
+            {
+                asked++;
+                return PrintQueues.Compose(Printers, Jobs.Take(asked).ToList());
+            }
+        };
+        BuiltInSensorSetting[] settings = [new() { Key = "print_jobs", TrayApp = true }];
+
+        Assert.Equal(1, metrics.Read(builtInSensors: settings).PrintJobs);
+        Assert.Equal(1, metrics.Read(dueProfiles: new HashSet<SensorPollingProfile> { SensorPollingProfile.Fast }, builtInSensors: settings).PrintJobs);
+        Assert.Equal(2, metrics.Read(dueProfiles: new HashSet<SensorPollingProfile> { SensorPollingProfile.Normal }, builtInSensors: settings).PrintJobs);
+        Assert.Equal(2, asked);
+    }
+
+    [Fact]
+    public void An_idle_printer_has_no_state_flag_up()
+    {
+        // 0 is "no flag", not the first name in Windows' list of them (paused): what the three
+        // idle printers of a PC report.
+        var queues = PrintQueues.Compose([new("Idle", Default: true, WorkOffline: false, PrinterStatus: 3, PrinterState: 0)], []);
+
+        Assert.Equal("idle", queues.Printers[0].Status);
+        Assert.All(PrintQueues.StateFlags, flag => Assert.False(queues.Printers[0].Is(flag.Name), flag.Name));
+    }
+
+    [Fact]
     public void The_print_queues_of_this_pc_can_be_read()
     {
         PrintQueueSnapshot queues;

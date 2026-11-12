@@ -83,6 +83,10 @@ internal sealed class SystemMetricsService : IDisposable
     private IReadOnlyList<DriveHealthInfo>? _lastDrives;
     private IReadOnlyList<DriveSpaceInfo>? _lastDriveSpace;
     private PrintQueueSnapshot? _lastPrintQueues;
+    private bool _printQueuesAsked;
+
+    /// <summary>What reads the print queues; the tests put one of their own here.</summary>
+    internal Func<PrintQueueSnapshot> PrintQueueReader { get; init; } = PrintQueues.Read;
     private Dictionary<string, IReadOnlyDictionary<string, object?>>? _lastShownAttributes;
 
     // How many items each list attribute had the last time it was read (gpu_usage.adapters: 2),
@@ -238,13 +242,18 @@ internal sealed class SystemMetricsService : IDisposable
 
         // The print queues; anyone may ask the spooler, so both roles read them. A read that
         // fails keeps what the last one found, and before any has worked there is no value.
+        // The sensor is read once when it becomes wanted, and from then on at its own pace
+        // only, whether that read worked or not: one that fails slowly must not be tried again
+        // with every fast cycle and every push.
         if (!Wanted("print_jobs"))
         {
             _lastPrintQueues = null;
+            _printQueuesAsked = false;
         }
-        else if (Due("print_jobs") || _lastPrintQueues is null)
+        else if (Due("print_jobs") || !_printQueuesAsked)
         {
-            _lastPrintQueues = Safe<PrintQueueSnapshot?>(PrintQueues.Read, _lastPrintQueues);
+            _printQueuesAsked = true;
+            _lastPrintQueues = Safe<PrintQueueSnapshot?>(() => PrintQueueReader(), _lastPrintQueues);
         }
         var power = Due("battery_level", "power_status", "battery_time_remaining") ? Safe(ReadPowerStatus, (BatteryLevel: previous?.BatteryLevel, Status: previous?.PowerStatus ?? "unknown", TimeRemainingSeconds: previous?.BatteryTimeRemaining)) : (BatteryLevel: previous!.BatteryLevel, Status: previous.PowerStatus, TimeRemainingSeconds: previous.BatteryTimeRemaining);
         var session = Due("session_state", "logged_in_user", "user_present") ? Safe(ReadSessionStatus, (State: previous?.SessionState ?? "none", User: previous?.LoggedInUser ?? string.Empty)) : (State: previous!.SessionState, User: previous.LoggedInUser);

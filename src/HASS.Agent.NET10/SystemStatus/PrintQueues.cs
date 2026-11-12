@@ -83,6 +83,9 @@ internal static class PrintQueues
     /// <summary>
     /// The state flags the spooler keeps for a printer, by the name they are reported under.
     /// How many of them a printer ever raises is up to its driver: many only know "offline".
+    /// Win32_Printer.PrinterState is the spooler's own status word (PRINTER_INFO_6.dwStatus,
+    /// the PRINTER_STATUS_* bits): the class lists the names in the order of the bits, and an
+    /// idle printer reports 0, no bit set, not the first name of that list.
     /// </summary>
     internal static readonly IReadOnlyList<(string Name, long Bit)> StateFlags =
     [
@@ -118,10 +121,17 @@ internal static class PrintQueues
     // Whatever keeps a printer from printing until someone does something about it.
     private const long ProblemBits = 0x2 | 0x8 | 0x10 | 0x40 | 0x20 | 0x40000 | 0x400000 | 0x800 | 0x100000 | 0x200000 | 0x1000;
 
-    // Bounded: a network printer that does not answer must not hold up every other sensor.
-    private static readonly System.Management.EnumerationOptions QueryOptions = new() { Timeout = TimeSpan.FromSeconds(10), ReturnImmediately = false };
+    // A network printer that does not answer must not hold up every other sensor. The query
+    // returns at once and each step through its results waits ten seconds at most; that alone
+    // does not bound the whole of it, so the two queries together also run against a deadline.
+    private static readonly System.Management.EnumerationOptions QueryOptions = new() { Timeout = TimeSpan.FromSeconds(10), ReturnImmediately = true };
 
-    public static PrintQueueSnapshot Read()
+    private static readonly BoundedRead<PrintQueueSnapshot> Bounded = new(TimeSpan.FromSeconds(15));
+
+    /// <summary>The printers and their queues, or a <see cref="TimeoutException"/> when Windows does not answer in time.</summary>
+    public static PrintQueueSnapshot Read() => Bounded.Run(ReadFromWindows);
+
+    private static PrintQueueSnapshot ReadFromWindows()
     {
         var printers = Query("SELECT Name, Default, WorkOffline, PrinterStatus, PrinterState FROM Win32_Printer")
             .Select(item => new PrinterRow(
