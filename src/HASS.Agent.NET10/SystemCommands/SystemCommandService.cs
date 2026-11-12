@@ -101,10 +101,16 @@ internal sealed class SystemCommandService : IDisposable
     }
 
     /// <summary>
-    /// Shows an address in a window of the tray app (address, logical size); set by the tray
-    /// app, which owns the UI thread. Null in the service, which has no desktop to show it on.
+    /// Shows the window of a Popup window command in the tray app; set by the tray app, which
+    /// owns the UI thread. Null in the service, which has no desktop to show it on.
     /// </summary>
-    public static Func<string, System.Drawing.Size, bool>? WebViewHandler { get; set; }
+    public static Func<PopupWindowRequest, bool>? WebViewHandler { get; set; }
+
+    /// <summary>
+    /// Closes popup windows of the tray app: the one of the command with this name, or every
+    /// one for <see cref="WebViewOptions.EveryWindow"/>. Set by the tray app, null in the service.
+    /// </summary>
+    public static Func<string, bool>? WebViewCloseHandler { get; set; }
 
     /// <summary>
     /// Runs the command and says how it went. Also behind the Test button of the editor
@@ -140,13 +146,20 @@ internal sealed class SystemCommandService : IDisposable
                     return new CustomCommandResult(CustomCommandOutcome.InvalidAddress, command.Command);
                 }
 
-                var size = WebViewOptions.DefaultWindowSize;
-                if (command.Arguments.Length > 0 && !WebViewOptions.TryParseSize(command.Arguments, out size))
+                if (!WebViewOptions.TryParseWindow(command.Arguments, out var window))
                 {
                     return new CustomCommandResult(CustomCommandOutcome.InvalidSize, command.Arguments);
                 }
 
-                return WebViewHandler?.Invoke(command.Command, size) == true
+                return WebViewHandler?.Invoke(new PopupWindowRequest(command.Id, command.Name, command.Command, window)) == true
+                    ? new CustomCommandResult(CustomCommandOutcome.Done)
+                    : new CustomCommandResult(CustomCommandOutcome.NotStarted);
+            }
+
+            if (command.IsWebViewClose)
+            {
+                // Nothing open to close is no failure: the window may have been closed by hand.
+                return WebViewCloseHandler?.Invoke(command.Command) == true
                     ? new CustomCommandResult(CustomCommandOutcome.Done)
                     : new CustomCommandResult(CustomCommandOutcome.NotStarted);
             }
@@ -190,7 +203,7 @@ internal sealed class SystemCommandService : IDisposable
             CustomCommandOutcome.NoKeys => "no keys to press.",
             CustomCommandOutcome.InputRefused => "Windows did not accept the key presses (the active window runs elevated, or the desktop is locked).",
             CustomCommandOutcome.InvalidAddress => $"'{result.Detail}' is not an address that can be opened (expected something like https://example.com).",
-            CustomCommandOutcome.InvalidSize => $"'{result.Detail}' is not a window size (expected something like 1024x720).",
+            CustomCommandOutcome.InvalidSize => $"'{result.Detail}' does not say what the window is like (expected something like 1024x720 popup keep 30s, each part optional).",
             CustomCommandOutcome.NotStarted => "could not be started.",
             _ => $"failed: {result.Detail}"
         };

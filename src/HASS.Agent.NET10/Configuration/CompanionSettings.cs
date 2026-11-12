@@ -101,6 +101,12 @@ internal sealed class CompanionSettings
     /// <summary>A left click on the tray icon opens the dashboard popup.</summary>
     public bool WebViewOnTrayClick { get; set; }
 
+    /// <summary>
+    /// The dashboard popup keeps its page loaded while it is out of sight: it comes up at once
+    /// and where it was left, and the page stays in memory for as long as the app runs.
+    /// </summary>
+    public bool WebViewKeepLoaded { get; set; }
+
     public string Language { get; set; } = DetectSystemLanguage();
 
     public string HaLanguage { get; set; } = "en";

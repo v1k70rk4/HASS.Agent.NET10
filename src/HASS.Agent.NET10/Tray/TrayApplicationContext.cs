@@ -29,9 +29,12 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
     private Action? _pendingBalloonAction;
     private MainForm? _mainForm;
     private ToolStripMenuItem? _copyUrlItem;
-    private WebViewForm? _dashboardPopup;
+    private readonly PopupWindows _popups;
+
+    // Goes up each time the popups are told the settings; a press from a connection thread
+    // that waited across one is looked up again before its window is opened.
+    private int _popupSettingsGeneration;
     private readonly HotkeyService _hotkeys;
-    private DateTime _dashboardClosedAt;
 
     public event EventHandler<NotificationActionRequestedEventArgs>? NotificationActionRequested;
     public event EventHandler? SettingsSaved;
@@ -155,6 +158,7 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
         _paths = paths;
         _log = log;
         _kiosk = kiosk;
+        _popups = new PopupWindows(log);
         _uiInvoker.CreateControl();
         _ = _uiInvoker.Handle;
 
@@ -191,15 +195,35 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
             };
         }
 
-        // The WebView custom command: asked for on a connection thread, shown on the UI thread.
-        SystemCommandService.WebViewHandler = (url, size) =>
+        // The Popup window custom command, and the one that closes its windows: asked for on a
+        // connection thread, done on the UI thread.
+        SystemCommandService.WebViewHandler = request =>
         {
             if (_uiInvoker.IsDisposed)
             {
                 return false;
             }
 
-            _uiInvoker.BeginInvoke(() => new WebViewForm(url, size, popup: false, _log).Show());
+            var askedAt = Volatile.Read(ref _popupSettingsGeneration);
+            _uiInvoker.BeginInvoke(() =>
+            {
+                var current = PopupWindows.StillAskedFor(
+                    request, askedAt == _popupSettingsGeneration, _settings.CustomCommands);
+                if (current is not null)
+                {
+                    _popups.ShowForCommand(current);
+                }
+            });
+            return true;
+        };
+        SystemCommandService.WebViewCloseHandler = target =>
+        {
+            if (_uiInvoker.IsDisposed)
+            {
+                return false;
+            }
+
+            _uiInvoker.BeginInvoke(() => _popups.Close(target));
             return true;
         };
         _notifyIcon.BalloonTipClicked += (_, _) =>
@@ -305,7 +329,8 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
         if (disposing)
         {
             SystemCommandService.WebViewHandler = null;
-            _dashboardPopup?.Close();
+            SystemCommandService.WebViewCloseHandler = null;
+            _popups.Dispose();
             _hotkeys.Dispose();
 
             foreach (var actionNotification in _actionNotifications.ToList())
@@ -372,7 +397,20 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
         _mainForm = new MainForm(_settings, _paths, _log, page);
         _mainForm.DiscoveryRepublishHandler = () => DiscoveryRepublishHandler?.Invoke() ?? Task.FromResult(false);
         _mainForm.UpdateStateHandler = state => UpdateStateHandler?.Invoke(state) ?? Task.CompletedTask;
-        _mainForm.DashboardPreviewHandler = ShowDashboard;
+        // "Open now" shows what is in the fields, saved or not. With the tick for keeping the
+        // page it is the dashboard itself, which then comes up as it was the next time; without
+        // it a popup of its own with a fresh page, which leaves a kept page alone.
+        _mainForm.DashboardPreviewHandler = (url, size, keepLoaded) =>
+        {
+            if (keepLoaded)
+            {
+                _popups.ShowDashboard(url, size, keepLoaded: true);
+            }
+            else
+            {
+                _popups.ShowPreview(url, size);
+            }
+        };
         _mainForm.HaTokenProbe = () => HaTokenProbe?.Invoke() ?? (null, false);
         _mainForm.HaUserProvisioner = HaUserProvisioner;
         _mainForm.SendspinPlayer = SendspinPlayer;
@@ -381,7 +419,12 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
             ApplyTraySettings();
             SettingsSaved?.Invoke(this, EventArgs.Empty);
         };
-        _mainForm.FormClosed += (_, _) => _mainForm = null;
+        _mainForm.FormClosed += (_, _) =>
+        {
+            _mainForm = null;
+            // A page "Open now" kept for fields that were never saved is let go.
+            TellThePopupsTheSettings();
+        };
         _mainForm.Show();
     }
 
@@ -390,28 +433,24 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
     {
         _hotkeys.Apply(_settings.Hotkeys);
         ApplyNotificationName();
+        TellThePopupsTheSettings();
         if (_copyUrlItem is not null)
         {
             _copyUrlItem.Visible = _settings.LocalApiEnabled;
         }
     }
 
-    /// <summary>The dashboard popup above the tray: opens it, or closes the one that is open.</summary>
+    private void TellThePopupsTheSettings()
+    {
+        Interlocked.Increment(ref _popupSettingsGeneration);
+        _popups.SettingsChanged(
+            _settings.WebViewUrl, new Size(_settings.WebViewWidth, _settings.WebViewHeight), _settings.WebViewKeepLoaded,
+            _settings.CustomCommands);
+    }
+
+    /// <summary>The dashboard popup above the tray: brings it up, or sends away the one that is up.</summary>
     private void ToggleDashboard()
     {
-        if (_dashboardPopup is not null)
-        {
-            _dashboardPopup.Close();
-            return;
-        }
-
-        // The click on the tray icon that took the focus away has just closed the popup;
-        // the same click must not open it again.
-        if (DateTime.UtcNow - _dashboardClosedAt < TimeSpan.FromMilliseconds(400))
-        {
-            return;
-        }
-
         if (!WebViewOptions.IsWebAddress(_settings.WebViewUrl))
         {
             // Not set up yet: the page where it is done.
@@ -419,26 +458,8 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
             return;
         }
 
-        ShowDashboard(_settings.WebViewUrl, new Size(_settings.WebViewWidth, _settings.WebViewHeight));
-    }
-
-    private void ShowDashboard(string url, Size size)
-    {
-        _dashboardPopup?.Close();
-        var popup = new WebViewForm(url, size, popup: true, _log);
-        popup.FormClosed += (_, _) =>
-        {
-            if (ReferenceEquals(_dashboardPopup, popup))
-            {
-                _dashboardPopup = null;
-                _dashboardClosedAt = DateTime.UtcNow;
-            }
-
-            popup.Dispose();
-        };
-        _dashboardPopup = popup;
-        popup.Show();
-        popup.Activate();
+        _popups.ToggleDashboard(
+            _settings.WebViewUrl, new Size(_settings.WebViewWidth, _settings.WebViewHeight), _settings.WebViewKeepLoaded);
     }
 
     private void CopyApiUrl()

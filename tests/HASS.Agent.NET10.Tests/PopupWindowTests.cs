@@ -1,0 +1,320 @@
+using System.Drawing;
+using System.Text.Json;
+using HASS.Agent.Companion.Localization;
+using HASS.Agent.Companion.SystemCommands;
+using HASS.Agent.Companion.Tray;
+
+namespace HASS.Agent.Companion.Tests;
+
+/// <summary>
+/// The popup windows: what a Popup window command says about its window, when a window is
+/// brought up again and when it is made anew, and which windows a close is for.
+/// </summary>
+public sealed class PopupWindowTests : IDisposable
+{
+    // The two handlers belong to the whole process. No other test sets them or runs a popup
+    // window command, and the tests of one class never run at the same time, so clearing them
+    // here takes nothing from anyone.
+    public void Dispose()
+    {
+        SystemCommandService.WebViewHandler = null;
+        SystemCommandService.WebViewCloseHandler = null;
+    }
+
+    [Fact]
+    public void Nothing_said_is_the_window_as_it_always_was()
+    {
+        Assert.True(WebViewOptions.TryParseWindow("", out var window));
+        Assert.Equal(new PopupWindowOptions(WebViewOptions.DefaultWindowSize, KeepLoaded: false, CloseAfter: null), window);
+
+        Assert.True(WebViewOptions.TryParseWindow(null, out window));
+        Assert.Equal(WebViewOptions.DefaultWindowSize, window.Size);
+    }
+
+    [Theory]
+    [InlineData("800x600", 800, 600, false, 0)]
+    [InlineData("800 X 600", 800, 600, false, 0)]      // the spellings a size alone always had
+    [InlineData("640*480", 640, 480, false, 0)]
+    [InlineData("keep", 1024, 720, true, 0)]
+    [InlineData("30s", 1024, 720, false, 30)]
+    [InlineData("800x600 keep 30s", 800, 600, true, 30)]
+    [InlineData("5m KEEP 800x600", 800, 600, true, 300)]
+    [InlineData("keep, 1h", 1024, 720, true, 3600)]
+    [InlineData("800 x 600 keep", 800, 600, true, 0)]
+    [InlineData("24h", 1024, 720, false, 86400)]
+    [InlineData("1S", 1024, 720, false, 1)]
+    public void The_parts_come_in_any_order_and_each_may_be_left_out(string text, int width, int height, bool keep, int seconds)
+    {
+        Assert.True(WebViewOptions.TryParseWindow(text, out var window));
+
+        Assert.Equal(new Size(width, height), window.Size);
+        Assert.Equal(keep, window.KeepLoaded);
+        Assert.Equal(seconds == 0 ? null : TimeSpan.FromSeconds(seconds), window.CloseAfter);
+    }
+
+    [Theory]
+    [InlineData("popup", 1024, 720, true, false)]
+    [InlineData("420x640 POPUP keep 30s", 420, 640, true, true)]
+    [InlineData("keep 800x600", 800, 600, false, true)]
+    public void A_window_is_of_the_usual_kind_unless_it_asks_to_be_one_above_the_tray(
+        string text, int width, int height, bool aboveTray, bool keep)
+    {
+        Assert.True(WebViewOptions.TryParseWindow(text, out var window));
+
+        Assert.Equal(new Size(width, height), window.Size);
+        Assert.Equal(aboveTray, window.AboveTray);
+        Assert.Equal(keep, window.KeepLoaded);
+    }
+
+    [Theory]
+    [InlineData(1024, 720, false, false, 0, "1024x720")]
+    [InlineData(420, 640, true, true, 30, "420x640 popup keep 30s")]
+    [InlineData(800, 600, false, true, 0, "800x600 keep")]
+    [InlineData(800, 600, true, false, 86400, "800x600 popup 86400s")]
+    public void What_the_fields_of_the_editor_say_is_kept_as_the_list_shows_it_and_read_back_the_same(
+        int width, int height, bool aboveTray, bool keep, int seconds, string text)
+    {
+        var window = new PopupWindowOptions(
+            new Size(width, height), keep, seconds == 0 ? null : TimeSpan.FromSeconds(seconds), aboveTray);
+
+        Assert.Equal(text, WebViewOptions.Format(window));
+        Assert.True(WebViewOptions.TryParseWindow(text, out var read));
+        Assert.Equal(window, read);
+    }
+
+    [Theory]
+    [InlineData("keep keep")]
+    [InlineData("popup popup")]
+    [InlineData("popups")]
+    [InlineData("30s 5m")]
+    [InlineData("0s")]
+    [InlineData("25h")]
+    [InlineData("99999999s")]
+    [InlineData("30")]             // a number alone is neither a size nor a time
+    [InlineData("30x")]
+    [InlineData("kept")]
+    [InlineData("100x100 keep")]   // a size under the minimum
+    [InlineData("800x600 600x400")]
+    [InlineData("s")]
+    public void What_cannot_be_read_is_refused_whole(string text)
+    {
+        Assert.False(WebViewOptions.TryParseWindow(text, out var window));
+        Assert.Equal(new PopupWindowOptions(WebViewOptions.DefaultWindowSize, KeepLoaded: false, CloseAfter: null), window);
+    }
+
+    [Theory]
+    // there is one, it keeps its page, to be kept now, same address, same size
+    [InlineData(false, false, false, false, false, nameof(PopupReuse.Create))]
+    [InlineData(false, true, true, true, true, nameof(PopupReuse.Create))]
+    [InlineData(true, true, true, true, true, nameof(PopupReuse.ShowAgain))]
+    [InlineData(true, false, false, true, true, nameof(PopupReuse.Replace))]   // a camera: fresh every time
+    [InlineData(true, true, false, true, true, nameof(PopupReuse.Replace))]    // keeping was switched off
+    [InlineData(true, false, true, true, true, nameof(PopupReuse.Replace))]    // keeping was switched on: the old one cannot be hidden
+    [InlineData(true, true, true, false, true, nameof(PopupReuse.Replace))]    // another address
+    [InlineData(true, true, true, true, false, nameof(PopupReuse.Replace))]    // another size
+    public void A_window_comes_back_as_it_was_only_while_it_is_asked_for_the_same_way(
+        bool thereIsOne, bool itKeepsItsPage, bool keepNow, bool sameAddress, bool sameSize, string expected)
+    {
+        Assert.Equal(expected, PopupWindows.Decide(thereIsOne, itKeepsItsPage, keepNow, sameAddress, sameSize).ToString());
+    }
+
+    [Theory]
+    // its command is there, it keeps its page, asked the same way
+    [InlineData(true, false, true, true)]
+    [InlineData(true, false, false, true)]     // no kept page: the next press makes it anew anyway
+    [InlineData(true, true, true, true)]
+    [InlineData(true, true, false, false)]     // a kept page for another address, size or time
+    [InlineData(false, false, true, false)]    // the command was removed
+    [InlineData(false, true, true, false)]
+    public void Saving_the_settings_lets_go_what_is_no_longer_asked_for(
+        bool commandIsThere, bool itKeepsItsPage, bool askedTheSameWay, bool stays)
+    {
+        Assert.Equal(stays, PopupWindows.StaysAfterSave(commandIsThere, itKeepsItsPage, askedTheSameWay));
+    }
+
+    private static readonly PopupWindowRequest Pressed = new(
+        "custom_1", "Doorbell camera", "http://homeassistant.local:8123/lovelace/camera",
+        new PopupWindowOptions(new Size(800, 600), KeepLoaded: false, CloseAfter: null));
+
+    private static CustomCommandDefinition Saved(Action<CustomCommandDefinition>? change = null)
+    {
+        var command = new CustomCommandDefinition
+        {
+            Id = "custom_1", Name = "Front door", Type = CustomCommandTypes.WebView,
+            Command = "http://homeassistant.local:8123/lovelace/door", Arguments = "420x640 popup keep 30s"
+        };
+        change?.Invoke(command);
+        return command;
+    }
+
+    [Fact]
+    public void A_press_that_met_no_save_is_taken_as_it_came()
+    {
+        // Also when the list does not have the command: the editor tries one that is not saved yet.
+        Assert.Equal(Pressed, PopupWindows.StillAskedFor(Pressed, settingsAreAsTheyWere: true, []));
+        Assert.Equal(Pressed, PopupWindows.StillAskedFor(Pressed, settingsAreAsTheyWere: true, [Saved()]));
+    }
+
+    [Fact]
+    public void A_press_that_waited_across_a_save_opens_the_command_as_it_is_now()
+    {
+        var current = PopupWindows.StillAskedFor(Pressed, settingsAreAsTheyWere: false, [Saved()]);
+
+        Assert.Equal(
+            new PopupWindowRequest(
+                "custom_1", "Front door", "http://homeassistant.local:8123/lovelace/door",
+                new PopupWindowOptions(new Size(420, 640), KeepLoaded: true, CloseAfter: TimeSpan.FromSeconds(30), AboveTray: true)),
+            current);
+    }
+
+    [Fact]
+    public void A_press_that_waited_across_a_save_opens_nothing_for_a_command_that_is_gone()
+    {
+        Assert.Null(PopupWindows.StillAskedFor(Pressed, settingsAreAsTheyWere: false, []));
+        Assert.Null(PopupWindows.StillAskedFor(Pressed, false, [Saved(command => command.Id = "custom_2")]));
+        Assert.Null(PopupWindows.StillAskedFor(Pressed, false, [Saved(command => command.Enabled = false)]));
+        Assert.Null(PopupWindows.StillAskedFor(Pressed, false, [Saved(command => command.TrayApp = false)]));
+        Assert.Null(PopupWindows.StillAskedFor(Pressed, false, [Saved(command => command.Type = CustomCommandTypes.Url)]));
+        Assert.Null(PopupWindows.StillAskedFor(Pressed, false, [Saved(command => command.Command = "file:///C:/x.html")]));
+        Assert.Null(PopupWindows.StillAskedFor(Pressed, false, [Saved(command => command.Arguments = "800x600 forever")]));
+    }
+
+    private static readonly (string Id, string Name)[] Open =
+    [
+        ("custom_1", "Doorbell camera"),
+        ("custom_2", "Player"),
+        ("custom_3", "player ")
+    ];
+
+    [Theory]
+    [InlineData("*")]
+    [InlineData(" * ")]
+    [InlineData("")]
+    [InlineData(null)]
+    public void A_close_that_names_no_command_is_for_every_window(string? target)
+    {
+        Assert.True(PopupWindows.IsForEveryWindow(target));
+        Assert.Equal(["custom_1", "custom_2", "custom_3"], PopupWindows.Targets(Open, target));
+    }
+
+    [Fact]
+    public void A_close_finds_its_windows_by_the_name_of_the_command_or_its_id()
+    {
+        Assert.Equal(["custom_1"], PopupWindows.Targets(Open, "doorbell CAMERA"));
+        Assert.Equal(["custom_1"], PopupWindows.Targets(Open, " Doorbell camera "));
+        Assert.Equal(["custom_2", "custom_3"], PopupWindows.Targets(Open, "Player"));
+        Assert.Equal(["custom_3"], PopupWindows.Targets(Open, "CUSTOM_3"));
+    }
+
+    [Fact]
+    public void A_close_for_a_command_that_has_no_window_closes_nothing()
+    {
+        Assert.False(PopupWindows.IsForEveryWindow("Garage"));
+        Assert.Empty(PopupWindows.Targets(Open, "Garage"));
+        Assert.Empty(PopupWindows.Targets([], "*"));
+    }
+
+    [Fact]
+    public async Task A_popup_window_command_hands_over_what_its_window_is_like()
+    {
+        PopupWindowRequest? asked = null;
+        SystemCommandService.WebViewHandler = request =>
+        {
+            asked = request;
+            return true;
+        };
+
+        var result = await SystemCommandService.ExecuteCustomCommandAsync(new CustomCommandDefinition
+        {
+            Id = "custom_7",
+            Name = "Player",
+            Type = CustomCommandTypes.WebView,
+            Command = "http://homeassistant.local:8123/lovelace/player",
+            Arguments = "900x500 keep 10m"
+        });
+
+        Assert.Equal(CustomCommandOutcome.Done, result.Outcome);
+        Assert.Equal(
+            new PopupWindowRequest(
+                "custom_7", "Player", "http://homeassistant.local:8123/lovelace/player",
+                new PopupWindowOptions(new Size(900, 500), KeepLoaded: true, CloseAfter: TimeSpan.FromMinutes(10))),
+            asked);
+    }
+
+    [Fact]
+    public async Task A_popup_window_command_with_an_unreadable_window_opens_nothing()
+    {
+        var asked = false;
+        SystemCommandService.WebViewHandler = _ => asked = true;
+
+        var result = await SystemCommandService.ExecuteCustomCommandAsync(new CustomCommandDefinition
+        {
+            Type = CustomCommandTypes.WebView,
+            Command = "http://homeassistant.local:8123",
+            Arguments = "800x600 forever"
+        });
+
+        Assert.Equal(CustomCommandOutcome.InvalidSize, result.Outcome);
+        Assert.Equal("800x600 forever", result.Detail);
+        Assert.False(asked);
+    }
+
+    [Fact]
+    public async Task A_close_command_hands_over_whose_window_it_is_for()
+    {
+        string? target = null;
+        SystemCommandService.WebViewCloseHandler = name =>
+        {
+            target = name;
+            return true;
+        };
+        var command = new CustomCommandDefinition { Type = CustomCommandTypes.WebViewClose, Command = "Doorbell camera" };
+
+        var result = await SystemCommandService.ExecuteCustomCommandAsync(command);
+
+        Assert.Equal(CustomCommandOutcome.Done, result.Outcome);
+        Assert.Equal("Doorbell camera", target);
+    }
+
+    [Fact]
+    public async Task Without_the_tray_app_there_is_no_window_to_open_or_close()
+    {
+        var open = new CustomCommandDefinition { Type = CustomCommandTypes.WebView, Command = "http://homeassistant.local:8123" };
+        var close = new CustomCommandDefinition { Type = CustomCommandTypes.WebViewClose, Command = "*" };
+
+        Assert.Equal(CustomCommandOutcome.NotStarted, (await SystemCommandService.ExecuteCustomCommandAsync(open)).Outcome);
+        Assert.Equal(CustomCommandOutcome.NotStarted, (await SystemCommandService.ExecuteCustomCommandAsync(close)).Outcome);
+    }
+
+    [Fact]
+    public void Closing_a_window_is_for_the_tray_app_only_like_opening_one()
+    {
+        var close = new CustomCommandDefinition { Type = "WebView_Close", Command = "*", Service = true };
+
+        Assert.True(close.IsWebViewClose);
+        Assert.True(close.NeedsUserSession);
+        Assert.Equal(CustomCommandTypes.WebViewClose, CustomCommandTypes.Normalize("WEBVIEW_CLOSE"));
+        Assert.True(CustomCommandTypes.NeedsUserSession(CustomCommandTypes.WebViewClose));
+        Assert.All(
+            CustomCommandTypes.InOrder,
+            type => Assert.Equal(
+                new CustomCommandDefinition { Type = type }.NeedsUserSession, CustomCommandTypes.NeedsUserSession(type)));
+    }
+
+    [Fact]
+    public void Every_type_is_offered_once_and_has_its_texts()
+    {
+        Assert.Equal(CustomCommandTypes.All.Count, CustomCommandTypes.InOrder.Count);
+        Assert.Equal(CustomCommandTypes.All.Order(), CustomCommandTypes.InOrder.Order());
+
+        using var stream = typeof(Strings).Assembly.GetManifestResourceStream("lang.en.json")!;
+        using var document = JsonDocument.Parse(stream);
+        var english = document.RootElement.GetProperty("strings");
+        Assert.All(CustomCommandTypes.InOrder, type =>
+        {
+            Assert.True(english.TryGetProperty($"CmdType.{type}", out _), $"CmdType.{type}");
+            Assert.True(english.TryGetProperty($"CmdField.{type}", out _), $"CmdField.{type}");
+            Assert.True(english.TryGetProperty($"CmdHint.{type}", out _), $"CmdHint.{type}");
+        });
+    }
+}
