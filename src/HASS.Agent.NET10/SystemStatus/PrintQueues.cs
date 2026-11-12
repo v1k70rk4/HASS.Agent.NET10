@@ -138,11 +138,11 @@ internal static class PrintQueues
         using var asking = WindowsIdentity.GetCurrent();
         if (!asking.IsSystem)
         {
-            // The tray app: the spooler answers for its user.
-            var (ownPrinters, ownJobs) = PrintSpooler.Read(MaximumJobsListed);
-            // Windows' own answer first: with "let Windows manage my default printer" on, the
-            // registry may not hold it.
-            return Compose(ownPrinters, ownJobs, PrintSpooler.DefaultPrinter() ?? DefaultPrinterOf(asking.User?.Value));
+            // The tray app: the spooler answers for its user. Windows' own answer for the
+            // default first: with "let Windows manage my default printer" on, the registry
+            // may not hold it.
+            var (ownPrinters, ownJobs, ownDefault) = PrintSpooler.Read(MaximumJobsListed, asUser: null);
+            return Compose(ownPrinters, ownJobs, ownDefault ?? DefaultPrinterOf(asking.User?.Value));
         }
 
         // The service. SYSTEM has printers of its own view and a default printer of its own;
@@ -150,16 +150,12 @@ internal static class PrintQueues
         using var token = SystemMetricsService.LoggedInUserSessionId() is { } session ? PrintSpooler.UserTokenOf(session) : null;
         if (token is null)
         {
-            var (installed, waiting) = PrintSpooler.Read(MaximumJobsListed);
+            var (installed, waiting, _) = PrintSpooler.Read(MaximumJobsListed, asUser: null);
             return Compose(installed, waiting, defaultPrinter: null);
         }
 
         using var user = new WindowsIdentity(token.DangerousGetHandle());
-        var (printers, jobs, asked) = WindowsIdentity.RunImpersonated(token, () =>
-        {
-            var (found, waiting) = PrintSpooler.Read(MaximumJobsListed);
-            return (found, waiting, PrintSpooler.DefaultPrinter());
-        });
+        var (printers, jobs, asked) = PrintSpooler.Read(MaximumJobsListed, user);
 
         // The user's registry first: what Windows answers a thread that only borrows a user's
         // rights depends on whose part of the registry it takes for the current user.

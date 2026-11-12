@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Runtime.InteropServices;
+using System.Security.Principal;
 using Microsoft.Win32.SafeHandles;
 
 namespace HASS.Agent.Companion.SystemStatus;
@@ -19,45 +20,72 @@ internal static class PrintSpooler
     /// <summary>The spooler could not say anything about this printer (its server does not answer, or it is just being removed).</summary>
     internal const long StatusUnknown = 0x800000;
 
+    // Each printer is asked on its own, all of them at once: a printer on a print server that
+    // does not answer is reported as one whose state is not known after this long, and the
+    // others as they are. Well within the deadline of the whole read.
+    private static readonly PrinterAsks Asks = new(TimeSpan.FromSeconds(8));
+
     /// <summary>
-    /// The printers installed on the PC and the ones this account connected from a print
-    /// server, with the first <paramref name="maximumJobs"/> jobs found in their queues. A
-    /// printer that cannot be asked is still listed, as one whose state is not known: one
-    /// print server that is away must not hide the other printers.
+    /// The printers installed on the PC and the ones the account connected from a print
+    /// server, with the first <paramref name="maximumJobs"/> jobs found in their queues, and
+    /// the account's default printer as Windows answers it. The account is the one asking,
+    /// or <paramref name="asUser"/>, whose rights are borrowed for every question: the service
+    /// asks for the user who is logged in. A printer that cannot be asked, or does not answer
+    /// in time, is still listed, as one whose state is not known: one print server that is
+    /// away must not hide the other printers.
     /// </summary>
-    public static (List<PrinterRow> Printers, List<PrintJobRow> Jobs) Read(int maximumJobs)
+    public static (List<PrinterRow> Printers, List<PrintJobRow> Jobs, string? DefaultPrinter) Read(int maximumJobs, WindowsIdentity? asUser)
     {
-        var printers = new List<PrinterRow>();
-        var jobs = new List<PrintJobRow>();
-        foreach (var name in PrinterNames())
+        // The names and the default are the spooler's own lists, which no printer is asked for.
+        var (names, defaultPrinter) = asUser is null
+            ? (PrinterNames(), DefaultPrinter())
+            : WindowsIdentity.RunImpersonated(asUser.AccessToken, () => (PrinterNames(), DefaultPrinter()));
+
+        var (printers, jobs) = Asks.Collect(names, name => Question(name, maximumJobs, asUser), maximumJobs);
+        return (printers, jobs, defaultPrinter);
+    }
+
+    // The question to one printer, to run on a thread of its own. With a user, that thread
+    // gets a copy of the user's token, taken now while the caller still holds it: the
+    // question may outlive the read that asked it.
+    private static Func<PrinterAnswer> Question(string name, int maximumJobs, WindowsIdentity? asUser)
+    {
+        if (asUser is null)
         {
-            if (!OpenPrinter(name, out var printer, IntPtr.Zero))
-            {
-                printers.Add(new PrinterRow(name, WorkOffline: false, StatusUnknown, Jobs: 0));
-                continue;
-            }
-
-            try
-            {
-                if (InfoOf(printer) is not { } info)
-                {
-                    printers.Add(new PrinterRow(name, WorkOffline: false, StatusUnknown, Jobs: 0));
-                    continue;
-                }
-
-                printers.Add(new PrinterRow(name, (info.Attributes & AttributeWorkOffline) != 0, info.Status, (int)Math.Min(info.Jobs, int.MaxValue)));
-                if (info.Jobs > 0 && jobs.Count < maximumJobs)
-                {
-                    jobs.AddRange(JobsOf(printer, name, maximumJobs - jobs.Count));
-                }
-            }
-            finally
-            {
-                ClosePrinter(printer);
-            }
+            return () => Ask(name, maximumJobs);
         }
 
-        return (printers, jobs);
+        var copy = new WindowsIdentity(asUser.AccessToken.DangerousGetHandle());
+        return () =>
+        {
+            using (copy)
+            {
+                return WindowsIdentity.RunImpersonated(copy.AccessToken, () => Ask(name, maximumJobs));
+            }
+        };
+    }
+
+    private static PrinterAnswer Ask(string name, int maximumJobs)
+    {
+        if (!OpenPrinter(name, out var printer, IntPtr.Zero))
+        {
+            return new PrinterAnswer(PrinterAsks.Unknown(name), []);
+        }
+
+        try
+        {
+            if (InfoOf(printer) is not { } info)
+            {
+                return new PrinterAnswer(PrinterAsks.Unknown(name), []);
+            }
+
+            var row = new PrinterRow(name, (info.Attributes & AttributeWorkOffline) != 0, info.Status, (int)Math.Min(info.Jobs, int.MaxValue));
+            return new PrinterAnswer(row, info.Jobs > 0 ? JobsOf(printer, name, maximumJobs) : []);
+        }
+        finally
+        {
+            ClosePrinter(printer);
+        }
     }
 
     /// <summary>The names alone, which the spooler has at hand without asking any printer.</summary>
