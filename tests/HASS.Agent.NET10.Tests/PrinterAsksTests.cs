@@ -89,4 +89,92 @@ public sealed class PrinterAsksTests
         }, TimeSpan.FromSeconds(30)));
         Assert.Equal(2, asked[@"\\away\Office"]);
     }
+
+    // A read waits for its deadline on the thread that asks. In these two tests that is a
+    // thread of its own: a test that waits on a thread of the pool keeps it from the tests
+    // that run beside it, and one of those gives the pool a fifth of a second to start a task.
+    private static Task OffThePool(Action test) =>
+        Task.Factory.StartNew(test, TestContext.Current.CancellationToken, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+
+    [Fact]
+    public Task Many_printers_that_hang_take_no_thread_of_the_pool_and_the_read_still_ends_by_its_deadline() => OffThePool(() =>
+    {
+        // More of them than the pool has threads ready: on threads of the pool they would
+        // take them all, and the end of the deadline, which needs one, would wait behind
+        // them for as long as the pool takes to make that many more.
+        ThreadPool.GetMinThreads(out var ready, out _);
+        var count = ready + 40;
+        var asks = new PrinterAsks(TimeSpan.FromSeconds(1), mostAtOnce: count);
+        using var release = new ManualResetEventSlim();
+        var onThePool = 0;
+        var names = Enumerable.Range(1, count).Select(number => $@"\\away\Queue {number}").ToList();
+
+        try
+        {
+            var watch = Stopwatch.StartNew();
+            var (printers, _) = asks.Collect(
+                names,
+                name => () =>
+                {
+                    if (Thread.CurrentThread.IsThreadPoolThread)
+                    {
+                        Interlocked.Increment(ref onThePool);
+                    }
+
+                    release.Wait(TimeSpan.FromSeconds(60));
+                    return Answers(name)();
+                },
+                maximumJobs: 20);
+
+            Assert.InRange(watch.ElapsedMilliseconds, 0, 6_000);
+            Assert.Equal(count, printers.Count);
+            Assert.All(printers, printer => Assert.Equal(PrintSpooler.StatusUnknown, printer.State));
+            Assert.Equal(0, Volatile.Read(ref onThePool));
+        }
+        finally
+        {
+            release.Set();
+        }
+    });
+
+    [Fact]
+    public Task No_more_questions_are_out_at_once_than_the_most_whatever_the_printers_are_called() => OffThePool(() =>
+    {
+        var asks = new PrinterAsks(TimeSpan.FromMilliseconds(300), mostAtOnce: 3);
+        using var release = new ManualResetEventSlim();
+        var asked = new System.Collections.Concurrent.ConcurrentBag<string>();
+        Func<PrinterAnswer> Prepare(string name) => () =>
+        {
+            asked.Add(name);
+            release.Wait(TimeSpan.FromSeconds(60));
+            return Answers(name)();
+        };
+
+        try
+        {
+            // Five that hang: three are asked, and all five are listed as not known.
+            var (printers, _) = asks.Collect(["A", "B", "C", "D", "E"], Prepare, maximumJobs: 20);
+            Assert.Equal(["A", "B", "C", "D", "E"], printers.Select(printer => printer.Name));
+            Assert.All(printers, printer => Assert.Equal(PrintSpooler.StatusUnknown, printer.State));
+            Assert.Equal(["A", "B", "C"], asked.Order());
+
+            // Printers under other names while those three still hang: there is no room for
+            // them, and the three threads stay three.
+            (printers, _) = asks.Collect(["F", "G"], Prepare, maximumJobs: 20);
+            Assert.Equal(["F", "G"], printers.Select(printer => printer.Name));
+            Assert.All(printers, printer => Assert.Equal(PrintSpooler.StatusUnknown, printer.State));
+            Assert.Equal(3, asked.Count);
+        }
+        finally
+        {
+            release.Set();
+        }
+
+        // Once the three have answered there is room again, also for the ones left out before.
+        Assert.True(SpinWait.SpinUntil(() =>
+        {
+            var (again, _) = asks.Collect(["D", "E", "F"], Prepare, maximumJobs: 20);
+            return again.All(printer => printer.State == 0);
+        }, TimeSpan.FromSeconds(30)));
+    });
 }

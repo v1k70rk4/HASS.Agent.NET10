@@ -29,8 +29,13 @@ internal sealed record PrinterRow(string Name, bool WorkOffline, long State, int
 /// <summary>What the spooler says about a print job.</summary>
 internal sealed record PrintJobRow(string Printer, string Document, string Owner, long StatusMask, int TotalPages);
 
-/// <summary>The printers by name, and the jobs in their queues; <see cref="JobCount"/> is every job, the list the first few.</summary>
-internal sealed record PrintQueueSnapshot(IReadOnlyList<PrinterInfo> Printers, IReadOnlyList<PrintJobInfo> Jobs, int JobCount)
+/// <summary>
+/// The printers by name, and the jobs in their queues; <see cref="JobCount"/> is every job of
+/// the printers listed, the list of jobs the first few. <see cref="PrinterCount"/> is every
+/// printer there is, which is more than the ones listed only on a PC with more of them than
+/// are asked (<see cref="PrintSpooler.MostPrinters"/>).
+/// </summary>
+internal sealed record PrintQueueSnapshot(IReadOnlyList<PrinterInfo> Printers, IReadOnlyList<PrintJobInfo> Jobs, int JobCount, int PrinterCount)
 {
     public PrinterInfo? DefaultPrinter => Printers.FirstOrDefault(printer => printer.Default);
 
@@ -43,7 +48,7 @@ internal sealed record PrintQueueSnapshot(IReadOnlyList<PrinterInfo> Printers, I
     {
         ["default_printer"] = DefaultPrinter?.Name,
         ["default_printer_jobs"] = DefaultPrinter?.Jobs,
-        ["printer_count"] = Printers.Count,
+        ["printer_count"] = PrinterCount,
         ["printers"] = Printers.Select(AttributesOf).ToList(),
         ["jobs"] = Jobs
     };
@@ -141,8 +146,8 @@ internal static class PrintQueues
             // The tray app: the spooler answers for its user. Windows' own answer for the
             // default first: with "let Windows manage my default printer" on, the registry
             // may not hold it.
-            var (ownPrinters, ownJobs, ownDefault) = PrintSpooler.Read(MaximumJobsListed, asUser: null);
-            return Compose(ownPrinters, ownJobs, ownDefault ?? DefaultPrinterOf(asking.User?.Value));
+            var (ownPrinters, ownJobs, ownDefault, ownCount) = PrintSpooler.Read(MaximumJobsListed, asUser: null);
+            return Compose(ownPrinters, ownJobs, ownDefault ?? DefaultPrinterOf(asking.User?.Value), ownCount);
         }
 
         // The service. SYSTEM has printers of its own view and a default printer of its own;
@@ -150,16 +155,17 @@ internal static class PrintQueues
         using var token = SystemMetricsService.LoggedInUserSessionId() is { } session ? PrintSpooler.UserTokenOf(session) : null;
         if (token is null)
         {
-            var (installed, waiting, _) = PrintSpooler.Read(MaximumJobsListed, asUser: null);
-            return Compose(installed, waiting, defaultPrinter: null);
+            var (installed, waiting, _, installedCount) = PrintSpooler.Read(MaximumJobsListed, asUser: null);
+            return Compose(installed, waiting, defaultPrinter: null, installedCount);
         }
 
         using var user = new WindowsIdentity(token.DangerousGetHandle());
-        var (printers, jobs, asked) = PrintSpooler.Read(MaximumJobsListed, user);
 
         // The user's registry first: what Windows answers a thread that only borrows a user's
         // rights depends on whose part of the registry it takes for the current user.
-        return Compose(printers, jobs, DefaultPrinterOf(user.User?.Value) ?? asked);
+        var kept = DefaultPrinterOf(user.User?.Value);
+        var (printers, jobs, asked, count) = PrintSpooler.Read(MaximumJobsListed, user, defaultFirst: kept);
+        return Compose(printers, jobs, kept ?? asked, count);
     }
 
     /// <summary>
@@ -209,7 +215,8 @@ internal static class PrintQueues
 
         try
         {
-            _printerCount = PrintSpooler.PrinterNames().Count;
+            // No more than are reported: an index past that has no printer behind it.
+            _printerCount = Math.Min(PrintSpooler.PrinterNames().Count, PrintSpooler.MostPrinters);
         }
         catch
         {
@@ -228,8 +235,11 @@ internal static class PrintQueues
     /// long as none is added before it, with the user's default marked by its name; and the
     /// jobs in the order the spooler gave them, which is the order they print in. The number
     /// of jobs is what the spooler counts in each queue, the list only the first few of them.
+    /// <paramref name="printerCount"/> is how many printers there are in all, where that is
+    /// more than the ones listed (<see cref="PrintSpooler.MostPrinters"/>).
     /// </summary>
-    internal static PrintQueueSnapshot Compose(IReadOnlyList<PrinterRow> printers, IReadOnlyList<PrintJobRow> jobs, string? defaultPrinter)
+    internal static PrintQueueSnapshot Compose(
+        IReadOnlyList<PrinterRow> printers, IReadOnlyList<PrintJobRow> jobs, string? defaultPrinter, int? printerCount = null)
     {
         var listed = printers
             .Where(printer => printer.Name.Length > 0)
@@ -253,7 +263,8 @@ internal static class PrintQueues
                 .Take(MaximumJobsListed)
                 .Select(job => new PrintJobInfo(Limit(job.Printer), Limit(job.Document), Limit(job.Owner), JobStatus(job.StatusMask), Math.Max(0, job.TotalPages)))
                 .ToList(),
-            listed.Sum(printer => printer.Jobs));
+            listed.Sum(printer => printer.Jobs),
+            Math.Max(listed.Count, printerCount ?? 0));
     }
 
     /// <summary>

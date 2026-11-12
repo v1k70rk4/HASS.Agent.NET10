@@ -26,24 +26,51 @@ internal static class PrintSpooler
     private static readonly PrinterAsks Asks = new(TimeSpan.FromSeconds(8));
 
     /// <summary>
+    /// How many printers are asked and reported. Far more than a PC has; but which printers
+    /// there are is the user's to say, and the service asks them with a thread for each and
+    /// reports every one with all its state flags.
+    /// </summary>
+    internal const int MostPrinters = 64;
+
+    /// <summary>
     /// The printers installed on the PC and the ones the account connected from a print
     /// server, with the first <paramref name="maximumJobs"/> jobs found in their queues, and
     /// the account's default printer as Windows answers it. The account is the one asking,
     /// or <paramref name="asUser"/>, whose rights are borrowed for every question: the service
     /// asks for the user who is logged in. A printer that cannot be asked, or does not answer
     /// in time, is still listed, as one whose state is not known: one print server that is
-    /// away must not hide the other printers.
+    /// away must not hide the other printers. Of more than <see cref="MostPrinters"/> printers
+    /// the first that many are asked and listed (<see cref="TheOnesAsked"/>); how many there
+    /// are in all is given beside them.
     /// </summary>
-    public static (List<PrinterRow> Printers, List<PrintJobRow> Jobs, string? DefaultPrinter) Read(int maximumJobs, WindowsIdentity? asUser)
+    /// <param name="defaultFirst">
+    /// The default printer where the caller knows it better than the spooler's answer to
+    /// this thread (the service, from the user's registry): the one that is asked in any case.
+    /// </param>
+    public static (List<PrinterRow> Printers, List<PrintJobRow> Jobs, string? DefaultPrinter, int PrinterCount) Read(
+        int maximumJobs, WindowsIdentity? asUser, string? defaultFirst = null)
     {
         // The names and the default are the spooler's own lists, which no printer is asked for.
         var (names, defaultPrinter) = asUser is null
             ? (PrinterNames(), DefaultPrinter())
             : WindowsIdentity.RunImpersonated(asUser.AccessToken, () => (PrinterNames(), DefaultPrinter()));
 
-        var (printers, jobs) = Asks.Collect(names, name => Question(name, maximumJobs, asUser), maximumJobs);
-        return (printers, jobs, defaultPrinter);
+        var (printers, jobs) = Asks.Collect(
+            TheOnesAsked(names, defaultFirst ?? defaultPrinter, MostPrinters),
+            name => Question(name, maximumJobs, asUser),
+            maximumJobs);
+        return (printers, jobs, defaultPrinter, names.Count);
     }
+
+    /// <summary>
+    /// Which printers are asked when there are more than are asked at all: the default
+    /// printer, then the others in the order the spooler lists them.
+    /// </summary>
+    internal static List<string> TheOnesAsked(IReadOnlyList<string> names, string? defaultPrinter, int most) =>
+        names
+            .OrderBy(name => !string.Equals(name, defaultPrinter, StringComparison.OrdinalIgnoreCase))
+            .Take(most)
+            .ToList();
 
     // The question to one printer, to run on a thread of its own. With a user, that thread
     // gets a copy of the user's token, taken now while the caller still holds it: the

@@ -76,6 +76,32 @@ public sealed class PrintQueueTests
         Assert.Equal(50, PrintQueues.Compose(busy, [], defaultPrinter: null).JobCount);
     }
 
+    [Fact]
+    public void Of_more_printers_than_are_asked_the_default_and_the_first_ones_are_asked_and_the_count_is_all_of_them()
+    {
+        var names = Enumerable.Range(1, 100).Select(number => $@"\\server\Queue {number}").ToList();
+
+        // The default printer first, whatever its place and however it is written, then the
+        // others in the order the spooler lists them.
+        var asked = PrintSpooler.TheOnesAsked(names, @"\\SERVER\queue 90", PrintSpooler.MostPrinters);
+        Assert.Equal(PrintSpooler.MostPrinters, asked.Count);
+        Assert.Equal(@"\\server\Queue 90", asked[0]);
+        Assert.Equal(names.Take(PrintSpooler.MostPrinters - 1), asked.Skip(1));
+
+        // No default, or one that is not among them: the first ones as they are.
+        Assert.Equal(names.Take(3), PrintSpooler.TheOnesAsked(names, defaultPrinter: null, most: 3));
+        Assert.Equal(names.Take(3), PrintSpooler.TheOnesAsked(names, "Gone", most: 3));
+
+        // Fewer than are asked: every one of them, in the spooler's order.
+        Assert.Equal(names.Take(5), PrintSpooler.TheOnesAsked(names.Take(5).ToList(), defaultPrinter: null, PrintSpooler.MostPrinters));
+
+        // The count is of every printer there is; the list has the ones that were asked.
+        var queues = PrintQueues.Compose(Printers, Jobs, defaultPrinter: null, printerCount: 100);
+        Assert.Equal(3, queues.Printers.Count);
+        Assert.Equal(100, queues.Attributes()["printer_count"]);
+        Assert.Equal(3, PrintQueues.Compose(Printers, Jobs, defaultPrinter: null).Attributes()["printer_count"]);
+    }
+
     [Theory]
     [InlineData(0L, "idle")]
     [InlineData(0x400L, "printing")]
