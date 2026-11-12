@@ -297,6 +297,18 @@ internal static class BuiltInSensorCatalog
         : null;
 
     /// <summary>
+    /// Where the sensors the Attributes button makes are read: where the sensor itself is
+    /// ticked, so they come from the same read and the same account as the value they belong
+    /// to. For a sensor that is not ticked at all, wherever it can be read.
+    /// </summary>
+    internal static (bool TrayApp, bool Service) AttributeSensorRoles(BuiltInSensorDefinition definition, bool trayTicked, bool serviceTicked)
+    {
+        var tray = trayTicked && definition.SupportsTrayApp;
+        var service = serviceTicked && definition.SupportsService;
+        return tray || service ? (tray, service) : (definition.SupportsTrayApp, definition.SupportsService);
+    }
+
+    /// <summary>
     /// The list the editor offers to type from: the suggested paths, then the _mb twin of every
     /// _gb one, since those are still published. The Attributes button does not use these, or it
     /// would make two sensors of every memory value.

@@ -1785,14 +1785,19 @@ internal sealed class MainForm : Form
                 return;
             }
 
+            var sensorRow = _builtInGrid.Rows[e.RowIndex];
+            var roles = BuiltInSensorCatalog.AttributeSensorRoles(
+                definition,
+                Convert.ToBoolean(sensorRow.Cells["TrayApp"].Value ?? false),
+                Convert.ToBoolean(sensorRow.Cells["Service"].Value ?? false));
             var rowIndexes = new List<int>();
             foreach (var attributePath in BuiltInSensorCatalog.SuggestedAttributePaths(definition))
             {
                 rowIndexes.Add(AddCustomSensorRow(new CustomSensorDefinition
                 {
                     Enabled = true,
-                    TrayApp = definition.SupportsTrayApp,
-                    Service = definition.SupportsService,
+                    TrayApp = roles.TrayApp,
+                    Service = roles.Service,
                     Type = CustomSensorTypes.BuiltInAttribute,
                     // This becomes the entity name in Home Assistant, so it follows that language,
                     // like the built-in sensor names do.

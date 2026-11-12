@@ -895,6 +895,9 @@ internal sealed class SystemMetricsService : IDisposable
     // only over Remote Desktop the console shows the sign-in screen with nobody in it
     // ("connected", no user), so then the active session with a user is taken, and failing
     // that one that was disconnected without signing out.
+    /// <summary>The account (DOMAIN\user) of the session that stands for the PC, or empty when nobody is logged in.</summary>
+    internal static string LoggedInUserAccount() => ReadSessionStatus().User;
+
     private static (string State, string User) ReadSessionStatus()
     {
         var consoleId = WTSGetActiveConsoleSessionId();

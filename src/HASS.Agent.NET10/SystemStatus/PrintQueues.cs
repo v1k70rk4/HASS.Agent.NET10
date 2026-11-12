@@ -1,5 +1,7 @@
 using System.Management;
+using System.Security.Principal;
 using System.Text.Json.Serialization;
+using Microsoft.Win32;
 
 namespace HASS.Agent.Companion.SystemStatus;
 
@@ -69,9 +71,12 @@ internal sealed record PrintQueueSnapshot(IReadOnlyList<PrinterInfo> Printers, I
 /// The print queues of the PC: which printers there are, what state they are in and what waits
 /// in them. A job stays in its queue while the printer is switched off, which is what lets
 /// Home Assistant switch a printer on when something is sent to it. Read from Windows' own
-/// tables (Win32_Printer, Win32_PrintJob), which the spooler fills; anyone may read them. The
-/// service, which runs as SYSTEM, sees the printers installed on the PC, but not a user's own
-/// network printers or which one that user made the default: the tray app sees those.
+/// tables (Win32_Printer, Win32_PrintJob), which the spooler fills; anyone may read them.
+/// The tray app and the service publish to one topic, so both have to give the same answer.
+/// Which printer is the default is each account's own choice, and SYSTEM has one too: the
+/// service reports the default printer of the user who is logged in, not its own. What still
+/// differs are the printers a user connected from a print server, which are that user's own
+/// and are not there for the service.
 /// </summary>
 internal static class PrintQueues
 {
@@ -141,6 +146,11 @@ internal static class PrintQueues
                 (int)Number(item["PrinterStatus"]),
                 Number(item["PrinterState"])))
             .ToList();
+        if (AsksAsSystem())
+        {
+            printers = WithDefault(printers, DefaultPrinterOfTheLoggedInUser());
+        }
+
         var jobs = Query("SELECT Name, Document, Owner, StatusMask, TotalPages FROM Win32_PrintJob")
             .Select(item => new PrintJobRow(
                 Text(item["Name"]),
@@ -150,6 +160,68 @@ internal static class PrintQueues
                 (int)Math.Min(Number(item["TotalPages"]), int.MaxValue)))
             .ToList();
         return Compose(printers, jobs);
+    }
+
+    /// <summary>
+    /// The printers with the default one marked by its name, whatever Windows said of each:
+    /// for the service, which is told SYSTEM's default. Without a name, none is the default.
+    /// </summary>
+    internal static List<PrinterRow> WithDefault(IReadOnlyList<PrinterRow> printers, string? defaultPrinter) =>
+        printers
+            .Select(printer => printer with
+            {
+                Default = !string.IsNullOrEmpty(defaultPrinter) && string.Equals(printer.Name, defaultPrinter, StringComparison.OrdinalIgnoreCase)
+            })
+            .ToList();
+
+    /// <summary>
+    /// The name in the text Windows keeps a user's default printer as: "name,winspool,port".
+    /// A printer's name cannot have a comma in it.
+    /// </summary>
+    internal static string? PrinterOfDevice(string? device)
+    {
+        var name = device?.Split(',')[0].Trim();
+        return string.IsNullOrEmpty(name) ? null : name;
+    }
+
+    /// <summary>
+    /// The default printer of the user with this SID, from that user's part of the registry,
+    /// which is there while the user is logged in. Null when it is not, or says nothing.
+    /// </summary>
+    internal static string? DefaultPrinterOf(string sid)
+    {
+        try
+        {
+            using var key = Registry.Users.OpenSubKey($@"{sid}\Software\Microsoft\Windows NT\CurrentVersion\Windows");
+            return PrinterOfDevice(key?.GetValue("Device") as string);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    // The user of the session that stands for the PC, the one the tray app would report for.
+    private static string? DefaultPrinterOfTheLoggedInUser()
+    {
+        try
+        {
+            var account = SystemMetricsService.LoggedInUserAccount();
+            return account.Length == 0
+                ? null
+                : DefaultPrinterOf(new NTAccount(account).Translate(typeof(SecurityIdentifier)).Value);
+        }
+        catch
+        {
+            // An account Windows cannot look up just now: no default, rather than SYSTEM's.
+            return null;
+        }
+    }
+
+    private static bool AsksAsSystem()
+    {
+        using var identity = WindowsIdentity.GetCurrent();
+        return identity.IsSystem;
     }
 
     /// <summary>

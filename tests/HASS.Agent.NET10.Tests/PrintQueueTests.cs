@@ -203,6 +203,68 @@ public sealed class PrintQueueTests
     }
 
     [Fact]
+    public void The_service_reports_the_default_printer_of_the_user_not_its_own()
+    {
+        // What Windows tells SYSTEM: its own default, Print to PDF. The user's is the Brother.
+        PrinterRow[] asSystem =
+        [
+            new("Brother HL-L2350DW", Default: false, WorkOffline: false, PrinterStatus: 3, PrinterState: 0),
+            new("Microsoft Print to PDF", Default: true, WorkOffline: false, PrinterStatus: 3, PrinterState: 0)
+        ];
+
+        var forTheUser = PrintQueues.Compose(PrintQueues.WithDefault(asSystem, "brother hl-l2350dw"), Jobs);
+        Assert.Equal("Brother HL-L2350DW", forTheUser.DefaultPrinter?.Name);
+        Assert.Equal(2, forTheUser.Attributes()["default_printer_jobs"]);
+        Assert.Single(forTheUser.Printers, printer => printer.Default);
+
+        // Nobody logged in, or a default that is not among the printers the service sees: none,
+        // rather than SYSTEM's.
+        Assert.Null(PrintQueues.Compose(PrintQueues.WithDefault(asSystem, null), []).DefaultPrinter);
+        Assert.Null(PrintQueues.Compose(PrintQueues.WithDefault(asSystem, ""), []).DefaultPrinter);
+        Assert.Null(PrintQueues.Compose(PrintQueues.WithDefault(asSystem, @"\\server\Office"), []).DefaultPrinter);
+    }
+
+    [Theory]
+    [InlineData("KX DRIVER for Universal Printing,winspool,LPT1:", "KX DRIVER for Universal Printing")]
+    [InlineData("Microsoft Print to PDF,winspool,Ne00:", "Microsoft Print to PDF")]
+    [InlineData(@"\\server\Office,winspool,Ne03:", @"\\server\Office")]
+    [InlineData(" Brother ,winspool,USB001", "Brother")]
+    [InlineData("Brother", "Brother")]
+    [InlineData(",winspool,Ne00:", null)]
+    [InlineData("", null)]
+    [InlineData(null, null)]
+    public void The_default_printer_is_the_name_in_front_of_what_Windows_keeps(string? device, string? printer)
+    {
+        Assert.Equal(printer, PrintQueues.PrinterOfDevice(device));
+    }
+
+    [Theory]
+    // the sensor is ticked for: tray, service -> its attribute sensors: tray, service
+    [InlineData(true, false, true, false)]
+    [InlineData(false, true, false, true)]
+    [InlineData(true, true, true, true)]
+    [InlineData(false, false, true, true)]     // not ticked at all: wherever it can be read
+    public void The_sensors_the_attributes_button_makes_are_read_where_the_sensor_is(
+        bool trayTicked, bool serviceTicked, bool tray, bool service)
+    {
+        var printJobs = BuiltInSensorCatalog.Find("print_jobs")!;
+
+        Assert.Equal((tray, service), BuiltInSensorCatalog.AttributeSensorRoles(printJobs, trayTicked, serviceTicked));
+    }
+
+    [Fact]
+    public void A_role_that_cannot_read_a_sensor_does_not_get_its_attribute_sensors()
+    {
+        // Drive health is the service's, the active displays are the tray app's, whatever is ticked.
+        var driveHealth = BuiltInSensorCatalog.Find("drive_health")!;
+        var displays = BuiltInSensorCatalog.Find("active_display")!;
+
+        Assert.Equal((false, true), BuiltInSensorCatalog.AttributeSensorRoles(driveHealth, trayTicked: true, serviceTicked: true));
+        Assert.Equal((false, true), BuiltInSensorCatalog.AttributeSensorRoles(driveHealth, trayTicked: true, serviceTicked: false));
+        Assert.Equal((true, false), BuiltInSensorCatalog.AttributeSensorRoles(displays, trayTicked: false, serviceTicked: true));
+    }
+
+    [Fact]
     public void A_printer_sensor_that_was_never_read_still_gets_a_path_for_every_printer()
     {
         // What the Attributes button falls back on right after the sensor is ticked: the
@@ -315,6 +377,16 @@ public sealed class PrintQueueTests
         // The settings window is asked for the printers' attributes before the sensor was ever
         // read; the count it falls back on is the one the sensor then finds.
         Assert.Equal(queues.Printers.Count, PrintQueues.PrinterCount());
+
+        // The default printer Windows names for this user is the one in the user's own part of
+        // the registry, where the service looks it up for whoever is logged in.
+        if (queues.DefaultPrinter is { } byWindows)
+        {
+            using var identity = System.Security.Principal.WindowsIdentity.GetCurrent();
+            Assert.Equal(byWindows.Name, PrintQueues.DefaultPrinterOf(identity.User!.Value));
+        }
+
+        Assert.Null(PrintQueues.DefaultPrinterOf("S-1-5-21-1-2-3-4"));
 
         Assert.NotNull(message.PrintJobs);
         Assert.True(message.Attributes.ContainsKey("print_jobs"));
