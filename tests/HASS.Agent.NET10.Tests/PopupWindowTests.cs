@@ -67,6 +67,22 @@ public sealed class PopupWindowTests : IDisposable
     }
 
     [Theory]
+    [InlineData(1024, 720, false, false, 0, "1024x720")]
+    [InlineData(420, 640, true, true, 30, "420x640 popup keep 30s")]
+    [InlineData(800, 600, false, true, 0, "800x600 keep")]
+    [InlineData(800, 600, true, false, 86400, "800x600 popup 86400s")]
+    public void What_the_fields_of_the_editor_say_is_kept_as_the_list_shows_it_and_read_back_the_same(
+        int width, int height, bool aboveTray, bool keep, int seconds, string text)
+    {
+        var window = new PopupWindowOptions(
+            new Size(width, height), keep, seconds == 0 ? null : TimeSpan.FromSeconds(seconds), aboveTray);
+
+        Assert.Equal(text, WebViewOptions.Format(window));
+        Assert.True(WebViewOptions.TryParseWindow(text, out var read));
+        Assert.Equal(window, read);
+    }
+
+    [Theory]
     [InlineData("keep keep")]
     [InlineData("popup popup")]
     [InlineData("popups")]

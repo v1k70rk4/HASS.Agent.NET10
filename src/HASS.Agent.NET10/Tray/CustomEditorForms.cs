@@ -97,19 +97,28 @@ internal abstract class CustomEditorForm : Form
     /// <summary>Places the result line and the buttons below the last field row.</summary>
     protected void FinishLayout(int y)
     {
-        ResultLabel.Location = Pt(LabelX, y);
-        ResultLabel.Size = Sz(FormWidth - LabelX * 2, 40);
         ResultLabel.ForeColor = TextMuted;
         ResultLabel.Font = new Font("Segoe UI", 9F);
         Controls.Add(ResultLabel);
+        Controls.Add(TestButton);
+        Controls.Add(_okButton);
+        Controls.Add(_cancelButton);
+        PlaceFooter(y);
+    }
+
+    /// <summary>
+    /// Moves the result line and the buttons below the last field row and makes the dialog as
+    /// tall as that: for an editor whose rows depend on what is chosen in it.
+    /// </summary>
+    protected void PlaceFooter(int y)
+    {
+        ResultLabel.Location = Pt(LabelX, y);
+        ResultLabel.Size = Sz(FormWidth - LabelX * 2, 40);
 
         var buttonY = y + 48;
         TestButton.Location = Pt(LabelX, buttonY);
         _cancelButton.Location = Pt(FormWidth - LabelX - 90, buttonY);
         _okButton.Location = Pt(FormWidth - LabelX - 90 - 8 - 90, buttonY);
-        Controls.Add(TestButton);
-        Controls.Add(_okButton);
-        Controls.Add(_cancelButton);
 
         ClientSize = Sz(FormWidth, buttonY + 32 + 18);
     }
@@ -248,6 +257,18 @@ internal sealed class CustomCommandEditorForm : CustomEditorForm
     private readonly Button _browse;
     private readonly Label _argumentsLabel;
     private readonly TextBox _arguments;
+    private readonly int _argumentsY;
+
+    // The window of a Popup window command: fields of its own, kept in the command's
+    // arguments as WebViewOptions.Format writes them.
+    private readonly NumericUpDown _windowWidth;
+    private readonly NumericUpDown _windowHeight;
+    private readonly CheckBox _windowPopup;
+    private readonly CheckBox _windowKeep;
+    private readonly NumericUpDown _closeAfter;
+    private readonly List<Control> _windowControls = [];
+
+    private readonly Label _whereLabel;
     private readonly CheckBox _enabled;
     private readonly CheckBox _trayApp;
     private readonly CheckBox _service;
@@ -263,8 +284,8 @@ internal sealed class CustomCommandEditorForm : CustomEditorForm
         _type = AddOptionBox(y, CustomCommandTypes.InOrder.Select(type => new Option(type, S($"CmdType.{type}"))));
 
         y += RowHeight;
-        // Six lines: what a Popup window command can say about its window takes that many.
-        const int hintHeight = 108;
+        // Five lines: the longest hint, in the languages that say more than English, takes that many.
+        const int hintHeight = 92;
         _hint = AddHint(y, hintHeight);
 
         y += hintHeight + 12;
@@ -290,18 +311,48 @@ internal sealed class CustomCommandEditorForm : CustomEditorForm
         Controls.Add(_browse);
 
         y += RowHeight;
+        _argumentsY = y;
         _argumentsLabel = AddLabel(S("Cap.ArgumentsColumn"), y);
         _arguments = AddTextBox(y);
 
-        y += RowHeight + 4;
-        AddLabel(S("Editor.Where"), y);
+        // For a Popup window command, in the place of the arguments and on two rows more.
+        _windowWidth = AddNumber(FieldX, y, WebViewOptions.MinimumEdge, WebViewOptions.MaximumEdge);
+        AddNote("×", FieldX + 88, y);
+        _windowHeight = AddNumber(FieldX + 108, y, WebViewOptions.MinimumEdge, WebViewOptions.MaximumEdge);
+
+        _windowControls.Add(AddLabel(S("Editor.Window"), y + RowHeight));
+        _windowPopup = new CheckBox { Text = S("Editor.WindowPopup"), Location = Pt(FieldX, y + RowHeight), Size = Sz(212, 24), ForeColor = TextBody };
+        _windowKeep = new CheckBox { Text = S("Editor.WindowKeep"), Location = Pt(FieldX + 216, y + RowHeight), Size = Sz(214, 24), ForeColor = TextBody };
+        Controls.Add(_windowPopup);
+        Controls.Add(_windowKeep);
+        _windowControls.Add(_windowPopup);
+        _windowControls.Add(_windowKeep);
+
+        _windowControls.Add(AddLabel(S("Editor.WindowCloseAfter"), y + RowHeight * 2));
+        _closeAfter = AddNumber(FieldX, y + RowHeight * 2, 0, (int)WebViewOptions.LongestCloseAfter.TotalSeconds);
+        AddNote(S("Editor.WindowCloseAfterUnit"), FieldX + 88, y + RowHeight * 2);
+
+        // Where these rows and the buttons are depends on the type: ApplyType places them.
+        _whereLabel = AddLabel(S("Editor.Where"), y);
         (_enabled, _trayApp, _service) = AddRoleBoxes(y);
 
         FinishLayout(y + RowHeight);
 
+        var isWindow = string.Equals(command.Type, CustomCommandTypes.WebView, StringComparison.OrdinalIgnoreCase);
+        if (!isWindow || !WebViewOptions.TryParseWindow(command.Arguments, out var window))
+        {
+            window = new PopupWindowOptions(WebViewOptions.DefaultWindowSize, KeepLoaded: false, CloseAfter: null);
+        }
+
+        _windowWidth.Value = window.Size.Width;
+        _windowHeight.Value = window.Size.Height;
+        _windowPopup.Checked = window.AboveTray;
+        _windowKeep.Checked = window.KeepLoaded;
+        _closeAfter.Value = (decimal)Math.Clamp((window.CloseAfter ?? TimeSpan.Zero).TotalSeconds, 0, (double)_closeAfter.Maximum);
+
         _name.Text = command.Name;
         _command.Text = command.Command;
-        _arguments.Text = command.Arguments;
+        _arguments.Text = isWindow ? string.Empty : command.Arguments;
         _enabled.Checked = command.Enabled;
         _trayApp.Checked = command.TrayApp;
         _service.Checked = command.Service;
@@ -313,6 +364,28 @@ internal sealed class CustomCommandEditorForm : CustomEditorForm
 
     public CustomCommandDefinition Result { get; private set; } = new();
 
+    private NumericUpDown AddNumber(int x, int y, int minimum, int maximum)
+    {
+        var box = new NumericUpDown { Location = Pt(x, y), Size = Sz(80, 26), Minimum = minimum, Maximum = maximum };
+        Controls.Add(box);
+        _windowControls.Add(box);
+        return box;
+    }
+
+    private void AddNote(string text, int x, int y)
+    {
+        var note = new Label { Text = text, Location = Pt(x, y + 4), AutoSize = true, ForeColor = TextMuted };
+        Controls.Add(note);
+        _windowControls.Add(note);
+    }
+
+    /// <summary>What the fields say about the window of a Popup window command.</summary>
+    private PopupWindowOptions WindowFromFields() => new(
+        new Size((int)_windowWidth.Value, (int)_windowHeight.Value),
+        _windowKeep.Checked,
+        _closeAfter.Value > 0 ? TimeSpan.FromSeconds((double)_closeAfter.Value) : null,
+        _windowPopup.Checked);
+
     private void ApplyType()
     {
         var type = SelectedKey(_type);
@@ -323,10 +396,21 @@ internal sealed class CustomCommandEditorForm : CustomEditorForm
         _commandLabel.Text = S($"CmdField.{type}");
         _browse.Visible = canBrowse;
         _command.Width = D(canBrowse ? FieldWidth - 98 : FieldWidth);
-        _argumentsLabel.Text = type == CustomCommandTypes.WebView ? S("Editor.Window") : S("Cap.ArgumentsColumn");
+        var isWindow = type == CustomCommandTypes.WebView;
+        _argumentsLabel.Text = isWindow ? S("Editor.WindowSize") : S("Cap.ArgumentsColumn");
         _argumentsLabel.Visible = HasArguments(type);
-        _arguments.Visible = HasArguments(type);
-        _arguments.PlaceholderText = type == CustomCommandTypes.WebView ? "1024x720 popup keep 30s" : string.Empty;
+        _arguments.Visible = HasArguments(type) && !isWindow;
+        foreach (var control in _windowControls)
+        {
+            control.Visible = isWindow;
+        }
+
+        // The window takes three rows where the arguments take one.
+        var whereY = _argumentsY + RowHeight * (isWindow ? 3 : 1) + 4;
+        _whereLabel.Top = D(whereY + 4);
+        _enabled.Top = _trayApp.Top = _service.Top = D(whereY);
+        PlaceFooter(whereY + RowHeight);
+
         _command.PlaceholderText = type == CustomCommandTypes.WebViewClose ? WebViewOptions.EveryWindow : string.Empty;
 
         // Keys, addresses and windows act on the user's desktop; the service cannot run them.
@@ -372,7 +456,9 @@ internal sealed class CustomCommandEditorForm : CustomEditorForm
             Type = type,
             Name = string.IsNullOrWhiteSpace(_name.Text) ? command : _name.Text.Trim(),
             Command = command,
-            Arguments = HasArguments(type) ? _arguments.Text.Trim() : string.Empty,
+            Arguments = type == CustomCommandTypes.WebView ? WebViewOptions.Format(WindowFromFields())
+                : HasArguments(type) ? _arguments.Text.Trim()
+                : string.Empty,
             Enabled = _enabled.Checked,
             TrayApp = _trayApp.Checked,
             Service = !needsUserSession && _service.Checked

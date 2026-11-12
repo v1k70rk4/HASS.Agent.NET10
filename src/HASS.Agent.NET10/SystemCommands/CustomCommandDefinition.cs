@@ -197,6 +197,31 @@ internal static class WebViewOptions
         return true;
     }
 
+    /// <summary>
+    /// What <see cref="TryParseWindow"/> reads, written out: how the fields of the editor are
+    /// kept in the command, and what the list shows for them.
+    /// </summary>
+    public static string Format(PopupWindowOptions options)
+    {
+        var parts = new List<string> { $"{options.Size.Width}x{options.Size.Height}" };
+        if (options.AboveTray)
+        {
+            parts.Add(PopupWord);
+        }
+
+        if (options.KeepLoaded)
+        {
+            parts.Add(KeepWord);
+        }
+
+        if (options.CloseAfter is { } after)
+        {
+            parts.Add(((long)after.TotalSeconds).ToString(System.Globalization.CultureInfo.InvariantCulture) + "s");
+        }
+
+        return string.Join(' ', parts);
+    }
+
     /// <summary>"1024x720" (also with *, × or a space in between).</summary>
     public static bool TryParseSize(string text, out Size size)
     {

@@ -19,7 +19,7 @@ Beyond the built-in commands, you can define your own on the **Capabilities** pa
 | **PowerShell 7 (pwsh)** | Same as PowerShell, run with `pwsh.exe` | Same as PowerShell |
 | **Key press** | One or more key combinations, separated by spaces or commas (e.g. `win+r`, `ctrl+shift+esc`, `ctrl+c ctrl+v`); the full-width `，`, `、`, space and `＋` of a Chinese or Japanese input method work too | Not used |
 | **Open address** | A link to open in the default browser (e.g. `https://example.com`), or an app link such as `ms-settings:display` | Not used |
-| **Popup window (WebView)** | A web address (`http://` or `https://`) to show in a window of its own | What the window is like, each part optional: a size, `popup`, `keep`, a time to close after, e.g. `1024x720 keep 30s`; see [Popup windows](#popup-windows) |
+| **Popup window (WebView)** | A web address (`http://` or `https://`) to show in a window of its own | The editor has fields of its own for the window: its size, popup, keep loaded, closing time; see [Popup windows](#popup-windows) |
 | **Close popup windows** | The name of a **Popup window** command, to close its window, or `*` for every popup window | Not used |
 
 - **Program** commands launch via the shell, so GUI apps show in your session; PowerShell runs hidden with `-NoProfile -ExecutionPolicy Bypass`.
@@ -34,18 +34,20 @@ A **Popup window** command has one window. Pressed again while its window is ope
 
 A window asked for from Home Assistant comes over the other windows, and leaves the keyboard with the program you are typing into. Before 10.13.1 it opened behind the program in front.
 
-The **Window** field takes up to four things, in any order, each of them optional:
+The editor has four fields for the window:
 
-| Part | Example | What it does |
-|------|---------|--------------|
-| A size | `1024x720` | Width and height, 200 to 4000 each way. `1024x720` when left out. |
-| `popup` | `popup` | A window like the [dashboard popup](../features/dashboard-popup.md): no frame, above the tray, over every other window. It goes away at a click elsewhere once you have clicked into it, after its time, or with a Close popup windows command. Without the word it is an ordinary window in the middle of the screen. |
-| `keep` | `keep` | The page stays loaded when the window is closed: closing only hides it, and the next press shows it at once and as it was. For a page that takes long to load and has nothing live to restart, such as a player or a dashboard. It keeps the memory of a browser tab until the app exits. |
-| A time | `30s`, `5m`, `1h` | The window closes by itself this long after it was shown, from one second to 24 hours. With `keep` it is hidden instead. |
+| Field | In the list | What it does |
+|-------|-------------|--------------|
+| **Window size** | `1024x720` | Width and height, 200 to 4000 each way. |
+| **Popup above the tray** | `popup` | A window like the [dashboard popup](../features/dashboard-popup.md): no frame, above the tray, over every other window. It goes away at a click elsewhere once you have clicked into it, after its time, or with a Close popup windows command. Without the tick it is an ordinary window in the middle of the screen. |
+| **Keep the page loaded** | `keep` | The page stays loaded when the window is closed: closing only hides it, and the next press shows it at once and as it was. For a page that takes long to load and has nothing live to restart, such as a player or a dashboard. It keeps the memory of a browser tab until the app exits. |
+| **Closes after** | `30s` | The window closes by itself this many seconds after it was shown, up to 24 hours; 0 leaves it open. A window that keeps its page is hidden instead. |
+
+The list shows the four in short in its **Arguments** column, for example `800x600 popup keep 30s`, and they can be typed there the same way: in any order, each of them optional, the time also in minutes or hours (`5m`, `1h`).
 
 A **Close popup windows** command closes them from Home Assistant, as their own X would. Its field takes the name of the Popup window command whose window is to go, as it stands in the list, or `*` for all of them and the [dashboard popup](../features/dashboard-popup.md). When there is nothing open, nothing happens. Both need 10.13.1 or newer.
 
-Saving the settings tidies up: the window of a command that was removed or switched off is closed, and so is a kept one whose command now has another address or another **Window** field. A command that was renamed is found by its new name.
+Saving the settings tidies up: the window of a command that was removed or switched off is closed, and so is a kept one whose command now has another address or another window. A command that was renamed is found by its new name.
 
 ## Key names
 
@@ -59,8 +61,8 @@ A camera when the doorbell rings, as a popup window:
 
 ```text
 Type: Popup window (WebView)
-Command: https://homeassistant.local:8123/lovelace/doorbell?kiosk
-Arguments: 800x600
+Address: https://homeassistant.local:8123/lovelace/doorbell?kiosk
+Window size: 800 × 600
 ```
 
 The doorbell automation then presses the button:
@@ -72,7 +74,7 @@ actions:
       entity_id: button.my_pc_doorbell_camera
 ```
 
-To have the window go by itself after a minute, write `800x600 60s` as the arguments. To close it when the door is opened, add a second command and press its button from that automation:
+To have the window go by itself after a minute, set **Closes after** to 60. To close it when the door is opened, add a second command and press its button from that automation:
 
 ```text
 Type: Close popup windows

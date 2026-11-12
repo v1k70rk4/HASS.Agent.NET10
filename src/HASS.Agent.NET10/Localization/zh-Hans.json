@@ -14,7 +14,11 @@
       "CmdHint.webview_close",
       "Editor.Window",
       "Editor.InvalidWindow",
-      "Cap.WebViewKeep"
+      "Cap.WebViewKeep",
+      "Editor.WindowPopup",
+      "Editor.WindowKeep",
+      "Editor.WindowCloseAfter",
+      "Editor.WindowCloseAfterUnit"
     ]
   },
   "strings": {
@@ -256,7 +260,12 @@
     "CmdField.webview_close": "Popup window",
     "CmdHint.webview_close": "Closes the window of a Popup window command: write the name of that command, or * for every popup window and the dashboard popup. A window that keeps its page loaded is only hidden. Tray app only.\nExample: Doorbell camera   or   *",
     "Editor.Window": "Window",
-    "Editor.InvalidWindow": "The window looks like 1024x720 popup keep 30s, each part optional: a size (200 to 4000 each way), popup, keep, and a time to close after (1s to 24h).",
+    "Editor.WindowSize": "窗口大小",
+    "Editor.WindowPopup": "Popup above the tray",
+    "Editor.WindowKeep": "Keep the page loaded",
+    "Editor.WindowCloseAfter": "Closes after",
+    "Editor.WindowCloseAfterUnit": "seconds (0: it stays open)",
+    "Editor.InvalidWindow": "What the list says about this window cannot be read: open the command and set its window there. In the list it looks like 1024x720 popup keep 30s.",
     "Editor.InvalidWebAddress": "网址需要包含协议头，请以 http:// 或 https:// 开头",
     "Cap.WebView": "仪表盘弹窗",
     "Cap.WebViewHelp": "在托盘上方弹出一个小窗口用于显示HomeAssistant仪表盘，点击其他区域时，窗口会自动关闭。",
