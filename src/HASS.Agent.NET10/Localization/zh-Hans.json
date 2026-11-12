@@ -18,7 +18,12 @@
       "Editor.WindowPopup",
       "Editor.WindowKeep",
       "Editor.WindowCloseAfter",
-      "Editor.WindowCloseAfterUnit"
+      "Editor.WindowCloseAfterUnit",
+      "Sensor.print_jobs",
+      "Attribute.default_printer",
+      "Attribute.default_printer_jobs",
+      "Attribute.jobs",
+      "Attribute.status"
     ]
   },
   "strings": {
@@ -431,6 +436,10 @@
     "Attribute.free_percent": "可用(%)",
     "Attribute.temperature": "温度",
     "Attribute.health": "健康度",
+    "Attribute.default_printer": "Default printer",
+    "Attribute.default_printer_jobs": "Default printer jobs",
+    "Attribute.jobs": "Jobs",
+    "Attribute.status": "Status",
     "Attribute.temperature_max": "最高温度",
     "Attribute.power_on_hours": "通电时间",
     "Attribute.bus": "总线类型",
@@ -614,6 +623,7 @@
     "Sensor.gpu_usage": "GPU使用率",
     "Sensor.drive_health": "硬盘健康度",
     "Sensor.drive_space": "磁盘空间",
+    "Sensor.print_jobs": "Print jobs",
     "Sensor.boot_time": "开机时间",
     "Sensor.battery_time_remaining": "电池剩余可用时间",
     "Sensor.vpn_connected": "VPN连接状态",

@@ -69,7 +69,12 @@
       "Editor.WindowPopup",
       "Editor.WindowKeep",
       "Editor.WindowCloseAfter",
-      "Editor.WindowCloseAfterUnit"
+      "Editor.WindowCloseAfterUnit",
+      "Sensor.print_jobs",
+      "Attribute.default_printer",
+      "Attribute.default_printer_jobs",
+      "Attribute.jobs",
+      "Attribute.status"
     ]
   },
   "strings": {
@@ -482,6 +487,10 @@
     "Attribute.free_percent": "Свободно (%)",
     "Attribute.temperature": "Температура",
     "Attribute.health": "Состояние",
+    "Attribute.default_printer": "Default printer",
+    "Attribute.default_printer_jobs": "Default printer jobs",
+    "Attribute.jobs": "Jobs",
+    "Attribute.status": "Status",
     "Attribute.temperature_max": "Максимальная температура",
     "Attribute.power_on_hours": "Наработка (часы)",
     "Attribute.bus": "Шина",
@@ -665,6 +674,7 @@
     "Sensor.gpu_usage": "Загрузка видеокарты",
     "Sensor.drive_health": "Состояние диска",
     "Sensor.drive_space": "Место на дисках",
+    "Sensor.print_jobs": "Print jobs",
     "Sensor.boot_time": "Время загрузки",
     "Sensor.battery_time_remaining": "Оставшееся время работы от батареи",
     "Sensor.vpn_connected": "VPN подключён",

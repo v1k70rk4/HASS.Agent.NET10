@@ -92,7 +92,12 @@
       "Editor.WindowPopup",
       "Editor.WindowKeep",
       "Editor.WindowCloseAfter",
-      "Editor.WindowCloseAfterUnit"
+      "Editor.WindowCloseAfterUnit",
+      "Sensor.print_jobs",
+      "Attribute.default_printer",
+      "Attribute.default_printer_jobs",
+      "Attribute.jobs",
+      "Attribute.status"
     ]
   },
   "strings": {
@@ -505,6 +510,10 @@
     "Attribute.free_percent": "Frei (%)",
     "Attribute.temperature": "Temperatur",
     "Attribute.health": "Zustand",
+    "Attribute.default_printer": "Default printer",
+    "Attribute.default_printer_jobs": "Default printer jobs",
+    "Attribute.jobs": "Jobs",
+    "Attribute.status": "Status",
     "Attribute.temperature_max": "Höchste Temperatur",
     "Attribute.power_on_hours": "Betriebsstunden",
     "Attribute.bus": "Bus",
@@ -688,6 +697,7 @@
     "Sensor.gpu_usage": "GPU-Auslastung",
     "Sensor.drive_health": "Laufwerkszustand",
     "Sensor.drive_space": "Laufwerksspeicher",
+    "Sensor.print_jobs": "Print jobs",
     "Sensor.boot_time": "Startzeitpunkt",
     "Sensor.battery_time_remaining": "Verbleibende Akkulaufzeit",
     "Sensor.vpn_connected": "VPN verbunden",
