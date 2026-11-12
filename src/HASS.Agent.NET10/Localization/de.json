@@ -93,7 +93,11 @@
       "Editor.WindowKeep",
       "Editor.WindowCloseAfter",
       "Editor.WindowCloseAfterUnit",
-      "Sensor.print_jobs"
+      "Sensor.print_jobs",
+      "Attribute.default_printer",
+      "Attribute.default_printer_jobs",
+      "Attribute.jobs",
+      "Attribute.status"
     ]
   },
   "strings": {
@@ -506,6 +510,10 @@
     "Attribute.free_percent": "Frei (%)",
     "Attribute.temperature": "Temperatur",
     "Attribute.health": "Zustand",
+    "Attribute.default_printer": "Default printer",
+    "Attribute.default_printer_jobs": "Default printer jobs",
+    "Attribute.jobs": "Jobs",
+    "Attribute.status": "Status",
     "Attribute.temperature_max": "Höchste Temperatur",
     "Attribute.power_on_hours": "Betriebsstunden",
     "Attribute.bus": "Bus",

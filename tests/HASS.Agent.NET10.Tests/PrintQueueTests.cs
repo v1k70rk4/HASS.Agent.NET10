@@ -183,6 +183,18 @@ public sealed class PrintQueueTests
         Assert.DoesNotContain(button, path => path.EndsWith(".paper_out", StringComparison.Ordinal));
         Assert.DoesNotContain(button, path => path.StartsWith("print_jobs.jobs", StringComparison.Ordinal));
 
+        // What the button makes a sensor of has a name in the language of Home Assistant.
+        using (var stream = typeof(HASS.Agent.Companion.Localization.Strings).Assembly.GetManifestResourceStream("lang.en.json")!)
+        using (var document = JsonDocument.Parse(stream))
+        {
+            var english = document.RootElement.GetProperty("strings");
+            Assert.All(sensor.AttributePaths!, path =>
+            {
+                var name = System.Text.RegularExpressions.Regex.Replace(path[(path.LastIndexOf('.') + 1)..], @"\[\d+\]", string.Empty);
+                Assert.True(english.TryGetProperty($"Attribute.{name}", out _), name);
+            });
+        }
+
         var editor = BuiltInSensorCatalog.EditorAttributePaths(sensor);
         Assert.All(button, path => Assert.Contains(path, editor));
         Assert.All(PrintQueues.StateFlags, flag => Assert.Contains($"print_jobs.printers[0].{flag.Name}", editor));
@@ -212,6 +224,10 @@ public sealed class PrintQueueTests
         using var log = new FileLog(Path.Combine(Path.GetTempPath(), "hass-agent-tests.log"));
         using var metrics = new SystemMetricsService(log, null);
         var message = metrics.Read(builtInSensors: [new BuiltInSensorSetting { Key = "print_jobs", TrayApp = true }]);
+
+        // The settings window is asked for the printers' attributes before the sensor was ever
+        // read; the count it falls back on is the one the sensor then finds.
+        Assert.Equal(queues.Printers.Count, PrintQueues.PrinterCount());
 
         Assert.NotNull(message.PrintJobs);
         Assert.True(message.Attributes.ContainsKey("print_jobs"));

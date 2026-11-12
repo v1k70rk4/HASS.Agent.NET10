@@ -143,6 +143,35 @@ internal static class PrintQueues
     }
 
     /// <summary>
+    /// How many printers this user has, without reading the queues: for the attribute list in
+    /// the settings window, which is asked for the printers' attributes right after the sensor
+    /// is ticked, before it was ever read. Null when Windows does not say. Counted at most
+    /// once a minute.
+    /// </summary>
+    public static int? PrinterCount()
+    {
+        if (Environment.TickCount64 - _printerCountAtTicks < 60_000)
+        {
+            return _printerCount;
+        }
+
+        try
+        {
+            _printerCount = System.Drawing.Printing.PrinterSettings.InstalledPrinters.Count;
+        }
+        catch
+        {
+            _printerCount = null;
+        }
+
+        _printerCountAtTicks = Environment.TickCount64;
+        return _printerCount;
+    }
+
+    private static int? _printerCount;
+    private static long _printerCountAtTicks = long.MinValue / 2;
+
+    /// <summary>
     /// The printers in the order of their names, so that an index stays on a printer for as
     /// long as none is added before it, each with the number of jobs in its queue; and the
     /// jobs in the order Windows gave them, which is the order they print in.
