@@ -12,6 +12,9 @@ namespace HASS.Agent.Companion.Tests;
 /// </summary>
 public sealed class PopupWindowTests : IDisposable
 {
+    // The two handlers belong to the whole process. No other test sets them or runs a popup
+    // window command, and the tests of one class never run at the same time, so clearing them
+    // here takes nothing from anyone.
     public void Dispose()
     {
         SystemCommandService.WebViewHandler = null;
@@ -81,6 +84,20 @@ public sealed class PopupWindowTests : IDisposable
         bool thereIsOne, bool itKeepsItsPage, bool keepNow, bool sameAddress, bool sameSize, string expected)
     {
         Assert.Equal(expected, PopupWindows.Decide(thereIsOne, itKeepsItsPage, keepNow, sameAddress, sameSize).ToString());
+    }
+
+    [Theory]
+    // its command is there, it keeps its page, asked the same way
+    [InlineData(true, false, true, true)]
+    [InlineData(true, false, false, true)]     // no kept page: the next press makes it anew anyway
+    [InlineData(true, true, true, true)]
+    [InlineData(true, true, false, false)]     // a kept page for another address, size or time
+    [InlineData(false, false, true, false)]    // the command was removed
+    [InlineData(false, true, true, false)]
+    public void Saving_the_settings_lets_go_what_is_no_longer_asked_for(
+        bool commandIsThere, bool itKeepsItsPage, bool askedTheSameWay, bool stays)
+    {
+        Assert.Equal(stays, PopupWindows.StaysAfterSave(commandIsThere, itKeepsItsPage, askedTheSameWay));
     }
 
     private static readonly (string Id, string Name)[] Open =

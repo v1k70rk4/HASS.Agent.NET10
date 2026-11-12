@@ -9,7 +9,9 @@ namespace HASS.Agent.Companion.Tests;
 /// <summary>
 /// The popup windows as Windows shows them: what closing, hiding, the time set for a window
 /// and a second press really do to a window. They put small empty windows on the screen for a
-/// few seconds, so they run only when asked for: set HASS_AGENT_WINDOW_TESTS=1.
+/// few seconds, so they run only when asked for: set HASS_AGENT_WINDOW_TESTS=1. No other
+/// test makes such a window, and these run one after the other, so every window of the kind
+/// that is open belongs to the test that is running.
 /// </summary>
 public sealed class PopupWindowOnScreenTests
 {
@@ -168,16 +170,81 @@ public sealed class PopupWindowOnScreenTests
             Pump(200);
             Assert.Same(dashboard, Assert.Single(Windows()));
 
-            // The same settings saved again leave it alone.
-            popups.SettingsChanged(Blank, Small, keepLoaded: true);
-            Pump(200);
+            // The same settings saved again leave it alone, and so does "Open now", which has
+            // a popup of its own.
+            popups.SettingsChanged(Blank, Small, keepLoaded: true, []);
+            popups.ShowPreview(Blank, new Size(400, 300));
+            Pump(300);
             Assert.False(dashboard.IsDisposed);
+            Assert.InRange(Windows().Count, 1, 2);
+            popups.ShowPreview(Blank, new Size(400, 300));
+            Pump(300);
+            Assert.False(dashboard.IsDisposed);
+            Assert.InRange(Windows().Count, 1, 2);
 
             // Another size, or the tick cleared, lets the page go at once.
-            popups.SettingsChanged(Blank, new Size(400, 300), keepLoaded: true);
+            popups.SettingsChanged(Blank, new Size(400, 300), keepLoaded: true, []);
             Pump(300);
             Assert.True(dashboard.IsDisposed);
+
+            popups.Dispose();
+            Pump(300);
             Assert.Empty(Windows());
+        });
+    }
+
+    [Fact]
+    public void Saving_the_settings_sorts_out_the_windows_of_the_commands()
+    {
+        OnAWindowThread(log =>
+        {
+            using var popups = new PopupWindows(log);
+            CustomCommandDefinition Command(string id, string name, string window) => new()
+            {
+                Id = id, Name = name, Type = CustomCommandTypes.WebView, Command = Blank, Arguments = window
+            };
+            PopupWindowRequest Press(CustomCommandDefinition command)
+            {
+                Assert.True(WebViewOptions.TryParseWindow(command.Arguments, out var options));
+                return new PopupWindowRequest(command.Id, command.Name, command.Command, options);
+            }
+
+            var camera = Command("custom_1", "Doorbell camera", "320x240");
+            var player = Command("custom_2", "Player", "320x240 keep");
+            var radio = Command("custom_3", "Radio", "320x240 keep");
+            var gone = Command("custom_4", "Gone", "320x240 keep");
+            foreach (var command in new[] { camera, player, radio, gone })
+            {
+                popups.ShowForCommand(Press(command));
+            }
+
+            Pump(400);
+            Assert.Equal(4, Windows().Count);
+            Assert.Equal(3, popups.Close("player") + popups.Close("radio") + popups.Close("gone"));
+            Pump(200);
+
+            // The camera is as it was, the player has a new name, the radio no longer keeps its
+            // page, and the fourth command is not there any more.
+            player.Name = "Music";
+            radio.Arguments = "320x240";
+            popups.SettingsChanged(Blank, Small, keepLoaded: false, [camera, player, radio]);
+            Pump(400);
+
+            Assert.Equal(2, Windows().Count);
+            Assert.Single(Windows(), window => window.Visible);
+            Assert.Single(Windows(), window => window.KeepLoaded && !window.Visible);
+
+            // The kept one is found by its new name, not by the old one.
+            popups.ShowForCommand(Press(player));
+            Pump(200);
+            Assert.Equal(0, popups.Close("Player"));
+            Assert.Equal(1, popups.Close("Music"));
+
+            // A command that the tray app no longer runs has no window either.
+            camera.Enabled = false;
+            popups.SettingsChanged(Blank, Small, keepLoaded: false, [camera, player, radio]);
+            Pump(300);
+            Assert.Single(Windows());
         });
     }
 

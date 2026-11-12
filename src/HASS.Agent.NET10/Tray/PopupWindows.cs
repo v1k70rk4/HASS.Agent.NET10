@@ -32,6 +32,7 @@ internal sealed class PopupWindows : IDisposable
     private readonly FileLog _log;
     private readonly Dictionary<string, (WebViewForm Window, string Name)> _byCommand = new(StringComparer.OrdinalIgnoreCase);
     private WebViewForm? _dashboard;
+    private WebViewForm? _preview;
     private DateTime _dashboardDismissedAt;
 
     public PopupWindows(FileLog log)
@@ -48,6 +49,15 @@ internal sealed class PopupWindows : IDisposable
         !thereIsOne ? PopupReuse.Create
         : itKeepsItsPage && keepNow && sameAddress && sameSize ? PopupReuse.ShowAgain
         : PopupReuse.Replace;
+
+    /// <summary>
+    /// Whether the window of a command is left as it is when the settings are saved. It goes
+    /// when its command is no longer there, and one that keeps its page goes when the command
+    /// no longer asks for it the same way: nothing stays loaded for what was removed or changed.
+    /// A window without a kept page is closed by whoever looks at it, or by the next press.
+    /// </summary>
+    internal static bool StaysAfterSave(bool commandIsThere, bool itKeepsItsPage, bool askedTheSameWay) =>
+        commandIsThere && (!itKeepsItsPage || askedTheSameWay);
 
     /// <summary>Whether a "close" names no command: it is for every window there is.</summary>
     internal static bool IsForEveryWindow(string? target) =>
@@ -128,20 +138,74 @@ internal sealed class PopupWindows : IDisposable
     }
 
     /// <summary>
-    /// What the settings now say about the dashboard popup: a page kept loaded for an address
-    /// or a size that is no longer set, or that is no longer to be kept, is let go at once and
-    /// not at the next click, so nothing stays in memory that was switched off.
+    /// "Open now" on the settings page: what is in the fields, saved or not, in a popup of its
+    /// own with a fresh page. A dashboard kept loaded is left as it is.
     /// </summary>
-    public void SettingsChanged(string url, Size size, bool keepLoaded)
+    public void ShowPreview(string url, Size size)
     {
-        if (_dashboard is not { IsDisposed: false, KeepLoaded: true } kept)
+        if (_preview is { IsDisposed: false } before)
         {
-            return;
+            before.CloseForGood();
         }
 
-        if (!keepLoaded || !string.Equals(kept.Url, url, StringComparison.Ordinal) || kept.RequestedSize != size)
+        var popup = new WebViewForm(url, size, popup: true, _log);
+        popup.FormClosed += (_, _) =>
+        {
+            if (ReferenceEquals(_preview, popup))
+            {
+                _preview = null;
+            }
+
+            popup.Dispose();
+        };
+        _preview = popup;
+        popup.Show();
+        popup.Activate();
+    }
+
+    /// <summary>
+    /// What the settings now say. A dashboard page kept loaded for an address or a size that
+    /// is no longer set, or that is no longer to be kept, is let go at once and not at the next
+    /// click, so nothing stays in memory that was switched off. The same for the windows of the
+    /// commands: one whose command was removed goes, a kept one whose command now asks for
+    /// something else goes, and the others learn the name their command has now, which is
+    /// what a close finds them by.
+    /// </summary>
+    public void SettingsChanged(string url, Size size, bool keepLoaded, IReadOnlyList<CustomCommandDefinition> commands)
+    {
+        if (_dashboard is { IsDisposed: false, KeepLoaded: true } kept
+            && (!keepLoaded || !string.Equals(kept.Url, url, StringComparison.Ordinal) || kept.RequestedSize != size))
         {
             kept.CloseForGood();
+        }
+
+        foreach (var (id, (window, _)) in _byCommand.ToList())
+        {
+            if (window.IsDisposed)
+            {
+                _byCommand.Remove(id);
+                continue;
+            }
+
+            var command = commands.FirstOrDefault(candidate =>
+                candidate.IsWebView && candidate.Enabled && candidate.TrayApp
+                && string.Equals(candidate.Id, id, StringComparison.OrdinalIgnoreCase));
+            var askedTheSameWay = command is not null
+                && WebViewOptions.TryParseWindow(command.Arguments, out var options)
+                && options.KeepLoaded == window.KeepLoaded
+                && options.Size == window.RequestedSize
+                && options.CloseAfter == window.CloseAfter
+                && string.Equals(command.Command, window.Url, StringComparison.Ordinal);
+
+            if (StaysAfterSave(command is not null, window.KeepLoaded, askedTheSameWay))
+            {
+                _byCommand[id] = (window, command!.Name);
+            }
+            else
+            {
+                // Its FormClosed takes it off the list.
+                window.CloseForGood();
+            }
         }
     }
 
@@ -185,7 +249,8 @@ internal sealed class PopupWindows : IDisposable
 
     /// <summary>
     /// Sends command windows away, as their own X would: the one of the command with this name
-    /// or id, or all of them and the dashboard popup when none is named. Returns how many were up.
+    /// or id, or all of them, the dashboard popup and a preview when none is named. Returns how
+    /// many were up.
     /// </summary>
     public int Close(string? target)
     {
@@ -204,10 +269,16 @@ internal sealed class PopupWindows : IDisposable
             }
         }
 
-        if (IsForEveryWindow(target) && _dashboard is { IsDisposed: false, Visible: true } dashboard)
+        if (IsForEveryWindow(target))
         {
-            closed++;
-            dashboard.Dismiss();
+            foreach (var popup in new[] { _dashboard, _preview })
+            {
+                if (popup is { IsDisposed: false, Visible: true })
+                {
+                    closed++;
+                    popup.Dismiss();
+                }
+            }
         }
 
         return closed;
@@ -230,5 +301,11 @@ internal sealed class PopupWindows : IDisposable
         }
 
         _dashboard = null;
+        if (_preview is { IsDisposed: false } preview)
+        {
+            preview.CloseForGood();
+        }
+
+        _preview = null;
     }
 }

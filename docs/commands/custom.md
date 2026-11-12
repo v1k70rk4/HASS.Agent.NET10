@@ -42,6 +42,8 @@ The **Window** field takes up to three things, in any order, each of them option
 
 A **Close popup windows** command closes them from Home Assistant, as their own X would. Its field takes the name of the Popup window command whose window is to go, as it stands in the list, or `*` for all of them and the [dashboard popup](../features/dashboard-popup.md). When there is nothing open, nothing happens. Both need 10.13.1 or newer.
 
+Saving the settings tidies up: the window of a command that was removed or switched off is closed, and so is a kept one whose command now has another address or another **Window** field. A command that was renamed is found by its new name.
+
 ## Key names
 
 Letters and digits as they are, plus `ctrl`, `shift`, `alt`, `win`, `enter`, `esc`, `tab`, `space`, `backspace`, `delete`, `insert`, `home`, `end`, `pageup`, `pagedown`, `up`, `down`, `left`, `right`, `f1`-`f24`, `num0`-`num9`, `printscreen`, `pause`, `capslock`, `numlock`, `scrolllock`, `menu`, `plus`, `minus`, `comma`, `period`, `play_pause`, `next_track`, `prev_track`, `media_stop`, `volume_up`, `volume_down`, `volume_mute`, `browser_back`, `browser_forward`, `browser_refresh`, `browser_home`. Keys in a combination are joined with `+`. Windows does not let a normal program send keys to a window that runs as administrator, or to the lock screen.

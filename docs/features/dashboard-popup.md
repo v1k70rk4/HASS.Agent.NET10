@@ -18,7 +18,7 @@ A dashboard made for it works best: a narrow one with the lights, the thermostat
 
 By default the popup loads its page every time it opens, and frees it when it closes. With **Keep the page loaded in the background** ticked (10.13.1+), the popup is only hidden when you click elsewhere: the next click on the tray icon shows the page at once and as you left it, scrolled where it was. The first opening after the app starts still loads it.
 
-The page then lives on while it is out of sight. It keeps its connection to Home Assistant, so what it shows is current when it comes up, and it keeps the memory of a browser tab for as long as the app runs. Changing the address or the size, or clearing the tick, lets the kept page go when the settings are saved. **Open now** always loads a fresh page, with what is in the fields.
+The page then lives on while it is out of sight. It keeps its connection to Home Assistant, so what it shows is current when it comes up, and it keeps the memory of a browser tab for as long as the app runs. Changing the address or the size, or clearing the tick, lets the kept page go when the settings are saved. **Open now** always loads a fresh page, with what is in the fields, in a popup of its own; a page kept loaded is left as it is.
 
 ## Popup windows from Home Assistant
 

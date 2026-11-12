@@ -384,8 +384,8 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
         _mainForm = new MainForm(_settings, _paths, _log, page);
         _mainForm.DiscoveryRepublishHandler = () => DiscoveryRepublishHandler?.Invoke() ?? Task.FromResult(false);
         _mainForm.UpdateStateHandler = state => UpdateStateHandler?.Invoke(state) ?? Task.CompletedTask;
-        // "Open now" shows what is in the fields, saved or not: a fresh page every time.
-        _mainForm.DashboardPreviewHandler = (url, size) => _popups.ShowDashboard(url, size, keepLoaded: false);
+        // "Open now" shows what is in the fields, saved or not, and leaves a kept page alone.
+        _mainForm.DashboardPreviewHandler = _popups.ShowPreview;
         _mainForm.HaTokenProbe = () => HaTokenProbe?.Invoke() ?? (null, false);
         _mainForm.HaUserProvisioner = HaUserProvisioner;
         _mainForm.SendspinPlayer = SendspinPlayer;
@@ -404,7 +404,8 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
         _hotkeys.Apply(_settings.Hotkeys);
         ApplyNotificationName();
         _popups.SettingsChanged(
-            _settings.WebViewUrl, new Size(_settings.WebViewWidth, _settings.WebViewHeight), _settings.WebViewKeepLoaded);
+            _settings.WebViewUrl, new Size(_settings.WebViewWidth, _settings.WebViewHeight), _settings.WebViewKeepLoaded,
+            _settings.CustomCommands);
         if (_copyUrlItem is not null)
         {
             _copyUrlItem.Visible = _settings.LocalApiEnabled;
