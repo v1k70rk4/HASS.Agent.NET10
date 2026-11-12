@@ -14,7 +14,9 @@ internal sealed class CustomCommandDefinition
     // For "process": the executable path. For "powershell"/"pwsh": the script path
     // or an inline command (see CommandArguments for how it is passed). For "key": the
     // key combinations to press ("win+r", "ctrl+c ctrl+v"). For "url" and "webview": the
-    // address to open ("webview" takes an optional window size, "1024x720", as Arguments).
+    // address to open ("webview" takes what its window is like as Arguments: a size, "keep",
+    // a time after which it closes; see WebViewOptions.TryParseWindow). For "webview_close":
+    // the name of the "webview" command whose window is closed, or "*" for every one.
     public string Command { get; set; } = string.Empty;
 
     // For "process": command-line arguments. For "powershell"/"pwsh": ignored when
@@ -45,10 +47,13 @@ internal sealed class CustomCommandDefinition
     [JsonIgnore]
     public bool IsWebView => string.Equals(Type, CustomCommandTypes.WebView, StringComparison.OrdinalIgnoreCase);
 
-    // Key presses, opening an address and showing a window only mean something on the
-    // desktop of the logged-in user, so the service (session 0) never runs these.
     [JsonIgnore]
-    public bool NeedsUserSession => IsKey || IsUrl || IsWebView;
+    public bool IsWebViewClose => string.Equals(Type, CustomCommandTypes.WebViewClose, StringComparison.OrdinalIgnoreCase);
+
+    // Key presses, opening an address, showing a window and closing one only mean something
+    // on the desktop of the logged-in user, so the service (session 0) never runs these.
+    [JsonIgnore]
+    public bool NeedsUserSession => IsKey || IsUrl || IsWebView || IsWebViewClose;
 }
 
 internal static class CustomCommandTypes
@@ -59,16 +64,15 @@ internal static class CustomCommandTypes
     public const string Key = "key";
     public const string Url = "url";
     public const string WebView = "webview";
+    public const string WebViewClose = "webview_close";
 
-    public static IReadOnlySet<string> All { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-    {
-        Process,
-        PowerShell,
-        Pwsh,
-        Key,
-        Url,
-        WebView
-    };
+    /// <summary>The types in the order the editor and the list offer them.</summary>
+    public static IReadOnlyList<string> InOrder { get; } = [Process, PowerShell, Pwsh, Key, Url, WebView, WebViewClose];
+
+    public static IReadOnlySet<string> All { get; } = new HashSet<string>(InOrder, StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>The types that act on the desktop of the logged-in user: the service never runs them.</summary>
+    public static bool NeedsUserSession(string type) => type is Key or Url or WebView or WebViewClose;
 
     public static string Normalize(string value)
     {
@@ -109,6 +113,75 @@ internal static class WebViewOptions
             && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
     }
 
+    /// <summary>In a Popup window command: the page stays loaded when its window goes away.</summary>
+    public const string KeepWord = "keep";
+
+    /// <summary>In a Close popup windows command: every window, not one command's.</summary>
+    public const string EveryWindow = "*";
+
+    public static readonly TimeSpan LongestCloseAfter = TimeSpan.FromHours(24);
+
+    /// <summary>
+    /// What a Popup window command says about its window, in any order and each of them
+    /// optional: a size ("1024x720"), "keep" (the page stays loaded when the window goes
+    /// away, and comes back as it was), and a time after which the window goes away by
+    /// itself ("30s", "5m", "1h"). Nothing at all is the window as it always was.
+    /// </summary>
+    public static bool TryParseWindow(string? text, out PopupWindowOptions options)
+    {
+        options = new PopupWindowOptions(DefaultWindowSize, KeepLoaded: false, CloseAfter: null);
+        var keep = false;
+        TimeSpan? closeAfter = null;
+        var rest = new List<string>();
+        foreach (var word in (text ?? string.Empty).Split([' ', ',', ';'], StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (string.Equals(word, KeepWord, StringComparison.OrdinalIgnoreCase))
+            {
+                if (keep)
+                {
+                    return false;
+                }
+
+                keep = true;
+            }
+            else if (word.Length > 1 && char.ToLowerInvariant(word[^1]) is 's' or 'm' or 'h' && word[..^1].All(char.IsAsciiDigit))
+            {
+                // Longer than any time that is taken: no number to read at all.
+                if (closeAfter is not null || word.Length > 7)
+                {
+                    return false;
+                }
+
+                var number = int.Parse(word[..^1], System.Globalization.CultureInfo.InvariantCulture);
+                var time = char.ToLowerInvariant(word[^1]) switch
+                {
+                    's' => TimeSpan.FromSeconds(number),
+                    'm' => TimeSpan.FromMinutes(number),
+                    _ => TimeSpan.FromHours(number)
+                };
+                if (time < TimeSpan.FromSeconds(1) || time > LongestCloseAfter)
+                {
+                    return false;
+                }
+
+                closeAfter = time;
+            }
+            else
+            {
+                rest.Add(word);
+            }
+        }
+
+        var size = DefaultWindowSize;
+        if (rest.Count > 0 && !TryParseSize(string.Join(' ', rest), out size))
+        {
+            return false;
+        }
+
+        options = new PopupWindowOptions(size, keep, closeAfter);
+        return true;
+    }
+
     /// <summary>"1024x720" (also with *, × or a space in between).</summary>
     public static bool TryParseSize(string text, out Size size)
     {
@@ -127,6 +200,12 @@ internal static class WebViewOptions
         return true;
     }
 }
+
+/// <summary>The window of a Popup window command: how big, whether its page stays loaded, when it closes by itself.</summary>
+internal readonly record struct PopupWindowOptions(Size Size, bool KeepLoaded, TimeSpan? CloseAfter);
+
+/// <summary>A Popup window command asking the tray app for its window.</summary>
+internal sealed record PopupWindowRequest(string CommandId, string CommandName, string Url, PopupWindowOptions Options);
 
 // Advertised to Home Assistant so the integration can create a button per command.
 internal sealed record CustomCommandDescriptor(

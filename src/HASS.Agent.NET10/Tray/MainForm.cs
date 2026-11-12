@@ -95,6 +95,7 @@ internal sealed class MainForm : Form
     private readonly NumericUpDown _webViewWidth = new() { Minimum = WebViewOptions.MinimumEdge, Maximum = WebViewOptions.MaximumEdge, Increment = 20 };
     private readonly NumericUpDown _webViewHeight = new() { Minimum = WebViewOptions.MinimumEdge, Maximum = WebViewOptions.MaximumEdge, Increment = 20 };
     private readonly CheckBox _webViewOnClick = new();
+    private readonly CheckBox _webViewKeepLoaded = new();
     private readonly CheckBox _capMedia = new();
     private readonly CheckBox _mediaCoverArt = new();
     private readonly CheckBox _announceVolumeEnabled = new();
@@ -1249,6 +1250,7 @@ internal sealed class MainForm : Form
         _webViewHeight.Size = Sz(80, 28);
         card4.Controls.Add(_webViewHeight);
         y = AddCheck(card4, _webViewOnClick, S("Cap.WebViewOnClick"), y + 2);
+        y = AddCheck(card4, _webViewKeepLoaded, S("Cap.WebViewKeep"), y);
         var previewBtn = MakeSecondaryButton(S("Cap.WebViewOpen"), 130, 30);
         previewBtn.Location = Pt(20, y + 4);
         previewBtn.Click += (_, _) =>
@@ -1264,7 +1266,11 @@ internal sealed class MainForm : Form
         };
         card4.Controls.Add(previewBtn);
 
-        var hotkeyY = customY + 250 + 20 + 232 + 20;
+        // As tall as its ticks make it: a text that wraps in some language takes a line more.
+        var webViewCardHeight = y + 4 + 30 + 8;
+        card4.Height = D(webViewCardHeight);
+
+        var hotkeyY = customY + 250 + 20 + webViewCardHeight + 20;
         var card5 = MakeCard(page, 28, hotkeyY, 600, 250, S("Cap.Hotkeys"));
         AddCardHelp(card5, S("Cap.HotkeysHelp"));
         SetupHotkeyGrid();
@@ -1906,15 +1912,7 @@ internal sealed class MainForm : Form
         _customCommandGrid.Columns.Add(new DataGridViewCheckBoxColumn { Name = "Enabled", HeaderText = S("Sensors.Active"), Width = D(50) });
         _customCommandGrid.Columns.Add(new DataGridViewCheckBoxColumn { Name = "TrayApp", HeaderText = S("Cap.ColTray"), Width = D(50) });
         _customCommandGrid.Columns.Add(new DataGridViewCheckBoxColumn { Name = "Service", HeaderText = S("Cap.ColSvc"), Width = D(50) });
-        var commandTypes = new[]
-        {
-            CustomCommandTypes.Process,
-            CustomCommandTypes.PowerShell,
-            CustomCommandTypes.Pwsh,
-            CustomCommandTypes.Key,
-            CustomCommandTypes.Url,
-            CustomCommandTypes.WebView
-        }
+        var commandTypes = CustomCommandTypes.InOrder
             .Select(t => new KeyValuePair<string, string>(t, S($"CmdType.{t}")))
             .ToArray();
         _customCommandGrid.Columns.Add(new DataGridViewComboBoxColumn
@@ -3355,6 +3353,7 @@ internal sealed class MainForm : Form
         _webViewWidth.Value = Math.Clamp(_settings.WebViewWidth, WebViewOptions.MinimumEdge, WebViewOptions.MaximumEdge);
         _webViewHeight.Value = Math.Clamp(_settings.WebViewHeight, WebViewOptions.MinimumEdge, WebViewOptions.MaximumEdge);
         _webViewOnClick.Checked = _settings.WebViewOnTrayClick;
+        _webViewKeepLoaded.Checked = _settings.WebViewKeepLoaded;
 
         _capNotify.Checked = _settings.MqttNotificationsEnabled;
         _notificationStyle.SelectedIndex = Math.Max(0, Array.IndexOf(NotificationStyleValues, _settings.NotificationStyle));
@@ -3832,6 +3831,7 @@ internal sealed class MainForm : Form
         _settings.WebViewWidth = (int)_webViewWidth.Value;
         _settings.WebViewHeight = (int)_webViewHeight.Value;
         _settings.WebViewOnTrayClick = _webViewOnClick.Checked;
+        _settings.WebViewKeepLoaded = _webViewKeepLoaded.Checked;
 
         _settings.MqttNotificationsEnabled = _capNotify.Checked;
         _settings.NotificationStyle = NotificationStyleValues[Math.Max(0, _notificationStyle.SelectedIndex)];
@@ -3908,7 +3908,7 @@ internal sealed class MainForm : Form
             if (string.IsNullOrWhiteSpace(commandText)) continue;
             var type = CustomCommandTypes.Normalize(Convert.ToString(row.Cells["Type"].Value) ?? CustomCommandTypes.Process);
             var name = Convert.ToString(row.Cells["Name"].Value) ?? string.Empty;
-            if (type is CustomCommandTypes.Key or CustomCommandTypes.Url or CustomCommandTypes.WebView)
+            if (CustomCommandTypes.NeedsUserSession(type))
             {
                 // These need the user's desktop; the service cannot run them.
                 row.Cells["Service"].Value = false;

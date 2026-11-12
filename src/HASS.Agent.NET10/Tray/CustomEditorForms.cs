@@ -260,20 +260,14 @@ internal sealed class CustomCommandEditorForm : CustomEditorForm
 
         var y = 20;
         AddLabel(S("Sensors.Type"), y);
-        _type = AddOptionBox(y, new[]
-        {
-            CustomCommandTypes.Process,
-            CustomCommandTypes.PowerShell,
-            CustomCommandTypes.Pwsh,
-            CustomCommandTypes.Key,
-            CustomCommandTypes.Url,
-            CustomCommandTypes.WebView
-        }.Select(type => new Option(type, S($"CmdType.{type}"))));
+        _type = AddOptionBox(y, CustomCommandTypes.InOrder.Select(type => new Option(type, S($"CmdType.{type}"))));
 
         y += RowHeight;
-        _hint = AddHint(y, 76);
+        // Five lines: what a Popup window command can say about its window takes that many.
+        const int hintHeight = 92;
+        _hint = AddHint(y, hintHeight);
 
-        y += 76 + 12;
+        y += hintHeight + 12;
         AddLabel(S("Editor.NameInHa"), y);
         _name = AddTextBox(y);
 
@@ -329,10 +323,11 @@ internal sealed class CustomCommandEditorForm : CustomEditorForm
         _commandLabel.Text = S($"CmdField.{type}");
         _browse.Visible = canBrowse;
         _command.Width = D(canBrowse ? FieldWidth - 98 : FieldWidth);
-        _argumentsLabel.Text = type == CustomCommandTypes.WebView ? S("Editor.WindowSize") : S("Cap.ArgumentsColumn");
+        _argumentsLabel.Text = type == CustomCommandTypes.WebView ? S("Editor.Window") : S("Cap.ArgumentsColumn");
         _argumentsLabel.Visible = HasArguments(type);
         _arguments.Visible = HasArguments(type);
-        _arguments.PlaceholderText = type == CustomCommandTypes.WebView ? "1024x720" : string.Empty;
+        _arguments.PlaceholderText = type == CustomCommandTypes.WebView ? "1024x720 keep 30s" : string.Empty;
+        _command.PlaceholderText = type == CustomCommandTypes.WebViewClose ? WebViewOptions.EveryWindow : string.Empty;
 
         // Keys, addresses and windows act on the user's desktop; the service cannot run them.
         if (needsUserSession)
@@ -355,17 +350,22 @@ internal sealed class CustomCommandEditorForm : CustomEditorForm
         ShowResult(string.Empty, TextMuted);
     }
 
-    private static bool NeedsUserSession(string type) =>
-        type is CustomCommandTypes.Key or CustomCommandTypes.Url or CustomCommandTypes.WebView;
+    private static bool NeedsUserSession(string type) => CustomCommandTypes.NeedsUserSession(type);
 
     private static bool HasArguments(string type) =>
-        type is not (CustomCommandTypes.Key or CustomCommandTypes.Url);
+        type is not (CustomCommandTypes.Key or CustomCommandTypes.Url or CustomCommandTypes.WebViewClose);
 
     private CustomCommandDefinition Build()
     {
         var type = SelectedKey(_type);
         var needsUserSession = NeedsUserSession(type);
         var command = _command.Text.Trim();
+        if (type == CustomCommandTypes.WebViewClose && command.Length == 0)
+        {
+            // Left empty, it closes every window, which is what the field's grey text says.
+            command = WebViewOptions.EveryWindow;
+        }
+
         return new CustomCommandDefinition
         {
             Id = _id,
@@ -404,9 +404,9 @@ internal sealed class CustomCommandEditorForm : CustomEditorForm
             return S("Editor.InvalidWebAddress");
         }
 
-        if (command.IsWebView && command.Arguments.Length > 0 && !WebViewOptions.TryParseSize(command.Arguments, out _))
+        if (command.IsWebView && !WebViewOptions.TryParseWindow(command.Arguments, out _))
         {
-            return S("Editor.InvalidSize");
+            return S("Editor.InvalidWindow");
         }
 
         if (command.IsProcess && SystemCommandService.HasUnquotedSpaceInPath(command.Command))
@@ -467,7 +467,7 @@ internal sealed class CustomCommandEditorForm : CustomEditorForm
             CustomCommandOutcome.NoKeys => S("Editor.NoKeys"),
             CustomCommandOutcome.InputRefused => S("Editor.InputRefused"),
             CustomCommandOutcome.InvalidAddress => S("Editor.InvalidAddress"),
-            CustomCommandOutcome.InvalidSize => S("Editor.InvalidSize"),
+            CustomCommandOutcome.InvalidSize => S("Editor.InvalidWindow"),
             CustomCommandOutcome.NeedsUserSession => S("Editor.NeedsUserSession"),
             CustomCommandOutcome.NotStarted => S("Editor.NotStarted"),
             _ => string.Format(S("Sensors.ValueError"), result.Detail)
