@@ -2,7 +2,7 @@
 
 ![Windows](https://img.shields.io/badge/Windows-10%202004%2B%20%7C%2011-0078D4?logo=windows&logoColor=white)
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet&logoColor=white)
-![Version](https://img.shields.io/badge/version-10.13.1--beta.1-orange)
+![Version](https://img.shields.io/badge/version-10.13.1--beta.2-orange)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-MQTT%20%7C%20WebSocket%20API-41BDF5?logo=homeassistant&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/15316/badge)](https://www.bestpractices.dev/projects/15316)
@@ -26,7 +26,7 @@ It is designed for Windows PCs you want to observe and control from Home Assista
 
 The .NET10 line starts at **version 10.0.0**. The classic client is a separate program: if you want to stay with it, it is still available from its own project, and the integration keeps a [`legacy` branch](https://github.com/v1k70rk4/HASS.Agent.NET10-Integration/tree/legacy) for it. Thinking about switching? See [Coming from HASS.Agent](docs/getting-started/migrating.md).
 
-> **Stable:** [10.13.0](https://github.com/v1k70rk4/HASS.Agent.NET10/releases/latest) &nbsp;·&nbsp; **Beta:** [10.13.1-beta.1](https://github.com/v1k70rk4/HASS.Agent.NET10/releases/tag/v10.13.1-beta.1) &nbsp;·&nbsp; [What changed](#what-changed) &nbsp;·&nbsp; [Full changelog](CHANGELOG.md)
+> **Stable:** [10.13.0](https://github.com/v1k70rk4/HASS.Agent.NET10/releases/latest) &nbsp;·&nbsp; **Beta:** [10.13.1-beta.2](https://github.com/v1k70rk4/HASS.Agent.NET10/releases/tag/v10.13.1-beta.2) &nbsp;·&nbsp; [What changed](#what-changed) &nbsp;·&nbsp; [Full changelog](CHANGELOG.md)
 
 ---
 
@@ -176,11 +176,23 @@ No telemetry, analytics, or usage data is collected or transmitted.
 
 ## What Changed
 
-### 10.13.1-beta.1
+### 10.13.1-beta.2
 
 > **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered the beta, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.13.0**, below.
 
-The first beta of 10.13.1: a screenshot of the PC when Home Assistant asks for one, the audio code on NAudio 3, and fixes to what 10.13.0 changed around the settings folder. Works with the Home Assistant integration **10.6.7** or newer; the screenshot needs the integration **10.13.1-beta.1**, out at the same time. Signed release.
+The second beta of 10.13.1: popup windows that keep their page, close by themselves or from Home Assistant, and a sensor for the print queues. Everything from beta.1 is in it. Works with the Home Assistant integration **10.6.7** or newer; the Print jobs sensor needs the integration **10.13.1-beta.2**, out at the same time. Signed release.
+
+**New since beta.1**
+
+- **The dashboard popup can keep its page loaded.** A new tick on the Capabilities page, *Keep the page loaded in the background*, off by default. With it the popup is hidden, not closed, when you click elsewhere, and the next click on the tray icon shows the page at once, as you left it. The page then keeps the memory of a browser tab for as long as the app runs. Asked for in [#190](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/190). See [Dashboard popup](docs/features/dashboard-popup.md).
+- **Popup window commands: fields for the window, and one window per command.** The editor has fields for the size, **Popup above the tray** (a window like the dashboard popup), **Keep the page loaded** and **Closes after** so many seconds. A command has one window now: pressed again, it is replaced with a fresh page, or, when it keeps its page, brought back as it was. Before, every press opened one more window. See [Custom commands](docs/commands/custom.md#popup-windows).
+- **A window opened from Home Assistant comes over the other windows.** It used to open behind the program in front. It leaves the keyboard with the program you are typing into.
+- **A new custom command type, Close popup windows.** It closes the window of the Popup window command it names, or all of them and the dashboard popup for `*`. In Home Assistant it is a button like any other custom command.
+- **A Print jobs sensor.** Off by default. Its value is the number of jobs that wait in the print queues of the PC, on whichever printer. A job stays in its queue while the printer is switched off, so an automation can switch the printer's plug on when the number leaves 0. The attributes have every printer with its own number of jobs, its state in one word and every state flag Windows keeps for it (`paper_out`, `toner_low`, `offline` and the rest), the default printer, and the first 20 jobs. The printers are those of the user who is logged in, the ones connected from a print server too, whether the tray app or the service reads the sensor; with nobody logged in the service reports the printers installed on the PC. Asked for in [#191](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/191). Needs the integration 10.13.1-beta.2. See [Built-in sensors](docs/sensors/index.md).
+- **The classic HASS.Agent's printer sensors come over** to the Print jobs sensor when the classic client's settings are taken over.
+- **The sensors the + button makes from a sensor's attributes are ticked as the sensor is**, for the tray app, the service or both. They used to be ticked for both wherever both can read the sensor, whatever the sensor itself was ticked for.
+
+**From beta.1**
 
 - **A screenshot when Home Assistant asks for one.** A new command, **Take a screenshot**, on the Capabilities page under System commands, off until it is ticked at the PC. Ticked, the PC's device in Home Assistant gets a button and an image entity; a press of the button makes the PC take a picture of its screen (every monitor, no wider than 1920 pixels, at most 512 KB) and send it. The PC never takes one on its own: a picture at regular times is an automation that presses the button. The picture is not kept on the broker, over the HA API it does not go on Home Assistant's event bus, and with the MQTT debug switch on it is left out of the packet file. See [Screenshot](docs/commands/screenshot.md).
 - **The audio code is on NAudio 3.** The Sendspin player's output, and the audio device sensors and selects, were moved to the new major version of the library under them. Nothing to set, and nothing should sound different: say so if the player, the volume or the device selects behave in another way than before.
