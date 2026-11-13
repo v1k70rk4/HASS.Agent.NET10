@@ -75,7 +75,9 @@
       "Attribute.default_printer_jobs",
       "Attribute.jobs",
       "Attribute.status",
-      "Classic.Dashboard"
+      "Classic.Dashboard",
+      "Danger.LocalUpdatesOnly",
+      "HaPn.UpdateRefused"
     ]
   },
   "strings": {
@@ -172,11 +174,13 @@
     "Danger.FactoryConfirm1": "Это удалит ВСЕ настройки, включая подключение MQTT/HA API, ключ API и серийный номер.\n\nВ Home Assistant устройство появится как НОВОЕ. Продолжить?",
     "Danger.FactoryConfirm2": "Вы уверены? Это действие нельзя отменить.",
     "Danger.BetaUpdates": "Бета-обновления: учитывать предварительные версии",
+    "Danger.LocalUpdatesOnly": "Updates only at this PC — an install asked for from Home Assistant is refused; update checks and the About page work as before. Warning: an update also brings the security fixes of the built-in .NET runtime, so a PC that waits for someone to update it by hand stays behind longer.",
     "Danger.FastSensors": "Быстрые датчики с интервалом менее 5 секунд. На странице «Возможности» интервал можно уменьшить до 1 секунды. Внимание: при каждом опросе отправляется полное состояние датчиков, а постоянно меняющиеся значения (например, загрузка ЦП) сохраняются в журнал Home Assistant каждую секунду. Чтобы история не разрасталась, исключите такие сущности из настроек recorder.",
     "HaPn.AccessTitle": "HASS.Agent: доступ пользователей к этому ПК",
     "HaPn.AccessOpen": "{0}: все пользователи Windows на этом ПК могут читать настройки HASS.Agent, включая пароль MQTT и токен Home Assistant, и изменять выполняемые команды. Не все из них определены как администраторы: {1}. Откройте окно HASS.Agent на ПК, чтобы выбрать пользователей с доступом (потребуется подтверждение администратора). До этого всё работает как раньше.",
     "HaPn.UpdateTitle": "Обновление HASS.Agent",
     "HaPn.UpdateCompleted": "{0}: обновлено с {1} до {2}.",
+    "HaPn.UpdateRefused": "{0}: the update was not installed. Updates are installed only at the PC itself (set on its Danger Zone page); nothing was downloaded.",
     "HaPn.NoUpdate": "{0}: обновлений нет.",
     "HaPn.UpdateCheckFailed": "{0}: не удалось проверить обновления. Причина указана в журнале на ПК. Если проблема сохраняется, проверьте состояние GitHub: https://www.githubstatus.com",
     "HaPn.NoInstaller": "{0}: в выпуске {1} нет установщика. Установите обновление вручную.",

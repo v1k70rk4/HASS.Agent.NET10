@@ -98,7 +98,9 @@
       "Attribute.default_printer_jobs",
       "Attribute.jobs",
       "Attribute.status",
-      "Classic.Dashboard"
+      "Classic.Dashboard",
+      "Danger.LocalUpdatesOnly",
+      "HaPn.UpdateRefused"
     ]
   },
   "strings": {
@@ -195,11 +197,13 @@
     "Danger.FactoryConfirm1": "Dadurch werden ALLE Einstellungen gelöscht, einschließlich der MQTT-/HA-API-Verbindung, des API-Schlüssels und der Seriennummer.\n\nDas Gerät erscheint in Home Assistant als NEUES Gerät. Fortfahren?",
     "Danger.FactoryConfirm2": "Bist du dir ganz sicher? Das lässt sich nicht rückgängig machen.",
     "Danger.BetaUpdates": "Beta-Updates – die Updateprüfung bietet auch Vorabversionen an",
+    "Danger.LocalUpdatesOnly": "Updates only at this PC — an install asked for from Home Assistant is refused; update checks and the About page work as before. Warning: an update also brings the security fixes of the built-in .NET runtime, so a PC that waits for someone to update it by hand stays behind longer.",
     "Danger.FastSensors": "Schnelle Sensoren unter 5 Sekunden – das Intervall unter Funktionen darf bis auf 1 Sekunde sinken. Achtung: Jeder Zyklus sendet den gesamten Sensorzustand, und ein Wert, der sich jede Sekunde ändert (CPU-Auslastung), landet jede Sekunde im Recorder von Home Assistant; schließe eine solche Entität in der Recorder-Konfiguration aus, wenn der Verlauf klein bleiben soll.",
     "HaPn.AccessTitle": "HASS.Agent: Wer darf es auf diesem PC verwenden",
     "HaPn.AccessOpen": "{0}: Jeder Windows-Benutzer dieses PCs kann die HASS.Agent-Einstellungen lesen, einschließlich des MQTT-Passworts und des Home-Assistant-Tokens, und die Befehle ändern, die HASS.Agent ausführt. Nicht von allen ist bekannt, dass sie Administratoren sind: {1}. Öffne das HASS.Agent-Fenster auf dem PC, um festzulegen, wer es verwenden darf (ein Administrator muss zustimmen). Bis dahin funktioniert alles wie bisher.",
     "HaPn.UpdateTitle": "HASS.Agent-Update",
     "HaPn.UpdateCompleted": "{0}: von {1} auf {2} aktualisiert.",
+    "HaPn.UpdateRefused": "{0}: the update was not installed. Updates are installed only at the PC itself (set on its Danger Zone page); nothing was downloaded.",
     "HaPn.NoUpdate": "{0}: kein Update verfügbar.",
     "HaPn.UpdateCheckFailed": "{0}: Die Updateprüfung ist fehlgeschlagen; das Protokoll auf dem PC nennt den Grund. Wenn das anhält, hat GitHub möglicherweise Probleme: siehe https://www.githubstatus.com",
     "HaPn.NoInstaller": "{0}: Release {1} enthält kein Installationsprogramm – installiere es manuell.",

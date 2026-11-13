@@ -34,6 +34,13 @@ internal sealed class CompanionSettings
 
     public bool BetaUpdatesEnabled { get; set; }
 
+    /// <summary>
+    /// Danger Zone: an update is installed only at this PC. An install asked for from Home
+    /// Assistant (the update entity's button, on either transport) is refused before anything
+    /// is downloaded; the checks and the About page work as before.
+    /// </summary>
+    public bool RemoteUpdateInstallBlocked { get; set; }
+
     /// <summary>Danger Zone: the fast sensor interval may go below 5 seconds, down to 1.</summary>
     public bool FastSensorsUnlocked { get; set; }
 

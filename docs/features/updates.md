@@ -1,6 +1,6 @@
 ---
 title: Updates from Home Assistant
-description: Updating HASS.Agent .NET10 from Home Assistant's update entity with one click, silently with the Windows service, with only installers signed by the publisher; the About page; the beta channel.
+description: Updating HASS.Agent .NET10 from Home Assistant's update entity with one click, silently with the Windows service, with only installers signed by the publisher; updates only at the PC; the About page; the beta channel.
 ---
 
 # Updates from Home Assistant
@@ -26,6 +26,12 @@ A downloaded installer is started only when it carries the publisher's Authentic
 The file must also be the installer of the release it was downloaded for: it says so in its version information, which the signature covers. An older installer put under a newer release, or another file the publisher signed, is refused the same way.
 
 **Check for updates** in Home Assistant asks GitHub at most once in five minutes; pressed again sooner, it sends the last answer.
+
+## Updates only at the PC
+
+Where a change of software has to be approved at the PC itself, tick **Updates only at this PC** (10.13.1+) on the [Danger Zone](danger-zone.md) page. An install asked for from Home Assistant is then refused before the release is looked up or anything is downloaded: on MQTT and on the HA API, by the tray app and by the service. Home Assistant gets a notification saying so, and with the integration 10.13.1 or newer the update entity shows the new version without an Install button. Update checks, the notice in the tray and the About page work as before, so the PC still tells you when there is something to install.
+
+It is off unless you tick it, and for most PCs it is better left off. What Home Assistant can ask for is narrow: the PC fetches the installer itself from the release on GitHub and starts it only with the publisher's signature (below), it never goes back to an older version, and whether betas are offered is a setting on the PC. The most a Home Assistant in the wrong hands can do on this path is make the PC install the newest signed release, the one it would offer its owner anyway. The app carries its own .NET runtime, so the monthly .NET security fixes reach a PC only with an update of the app; a PC that waits for someone to sit down at it stays behind longer.
 
 ## The About page
 

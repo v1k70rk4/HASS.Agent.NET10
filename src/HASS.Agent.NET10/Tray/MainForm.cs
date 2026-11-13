@@ -153,6 +153,11 @@ internal sealed class MainForm : Form
     [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
     public Func<AppUpdateState, Task>? UpdateStateHandler { get; set; }
 
+    /// <summary>Wired by TrayApplicationContext: tells Home Assistant that the Danger Zone's "updates only at this PC" was changed.</summary>
+    [System.ComponentModel.Browsable(false)]
+    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+    public Func<Task>? RemoteInstallSwitchHandler { get; set; }
+
     /// <summary>Wired by TrayApplicationContext: whose the HA API token is, and whether a user of the PC's own can be made.</summary>
     [System.ComponentModel.Browsable(false)]
     [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
@@ -2441,10 +2446,35 @@ internal sealed class MainForm : Form
         };
         toolsCard.Controls.Add(betaCheck);
 
+        // Updates only at this PC: Home Assistant's Install button is refused. Persists
+        // immediately, and Home Assistant hears of it at once. The text wraps in the box.
+        var localUpdatesCheck = new CheckBox
+        {
+            Text = S("Danger.LocalUpdatesOnly"), Location = Pt(20, 414),
+            Size = Sz(680, 48), ForeColor = TextBody, Checked = _settings.RemoteUpdateInstallBlocked,
+            TextAlign = ContentAlignment.TopLeft, CheckAlign = ContentAlignment.TopLeft
+        };
+        localUpdatesCheck.CheckedChanged += (_, _) =>
+        {
+            if (_settings.RemoteUpdateInstallBlocked == localUpdatesCheck.Checked)
+            {
+                return;
+            }
+
+            _settings.RemoteUpdateInstallBlocked = localUpdatesCheck.Checked;
+            SettingsStore.Save(_paths, _settings);
+            _log.Info($"Update installs asked for from Home Assistant are {(localUpdatesCheck.Checked ? "refused: updates only at this PC" : "allowed again")}.");
+            if (RemoteInstallSwitchHandler is not null)
+            {
+                _ = RemoteInstallSwitchHandler();
+            }
+        };
+        toolsCard.Controls.Add(localUpdatesCheck);
+
         // Fast sensors below 5 seconds — persists immediately too. The text wraps in the box.
         var fastCheck = new CheckBox
         {
-            Text = S("Danger.FastSensors"), Location = Pt(20, 414),
+            Text = S("Danger.FastSensors"), Location = Pt(20, 468),
             Size = Sz(680, 48), ForeColor = TextBody, Checked = _settings.FastSensorsUnlocked,
             TextAlign = ContentAlignment.TopLeft, CheckAlign = ContentAlignment.TopLeft
         };
@@ -2474,17 +2504,29 @@ internal sealed class MainForm : Form
             }
 
             betaCheck.Width = Math.Max(D(420), toolsCard.ClientSize.Width - D(40));
-            fastCheck.Width = betaCheck.Width;
 
-            // The sentence wraps at this width: the box is as tall as the text needs and the
-            // card grows with it, otherwise a narrow window cut the end of the warning off.
-            var fastTextHeight = TextRenderer.MeasureText(
-                fastCheck.Text, fastCheck.Font, new Size(fastCheck.Width - D(24), int.MaxValue),
-                TextFormatFlags.WordBreak | TextFormatFlags.TextBoxControl).Height;
-            var fastHeight = Math.Max(D(26), fastTextHeight + D(8));
-            if (fastCheck.Height != fastHeight)
+            // The sentences wrap at this width: each box is as tall as its text needs, the next
+            // one starts below it and the card grows with them, otherwise a narrow window cut
+            // the end of a warning off.
+            var top = betaCheck.Bottom + D(6);
+            foreach (var check in new[] { localUpdatesCheck, fastCheck })
             {
-                fastCheck.Height = fastHeight;
+                check.Width = betaCheck.Width;
+                var textHeight = TextRenderer.MeasureText(
+                    check.Text, check.Font, new Size(check.Width - D(24), int.MaxValue),
+                    TextFormatFlags.WordBreak | TextFormatFlags.TextBoxControl).Height;
+                var height = Math.Max(D(26), textHeight + D(8));
+                if (check.Height != height)
+                {
+                    check.Height = height;
+                }
+
+                if (check.Top != top)
+                {
+                    check.Top = top;
+                }
+
+                top = check.Bottom + D(6);
             }
 
             var cardHeight = fastCheck.Bottom + D(16);

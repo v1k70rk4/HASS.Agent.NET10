@@ -24,7 +24,9 @@
       "Attribute.default_printer_jobs",
       "Attribute.jobs",
       "Attribute.status",
-      "Classic.Dashboard"
+      "Classic.Dashboard",
+      "Danger.LocalUpdatesOnly",
+      "HaPn.UpdateRefused"
     ]
   },
   "strings": {
@@ -121,11 +123,13 @@
     "Danger.FactoryConfirm1": "将会抹除所有设置，包括MQTT和HA API设置，API密钥以及序列号。此设备在HA中会被识别为全新设备\n\n需要继续吗?",
     "Danger.FactoryConfirm2": "请再次确认，此操作无法回退。",
     "Danger.BetaUpdates": "Beta通道。检查更新时优先体验预发布版本",
+    "Danger.LocalUpdatesOnly": "Updates only at this PC — an install asked for from Home Assistant is refused; update checks and the About page work as before. Warning: an update also brings the security fixes of the built-in .NET runtime, so a PC that waits for someone to update it by hand stays behind longer.",
     "Danger.FastSensors": "提升传感器上报频率。传感器默认最高上报频率为5秒，开启后在“功能”选项卡中，可以将上报频率提升至1秒。\n\n警告:由于每个上报周期，传感器都会发送完整的状态，因此对于每秒都在波动的数值，会引发HomeAssistant的记录器Recorder每秒进行一次写入。如果希望保持数据库体积精简并保护存储寿命，则建议在HomeAssistant的Recorder配置中排除相对应的实体。",
     "HaPn.AccessTitle": "HASS.Agent：此电脑的访问权限控制",
     "HaPn.AccessOpen": "{0}：此电脑上的所有Windows用户均可读取HASS.Agent的底层设置，这包含MQTT密码以及HomeAssistant长期访问令牌，并可修改其运行的系统命令。当前发现这些用户并非都是系统管理员：{1}。请在本机上打开HASS.Agent主界面来限定访问权限(此操作需要管理员提权审批)。在您手动做出限制之前，系统将继续维持现状运行。.",
     "HaPn.UpdateTitle": "HASS.Agent更新",
     "HaPn.UpdateCompleted": "{0}：已成功从版本 {1} 升级至 {2}.",
+    "HaPn.UpdateRefused": "{0}: the update was not installed. Updates are installed only at the PC itself (set on its Danger Zone page); nothing was downloaded.",
     "HaPn.NoUpdate": "{0}：当前已是最新版本，无可用更新。",
     "HaPn.UpdateCheckFailed": "{0}：无法检查更新，具体原因可参考日志。如果此状况持续存在，可能是GitHub出现了故障。详情请参阅：https://www.githubstatus.com",
     "HaPn.NoInstaller": "{0}：发布版本 {1} 缺少安装包组件(Installer Asset)，请前往 GitHub 进行手动安装。",

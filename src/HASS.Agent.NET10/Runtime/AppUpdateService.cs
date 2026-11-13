@@ -368,7 +368,10 @@ internal sealed record AppUpdateState(
     [property: JsonPropertyName("error")] string? Error,
     // Shown in the in-app update prompt only; the state published to Home
     // Assistant (MQTT / WebSocket) stays as it was.
-    [property: JsonIgnore] string? ReleaseNotes = null)
+    [property: JsonIgnore] string? ReleaseNotes = null,
+    // False when the PC installs updates only at the PC itself (Danger Zone): Home Assistant
+    // then shows the new version without an Install button. Set when the state is published.
+    [property: JsonPropertyName("remote_install")] bool RemoteInstall = true)
 {
     public static AppUpdateState Failed(string installedVersion, string error)
     {

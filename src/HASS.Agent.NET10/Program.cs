@@ -578,6 +578,7 @@ internal static class Program
         trayContext.HaTokenProbe = () => mqttService.HaTokenStatus;
         trayContext.HaUserProvisioner = mqttService.ProvisionHaUserAsync;
         trayContext.UpdateStateHandler = mqttService.ReportUpdateStateAsync;
+        trayContext.RemoteInstallSwitchHandler = mqttService.ReportRemoteInstallSwitchAsync;
 
         // Detect a completed update: the previous run was a different version. The record is
         // the PC's (LastRunRecord), which every user can write, a kiosk user too; the one in the

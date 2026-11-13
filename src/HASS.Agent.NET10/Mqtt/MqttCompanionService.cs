@@ -57,7 +57,7 @@ internal sealed class MqttCompanionService : IDisposable
     private uint? _brokerMaximumPacketSize;
     private bool _lastUpdateBeta;
 
-    private static readonly JsonSerializerOptions JsonOptions = new()
+    internal static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNameCaseInsensitive = true,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
@@ -531,6 +531,69 @@ internal sealed class MqttCompanionService : IDisposable
         }
     }
 
+    /// <summary>
+    /// The Danger Zone's "updates only at this PC": an install asked for from outside the PC
+    /// stops here, before the release is looked up or anything is downloaded. The About
+    /// page's own update does not come this way.
+    /// </summary>
+    private async Task<bool> RefusedAsRemoteInstallAsync(bool tellHomeAssistant)
+    {
+        if (!_settings.RemoteUpdateInstallBlocked)
+        {
+            return false;
+        }
+
+        _log.Warning("An update install was asked for from Home Assistant and refused: updates are installed only at this PC (Danger Zone).");
+        if (tellHomeAssistant)
+        {
+            try
+            {
+                await PublishPersistentNotificationAsync(
+                    Strings.GetHa("HaPn.UpdateTitle"),
+                    string.Format(Strings.GetHa("HaPn.UpdateRefused"), _settings.DeviceName));
+            }
+            catch (Exception ex)
+            {
+                _log.Warning($"Unable to send the update notification to Home Assistant: {ex.Message}");
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// The Danger Zone's switch was just changed: Home Assistant learns it now (the Install
+    /// button goes or comes back), not at the next update check.
+    /// </summary>
+    public async Task ReportRemoteInstallSwitchAsync()
+    {
+        try
+        {
+            if (_isOnWebSocket && _haWs is not null)
+            {
+                await PublishUpdateStateAsync(cancellationToken: _cts?.Token ?? CancellationToken.None);
+                return;
+            }
+
+            if (_client is not { IsConnected: true })
+            {
+                // Not connected right now: both go out with the next connect.
+                return;
+            }
+
+            if (_discoveryPublished)
+            {
+                await PublishUpdateEntityDiscoveryAsync();
+            }
+
+            await PublishUpdateStateAsync(cancellationToken: _cts?.Token ?? CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            _log.Warning($"Unable to tell Home Assistant about the update switch: {ex.Message}");
+        }
+    }
+
     /// <summary>A tray app is one of our processes in an interactive session (the service is in session 0).</summary>
     private static bool IsTrayAppRunning()
     {
@@ -559,8 +622,13 @@ internal sealed class MqttCompanionService : IDisposable
     }
 
     /// <summary>Handles the Install button of the HA update entity (tray app role).</summary>
-    private async Task HandleUpdateInstallRequestAsync()
+    internal async Task HandleUpdateInstallRequestAsync()
     {
+        if (await RefusedAsRemoteInstallAsync(tellHomeAssistant: true))
+        {
+            return;
+        }
+
         if (Interlocked.Exchange(ref _updateInstallInProgress, 1) == 1)
         {
             _log.Info("Update install already in progress, ignoring request.");
@@ -680,8 +748,17 @@ internal sealed class MqttCompanionService : IDisposable
     /// Service-role silent install. Downloads the installer from GitHub itself —
     /// never runs a caller-supplied path as SYSTEM.
     /// </summary>
-    private async Task RunSilentUpdateInstallAsync(bool announce = false)
+    internal async Task RunSilentUpdateInstallAsync(bool announce = false)
     {
+        // Every way here starts in Home Assistant or on the broker: the update entity's
+        // button when no tray app runs, and the tray app's handover of that same button.
+        // The tray app says so in Home Assistant when it refuses; a handover that arrives
+        // here all the same did not come from it, and only the log hears of it.
+        if (await RefusedAsRemoteInstallAsync(tellHomeAssistant: announce))
+        {
+            return;
+        }
+
         // One installer at a time: a second Install while the first is still downloading
         // must not schedule a second setup. Once scheduled, the installer stops this
         // service anyway; the flag is released only when nothing was scheduled, or after
@@ -2086,44 +2163,63 @@ internal sealed class MqttCompanionService : IDisposable
             }
         }
 
+        var state = ForHomeAssistant(_lastUpdateState!, _settings);
         if (_isOnWebSocket && _haWs is not null)
         {
             await _haWs.PublishUpdateStateAsync(new
             {
                 serial_number = _settings.SerialNumber,
-                state = _lastUpdateState
+                state
             }, cancellationToken);
             return;
         }
 
-        await PublishJsonAsync(UpdateStateTopic, _lastUpdateState, retain: true);
+        await PublishJsonAsync(UpdateStateTopic, state, retain: true);
     }
+
+    /// <summary>
+    /// The update state as Home Assistant gets it: what the check found, and whether an
+    /// install may be asked for from there (the Danger Zone's "updates only at this PC").
+    /// </summary>
+    internal static AppUpdateState ForHomeAssistant(AppUpdateState state, CompanionSettings settings) =>
+        state with { RemoteInstall = !settings.RemoteUpdateInstallBlocked };
 
     private async Task PublishHomeAssistantUpdateDiscoveryAsync()
     {
         await PublishJsonAsync(
             UpdateDiscoveryTopic,
-            new MqttUpdateDiscoveryConfig(
-                Name: $"{AppIdentity.DisplayName} Update",
-                UniqueId: $"{SanitizeDiscoveryId(_settings.SerialNumber)}_hass_agent_net10_update",
-                Device: new MqttDiscoveryDevice(
-                    Identifiers: [_settings.SerialNumber],
-                    Name: _settings.DeviceName,
-                    Manufacturer: _settings.Manufacturer,
-                    Model: _settings.Model,
-                    SoftwareVersion: _settings.SoftwareVersion),
-                StateTopic: UpdateStateTopic,
-                ValueTemplate: "{{ value_json.installed_version }}",
-                LatestVersionTopic: UpdateStateTopic,
-                LatestVersionTemplate: "{{ value_json.latest_version }}",
-                TitleTopic: UpdateStateTopic,
-                TitleTemplate: "{{ value_json.title }}",
-                ReleaseUrlTopic: UpdateStateTopic,
-                ReleaseUrlTemplate: "{{ value_json.release_url }}",
-                JsonAttributesTopic: UpdateStateTopic,
-                CommandTopic: UpdateInstallTopic,
-                PayloadInstall: "install"),
+            UpdateDiscoveryFor(_settings, UpdateStateTopic, UpdateInstallTopic),
             retain: _settings.MqttRetainDiscovery);
+    }
+
+    /// <summary>
+    /// Home Assistant's own MQTT discovery of the update entity (used when the integration
+    /// does not build it). With updates only at the PC it carries no command topic, so the
+    /// entity shows the new version and has no Install button.
+    /// </summary>
+    internal static MqttUpdateDiscoveryConfig UpdateDiscoveryFor(CompanionSettings settings, string stateTopic, string installTopic)
+    {
+        var remoteInstall = !settings.RemoteUpdateInstallBlocked;
+        return new MqttUpdateDiscoveryConfig(
+            Name: $"{AppIdentity.DisplayName} Update",
+            UniqueId: $"{SanitizeDiscoveryId(settings.SerialNumber)}_hass_agent_net10_update",
+            Device: new MqttDiscoveryDevice(
+                Identifiers: [settings.SerialNumber],
+                Name: settings.DeviceName,
+                Manufacturer: settings.Manufacturer,
+                Model: settings.Model,
+                SoftwareVersion: settings.SoftwareVersion),
+            StateTopic: stateTopic,
+            ValueTemplate: "{{ value_json.installed_version }}",
+            LatestVersionTopic: stateTopic,
+            LatestVersionTemplate: "{{ value_json.latest_version }}",
+            TitleTopic: stateTopic,
+            TitleTemplate: "{{ value_json.title }}",
+            ReleaseUrlTopic: stateTopic,
+            ReleaseUrlTemplate: "{{ value_json.release_url }}",
+            JsonAttributesTopic: stateTopic,
+            CommandTopic: remoteInstall ? installTopic : null,
+            PayloadInstall: remoteInstall ? "install" : null);
     }
 
     /// <summary>
@@ -3001,8 +3097,10 @@ internal sealed record MqttUpdateDiscoveryConfig(
     [property: JsonPropertyName("release_url_topic")] string ReleaseUrlTopic,
     [property: JsonPropertyName("release_url_template")] string ReleaseUrlTemplate,
     [property: JsonPropertyName("json_attributes_topic")] string JsonAttributesTopic,
-    [property: JsonPropertyName("command_topic")] string CommandTopic,
-    [property: JsonPropertyName("payload_install")] string PayloadInstall);
+    // Both left out (null) when updates are installed only at the PC: without a command
+    // topic Home Assistant's discovered update entity has no Install button.
+    [property: JsonPropertyName("command_topic")] string? CommandTopic,
+    [property: JsonPropertyName("payload_install")] string? PayloadInstall);
 
 internal sealed record PersistentNotificationMessage(
     [property: JsonPropertyName("title")] string Title,
