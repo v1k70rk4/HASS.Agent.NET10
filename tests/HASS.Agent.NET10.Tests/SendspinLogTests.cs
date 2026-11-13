@@ -15,9 +15,12 @@ public class SendspinLogTests
     [InlineData("SendspinHostService", "Handshake failed for connection d2e8818b", true)]
     [InlineData("SendspinClientService", "Handshake failed", false)]
     [InlineData("SendspinHostService", "Port 8928 is in use", false)]
-    public void Only_failed_incoming_handshakes_are_held_back(string category, string message, bool held)
+    // The player's own connection to the server, closed by the sleep: the SDK dials again by itself.
+    [InlineData("SendspinConnection", "Connection closed unexpectedly", true)]
+    [InlineData("SendspinConnection", "Error completing close handshake", false)]
+    public void Only_connections_the_next_one_makes_up_for_are_held_back(string category, string message, bool held)
     {
-        Assert.Equal(held, HandshakeFailures.IsFailure(category, message));
+        Assert.Equal(held, ConnectionFailures.IsFailure(category, message));
     }
 
     [Fact]
@@ -25,7 +28,7 @@ public class SendspinLogTests
     {
         var warnings = new List<string>();
         var debug = new List<string>();
-        using var failures = new HandshakeFailures(warnings.Add, debug.Add, TimeSpan.FromHours(1));
+        using var failures = new ConnectionFailures(warnings.Add, debug.Add, TimeSpan.FromHours(1));
 
         failures.Failed(Closed);
         failures.Failed(Failed);
@@ -34,14 +37,14 @@ public class SendspinLogTests
 
         Assert.Empty(warnings);
         Assert.Contains(Closed, debug);
-        Assert.Contains(debug, line => line.Contains("2 incoming connection(s)", StringComparison.Ordinal));
+        Assert.Contains(debug, line => line.Contains("2 connection(s) failed or closed before one got through", StringComparison.Ordinal));
     }
 
     [Fact]
     public void Failures_no_connection_follows_are_one_warning()
     {
         var warnings = new List<string>();
-        using var failures = new HandshakeFailures(warnings.Add, _ => { }, TimeSpan.FromHours(1));
+        using var failures = new ConnectionFailures(warnings.Add, _ => { }, TimeSpan.FromHours(1));
 
         failures.Failed(Closed);
         failures.Failed(Failed);
@@ -50,7 +53,7 @@ public class SendspinLogTests
         failures.GiveUp();
 
         var warning = Assert.Single(warnings);
-        Assert.Contains("3 incoming connection(s)", warning, StringComparison.Ordinal);
+        Assert.Contains("3 connection(s) failed or closed, and none got through", warning, StringComparison.Ordinal);
         Assert.EndsWith(Closed, warning, StringComparison.Ordinal);
     }
 
@@ -58,7 +61,7 @@ public class SendspinLogTests
     public async Task The_warning_comes_by_itself_once_the_time_is_up()
     {
         var warned = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
-        using var failures = new HandshakeFailures(line => warned.TrySetResult(line), _ => { }, TimeSpan.FromMilliseconds(50));
+        using var failures = new ConnectionFailures(line => warned.TrySetResult(line), _ => { }, TimeSpan.FromMilliseconds(50));
 
         failures.Failed(Failed);
 
@@ -71,7 +74,7 @@ public class SendspinLogTests
     {
         var warnings = new List<string>();
         var debug = new List<string>();
-        using var failures = new HandshakeFailures(warnings.Add, debug.Add, TimeSpan.FromHours(1), serverConnected: () => true);
+        using var failures = new ConnectionFailures(warnings.Add, debug.Add, TimeSpan.FromHours(1), serverConnected: () => true);
 
         failures.Failed(Closed);
         failures.GiveUp();
@@ -84,7 +87,7 @@ public class SendspinLogTests
     public void A_late_timer_does_not_judge_a_batch_before_its_time()
     {
         var warnings = new List<string>();
-        using var failures = new HandshakeFailures(warnings.Add, _ => { }, TimeSpan.FromHours(1));
+        using var failures = new ConnectionFailures(warnings.Add, _ => { }, TimeSpan.FromHours(1));
 
         // The batch before ended with a connection; a new one has just begun when the old
         // batch's timer comes.
@@ -100,7 +103,7 @@ public class SendspinLogTests
     public void An_early_timer_sets_itself_again_for_what_is_left()
     {
         var warnings = new List<string>();
-        using var failures = new HandshakeFailures(warnings.Add, _ => { }, TimeSpan.FromHours(1));
+        using var failures = new ConnectionFailures(warnings.Add, _ => { }, TimeSpan.FromHours(1));
 
         failures.Failed(Closed);
         var again = failures.TimeIsUp();
@@ -113,20 +116,20 @@ public class SendspinLogTests
     [Fact]
     public void A_timer_with_nothing_held_back_is_not_set_again()
     {
-        using var failures = new HandshakeFailures(_ => { }, _ => { }, TimeSpan.FromHours(1));
+        using var failures = new ConnectionFailures(_ => { }, _ => { }, TimeSpan.FromHours(1));
 
         Assert.Null(failures.TimeIsUp());
     }
 
     [Fact]
-    public void The_provider_holds_back_the_handshakes_and_keeps_the_other_warnings()
+    public void The_provider_holds_back_the_failures_and_keeps_the_other_warnings()
     {
         var folder = Path.Combine(Path.GetTempPath(), "hass-agent-test-" + Guid.NewGuid().ToString("N"));
         var path = Path.Combine(folder, "sendspin.log");
         try
         {
             using var log = new FileLog(path);
-            using var failures = new HandshakeFailures(log.Warning, log.Debug, TimeSpan.FromHours(1));
+            using var failures = new ConnectionFailures(log.Warning, log.Debug, TimeSpan.FromHours(1));
             using var provider = new FileLogLoggerProvider(log, failures);
 
             provider.CreateLogger("Sendspin.SDK.Connection.IncomingConnection")
@@ -135,17 +138,20 @@ public class SendspinLogTests
                 .LogWarning("Handshake failed for connection d2e8818b");
             provider.CreateLogger("Sendspin.SDK.Client.SendspinClientService")
                 .LogWarning("[ClockSync] Convergence lost after 10 measurements");
+            provider.CreateLogger("Sendspin.SDK.Connection.SendspinConnection")
+                .LogWarning("Connection closed unexpectedly");
             provider.CreateLogger("Sendspin.SDK.Client.SendspinHostService")
                 .LogWarning("Port 8928 is in use");
 
             var text = File.ReadAllText(path);
             Assert.DoesNotContain("handshake", text, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("closed unexpectedly", text, StringComparison.Ordinal);
             Assert.DoesNotContain("ClockSync", text, StringComparison.Ordinal);
             Assert.Contains("[WARN] Sendspin SendspinHostService: Port 8928 is in use", text, StringComparison.Ordinal);
 
             // Then held back, not dropped: no connection followed.
             failures.GiveUp();
-            Assert.Contains("[WARN] Sendspin: 2 incoming connection(s) failed in the handshake", File.ReadAllText(path), StringComparison.Ordinal);
+            Assert.Contains("[WARN] Sendspin: 3 connection(s) failed or closed, and none got through", File.ReadAllText(path), StringComparison.Ordinal);
         }
         finally
         {
@@ -160,7 +166,7 @@ public class SendspinLogTests
     public void A_connection_before_any_failure_says_nothing()
     {
         var lines = new List<string>();
-        using var failures = new HandshakeFailures(lines.Add, lines.Add, TimeSpan.FromHours(1));
+        using var failures = new ConnectionFailures(lines.Add, lines.Add, TimeSpan.FromHours(1));
 
         failures.Connected();
 

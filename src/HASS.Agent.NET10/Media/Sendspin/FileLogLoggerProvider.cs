@@ -7,11 +7,11 @@ namespace HASS.Agent.Companion.Media.Sendspin;
 /// The Sendspin SDK's logging into the app's own log. The SDK tells a lot at Information (every
 /// group update, every handshake step), which would bury the rest of the log: that goes in only
 /// with verbose logging on. Its warnings and errors go in, but for those about the stream and
-/// the clock, and for failed incoming handshakes, which <see cref="HandshakeFailures"/> holds back.
+/// the clock, and for connections that failed or closed, which <see cref="ConnectionFailures"/> holds back.
 /// </summary>
-internal sealed class FileLogLoggerProvider(FileLog log, HandshakeFailures? handshakes = null) : ILoggerProvider
+internal sealed class FileLogLoggerProvider(FileLog log, ConnectionFailures? failures = null) : ILoggerProvider
 {
-    public ILogger CreateLogger(string categoryName) => new FileLogLogger(log, ShortName(categoryName), handshakes);
+    public ILogger CreateLogger(string categoryName) => new FileLogLogger(log, ShortName(categoryName), failures);
 
     public void Dispose()
     {
@@ -30,7 +30,7 @@ internal sealed class FileLogLoggerProvider(FileLog log, HandshakeFailures? hand
     /// </summary>
     internal static bool IsClockNote(string message) => message.StartsWith("[ClockSync]", StringComparison.Ordinal);
 
-    private sealed class FileLogLogger(FileLog log, string category, HandshakeFailures? handshakes) : ILogger
+    private sealed class FileLogLogger(FileLog log, string category, ConnectionFailures? failures) : ILogger
     {
         public IDisposable? BeginScope<TState>(TState state)
             where TState : notnull => null;
@@ -62,8 +62,8 @@ internal sealed class FileLogLoggerProvider(FileLog log, HandshakeFailures? hand
                 case LogLevel.Warning when _streamNotes || IsClockNote(text):
                     log.Debug(message);
                     break;
-                case LogLevel.Warning when handshakes is not null && HandshakeFailures.IsFailure(category, text):
-                    handshakes.Failed(exception is null ? message : $"{message} ({exception.Message})");
+                case LogLevel.Warning when failures is not null && ConnectionFailures.IsFailure(category, text):
+                    failures.Failed(exception is null ? message : $"{message} ({exception.Message})");
                     break;
                 case LogLevel.Warning:
                     log.Warning(exception is null ? message : $"{message} ({exception.Message})");

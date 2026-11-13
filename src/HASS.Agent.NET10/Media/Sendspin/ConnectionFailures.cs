@@ -5,14 +5,15 @@ using Timer = System.Threading.Timer;
 namespace HASS.Agent.Companion.Media.Sendspin;
 
 /// <summary>
-/// Incoming connections that failed in the handshake, held back for a while. When the PC
+/// Connections to Music Assistant that failed or closed, held back for a while. When the PC
 /// wakes, Music Assistant tries several connections to the player at once; one gets through
-/// and the rest are closed in the middle of their handshake, which the SDK warns about one
-/// by one. Failures that a connection follows, or that come while a server is connected, go
-/// to the debug log only. Failures that no connection follows within <see cref="Grace"/>
-/// are a warning, in one line.
+/// and the rest are closed in the middle of their handshake, which the SDK warns about one by
+/// one. A player that dials the server sees its connection closed by the sleep instead, and
+/// the SDK warns about that before it connects again by itself. Failures that a connection
+/// follows, or that come while a server is connected, go to the debug log only. Failures
+/// that no connection follows within <see cref="Grace"/> are a warning, in one line.
 /// </summary>
-internal sealed class HandshakeFailures : IDisposable
+internal sealed class ConnectionFailures : IDisposable
 {
     public static readonly TimeSpan DefaultGrace = TimeSpan.FromMinutes(2);
 
@@ -27,12 +28,12 @@ internal sealed class HandshakeFailures : IDisposable
     private bool _disposed;
 
     /// <param name="serverConnected">Whether a server is connected to the player right now.</param>
-    public HandshakeFailures(FileLog log, Func<bool> serverConnected)
+    public ConnectionFailures(FileLog log, Func<bool> serverConnected)
         : this(log.Warning, log.Debug, DefaultGrace, serverConnected)
     {
     }
 
-    public HandshakeFailures(Action<string> warning, Action<string> debug, TimeSpan grace, Func<bool>? serverConnected = null)
+    public ConnectionFailures(Action<string> warning, Action<string> debug, TimeSpan grace, Func<bool>? serverConnected = null)
     {
         _warning = warning;
         _debug = debug;
@@ -43,12 +44,19 @@ internal sealed class HandshakeFailures : IDisposable
 
     public TimeSpan Grace { get; }
 
-    /// <summary>Whether a warning of the SDK's is about an incoming connection that failed in its handshake.</summary>
-    public static bool IsFailure(string category, string message) =>
-        category is "IncomingConnection" or "SendspinHostService"
-        && message.Contains("handshake", StringComparison.OrdinalIgnoreCase);
+    /// <summary>
+    /// Whether a warning of the SDK's is about a connection that failed or closed and that the
+    /// next connection makes up for: an incoming one that failed in its handshake, or the
+    /// player's own connection to the server that closed, which the SDK opens again by itself.
+    /// </summary>
+    public static bool IsFailure(string category, string message) => category switch
+    {
+        "IncomingConnection" or "SendspinHostService" => message.Contains("handshake", StringComparison.OrdinalIgnoreCase),
+        "SendspinConnection" => message.StartsWith("Connection closed unexpectedly", StringComparison.OrdinalIgnoreCase),
+        _ => false
+    };
 
-    /// <summary>A failed handshake: in the debug log now, a warning later if no connection follows.</summary>
+    /// <summary>A failed connection: in the debug log now, a warning later if no connection follows.</summary>
     public void Failed(string message)
     {
         lock (_gate)
@@ -79,7 +87,7 @@ internal sealed class HandshakeFailures : IDisposable
                 return;
             }
 
-            _debug($"Sendspin: {_count} incoming connection(s) failed in the handshake before one got through.");
+            _debug($"Sendspin: {_count} connection(s) failed or closed before one got through.");
             Reset();
         }
     }
@@ -126,11 +134,11 @@ internal sealed class HandshakeFailures : IDisposable
 
             if (_serverConnected())
             {
-                _debug($"Sendspin: {_count} incoming connection(s) failed in the handshake beside the one connected.");
+                _debug($"Sendspin: {_count} connection(s) failed or closed beside the one connected.");
             }
             else
             {
-                _warning($"Sendspin: {_count} incoming connection(s) failed in the handshake, and none got through in {Grace.TotalSeconds:0} s. The last: {_last}");
+                _warning($"Sendspin: {_count} connection(s) failed or closed, and none got through in {Grace.TotalSeconds:0} s. The last: {_last}");
             }
 
             Reset();
