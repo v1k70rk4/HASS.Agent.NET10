@@ -48,6 +48,9 @@ internal sealed class ClassicImportResult
     public bool WebSocketDropped { get; set; }
 
     public bool CertificatesDropped { get; set; }
+
+    /// <summary>The classic tray icon's web view came over as the dashboard popup.</summary>
+    public bool Dashboard { get; set; }
 }
 
 /// <summary>
@@ -202,8 +205,8 @@ internal static class ClassicImport
 
         ApplySensors(files.Sensors, service: false, target, result);
         ApplySensors(files.ServiceSensors, service: true, target, result);
-        ApplyCommands(files.Commands, service: false, target, result);
-        ApplyCommands(files.ServiceCommands, service: true, target, result);
+        ApplyCommands(files.Commands, service: false, target, result, app);
+        ApplyCommands(files.ServiceCommands, service: true, target, result, app);
 
         target.Normalize();
         return result;
@@ -242,7 +245,43 @@ internal static class ClassicImport
         {
             result.CertificatesDropped = true;
         }
+
+        ApplyTrayWebView(settings, target, result);
     }
+
+    // The classic client's tray icon web view is this app's dashboard popup: its page, its size,
+    // whether it loads in the background, and whether a click on the tray icon opens it (a
+    // right click there, a left click here).
+    private static void ApplyTrayWebView(JsonElement settings, CompanionSettings target, ClassicImportResult result)
+    {
+        if (TrayWebViewUrl(settings) is not { } url)
+        {
+            return;
+        }
+
+        target.WebViewUrl = url;
+        var size = TrayWebViewSize(settings);
+        target.WebViewWidth = size.Width;
+        target.WebViewHeight = size.Height;
+        target.WebViewKeepLoaded = GetBool(settings, "TrayIconWebViewBackgroundLoading") == true;
+        target.WebViewOnTrayClick = GetBool(settings, "TrayIconShowWebView") == true;
+        result.Dashboard = true;
+    }
+
+    private static string? TrayWebViewUrl(JsonElement settings)
+    {
+        var url = GetString(settings, "TrayIconWebViewUrl")?.Trim();
+        return url is { Length: > 0 } && WebViewOptions.IsWebAddress(url) ? url : null;
+    }
+
+    // The classic client's own defaults when a size is missing.
+    private static Size TrayWebViewSize(JsonElement settings) => WindowSize(
+        GetInt(settings, "TrayIconWebViewWidth") ?? 700,
+        GetInt(settings, "TrayIconWebViewHeight") ?? 560);
+
+    private static Size WindowSize(int width, int height) => new(
+        Math.Clamp(width, WebViewOptions.MinimumEdge, WebViewOptions.MaximumEdge),
+        Math.Clamp(height, WebViewOptions.MinimumEdge, WebViewOptions.MaximumEdge));
 
     private static void ApplyMqtt(JsonElement settings, CompanionSettings target, ClassicImportResult result)
     {
@@ -435,7 +474,7 @@ internal static class ClassicImport
         ["MediaPreviousCommand"] = "prev_track",
     };
 
-    private static void ApplyCommands(string? json, bool service, CompanionSettings target, ClassicImportResult result)
+    private static void ApplyCommands(string? json, bool service, CompanionSettings target, ClassicImportResult result, JsonElement? app)
     {
         foreach (var item in ParseArray(json))
         {
@@ -458,7 +497,7 @@ internal static class ClassicImport
                 continue;
             }
 
-            var converted = ConvertCommand(item, type);
+            var converted = ConvertCommand(item, type, app);
             if (converted is null)
             {
                 result.Skipped.Add($"{name} ({type})");
@@ -508,7 +547,8 @@ internal static class ClassicImport
         }
     }
 
-    internal static CustomCommandDefinition? ConvertCommand(JsonElement item, string type)
+    /// <param name="app">The classic client's settings, for a command that opens its tray icon web view.</param>
+    internal static CustomCommandDefinition? ConvertCommand(JsonElement item, string type, JsonElement? app = null)
     {
         var command = GetString(item, "Command")?.Trim() ?? string.Empty;
 
@@ -544,6 +584,23 @@ internal static class ClassicImport
             case "WebViewCommand":
                 return ConvertWebView(command);
 
+            // A switch there that opened the tray icon's web view and closed it: here a Popup
+            // window command with that page in a window like the dashboard popup. A Close popup
+            // windows command closes it.
+            case "TrayWebViewCommand":
+                return app is { } settings && TrayWebViewUrl(settings) is { } trayUrl
+                    ? new CustomCommandDefinition
+                    {
+                        Type = CustomCommandTypes.WebView,
+                        Command = trayUrl,
+                        Arguments = WebViewOptions.Format(new PopupWindowOptions(
+                            TrayWebViewSize(settings),
+                            KeepLoaded: GetBool(settings, "TrayIconWebViewBackgroundLoading") == true,
+                            CloseAfter: null,
+                            AboveTray: true))
+                    }
+                    : null;
+
             default:
                 return null;
         }
@@ -577,10 +634,13 @@ internal static class ClassicImport
             return null;
         }
 
+        // A size this app does not take (a window smaller or bigger than it opens) would leave
+        // the command unable to open at all: the nearest one it takes.
         var size = string.Empty;
         if (info is { } window && GetInt(window, "Width") is > 0 and var width && GetInt(window, "Height") is > 0 and var height)
         {
-            size = $"{width}x{height}";
+            var fitting = WindowSize(width, height);
+            size = $"{fitting.Width}x{fitting.Height}";
         }
 
         return new CustomCommandDefinition { Type = CustomCommandTypes.WebView, Command = url, Arguments = size };

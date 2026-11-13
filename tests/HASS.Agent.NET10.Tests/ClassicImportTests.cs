@@ -283,6 +283,89 @@ public class ClassicImportTests
         Assert.Equal(2, settings.CustomCommands.Count);
     }
 
+    // The tray icon web view settings as the community client writes them.
+    private const string TrayWebViewSettings = """
+        {
+          "DeviceName": "OFFICE-PC",
+          "TrayIconShowWebView": true,
+          "TrayIconWebViewUrl": "http://ha.local:8123/lovelace/tray",
+          "TrayIconWebViewWidth": 640,
+          "TrayIconWebViewHeight": 9000,
+          "TrayIconWebViewBackgroundLoading": true
+        }
+        """;
+
+    [Fact]
+    public void The_tray_icon_web_view_becomes_the_dashboard_popup()
+    {
+        var settings = NewSettings();
+        var result = ClassicImport.Apply(new ClassicFiles(TrayWebViewSettings, null, null, null, null, null), settings);
+
+        Assert.True(result.Dashboard);
+        Assert.Equal("http://ha.local:8123/lovelace/tray", settings.WebViewUrl);
+        Assert.Equal(640, settings.WebViewWidth);
+        // Taller than a window here may be: as tall as it may be.
+        Assert.Equal(WebViewOptions.MaximumEdge, settings.WebViewHeight);
+        Assert.True(settings.WebViewKeepLoaded);
+        Assert.True(settings.WebViewOnTrayClick);
+    }
+
+    [Fact]
+    public void A_tray_icon_web_view_without_a_page_leaves_the_dashboard_popup_alone()
+    {
+        var settings = NewSettings();
+        settings.WebViewUrl = "http://ha.local:8123/mine";
+        var app = TrayWebViewSettings.Replace("http://ha.local:8123/lovelace/tray", "");
+
+        var result = ClassicImport.Apply(new ClassicFiles(app, null, null, null, null, null), settings);
+
+        Assert.False(result.Dashboard);
+        Assert.Equal("http://ha.local:8123/mine", settings.WebViewUrl);
+        Assert.False(settings.WebViewOnTrayClick);
+    }
+
+    [Fact]
+    public void The_tray_web_view_command_opens_that_page_above_the_tray()
+    {
+        var settings = NewSettings();
+        var commands = """[ { "Type": "TrayWebViewCommand", "Id": "0b9c6a8e-5555-4c2a-9e7c-000000000001", "Name": "Tray dashboard" } ]""";
+
+        ClassicImport.Apply(new ClassicFiles(TrayWebViewSettings, null, commands, null, null, null), settings);
+
+        var command = settings.CustomCommands.Single();
+        Assert.Equal(CustomCommandTypes.WebView, command.Type);
+        Assert.Equal("http://ha.local:8123/lovelace/tray", command.Command);
+        Assert.True(WebViewOptions.TryParseWindow(command.Arguments, out var window));
+        Assert.True(window.AboveTray);
+        Assert.True(window.KeepLoaded);
+        Assert.Equal(new System.Drawing.Size(640, WebViewOptions.MaximumEdge), window.Size);
+        Assert.True(command.TrayApp);
+    }
+
+    [Fact]
+    public void The_tray_web_view_command_without_a_page_is_left_out()
+    {
+        var settings = NewSettings();
+        var commands = """[ { "Type": "TrayWebViewCommand", "Id": "0b9c6a8e-5555-4c2a-9e7c-000000000001", "Name": "Tray dashboard" } ]""";
+
+        var result = ClassicImport.Apply(new ClassicFiles(null, null, commands, null, null, null), settings);
+
+        Assert.Empty(settings.CustomCommands);
+        Assert.Contains("Tray dashboard (TrayWebViewCommand)", result.Skipped);
+    }
+
+    [Fact]
+    public void A_web_view_window_too_small_here_opens_as_small_as_it_may()
+    {
+        var item = System.Text.Json.JsonDocument.Parse("""{ "Command": "{\"Url\":\"http://ha.local:8123/x\",\"Width\":120,\"Height\":5000}" }""").RootElement;
+
+        var command = ClassicImport.ConvertCommand(item, "WebViewCommand");
+
+        Assert.NotNull(command);
+        Assert.Equal($"{WebViewOptions.MinimumEdge}x{WebViewOptions.MaximumEdge}", command.Arguments);
+        Assert.True(WebViewOptions.TryParseWindow(command.Arguments, out _));
+    }
+
     [Fact]
     public void A_low_integrity_command_is_left_out_with_the_reason()
     {

@@ -639,6 +639,7 @@ internal sealed class SendspinPlayerService : IAsyncDisposable
         private readonly SendspinPlayerService _owner;
         private readonly Config _config;
         private readonly ILoggerFactory _loggerFactory;
+        private readonly HandshakeFailures _handshakes;
         private readonly ProtectedPairingRecordStore _pairing = PairingStore();
         private readonly CancellationTokenSource _cts = new();
 
@@ -658,9 +659,10 @@ internal sealed class SendspinPlayerService : IAsyncDisposable
         {
             _owner = owner;
             _config = config;
+            _handshakes = new HandshakeFailures(owner._log);
             _loggerFactory = LoggerFactory.Create(builder => builder
                 .SetMinimumLevel(LogLevel.Trace)
-                .AddProvider(new FileLogLoggerProvider(owner._log)));
+                .AddProvider(new FileLogLoggerProvider(owner._log, _handshakes)));
         }
 
         private FileLog Log => _owner._log;
@@ -802,6 +804,7 @@ internal sealed class SendspinPlayerService : IAsyncDisposable
             }
 
             _loggerFactory.Dispose();
+            _handshakes.Dispose();
             _cts.Dispose();
         }
 
@@ -946,6 +949,7 @@ internal sealed class SendspinPlayerService : IAsyncDisposable
 
         private void OnServerConnected(object? sender, ConnectedServerInfo info)
         {
+            _handshakes.Connected();
             _serverName = info.ServerName;
             Update(_pairing.IsPairedWith(info.ServerId) ? SendspinState.Connected : SendspinState.NeedsPairing);
             Log.Info($"Sendspin: {info.ServerName} connected.");
