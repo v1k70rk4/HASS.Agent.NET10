@@ -2,6 +2,22 @@
 
 Every release of HASS.Agent .NET10, newest first. The downloads are on the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases).
 
+## 10.13.1-beta.2
+
+> **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered the beta, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.13.0**, below.
+
+The second beta of 10.13.1: popup windows that keep their page, close by themselves or from Home Assistant, and a sensor for the print queues. Everything from beta.1 is in it. Works with the Home Assistant integration **10.6.7** or newer; the Print jobs sensor needs the integration **10.13.1-beta.2**, out at the same time. Signed release.
+
+- **The dashboard popup can keep its page loaded.** A new tick on the Capabilities page, *Keep the page loaded in the background*, off by default. With it the popup is hidden, not closed, when you click elsewhere, and the next click on the tray icon shows the page at once, as you left it. The page then keeps the memory of a browser tab for as long as the app runs. Asked for in [#190](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/190). See [Dashboard popup](docs/features/dashboard-popup.md).
+- **Popup window commands: fields for the window, and one window per command.** The editor has fields for the size, **Popup above the tray** (a window like the dashboard popup), **Keep the page loaded** and **Closes after** so many seconds. A command has one window now: pressed again, it is replaced with a fresh page, or, when it keeps its page, brought back as it was. Before, every press opened one more window. See [Custom commands](docs/commands/custom.md#popup-windows).
+- **A window opened from Home Assistant comes over the other windows.** It used to open behind the program in front. It leaves the keyboard with the program you are typing into.
+- **A new custom command type, Close popup windows.** It closes the window of the Popup window command it names, or all of them and the dashboard popup for `*`. In Home Assistant it is a button like any other custom command.
+- **A Print jobs sensor.** Off by default. Its value is the number of jobs that wait in the print queues of the PC, on whichever printer. A job stays in its queue while the printer is switched off, so an automation can switch the printer's plug on when the number leaves 0. The attributes have every printer with its own number of jobs, its state in one word and every state flag Windows keeps for it (`paper_out`, `toner_low`, `offline` and the rest), the default printer, and the first 20 jobs. The printers are those of the user who is logged in, the ones connected from a print server too, whether the tray app or the service reads the sensor; with nobody logged in the service reports the printers installed on the PC. Asked for in [#191](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/191). Needs the integration 10.13.1-beta.2. See [Built-in sensors](docs/sensors/index.md).
+- **The classic HASS.Agent's printer sensors come over** to the Print jobs sensor when the classic client's settings are taken over.
+- **The sensors the + button makes from a sensor's attributes are ticked as the sensor is**, for the tray app, the service or both. They used to be ticked for both wherever both can read the sensor, whatever the sensor itself was ticked for.
+
+Beta.1, below, is in it: the screenshot when Home Assistant asks for one, the audio code on NAudio 3, and the fixes around the settings folder.
+
 ## 10.13.1-beta.1
 
 > **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered the beta, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.13.0**, below.
