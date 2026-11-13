@@ -23,7 +23,8 @@
       "Attribute.default_printer",
       "Attribute.default_printer_jobs",
       "Attribute.jobs",
-      "Attribute.status"
+      "Attribute.status",
+      "Classic.Dashboard"
     ]
   },
   "strings": {
@@ -106,6 +107,7 @@
     "Classic.DoneBoth": "两项连接均已导入。MQTT及其密码，以及通过传统版本配置的令牌连接的HA API，其数据均已在此设备上受到保护。若该令牌处于HomeAssistant管理员账户下，则会在连接成功后，建议将其替换为该设备专属的用户。",
     "Classic.AddInHaMqtt": "此设备将在HomeAssistant中作为一个全新设备出现。在HomeAssistant“设置>设备与服务>已发现”中可将其添加。然后请在MQTT集成下删除传统版本应用添加的旧设备，避免两者共存。",
     "Classic.AddInHaApi": "请在HomeAssistant中手动添加此设备，打开HomeAssistant之后转到“设置>设备与服务>添加集成>HASS.Agent>HA API(WebSocket)”。然后请在MQTT集成下删除传统版本应用添加的旧设备，避免两者共存。",
+    "Classic.Dashboard": "The tray icon's web view came over as the Dashboard popup, on the Capabilities page.",
     "Classic.WebSocket": "此处不支持基于WebSocket的MQTT：请检查MQTT页面上的端口。",
     "Classic.Certificates": "之前的配置中的证书文件未被导入。",
     "Classic.StillRunning": "传统版本HASS.Agent仍在运行。请卸载它及其卫星服务(Satellite Service)，避免两者并存，同时在MQTT集成下删除传统版本应用添加的旧设备。",

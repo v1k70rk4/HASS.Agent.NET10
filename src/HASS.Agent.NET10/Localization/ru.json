@@ -74,7 +74,8 @@
       "Attribute.default_printer",
       "Attribute.default_printer_jobs",
       "Attribute.jobs",
-      "Attribute.status"
+      "Attribute.status",
+      "Classic.Dashboard"
     ]
   },
   "strings": {
@@ -157,6 +158,7 @@
     "Classic.DoneBoth": "Both connections came over: MQTT with its password, and the HA API with the token of the classic client, kept protected on this PC. That token is most likely a Home Assistant administrator's: once the PC is connected, HASS.Agent offers to swap it for a user of the PC's own.",
     "Classic.AddInHaMqtt": "In Home Assistant the PC turns up as a new device: under Settings → Devices & services → Discovered, add it there. Then remove the classic client's old device under the MQTT integration, so the two do not sit side by side.",
     "Classic.AddInHaApi": "In Home Assistant add the PC by hand: Settings → Devices & services → Add integration → HASS.Agent → HA API (WebSocket). Then remove the classic client's old device under the MQTT integration, so the two do not sit side by side.",
+    "Classic.Dashboard": "The tray icon's web view came over as the Dashboard popup, on the Capabilities page.",
     "Classic.WebSocket": "MQTT over WebSocket is not supported here: check the port on the MQTT page.",
     "Classic.Certificates": "The certificate files of the classic settings were not taken over.",
     "Classic.StillRunning": "The classic HASS.Agent still runs on this PC. Uninstall it and its Satellite Service, so the two do not run side by side, and delete its old device in Home Assistant under the MQTT integration.",

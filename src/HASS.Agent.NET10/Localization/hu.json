@@ -86,6 +86,7 @@
     "Classic.DoneBoth": "Mindkét kapcsolat átjött: az MQTT a jelszavával, a HA API pedig a klasszikus kliens tokenjével, ezeket ezen a gépen védve tároljuk. Ez a token nagy valószínűséggel egy Home Assistant rendszergazdáé: amint a gép kapcsolódott, a HASS.Agent felajánlja, hogy lecseréli a gép saját felhasználójára.",
     "Classic.AddInHaMqtt": "A Home Assistantban a gép új eszközként jelenik meg: a Beállítások → Eszközök és szolgáltatások → Felfedezett alatt vedd fel. Utána töröld a klasszikus kliens régi eszközét az MQTT integráció alatt, hogy a kettő ne legyen egymás mellett.",
     "Classic.AddInHaApi": "A Home Assistantban kézzel vedd fel a gépet: Beállítások → Eszközök és szolgáltatások → Integráció hozzáadása → HASS.Agent → HA API (WebSocket). Utána töröld a klasszikus kliens régi eszközét az MQTT integráció alatt, hogy a kettő ne legyen egymás mellett.",
+    "Classic.Dashboard": "A tálcaikon webnézete a Felugró dashboard lett, a Képességek oldalon.",
     "Classic.WebSocket": "A WebSocketen át futó MQTT-t ez az alkalmazás nem támogatja: nézd meg a portot az MQTT oldalon.",
     "Classic.Certificates": "A klasszikus beállítások tanúsítványfájljai nem jöttek át.",
     "Classic.StillRunning": "A klasszikus HASS.Agent még fut ezen a gépen. Távolítsd el, a Satellite Service-szel együtt, hogy ne fusson a kettő egymás mellett, és töröld a régi eszközét a Home Assistantban, az MQTT integráció alatt.",

@@ -2999,7 +2999,7 @@ internal sealed class MainForm : Form
         {
             var settings = SettingsStore.Clone(_settings);
             var result = ClassicImport.Apply(ClassicImport.Read(install), settings);
-            if (!result.Connection && result.Sensors.Count == 0 && result.Commands.Count == 0 && result.Skipped.Count == 0)
+            if (!result.Connection && !result.Dashboard && result.Sensors.Count == 0 && result.Commands.Count == 0 && result.Skipped.Count == 0)
             {
                 MessageBox.Show(S("Classic.Empty"), AppIdentity.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
@@ -3029,6 +3029,11 @@ internal sealed class MainForm : Form
             var mqtt = result.Mqtt;
             lines.Add(S(mqtt && result.HaApi ? "Classic.DoneBoth" : result.HaApi ? "Classic.DoneHaApi" : "Classic.DoneMqtt"));
             lines.Add(S(mqtt ? "Classic.AddInHaMqtt" : "Classic.AddInHaApi"));
+        }
+
+        if (result.Dashboard)
+        {
+            lines.Add(S("Classic.Dashboard"));
         }
 
         if (result.WebSocketDropped)

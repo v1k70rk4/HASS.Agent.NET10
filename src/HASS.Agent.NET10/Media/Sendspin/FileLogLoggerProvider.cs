@@ -6,11 +6,12 @@ namespace HASS.Agent.Companion.Media.Sendspin;
 /// <summary>
 /// The Sendspin SDK's logging into the app's own log. The SDK tells a lot at Information (every
 /// group update, every handshake step), which would bury the rest of the log: that goes in only
-/// with verbose logging on. Its warnings and errors always go in.
+/// with verbose logging on. Its warnings and errors go in, but for those about the stream and
+/// the clock, and for failed incoming handshakes, which <see cref="HandshakeFailures"/> holds back.
 /// </summary>
-internal sealed class FileLogLoggerProvider(FileLog log) : ILoggerProvider
+internal sealed class FileLogLoggerProvider(FileLog log, HandshakeFailures? handshakes = null) : ILoggerProvider
 {
-    public ILogger CreateLogger(string categoryName) => new FileLogLogger(log, ShortName(categoryName));
+    public ILogger CreateLogger(string categoryName) => new FileLogLogger(log, ShortName(categoryName), handshakes);
 
     public void Dispose()
     {
@@ -23,7 +24,13 @@ internal sealed class FileLogLoggerProvider(FileLog log) : ILoggerProvider
         return dot >= 0 ? category[(dot + 1)..] : category;
     }
 
-    private sealed class FileLogLogger(FileLog log, string category) : ILogger
+    /// <summary>
+    /// A clock that lost its convergence and measures again: after the PC wakes it always
+    /// does, and the player stays in sync while it converges anew.
+    /// </summary>
+    internal static bool IsClockNote(string message) => message.StartsWith("[ClockSync]", StringComparison.Ordinal);
+
+    private sealed class FileLogLogger(FileLog log, string category, HandshakeFailures? handshakes) : ILogger
     {
         public IDisposable? BeginScope<TState>(TState state)
             where TState : notnull => null;
@@ -48,11 +55,15 @@ internal sealed class FileLogLoggerProvider(FileLog log) : ILoggerProvider
                 return;
             }
 
-            var message = $"Sendspin {category}: {formatter(state, exception)}";
+            var text = formatter(state, exception);
+            var message = $"Sendspin {category}: {text}";
             switch (logLevel)
             {
-                case LogLevel.Warning when _streamNotes:
+                case LogLevel.Warning when _streamNotes || IsClockNote(text):
                     log.Debug(message);
+                    break;
+                case LogLevel.Warning when handshakes is not null && HandshakeFailures.IsFailure(category, text):
+                    handshakes.Failed(exception is null ? message : $"{message} ({exception.Message})");
                     break;
                 case LogLevel.Warning:
                     log.Warning(exception is null ? message : $"{message} ({exception.Message})");
