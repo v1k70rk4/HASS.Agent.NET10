@@ -83,17 +83,26 @@ public sealed class PrintQueueTests
 
         // The default printer first, whatever its place and however it is written, then the
         // others in the order the spooler lists them.
-        var asked = PrintSpooler.TheOnesAsked(names, @"\\SERVER\queue 90", PrintSpooler.MostPrinters);
+        var asked = PrintSpooler.TheOnesAsked(names, PrintSpooler.MostPrinters, @"\\SERVER\queue 90");
         Assert.Equal(PrintSpooler.MostPrinters, asked.Count);
         Assert.Equal(@"\\server\Queue 90", asked[0]);
         Assert.Equal(names.Take(PrintSpooler.MostPrinters - 1), asked.Skip(1));
 
         // No default, or one that is not among them: the first ones as they are.
-        Assert.Equal(names.Take(3), PrintSpooler.TheOnesAsked(names, defaultPrinter: null, most: 3));
-        Assert.Equal(names.Take(3), PrintSpooler.TheOnesAsked(names, "Gone", most: 3));
+        Assert.Equal(names.Take(3), PrintSpooler.TheOnesAsked(names, most: 3));
+        Assert.Equal(names.Take(3), PrintSpooler.TheOnesAsked(names, 3, null, ""));
+        Assert.Equal(names.Take(3), PrintSpooler.TheOnesAsked(names, 3, "Gone"));
+
+        // The default the caller knows better is the one, as long as a printer has its name;
+        // where the registry still names one that is gone, the spooler's answer is.
+        Assert.Equal(@"\\server\Queue 70", PrintSpooler.TheOnesAsked(names, 3, @"\\server\Queue 70", @"\\server\Queue 90")[0]);
+        Assert.Equal(
+            [@"\\server\Queue 90", @"\\server\Queue 1", @"\\server\Queue 2"],
+            PrintSpooler.TheOnesAsked(names, 3, "Gone", @"\\server\Queue 90"));
+        Assert.Equal(@"\\server\Queue 90", PrintSpooler.TheOnesAsked(names, 3, null, @"\\server\Queue 90")[0]);
 
         // Fewer than are asked: every one of them, in the spooler's order.
-        Assert.Equal(names.Take(5), PrintSpooler.TheOnesAsked(names.Take(5).ToList(), defaultPrinter: null, PrintSpooler.MostPrinters));
+        Assert.Equal(names.Take(5), PrintSpooler.TheOnesAsked(names.Take(5).ToList(), PrintSpooler.MostPrinters));
 
         // The count is of every printer there is; the list has the ones that were asked.
         var queues = PrintQueues.Compose(Printers, Jobs, defaultPrinter: null, printerCount: 100);

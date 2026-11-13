@@ -46,6 +46,8 @@ internal static class PrintSpooler
     /// <param name="defaultFirst">
     /// The default printer where the caller knows it better than the spooler's answer to
     /// this thread (the service, from the user's registry): the one that is asked in any case.
+    /// When no printer has that name (the registry still names one that is gone), the
+    /// spooler's answer is the one asked in any case.
     /// </param>
     public static (List<PrinterRow> Printers, List<PrintJobRow> Jobs, string? DefaultPrinter, int PrinterCount) Read(
         int maximumJobs, WindowsIdentity? asUser, string? defaultFirst = null)
@@ -56,7 +58,7 @@ internal static class PrintSpooler
             : WindowsIdentity.RunImpersonated(asUser.AccessToken, () => (PrinterNames(), DefaultPrinter()));
 
         var (printers, jobs) = Asks.Collect(
-            TheOnesAsked(names, defaultFirst ?? defaultPrinter, MostPrinters),
+            TheOnesAsked(names, MostPrinters, defaultFirst, defaultPrinter),
             name => Question(name, maximumJobs, asUser),
             maximumJobs);
         return (printers, jobs, defaultPrinter, names.Count);
@@ -64,13 +66,19 @@ internal static class PrintSpooler
 
     /// <summary>
     /// Which printers are asked when there are more than are asked at all: the default
-    /// printer, then the others in the order the spooler lists them.
+    /// printer, then the others in the order the spooler lists them. The default is the
+    /// first of <paramref name="defaults"/> that a printer has as its name: a name no
+    /// printer has (none given, or one that is gone) is passed over for the next.
     /// </summary>
-    internal static List<string> TheOnesAsked(IReadOnlyList<string> names, string? defaultPrinter, int most) =>
-        names
+    internal static List<string> TheOnesAsked(IReadOnlyList<string> names, int most, params string?[] defaults)
+    {
+        var defaultPrinter = defaults.FirstOrDefault(candidate =>
+            !string.IsNullOrEmpty(candidate) && names.Contains(candidate, StringComparer.OrdinalIgnoreCase));
+        return names
             .OrderBy(name => !string.Equals(name, defaultPrinter, StringComparison.OrdinalIgnoreCase))
             .Take(most)
             .ToList();
+    }
 
     // The question to one printer, to run on a thread of its own. With a user, that thread
     // gets a copy of the user's token, taken now while the caller still holds it: the
