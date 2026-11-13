@@ -659,7 +659,7 @@ internal sealed class SendspinPlayerService : IAsyncDisposable
         {
             _owner = owner;
             _config = config;
-            _handshakes = new HandshakeFailures(owner._log);
+            _handshakes = new HandshakeFailures(owner._log, () => _host?.ConnectedServers.Count > 0);
             _loggerFactory = LoggerFactory.Create(builder => builder
                 .SetMinimumLevel(LogLevel.Trace)
                 .AddProvider(new FileLogLoggerProvider(owner._log, _handshakes)));

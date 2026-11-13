@@ -1,4 +1,6 @@
+using HASS.Agent.Companion.Logging;
 using HASS.Agent.Companion.Media.Sendspin;
+using Microsoft.Extensions.Logging;
 
 namespace HASS.Agent.Companion.Tests;
 
@@ -62,6 +64,74 @@ public class SendspinLogTests
 
         var done = await Task.WhenAny(warned.Task, Task.Delay(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
         Assert.Same(warned.Task, done);
+    }
+
+    [Fact]
+    public void Failures_beside_a_connected_server_are_no_warning()
+    {
+        var warnings = new List<string>();
+        var debug = new List<string>();
+        using var failures = new HandshakeFailures(warnings.Add, debug.Add, TimeSpan.FromHours(1), serverConnected: () => true);
+
+        failures.Failed(Closed);
+        failures.GiveUp();
+
+        Assert.Empty(warnings);
+        Assert.Contains(debug, line => line.Contains("beside the one connected", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void A_late_timer_does_not_judge_a_batch_before_its_time()
+    {
+        var warnings = new List<string>();
+        using var failures = new HandshakeFailures(warnings.Add, _ => { }, TimeSpan.FromHours(1));
+
+        // The batch before ended with a connection; a new one has just begun when the old
+        // batch's timer comes.
+        failures.Failed(Closed);
+        failures.Connected();
+        failures.Failed(Failed);
+        failures.TimeIsUp();
+
+        Assert.Empty(warnings);
+    }
+
+    [Fact]
+    public void The_provider_holds_back_the_handshakes_and_keeps_the_other_warnings()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "hass-agent-test-" + Guid.NewGuid().ToString("N"));
+        var path = Path.Combine(folder, "sendspin.log");
+        try
+        {
+            using var log = new FileLog(path);
+            using var failures = new HandshakeFailures(log.Warning, log.Debug, TimeSpan.FromHours(1));
+            using var provider = new FileLogLoggerProvider(log, failures);
+
+            provider.CreateLogger("Sendspin.SDK.Connection.IncomingConnection")
+                .LogWarning("Connection closed during the handshake before the server replied (no close status)");
+            provider.CreateLogger("Sendspin.SDK.Client.SendspinHostService")
+                .LogWarning("Handshake failed for connection d2e8818b");
+            provider.CreateLogger("Sendspin.SDK.Client.SendspinClientService")
+                .LogWarning("[ClockSync] Convergence lost after 10 measurements");
+            provider.CreateLogger("Sendspin.SDK.Client.SendspinHostService")
+                .LogWarning("Port 8928 is in use");
+
+            var text = File.ReadAllText(path);
+            Assert.DoesNotContain("handshake", text, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("ClockSync", text, StringComparison.Ordinal);
+            Assert.Contains("[WARN] Sendspin SendspinHostService: Port 8928 is in use", text, StringComparison.Ordinal);
+
+            // Then held back, not dropped: no connection followed.
+            failures.GiveUp();
+            Assert.Contains("[WARN] Sendspin: 2 incoming connection(s) failed in the handshake", File.ReadAllText(path), StringComparison.Ordinal);
+        }
+        finally
+        {
+            if (Directory.Exists(folder))
+            {
+                Directory.Delete(folder, recursive: true);
+            }
+        }
     }
 
     [Fact]

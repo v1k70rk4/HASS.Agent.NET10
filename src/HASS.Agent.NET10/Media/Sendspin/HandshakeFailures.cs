@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using HASS.Agent.Companion.Logging;
 using Timer = System.Threading.Timer;
 
@@ -7,8 +8,9 @@ namespace HASS.Agent.Companion.Media.Sendspin;
 /// Incoming connections that failed in the handshake, held back for a while. When the PC
 /// wakes, Music Assistant tries several connections to the player at once; one gets through
 /// and the rest are closed in the middle of their handshake, which the SDK warns about one
-/// by one. Failures that a connection follows go to the debug log only. Failures that no
-/// connection follows within <see cref="Grace"/> are a warning, in one line.
+/// by one. Failures that a connection follows, or that come while a server is connected, go
+/// to the debug log only. Failures that no connection follows within <see cref="Grace"/>
+/// are a warning, in one line.
 /// </summary>
 internal sealed class HandshakeFailures : IDisposable
 {
@@ -16,23 +18,27 @@ internal sealed class HandshakeFailures : IDisposable
 
     private readonly Action<string> _warning;
     private readonly Action<string> _debug;
+    private readonly Func<bool> _serverConnected;
     private readonly object _gate = new();
     private readonly Timer _timer;
     private int _count;
     private string? _last;
+    private long _batchStarted;
     private bool _disposed;
 
-    public HandshakeFailures(FileLog log)
-        : this(log.Warning, log.Debug, DefaultGrace)
+    /// <param name="serverConnected">Whether a server is connected to the player right now.</param>
+    public HandshakeFailures(FileLog log, Func<bool> serverConnected)
+        : this(log.Warning, log.Debug, DefaultGrace, serverConnected)
     {
     }
 
-    public HandshakeFailures(Action<string> warning, Action<string> debug, TimeSpan grace)
+    public HandshakeFailures(Action<string> warning, Action<string> debug, TimeSpan grace, Func<bool>? serverConnected = null)
     {
         _warning = warning;
         _debug = debug;
+        _serverConnected = serverConnected ?? (() => false);
         Grace = grace;
-        _timer = new Timer(_ => GiveUp());
+        _timer = new Timer(_ => TimeIsUp());
     }
 
     public TimeSpan Grace { get; }
@@ -57,6 +63,7 @@ internal sealed class HandshakeFailures : IDisposable
             _last = message;
             if (_count == 1)
             {
+                _batchStarted = Stopwatch.GetTimestamp();
                 _timer.Change(Grace, Timeout.InfiniteTimeSpan);
             }
         }
@@ -77,7 +84,23 @@ internal sealed class HandshakeFailures : IDisposable
         }
     }
 
-    /// <summary>No server got through in time: the failures are a warning.</summary>
+    // A callback of the timer can start late, after the batch it was set for ended and a new
+    // one began: that one has its own time, and is not judged before it is up.
+    internal void TimeIsUp()
+    {
+        lock (_gate)
+        {
+            if (_count > 0 && Stopwatch.GetElapsedTime(_batchStarted) >= Grace)
+            {
+                GiveUp();
+            }
+        }
+    }
+
+    /// <summary>
+    /// The time is up for the failures held back: a warning, unless a server is connected,
+    /// which a failure on another connection beside it does not trouble.
+    /// </summary>
     internal void GiveUp()
     {
         lock (_gate)
@@ -87,7 +110,15 @@ internal sealed class HandshakeFailures : IDisposable
                 return;
             }
 
-            _warning($"Sendspin: {_count} incoming connection(s) failed in the handshake, and none got through in {Grace.TotalSeconds:0} s. The last: {_last}");
+            if (_serverConnected())
+            {
+                _debug($"Sendspin: {_count} incoming connection(s) failed in the handshake beside the one connected.");
+            }
+            else
+            {
+                _warning($"Sendspin: {_count} incoming connection(s) failed in the handshake, and none got through in {Grace.TotalSeconds:0} s. The last: {_last}");
+            }
+
             Reset();
         }
     }
