@@ -639,7 +639,7 @@ internal sealed class SendspinPlayerService : IAsyncDisposable
         private readonly SendspinPlayerService _owner;
         private readonly Config _config;
         private readonly ILoggerFactory _loggerFactory;
-        private readonly HandshakeFailures _handshakes;
+        private readonly ConnectionFailures _failures;
         private readonly ProtectedPairingRecordStore _pairing = PairingStore();
         private readonly CancellationTokenSource _cts = new();
 
@@ -659,10 +659,13 @@ internal sealed class SendspinPlayerService : IAsyncDisposable
         {
             _owner = owner;
             _config = config;
-            _handshakes = new HandshakeFailures(owner._log, () => _host?.ConnectedServers.Count > 0);
+            // A server Music Assistant connected from, or the one the player dialled and is on.
+            _failures = new ConnectionFailures(
+                owner._log,
+                () => _host?.ConnectedServers.Count > 0 || (_client is not null && _link == SendspinState.Connected));
             _loggerFactory = LoggerFactory.Create(builder => builder
                 .SetMinimumLevel(LogLevel.Trace)
-                .AddProvider(new FileLogLoggerProvider(owner._log, _handshakes)));
+                .AddProvider(new FileLogLoggerProvider(owner._log, _failures)));
         }
 
         private FileLog Log => _owner._log;
@@ -804,7 +807,7 @@ internal sealed class SendspinPlayerService : IAsyncDisposable
             }
 
             _loggerFactory.Dispose();
-            _handshakes.Dispose();
+            _failures.Dispose();
             _cts.Dispose();
         }
 
@@ -897,6 +900,7 @@ internal sealed class SendspinPlayerService : IAsyncDisposable
         {
             if (e.NewState == ConnectionState.Connected)
             {
+                _failures.Connected();
                 _serverName = _client?.ServerName;
             }
             else
@@ -949,7 +953,7 @@ internal sealed class SendspinPlayerService : IAsyncDisposable
 
         private void OnServerConnected(object? sender, ConnectedServerInfo info)
         {
-            _handshakes.Connected();
+            _failures.Connected();
             _serverName = info.ServerName;
             Update(_pairing.IsPairedWith(info.ServerId) ? SendspinState.Connected : SendspinState.NeedsPairing);
             Log.Info($"Sendspin: {info.ServerName} connected.");

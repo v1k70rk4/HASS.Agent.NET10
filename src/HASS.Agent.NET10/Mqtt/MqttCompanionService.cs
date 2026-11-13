@@ -86,6 +86,18 @@ internal sealed class MqttCompanionService : IDisposable
     // backs off instead of hammering a broker that keeps dropping us.
     private int _shortLivedConnections;
 
+    internal static int ShortLivedAfter(TimeSpan lifetime, int shortLivedBefore) =>
+        lifetime < TimeSpan.FromSeconds(30) ? shortLivedBefore + 1 : 0;
+
+    internal static int ReconnectSeconds(int shortLived) => Math.Min(60, 5 << Math.Min(shortLived, 4));
+
+    /// <summary>
+    /// One lost session that had lived is what a PC waking from sleep or a broker restart looks
+    /// like, and the reconnect follows in seconds; a reconnect that fails warns on its own. A
+    /// session that died right after connecting is the trouble worth a warning.
+    /// </summary>
+    internal static bool LossIsWorthAWarning(int shortLived) => shortLived > 0;
+
     // Event-driven ("push") sensor updates: interactive state sources (monitor power,
     // session lock, AC/battery) signal here so the sensor loop publishes immediately
     // instead of waiting for the next poll. Debounced to coalesce rapid changes.
@@ -1180,13 +1192,21 @@ internal sealed class MqttCompanionService : IDisposable
                     // silence, so a broker that rejects every session produced nothing but
                     // an endless run of "MQTT connected." lines.
                     var lifetime = DateTime.UtcNow - connectedAt;
-                    _shortLivedConnections = lifetime < TimeSpan.FromSeconds(30) ? _shortLivedConnections + 1 : 0;
-                    var seconds = Math.Min(60, 5 << Math.Min(_shortLivedConnections, 4));
+                    _shortLivedConnections = ShortLivedAfter(lifetime, _shortLivedConnections);
+                    var seconds = ReconnectSeconds(_shortLivedConnections);
                     reconnectDelay = TimeSpan.FromSeconds(seconds);
                     var hint = _shortLivedConnections >= 2
                         ? " Sessions that keep dying right after connecting usually mean the broker is closing them: another client using the same client ID, a user or ACL that was removed, or a broker restart loop."
                         : string.Empty;
-                    _log.Warning($"MQTT connection lost after {lifetime.TotalSeconds:0}s; reconnecting in {seconds}s.{hint}");
+                    var lost = $"MQTT connection lost after {lifetime.TotalSeconds:0}s; reconnecting in {seconds}s.{hint}";
+                    if (LossIsWorthAWarning(_shortLivedConnections))
+                    {
+                        _log.Warning(lost);
+                    }
+                    else
+                    {
+                        _log.Info(lost);
+                    }
 
                     // Mosquitto drops a client over a malformed packet by closing the socket,
                     // which MQTTnet reports as a normal disconnection: LogDisconnectAsync
