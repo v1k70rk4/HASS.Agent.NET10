@@ -97,6 +97,28 @@ public class SendspinLogTests
     }
 
     [Fact]
+    public void An_early_timer_sets_itself_again_for_what_is_left()
+    {
+        var warnings = new List<string>();
+        using var failures = new HandshakeFailures(warnings.Add, _ => { }, TimeSpan.FromHours(1));
+
+        failures.Failed(Closed);
+        var again = failures.TimeIsUp();
+
+        Assert.Empty(warnings);
+        Assert.NotNull(again);
+        Assert.InRange(again.Value, TimeSpan.FromMinutes(59), TimeSpan.FromHours(1) + TimeSpan.FromMilliseconds(2));
+    }
+
+    [Fact]
+    public void A_timer_with_nothing_held_back_is_not_set_again()
+    {
+        using var failures = new HandshakeFailures(_ => { }, _ => { }, TimeSpan.FromHours(1));
+
+        Assert.Null(failures.TimeIsUp());
+    }
+
+    [Fact]
     public void The_provider_holds_back_the_handshakes_and_keeps_the_other_warnings()
     {
         var folder = Path.Combine(Path.GetTempPath(), "hass-agent-test-" + Guid.NewGuid().ToString("N"));

@@ -85,15 +85,29 @@ internal sealed class HandshakeFailures : IDisposable
     }
 
     // A callback of the timer can start late, after the batch it was set for ended and a new
-    // one began: that one has its own time, and is not judged before it is up.
-    internal void TimeIsUp()
+    // one began: that one has its own time, and is not judged before it is up. It can also
+    // come a little early, as the timer counts in whole milliseconds: then the timer is set
+    // again for what is left, rounded up, so the batch is not left without one.
+    /// <returns>The time the timer was set again for, or null when there was nothing to wait for.</returns>
+    internal TimeSpan? TimeIsUp()
     {
         lock (_gate)
         {
-            if (_count > 0 && Stopwatch.GetElapsedTime(_batchStarted) >= Grace)
+            if (_disposed || _count == 0)
+            {
+                return null;
+            }
+
+            var left = Grace - Stopwatch.GetElapsedTime(_batchStarted);
+            if (left <= TimeSpan.Zero)
             {
                 GiveUp();
+                return null;
             }
+
+            var wait = TimeSpan.FromMilliseconds(Math.Ceiling(left.TotalMilliseconds) + 1);
+            _timer.Change(wait, Timeout.InfiniteTimeSpan);
+            return wait;
         }
     }
 
