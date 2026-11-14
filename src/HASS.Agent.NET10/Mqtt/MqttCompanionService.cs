@@ -57,7 +57,7 @@ internal sealed class MqttCompanionService : IDisposable
     private uint? _brokerMaximumPacketSize;
     private bool _lastUpdateBeta;
 
-    private static readonly JsonSerializerOptions JsonOptions = new()
+    internal static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNameCaseInsensitive = true,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
@@ -408,7 +408,7 @@ internal sealed class MqttCompanionService : IDisposable
         _lastUpdateBeta = _settings.BetaUpdatesEnabled;
         _lastUpdateCheck = DateTimeOffset.UtcNow;
 
-        if (!(_isOnWebSocket && _haWs is not null) && _client is not { IsConnected: true })
+        if (!(_isOnWebSocket && _haWs is not null) && !OnBroker)
         {
             // Not connected right now: the state is kept, and goes out with the next connect.
             return;
@@ -531,6 +531,167 @@ internal sealed class MqttCompanionService : IDisposable
         }
     }
 
+    /// <summary>
+    /// The HA API's two install requests, handed to what the MQTT topics end in: the update
+    /// entity's button, and the tray app's handover to the service.
+    /// </summary>
+    internal void WireUpdateRequests(HaWebSocketService ws)
+    {
+        ws.UpdateInstallRequested += OnUpdateInstallRequested;
+        ws.SilentInstallRequested += target =>
+        {
+            // The WebSocket counterpart of the MQTT service command topic.
+            if (_role == CompanionRuntimeRole.Service
+                && string.Equals(target, _role.Token(), StringComparison.OrdinalIgnoreCase))
+            {
+                _ = Task.Run(() => RunSilentUpdateInstallAsync());
+            }
+        };
+    }
+
+    /// <summary>
+    /// The Danger Zone's "updates only at this PC": an install asked for from outside the PC
+    /// stops here, before the release is looked up or anything is downloaded. The About
+    /// page's own update does not come this way.
+    /// </summary>
+    private async Task<bool> RefusedAsRemoteInstallAsync(bool tellHomeAssistant)
+    {
+        // As the file has it now, not as this app read it when it started.
+        var learned = RefreshRemoteInstallSwitch();
+        if (!_settings.RemoteUpdateInstallBlocked)
+        {
+            if (learned)
+            {
+                await ReportRemoteInstallSwitchAsync();
+            }
+
+            return false;
+        }
+
+        _log.Warning("An update install was asked for from Home Assistant and refused: updates are installed only at this PC (Danger Zone).");
+        if (learned)
+        {
+            // Home Assistant offered the button on what this app last told it.
+            await ReportRemoteInstallSwitchAsync();
+        }
+
+        if (tellHomeAssistant)
+        {
+            try
+            {
+                await PublishPersistentNotificationAsync(
+                    Strings.GetHa("HaPn.UpdateTitle"),
+                    string.Format(Strings.GetHa("HaPn.UpdateRefused"), _settings.DeviceName));
+            }
+            catch (Exception ex)
+            {
+                _log.Warning($"Unable to send the update notification to Home Assistant: {ex.Message}");
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// The settings file, where the switch is read again before an install is decided. Not set
+    /// in tests: the switch is then what the settings given to this service say.
+    /// </summary>
+    public string? SettingsFile { get; init; }
+
+    private readonly Func<string, string?, bool, Task>? _outbox;
+
+    /// <summary>
+    /// For the tests only: what would go to the broker (topic, payload, retain) is handed
+    /// here instead, as from a connected MQTT session whose discovery went out, so a test
+    /// sees the messages themselves without a broker. The app never sets it.
+    /// </summary>
+    internal Func<string, string?, bool, Task>? Outbox
+    {
+        get => _outbox;
+        init
+        {
+            _outbox = value;
+            _discoveryPublished = value is not null;
+        }
+    }
+
+    /// <summary>A connected MQTT session (or the tests' stand-in for one).</summary>
+    private bool OnBroker => _outbox is not null || _client is { IsConnected: true };
+
+    /// <summary>
+    /// Takes "updates only at this PC" over from the settings file. The app that holds the
+    /// connection reads the settings whole only when it takes the connection over, and another
+    /// user's app of this PC may have ticked the box since: without this, that tick would not
+    /// hold until the next handover. Only this one setting is taken, which is never left
+    /// unsaved in the window, so nothing typed there is lost. A file that cannot be read,
+    /// or has no such setting yet, leaves the switch as it is. Returns whether it changed.
+    /// </summary>
+    internal bool RefreshRemoteInstallSwitch()
+    {
+        var file = SettingsFile;
+        if (file is null)
+        {
+            return false;
+        }
+
+        // Under the gate a save from the settings window takes: a read from before the save
+        // must not put the old value back over the one just saved.
+        lock (SettingsStore.Gate)
+        {
+            if (SettingsStore.SavedRemoteUpdateInstallBlocked(file) is not { } saved
+                || saved == _settings.RemoteUpdateInstallBlocked)
+            {
+                return false;
+            }
+
+            _settings.RemoteUpdateInstallBlocked = saved;
+        }
+
+        _log.Info($"\"Updates only at this PC\" was {(_settings.RemoteUpdateInstallBlocked ? "ticked" : "unticked")} by another app of this PC.");
+        return true;
+    }
+
+    /// <summary>
+    /// The Danger Zone's switch was just changed, in this app's window or, as this app has
+    /// just learned from the file, in another user's: Home Assistant learns it now (the
+    /// Install button goes or comes back), not at the next update check.
+    /// </summary>
+    public async Task ReportRemoteInstallSwitchAsync()
+    {
+        if (_role == CompanionRuntimeRole.Service && IsTrayAppRunning())
+        {
+            // The tray app owns the update entity while it runs, and reads the switch from
+            // the file itself; the service speaks for it only when it stands in.
+            return;
+        }
+
+        try
+        {
+            if (_isOnWebSocket && _haWs is not null)
+            {
+                await PublishUpdateStateAsync(cancellationToken: _cts?.Token ?? CancellationToken.None);
+                return;
+            }
+
+            if (!OnBroker)
+            {
+                // Not connected right now: both go out with the next connect.
+                return;
+            }
+
+            if (RepublishesUpdateDiscovery(_role, onWebSocket: false, _discoveryPublished, mqttConnected: true))
+            {
+                await PublishUpdateEntityDiscoveryAsync();
+            }
+
+            await PublishUpdateStateAsync(cancellationToken: _cts?.Token ?? CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            _log.Warning($"Unable to tell Home Assistant about the update switch: {ex.Message}");
+        }
+    }
+
     /// <summary>A tray app is one of our processes in an interactive session (the service is in session 0).</summary>
     private static bool IsTrayAppRunning()
     {
@@ -559,8 +720,13 @@ internal sealed class MqttCompanionService : IDisposable
     }
 
     /// <summary>Handles the Install button of the HA update entity (tray app role).</summary>
-    private async Task HandleUpdateInstallRequestAsync()
+    internal async Task HandleUpdateInstallRequestAsync()
     {
+        if (await RefusedAsRemoteInstallAsync(tellHomeAssistant: true))
+        {
+            return;
+        }
+
         if (Interlocked.Exchange(ref _updateInstallInProgress, 1) == 1)
         {
             _log.Info("Update install already in progress, ignoring request.");
@@ -680,8 +846,17 @@ internal sealed class MqttCompanionService : IDisposable
     /// Service-role silent install. Downloads the installer from GitHub itself —
     /// never runs a caller-supplied path as SYSTEM.
     /// </summary>
-    private async Task RunSilentUpdateInstallAsync(bool announce = false)
+    internal async Task RunSilentUpdateInstallAsync(bool announce = false)
     {
+        // Every way here starts in Home Assistant or on the broker: the update entity's
+        // button when no tray app runs, and the tray app's handover of that same button.
+        // The tray app says so in Home Assistant when it refuses; a handover that arrives
+        // here all the same did not come from it, and only the log hears of it.
+        if (await RefusedAsRemoteInstallAsync(tellHomeAssistant: announce))
+        {
+            return;
+        }
+
         // One installer at a time: a second Install while the first is still downloading
         // must not schedule a second setup. Once scheduled, the installer stops this
         // service anyway; the flag is released only when nothing was scheduled, or after
@@ -1006,17 +1181,8 @@ internal sealed class MqttCompanionService : IDisposable
                     _ = _mediaSessionService.HandleCommandAsync(command);
                 }
             };
-            _haWs.UpdateInstallRequested += OnUpdateInstallRequested;
+            WireUpdateRequests(_haWs);
             _haWs.AnnounceRequested += () => _ = Task.Run(AnnounceOverWebSocketAsync);
-            _haWs.SilentInstallRequested += target =>
-            {
-                // The WebSocket counterpart of the MQTT service command topic.
-                if (_role == CompanionRuntimeRole.Service
-                    && string.Equals(target, _role.Token(), StringComparison.OrdinalIgnoreCase))
-                {
-                    _ = Task.Run(() => RunSilentUpdateInstallAsync());
-                }
-            };
 
             _haWs.ButtonCommandReceived += (command, target) =>
             {
@@ -2086,44 +2252,83 @@ internal sealed class MqttCompanionService : IDisposable
             }
         }
 
+        // The switch as the file has it: another user's app may have changed it. The MQTT
+        // discovery of the update entity carries the install command only while the switch
+        // allows it, so it goes out again with the state.
+        if (RefreshRemoteInstallSwitch()
+            && RepublishesUpdateDiscovery(_role, _isOnWebSocket && _haWs is not null, _discoveryPublished, OnBroker))
+        {
+            await PublishUpdateEntityDiscoveryAsync();
+        }
+
+        var state = ForHomeAssistant(_lastUpdateState!, _settings);
         if (_isOnWebSocket && _haWs is not null)
         {
             await _haWs.PublishUpdateStateAsync(new
             {
                 serial_number = _settings.SerialNumber,
-                state = _lastUpdateState
+                state
             }, cancellationToken);
             return;
         }
 
-        await PublishJsonAsync(UpdateStateTopic, _lastUpdateState, retain: true);
+        await PublishJsonAsync(UpdateStateTopic, state, retain: true);
     }
+
+    /// <summary>
+    /// Whether the MQTT discovery of the update entity goes out again after the switch
+    /// changed. It is the tray app's to publish, and only its: the tray app hears from the
+    /// integration whether the integration builds the entity itself (then the discovery is
+    /// cleared instead), while the service is not told and never publishes it; from the
+    /// service it would put a second update entity next to the integration's. Nor on the HA
+    /// API, where there is no broker, nor before this connection's discovery went out.
+    /// </summary>
+    internal static bool RepublishesUpdateDiscovery(CompanionRuntimeRole role, bool onWebSocket, bool discoveryPublished, bool mqttConnected) =>
+        role == CompanionRuntimeRole.App && !onWebSocket && discoveryPublished && mqttConnected;
+
+    /// <summary>
+    /// The update state as Home Assistant gets it: what the check found, and whether an
+    /// install may be asked for from there (the Danger Zone's "updates only at this PC").
+    /// </summary>
+    internal static AppUpdateState ForHomeAssistant(AppUpdateState state, CompanionSettings settings) =>
+        state with { RemoteInstall = !settings.RemoteUpdateInstallBlocked };
 
     private async Task PublishHomeAssistantUpdateDiscoveryAsync()
     {
         await PublishJsonAsync(
             UpdateDiscoveryTopic,
-            new MqttUpdateDiscoveryConfig(
-                Name: $"{AppIdentity.DisplayName} Update",
-                UniqueId: $"{SanitizeDiscoveryId(_settings.SerialNumber)}_hass_agent_net10_update",
-                Device: new MqttDiscoveryDevice(
-                    Identifiers: [_settings.SerialNumber],
-                    Name: _settings.DeviceName,
-                    Manufacturer: _settings.Manufacturer,
-                    Model: _settings.Model,
-                    SoftwareVersion: _settings.SoftwareVersion),
-                StateTopic: UpdateStateTopic,
-                ValueTemplate: "{{ value_json.installed_version }}",
-                LatestVersionTopic: UpdateStateTopic,
-                LatestVersionTemplate: "{{ value_json.latest_version }}",
-                TitleTopic: UpdateStateTopic,
-                TitleTemplate: "{{ value_json.title }}",
-                ReleaseUrlTopic: UpdateStateTopic,
-                ReleaseUrlTemplate: "{{ value_json.release_url }}",
-                JsonAttributesTopic: UpdateStateTopic,
-                CommandTopic: UpdateInstallTopic,
-                PayloadInstall: "install"),
+            UpdateDiscoveryFor(_settings, UpdateStateTopic, UpdateInstallTopic),
             retain: _settings.MqttRetainDiscovery);
+    }
+
+    /// <summary>
+    /// Home Assistant's own MQTT discovery of the update entity (used when the integration
+    /// does not build it). With updates only at the PC it carries no command topic, so the
+    /// entity shows the new version and has no Install button.
+    /// </summary>
+    internal static MqttUpdateDiscoveryConfig UpdateDiscoveryFor(CompanionSettings settings, string stateTopic, string installTopic)
+    {
+        var remoteInstall = !settings.RemoteUpdateInstallBlocked;
+        return new MqttUpdateDiscoveryConfig(
+            Name: $"{AppIdentity.DisplayName} Update",
+            UniqueId: $"{SanitizeDiscoveryId(settings.SerialNumber)}_hass_agent_net10_update",
+            Device: new MqttDiscoveryDevice(
+                Identifiers: [settings.SerialNumber],
+                Name: settings.DeviceName,
+                Manufacturer: settings.Manufacturer,
+                Model: settings.Model,
+                SoftwareVersion: settings.SoftwareVersion),
+            StateTopic: stateTopic,
+            ValueTemplate: "{{ value_json.installed_version }}",
+            LatestVersionTopic: stateTopic,
+            LatestVersionTemplate: "{{ value_json.latest_version }}",
+            TitleTopic: stateTopic,
+            TitleTemplate: "{{ value_json.title }}",
+            ReleaseUrlTopic: stateTopic,
+            ReleaseUrlTemplate: "{{ value_json.release_url }}",
+            JsonAttributesTopic: stateTopic,
+            CommandTopic: remoteInstall ? installTopic : null,
+            PayloadInstall: remoteInstall ? "install" : null);
     }
 
     /// <summary>
@@ -2772,6 +2977,12 @@ internal sealed class MqttCompanionService : IDisposable
 
     private async Task PublishJsonAsync(string topic, object payload, bool retain)
     {
+        if (_outbox is not null)
+        {
+            await _outbox(topic, JsonSerializer.Serialize(payload, JsonOptions), retain);
+            return;
+        }
+
         var client = _client;
         if (client is not { IsConnected: true })
         {
@@ -2832,6 +3043,12 @@ internal sealed class MqttCompanionService : IDisposable
 
     private async Task PublishRawAsync(string topic, byte[]? payload, bool retain)
     {
+        if (_outbox is not null)
+        {
+            await _outbox(topic, payload is null ? null : System.Text.Encoding.UTF8.GetString(payload), retain);
+            return;
+        }
+
         var client = _client;
         if (client is not { IsConnected: true })
         {
@@ -3001,8 +3218,10 @@ internal sealed record MqttUpdateDiscoveryConfig(
     [property: JsonPropertyName("release_url_topic")] string ReleaseUrlTopic,
     [property: JsonPropertyName("release_url_template")] string ReleaseUrlTemplate,
     [property: JsonPropertyName("json_attributes_topic")] string JsonAttributesTopic,
-    [property: JsonPropertyName("command_topic")] string CommandTopic,
-    [property: JsonPropertyName("payload_install")] string PayloadInstall);
+    // Both left out (null) when updates are installed only at the PC: without a command
+    // topic Home Assistant's discovered update entity has no Install button.
+    [property: JsonPropertyName("command_topic")] string? CommandTopic,
+    [property: JsonPropertyName("payload_install")] string? PayloadInstall);
 
 internal sealed record PersistentNotificationMessage(
     [property: JsonPropertyName("title")] string Title,

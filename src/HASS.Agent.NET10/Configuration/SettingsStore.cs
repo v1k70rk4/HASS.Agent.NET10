@@ -209,10 +209,68 @@ internal static class SettingsStore
             ?? throw new InvalidDataException("The settings could not be copied.");
     }
 
-    public static void Save(AppPaths paths, CompanionSettings settings)
+    /// <summary>
+    /// Writes the settings. "Updates only at this PC" is the one setting a save does not carry
+    /// by itself: every user's app of the PC holds the settings as it read them and writes them
+    /// whole, so an app that read them before the box was ticked elsewhere would untick it with
+    /// its next save of anything, and Home Assistant could install again. The file's value is
+    /// kept, and taken into <paramref name="settings"/>, unless the save is the one that sets
+    /// the switch: the tick itself, or an import of other settings
+    /// (<paramref name="withItsRemoteInstallSwitch"/>).
+    /// </summary>
+    public static void Save(AppPaths paths, CompanionSettings settings, bool withItsRemoteInstallSwitch = false)
     {
-        settings.Normalize();
-        Write(paths, Serialize(settings));
+        // The read and the write are one step for this app's threads.
+        lock (Gate)
+        {
+            if (!withItsRemoteInstallSwitch && SavedRemoteUpdateInstallBlocked(paths.SettingsFile) is { } saved)
+            {
+                settings.RemoteUpdateInstallBlocked = saved;
+            }
+
+            settings.Normalize();
+            Write(paths, Serialize(settings));
+        }
+    }
+
+    /// <summary>
+    /// "Updates only at this PC" as the settings file has it right now, or null when the file
+    /// is not there, cannot be read, or is from before the switch.
+    /// </summary>
+    internal static bool? SavedRemoteUpdateInstallBlocked(string settingsFile)
+    {
+        try
+        {
+            if (!File.Exists(settingsFile))
+            {
+                return null;
+            }
+
+            using var document = JsonDocument.Parse(File.ReadAllText(settingsFile));
+            if (document.RootElement.ValueKind != JsonValueKind.Object)
+            {
+                return null;
+            }
+
+            foreach (var property in document.RootElement.EnumerateObject())
+            {
+                if (string.Equals(property.Name, nameof(CompanionSettings.RemoteUpdateInstallBlocked), StringComparison.OrdinalIgnoreCase))
+                {
+                    return property.Value.ValueKind switch
+                    {
+                        JsonValueKind.True => true,
+                        JsonValueKind.False => false,
+                        _ => null
+                    };
+                }
+            }
+
+            return null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+        {
+            return null;
+        }
     }
 
     /// <summary>The settings an export leaves out: every secret, whether it would travel or not.</summary>

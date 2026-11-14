@@ -267,7 +267,10 @@ internal static class Program
             systemMetricsService,
             systemCommandService,
             CompanionRuntimeRole.App,
-            log);
+            log)
+        {
+            SettingsFile = paths.SettingsFile
+        };
         using var localApi = new LocalApiServer(settings, trayContext, log);
         using var link = new HomeAssistantLink(paths.ConfigDirectory, log);
         using var presence = new SessionPresence(paths.ConfigDirectory, log);
@@ -578,6 +581,7 @@ internal static class Program
         trayContext.HaTokenProbe = () => mqttService.HaTokenStatus;
         trayContext.HaUserProvisioner = mqttService.ProvisionHaUserAsync;
         trayContext.UpdateStateHandler = mqttService.ReportUpdateStateAsync;
+        trayContext.RemoteInstallSwitchHandler = mqttService.ReportRemoteInstallSwitchAsync;
 
         // Detect a completed update: the previous run was a different version. The record is
         // the PC's (LastRunRecord), which every user can write, a kiosk user too; the one in the

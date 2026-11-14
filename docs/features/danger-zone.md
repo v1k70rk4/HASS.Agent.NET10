@@ -1,6 +1,6 @@
 ---
 title: Danger Zone
-description: The opt-in toolbox of HASS.Agent .NET10 for maintenance and diagnostics, with MQTT cleanup, a live monitor, the debug log, backup and restore, factory reset, fast sensors and beta updates.
+description: The opt-in toolbox of HASS.Agent .NET10 for maintenance and diagnostics, with MQTT cleanup, a live monitor, the debug log, backup and restore, factory reset, fast sensors, beta updates and updates only at the PC.
 ---
 
 # Danger Zone
@@ -18,9 +18,10 @@ An opt-in maintenance and diagnostics toolbox. Enable it with the **Danger Zone*
 | **Kiosk mode** | The tray app runs for the ticked users, who cannot open, change or close it. See [Kiosk mode](kiosk.md). |
 | **Factory reset** | Deletes all settings after a double confirmation and restarts the app with a fresh serial number. |
 
-Two switches live here as well:
+Three switches live here as well:
 
 - **Beta updates**: the update checks include GitHub pre-releases, so you can follow the beta channel. Stable users are never offered a pre-release. See [Updates from Home Assistant](updates.md).
+- **Updates only at this PC** (10.13.1+): an install asked for from Home Assistant is refused, and the update entity there has no Install button; update checks and the About page work as before. Not for most PCs: an update also brings the security fixes of the built-in .NET runtime, and a PC updated by hand stays behind longer. See [Updates only at the PC](updates.md#updates-only-at-the-pc).
 - **Fast sensors below 5 seconds** (10.10.0+): the fast [polling profile](../sensors/profiles.md) may go down to 1 second, with a note on what that means for the traffic and for Home Assistant's recorder, which writes a row at every change; a sensor you want every second but not in the history goes on the recorder's exclude list.
 
 <figure class="shot" markdown>
