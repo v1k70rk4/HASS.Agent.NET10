@@ -2461,8 +2461,23 @@ internal sealed class MainForm : Form
                 return;
             }
 
+            var before = _settings.RemoteUpdateInstallBlocked;
             _settings.RemoteUpdateInstallBlocked = localUpdatesCheck.Checked;
-            SettingsStore.Save(_paths, _settings);
+            try
+            {
+                SettingsStore.Save(_paths, _settings);
+            }
+            catch (Exception ex)
+            {
+                // Not in the file: the service reads it from there and would not know. Neither
+                // the tick nor this app says something the file does not.
+                _settings.RemoteUpdateInstallBlocked = before;
+                localUpdatesCheck.Checked = before;
+                _log.Warning($"Unable to save \"updates only at this PC\": {ex.Message}");
+                MessageBox.Show(string.Format(S("Danger.Error"), ex.Message), AppIdentity.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+
             _log.Info($"Update installs asked for from Home Assistant are {(localUpdatesCheck.Checked ? "refused: updates only at this PC" : "allowed again")}.");
             if (RemoteInstallSwitchHandler is not null)
             {
