@@ -267,7 +267,10 @@ internal static class Program
             systemMetricsService,
             systemCommandService,
             CompanionRuntimeRole.App,
-            log);
+            log)
+        {
+            SettingsFile = paths.SettingsFile
+        };
         using var localApi = new LocalApiServer(settings, trayContext, log);
         using var link = new HomeAssistantLink(paths.ConfigDirectory, log);
         using var presence = new SessionPresence(paths.ConfigDirectory, log);

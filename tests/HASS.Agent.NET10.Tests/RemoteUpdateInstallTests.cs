@@ -118,6 +118,55 @@ public sealed class RemoteUpdateInstallTests : IDisposable
     }
 
     [Fact]
+    public async Task A_tick_made_by_another_users_app_holds_in_the_app_that_has_the_connection()
+    {
+        // Two users logged in: the one whose app talks to Home Assistant read the settings
+        // before the other one ticked the box.
+        var (service, log, path, file) = NewServiceWithFile(CompanionRuntimeRole.App, inMemory: false, inFile: true);
+        using (log)
+        using (service)
+        {
+            await service.HandleUpdateInstallRequestAsync();
+
+            Assert.True(Settings(service).RemoteUpdateInstallBlocked);
+        }
+
+        var text = File.ReadAllText(path);
+        Assert.Contains("was ticked by another app of this PC", text, StringComparison.Ordinal);
+        Assert.Equal(1, Count(text, "refused: updates are installed only at this PC"));
+        Assert.DoesNotContain("Update install requested from Home Assistant.", text, StringComparison.Ordinal);
+        Assert.True(File.Exists(file));
+    }
+
+    [Fact]
+    public void The_switch_follows_the_file_both_ways_and_keeps_what_it_has_when_the_file_cannot_be_read()
+    {
+        var (service, log, path, file) = NewServiceWithFile(CompanionRuntimeRole.App, inMemory: true, inFile: false);
+        using (log)
+        using (service)
+        {
+            // Unticked by the other app.
+            Assert.True(service.RefreshRemoteInstallSwitch());
+            Assert.False(Settings(service).RemoteUpdateInstallBlocked);
+
+            // Nothing new: nothing changes, nothing is said.
+            Assert.False(service.RefreshRemoteInstallSwitch());
+
+            // A file that is not settings, and one that is gone: the switch stays.
+            Settings(service).RemoteUpdateInstallBlocked = true;
+            File.WriteAllText(file, "not json");
+            Assert.False(service.RefreshRemoteInstallSwitch());
+            Assert.True(Settings(service).RemoteUpdateInstallBlocked);
+
+            File.Delete(file);
+            Assert.False(service.RefreshRemoteInstallSwitch());
+            Assert.True(Settings(service).RemoteUpdateInstallBlocked);
+        }
+
+        Assert.Equal(1, Count(File.ReadAllText(path), "was unticked by another app of this PC"));
+    }
+
+    [Fact]
     public void A_switch_that_could_not_be_saved_is_taken_back()
     {
         var settings = new CompanionSettings();
@@ -251,6 +300,31 @@ public sealed class RemoteUpdateInstallTests : IDisposable
         using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
         using var reader = new StreamReader(stream);
         return reader.ReadToEnd();
+    }
+
+    /// <summary>A service that reads the switch from a settings file of its own, as the running app does.</summary>
+    private (MqttCompanionService Service, FileLog Log, string Path, string File) NewServiceWithFile(CompanionRuntimeRole role, bool inMemory, bool inFile)
+    {
+        var folder = Path.Combine(_folder, Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        var file = Path.Combine(folder, "settings.json");
+        var paths = new AppPaths(folder, file, Path.Combine(folder, "app.log"), Path.Combine(folder, "device-id"), []);
+        var saved = new CompanionSettings { DeviceName = "pc", RemoteUpdateInstallBlocked = inFile };
+        saved.SerialNumber = Serial;
+        SettingsStore.Save(paths, saved);
+
+        var path = Path.Combine(folder, "test.log");
+        var log = new FileLog(path);
+        var settings = new CompanionSettings { DeviceName = "pc", RemoteUpdateInstallBlocked = inMemory };
+        settings.SerialNumber = Serial;
+        var service = new MqttCompanionService(
+            settings, new NullNotificationSink(), mediaSessionService: null, systemMetricsService: null,
+            systemCommandService: null!, role, log)
+        {
+            SettingsFile = file
+        };
+        _settings[service] = settings;
+        return (service, log, path, file);
     }
 
     private (MqttCompanionService Service, FileLog Log, string Path) NewService(CompanionRuntimeRole role, bool blocked)

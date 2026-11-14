@@ -556,12 +556,25 @@ internal sealed class MqttCompanionService : IDisposable
     /// </summary>
     private async Task<bool> RefusedAsRemoteInstallAsync(bool tellHomeAssistant)
     {
+        // As the file has it now, not as this app read it when it started.
+        var learned = RefreshRemoteInstallSwitch();
         if (!_settings.RemoteUpdateInstallBlocked)
         {
+            if (learned)
+            {
+                await PublishRemoteInstallSwitchQuietlyAsync();
+            }
+
             return false;
         }
 
         _log.Warning("An update install was asked for from Home Assistant and refused: updates are installed only at this PC (Danger Zone).");
+        if (learned)
+        {
+            // Home Assistant offered the button on what this app last told it.
+            await PublishRemoteInstallSwitchQuietlyAsync();
+        }
+
         if (tellHomeAssistant)
         {
             try
@@ -577,6 +590,76 @@ internal sealed class MqttCompanionService : IDisposable
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// The settings file, where the switch is read again before an install is decided. Not set
+    /// in tests: the switch is then what the settings given to this service say.
+    /// </summary>
+    public string? SettingsFile { get; init; }
+
+    /// <summary>
+    /// Takes "updates only at this PC" over from the settings file. The app that holds the
+    /// connection reads the settings whole only when it takes the connection over, and another
+    /// user's app of this PC may have ticked the box since: without this, that tick would not
+    /// hold until the next handover. Only this one setting is taken, which is never left
+    /// unsaved in the window, so nothing typed there is lost. A file that cannot be read
+    /// leaves the switch as it is. Returns whether it changed.
+    /// </summary>
+    internal bool RefreshRemoteInstallSwitch()
+    {
+        var file = SettingsFile;
+        if (file is null)
+        {
+            return false;
+        }
+
+        try
+        {
+            // Under the gate a save from the settings window takes: a read from before the
+            // save must not put the old value back over the one just saved.
+            lock (SettingsStore.Gate)
+            {
+                if (!File.Exists(file))
+                {
+                    return false;
+                }
+
+                var saved = SettingsStore.Import(file).RemoteUpdateInstallBlocked;
+                if (saved == _settings.RemoteUpdateInstallBlocked)
+                {
+                    return false;
+                }
+
+                _settings.RemoteUpdateInstallBlocked = saved;
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.Warning($"Unable to read \"updates only at this PC\" from the settings file again: {ex.Message}");
+            return false;
+        }
+
+        _log.Info($"\"Updates only at this PC\" was {(_settings.RemoteUpdateInstallBlocked ? "ticked" : "unticked")} by another app of this PC.");
+        return true;
+    }
+
+    private async Task PublishRemoteInstallSwitchQuietlyAsync()
+    {
+        if (!(_isOnWebSocket && _haWs is not null) && _client is not { IsConnected: true })
+        {
+            // Not connected right now: the state goes out with the next connect.
+            return;
+        }
+
+        try
+        {
+            await PublishUpdateStateAsync(cancellationToken: _cts?.Token ?? CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            _log.Warning($"Unable to tell Home Assistant about the update switch: {ex.Message}");
+        }
     }
 
     /// <summary>
@@ -2172,6 +2255,8 @@ internal sealed class MqttCompanionService : IDisposable
             }
         }
 
+        // The switch as the file has it: another user's app may have changed it.
+        RefreshRemoteInstallSwitch();
         var state = ForHomeAssistant(_lastUpdateState!, _settings);
         if (_isOnWebSocket && _haWs is not null)
         {

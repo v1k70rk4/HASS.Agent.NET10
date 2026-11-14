@@ -286,7 +286,10 @@ internal sealed class CompanionWindowsService : ServiceBase
             _systemMetricsService,
             _systemCommandService,
             CompanionRuntimeRole.Service,
-            _log);
+            _log)
+        {
+            SettingsFile = _paths?.SettingsFile
+        };
 
         if (_updatedFrom is not null)
         {

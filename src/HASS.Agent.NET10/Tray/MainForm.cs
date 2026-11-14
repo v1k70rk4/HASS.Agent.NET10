@@ -2461,7 +2461,15 @@ internal sealed class MainForm : Form
                 return;
             }
 
-            if (_settings.TrySetRemoteUpdateInstallBlocked(localUpdatesCheck.Checked, settings => SettingsStore.Save(_paths, settings)) is { } failure)
+            // Under the gate, as every write from this window: a handover's reload of the
+            // settings must not come between the change and its save and put the old value back.
+            Exception? failure;
+            lock (SettingsStore.Gate)
+            {
+                failure = _settings.TrySetRemoteUpdateInstallBlocked(localUpdatesCheck.Checked, settings => SettingsStore.Save(_paths, settings));
+            }
+
+            if (failure is not null)
             {
                 // Not in the file, so not set (see the method): the tick goes back with it.
                 localUpdatesCheck.Checked = _settings.RemoteUpdateInstallBlocked;
