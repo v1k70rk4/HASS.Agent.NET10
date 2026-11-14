@@ -562,7 +562,7 @@ internal sealed class MqttCompanionService : IDisposable
         {
             if (learned)
             {
-                await PublishRemoteInstallSwitchQuietlyAsync();
+                await ReportRemoteInstallSwitchAsync();
             }
 
             return false;
@@ -572,7 +572,7 @@ internal sealed class MqttCompanionService : IDisposable
         if (learned)
         {
             // Home Assistant offered the button on what this app last told it.
-            await PublishRemoteInstallSwitchQuietlyAsync();
+            await ReportRemoteInstallSwitchAsync();
         }
 
         if (tellHomeAssistant)
@@ -603,8 +603,8 @@ internal sealed class MqttCompanionService : IDisposable
     /// connection reads the settings whole only when it takes the connection over, and another
     /// user's app of this PC may have ticked the box since: without this, that tick would not
     /// hold until the next handover. Only this one setting is taken, which is never left
-    /// unsaved in the window, so nothing typed there is lost. A file that cannot be read
-    /// leaves the switch as it is. Returns whether it changed.
+    /// unsaved in the window, so nothing typed there is lost. A file that cannot be read,
+    /// or has no such setting yet, leaves the switch as it is. Returns whether it changed.
     /// </summary>
     internal bool RefreshRemoteInstallSwitch()
     {
@@ -614,57 +614,27 @@ internal sealed class MqttCompanionService : IDisposable
             return false;
         }
 
-        try
+        // Under the gate a save from the settings window takes: a read from before the save
+        // must not put the old value back over the one just saved.
+        lock (SettingsStore.Gate)
         {
-            // Under the gate a save from the settings window takes: a read from before the
-            // save must not put the old value back over the one just saved.
-            lock (SettingsStore.Gate)
+            if (SettingsStore.SavedRemoteUpdateInstallBlocked(file) is not { } saved
+                || saved == _settings.RemoteUpdateInstallBlocked)
             {
-                if (!File.Exists(file))
-                {
-                    return false;
-                }
-
-                var saved = SettingsStore.Import(file).RemoteUpdateInstallBlocked;
-                if (saved == _settings.RemoteUpdateInstallBlocked)
-                {
-                    return false;
-                }
-
-                _settings.RemoteUpdateInstallBlocked = saved;
+                return false;
             }
-        }
-        catch (Exception ex)
-        {
-            _log.Warning($"Unable to read \"updates only at this PC\" from the settings file again: {ex.Message}");
-            return false;
+
+            _settings.RemoteUpdateInstallBlocked = saved;
         }
 
         _log.Info($"\"Updates only at this PC\" was {(_settings.RemoteUpdateInstallBlocked ? "ticked" : "unticked")} by another app of this PC.");
         return true;
     }
 
-    private async Task PublishRemoteInstallSwitchQuietlyAsync()
-    {
-        if (!(_isOnWebSocket && _haWs is not null) && _client is not { IsConnected: true })
-        {
-            // Not connected right now: the state goes out with the next connect.
-            return;
-        }
-
-        try
-        {
-            await PublishUpdateStateAsync(cancellationToken: _cts?.Token ?? CancellationToken.None);
-        }
-        catch (Exception ex)
-        {
-            _log.Warning($"Unable to tell Home Assistant about the update switch: {ex.Message}");
-        }
-    }
-
     /// <summary>
-    /// The Danger Zone's switch was just changed: Home Assistant learns it now (the Install
-    /// button goes or comes back), not at the next update check.
+    /// The Danger Zone's switch was just changed, in this app's window or, as this app has
+    /// just learned from the file, in another user's: Home Assistant learns it now (the
+    /// Install button goes or comes back), not at the next update check.
     /// </summary>
     public async Task ReportRemoteInstallSwitchAsync()
     {
@@ -2255,8 +2225,17 @@ internal sealed class MqttCompanionService : IDisposable
             }
         }
 
-        // The switch as the file has it: another user's app may have changed it.
-        RefreshRemoteInstallSwitch();
+        // The switch as the file has it: another user's app may have changed it. The MQTT
+        // discovery of the update entity carries the install command only while the switch
+        // allows it, so it goes out again with the state.
+        if (RefreshRemoteInstallSwitch()
+            && !(_isOnWebSocket && _haWs is not null)
+            && _discoveryPublished
+            && _client is { IsConnected: true })
+        {
+            await PublishUpdateEntityDiscoveryAsync();
+        }
+
         var state = ForHomeAssistant(_lastUpdateState!, _settings);
         if (_isOnWebSocket && _haWs is not null)
         {

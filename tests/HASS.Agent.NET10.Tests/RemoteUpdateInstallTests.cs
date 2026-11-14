@@ -218,7 +218,7 @@ public sealed class RemoteUpdateInstallTests : IDisposable
 
         using (new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.Read))
         {
-            var failure = settings.TrySetRemoteUpdateInstallBlocked(true, s => SettingsStore.Save(paths, s));
+            var failure = settings.TrySetRemoteUpdateInstallBlocked(true, s => SettingsStore.Save(paths, s, withItsRemoteInstallSwitch: true));
 
             Assert.NotNull(failure);
             Assert.False(settings.RemoteUpdateInstallBlocked);
@@ -227,9 +227,85 @@ public sealed class RemoteUpdateInstallTests : IDisposable
         Assert.Equal(before, File.ReadAllText(file));
 
         // And once it can be written again, the tick holds.
-        Assert.Null(settings.TrySetRemoteUpdateInstallBlocked(true, s => SettingsStore.Save(paths, s)));
+        Assert.Null(settings.TrySetRemoteUpdateInstallBlocked(true, s => SettingsStore.Save(paths, s, withItsRemoteInstallSwitch: true)));
         Assert.True(settings.RemoteUpdateInstallBlocked);
-        Assert.Contains("emoteUpdateInstallBlocked\": true", File.ReadAllText(file), StringComparison.Ordinal);
+        Assert.True(SettingsStore.SavedRemoteUpdateInstallBlocked(file));
+    }
+
+    [Fact]
+    public void A_save_from_an_app_that_read_the_settings_before_the_tick_does_not_untick_it()
+    {
+        var (paths, file) = NewSettingsFile();
+        // Two users' apps read the same settings; then one of them ticks the box.
+        var theirs = new CompanionSettings { DeviceName = "pc" };
+        var mine = new CompanionSettings { DeviceName = "pc" };
+        SettingsStore.Save(paths, theirs);
+        Assert.Null(theirs.TrySetRemoteUpdateInstallBlocked(true, s => SettingsStore.Save(paths, s, withItsRemoteInstallSwitch: true)));
+
+        // The other one saves something else, whole, as every save is.
+        mine.BetaUpdatesEnabled = true;
+        SettingsStore.Save(paths, mine);
+
+        Assert.True(SettingsStore.SavedRemoteUpdateInstallBlocked(file));
+        Assert.True(SettingsStore.Import(file).BetaUpdatesEnabled);
+        // And knows of the tick from then on.
+        Assert.True(mine.RemoteUpdateInstallBlocked);
+    }
+
+    [Fact]
+    public void Only_the_tick_and_an_import_change_the_switch_in_the_file()
+    {
+        var (paths, file) = NewSettingsFile();
+        var settings = new CompanionSettings { DeviceName = "pc", RemoteUpdateInstallBlocked = true };
+
+        // No file yet: what the settings say is written.
+        SettingsStore.Save(paths, settings);
+        Assert.True(SettingsStore.SavedRemoteUpdateInstallBlocked(file));
+
+        // Unticked in another app's copy and saved as anything else: the file keeps it.
+        var stale = new CompanionSettings { DeviceName = "pc" };
+        SettingsStore.Save(paths, stale);
+        Assert.True(SettingsStore.SavedRemoteUpdateInstallBlocked(file));
+
+        // The untick itself, and an import: written as they are.
+        var unticked = new CompanionSettings { DeviceName = "pc" };
+        SettingsStore.Save(paths, unticked, withItsRemoteInstallSwitch: true);
+        Assert.False(SettingsStore.SavedRemoteUpdateInstallBlocked(file));
+    }
+
+    [Theory]
+    [InlineData("""{ "deviceName": "pc" }""", null)]
+    [InlineData("""{ "remoteUpdateInstallBlocked": true }""", true)]
+    [InlineData("""{ "RemoteUpdateInstallBlocked": false }""", false)]
+    [InlineData("""{ "remoteUpdateInstallBlocked": "yes" }""", null)]
+    [InlineData("not json", null)]
+    [InlineData("[]", null)]
+    public void The_switch_is_read_from_the_file_only_when_it_is_there(string content, bool? expected)
+    {
+        var (_, file) = NewSettingsFile();
+        File.WriteAllText(file, content);
+
+        Assert.Equal(expected, SettingsStore.SavedRemoteUpdateInstallBlocked(file));
+    }
+
+    [Fact]
+    public void A_file_from_before_the_switch_takes_what_the_settings_say()
+    {
+        var (paths, file) = NewSettingsFile();
+        File.WriteAllText(file, """{ "deviceName": "pc" }""");
+
+        SettingsStore.Save(paths, new CompanionSettings { DeviceName = "pc", RemoteUpdateInstallBlocked = true });
+
+        Assert.True(SettingsStore.SavedRemoteUpdateInstallBlocked(file));
+        Assert.Null(SettingsStore.SavedRemoteUpdateInstallBlocked(Path.Combine(_folder, "nowhere", "settings.json")));
+    }
+
+    private (AppPaths Paths, string File) NewSettingsFile()
+    {
+        var folder = Path.Combine(_folder, Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        var file = Path.Combine(folder, "settings.json");
+        return (new AppPaths(folder, file, Path.Combine(folder, "app.log"), Path.Combine(folder, "device-id"), []), file);
     }
 
     [Fact]

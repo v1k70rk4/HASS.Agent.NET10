@@ -2466,7 +2466,9 @@ internal sealed class MainForm : Form
             Exception? failure;
             lock (SettingsStore.Gate)
             {
-                failure = _settings.TrySetRemoteUpdateInstallBlocked(localUpdatesCheck.Checked, settings => SettingsStore.Save(_paths, settings));
+                failure = _settings.TrySetRemoteUpdateInstallBlocked(
+                    localUpdatesCheck.Checked,
+                    settings => SettingsStore.Save(_paths, settings, withItsRemoteInstallSwitch: true));
             }
 
             if (failure is not null)
@@ -2968,7 +2970,8 @@ internal sealed class MainForm : Form
         try
         {
             var imported = SettingsStore.Import(dialog.FileName);
-            SettingsStore.Save(_paths, imported);
+            // The imported settings as they are, "updates only at this PC" included.
+            SettingsStore.Save(_paths, imported, withItsRemoteInstallSwitch: true);
             await ServiceApproval.RequestIfNeededAsync(this, imported, _log);
             _log.Info("Settings imported from file; restarting.");
             MessageBox.Show(S("Danger.ImportDone"), AppIdentity.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Information);
