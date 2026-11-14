@@ -638,6 +638,13 @@ internal sealed class MqttCompanionService : IDisposable
     /// </summary>
     public async Task ReportRemoteInstallSwitchAsync()
     {
+        if (_role == CompanionRuntimeRole.Service && IsTrayAppRunning())
+        {
+            // The tray app owns the update entity while it runs, and reads the switch from
+            // the file itself; the service speaks for it only when it stands in.
+            return;
+        }
+
         try
         {
             if (_isOnWebSocket && _haWs is not null)
@@ -652,7 +659,7 @@ internal sealed class MqttCompanionService : IDisposable
                 return;
             }
 
-            if (_discoveryPublished)
+            if (RepublishesUpdateDiscovery(_role, onWebSocket: false, _discoveryPublished, mqttConnected: true))
             {
                 await PublishUpdateEntityDiscoveryAsync();
             }
@@ -2229,9 +2236,7 @@ internal sealed class MqttCompanionService : IDisposable
         // discovery of the update entity carries the install command only while the switch
         // allows it, so it goes out again with the state.
         if (RefreshRemoteInstallSwitch()
-            && !(_isOnWebSocket && _haWs is not null)
-            && _discoveryPublished
-            && _client is { IsConnected: true })
+            && RepublishesUpdateDiscovery(_role, _isOnWebSocket && _haWs is not null, _discoveryPublished, _client is { IsConnected: true }))
         {
             await PublishUpdateEntityDiscoveryAsync();
         }
@@ -2249,6 +2254,17 @@ internal sealed class MqttCompanionService : IDisposable
 
         await PublishJsonAsync(UpdateStateTopic, state, retain: true);
     }
+
+    /// <summary>
+    /// Whether the MQTT discovery of the update entity goes out again after the switch
+    /// changed. It is the tray app's to publish, and only its: the tray app hears from the
+    /// integration whether the integration builds the entity itself (then the discovery is
+    /// cleared instead), while the service is not told and never publishes it; from the
+    /// service it would put a second update entity next to the integration's. Nor on the HA
+    /// API, where there is no broker, nor before this connection's discovery went out.
+    /// </summary>
+    internal static bool RepublishesUpdateDiscovery(CompanionRuntimeRole role, bool onWebSocket, bool discoveryPublished, bool mqttConnected) =>
+        role == CompanionRuntimeRole.App && !onWebSocket && discoveryPublished && mqttConnected;
 
     /// <summary>
     /// The update state as Home Assistant gets it: what the check found, and whether an

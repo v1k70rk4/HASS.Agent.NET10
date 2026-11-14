@@ -343,6 +343,46 @@ public sealed class RemoteUpdateInstallTests : IDisposable
         Assert.Equal("state", blocked.GetProperty("latest_version_topic").GetString());
     }
 
+    [Theory]
+    // The tray app on MQTT, its discovery out: the one case.
+    [InlineData(false, false, true, true, true)]
+    // The service never: it does not know whether the integration builds the entity.
+    [InlineData(true, false, true, true, false)]
+    [InlineData(true, true, true, true, false)]
+    // The HA API has no broker; nothing before this connection's discovery; nothing unconnected.
+    [InlineData(false, true, true, true, false)]
+    [InlineData(false, false, false, true, false)]
+    [InlineData(false, false, true, false, false)]
+    public void Only_the_tray_app_on_mqtt_sends_the_update_discovery_again(bool asService, bool onWebSocket, bool discoveryPublished, bool mqttConnected, bool expected)
+    {
+        var role = asService ? CompanionRuntimeRole.Service : CompanionRuntimeRole.App;
+
+        Assert.Equal(expected, MqttCompanionService.RepublishesUpdateDiscovery(role, onWebSocket, discoveryPublished, mqttConnected));
+    }
+
+    [Fact]
+    public async Task The_service_that_learns_the_switch_from_the_file_publishes_no_discovery()
+    {
+        // Ticked and unticked in the file while the service holds the other value: it decides
+        // on the file and says so in the log, and nothing of the update entity's discovery
+        // is its to send, in either direction.
+        foreach (var ticked in new[] { true, false })
+        {
+            var (service, log, path, _) = NewServiceWithFile(CompanionRuntimeRole.Service, inMemory: !ticked, inFile: ticked);
+            using (log)
+            using (service)
+            {
+                Assert.True(service.RefreshRemoteInstallSwitch());
+                await service.ReportRemoteInstallSwitchAsync();
+
+                Assert.Equal(ticked, Settings(service).RemoteUpdateInstallBlocked);
+                Assert.False(MqttCompanionService.RepublishesUpdateDiscovery(CompanionRuntimeRole.Service, onWebSocket: false, discoveryPublished: true, mqttConnected: true));
+            }
+
+            Assert.Contains(ticked ? "was ticked by another app" : "was unticked by another app", File.ReadAllText(path), StringComparison.Ordinal);
+        }
+    }
+
     [Fact]
     public void The_service_takes_the_switch_up_when_it_is_changed()
     {
