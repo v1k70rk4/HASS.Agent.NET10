@@ -139,6 +139,23 @@ public sealed class RemoteUpdateInstallTests : IDisposable
     }
 
     [Fact]
+    public async Task The_service_reads_the_tick_from_the_file_before_it_takes_a_handover()
+    {
+        // The service reloads a moment after the file changes; a handover that comes within
+        // that moment is decided on the file all the same.
+        var (service, log, path, _) = NewServiceWithFile(CompanionRuntimeRole.Service, inMemory: false, inFile: true);
+        using (log)
+        using (service)
+        {
+            await service.RunSilentUpdateInstallAsync();
+        }
+
+        var text = File.ReadAllText(path);
+        Assert.Equal(1, Count(text, "refused: updates are installed only at this PC"));
+        Assert.DoesNotContain("Silent update install requested", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void The_switch_follows_the_file_both_ways_and_keeps_what_it_has_when_the_file_cannot_be_read()
     {
         var (service, log, path, file) = NewServiceWithFile(CompanionRuntimeRole.App, inMemory: true, inFile: false);
