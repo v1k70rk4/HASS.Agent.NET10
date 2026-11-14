@@ -2,6 +2,20 @@
 
 Every release of HASS.Agent .NET10, newest first. The downloads are on the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases).
 
+## 10.13.1-beta.3
+
+> **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered the beta, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.13.0**, below.
+
+The third beta of 10.13.1: a switch for PCs where an update has to be approved at the PC itself, a quieter log after a wake, and the classic client's tray web view in the import. Everything from beta.1 and beta.2 is in it. Works with the Home Assistant integration **10.6.7** or newer; the update entity without its Install button needs the integration **10.13.1-beta.3**, out at the same time. Signed release.
+
+- **Updates only at this PC.** A new tick on the Danger Zone page, off by default, for a PC where a change of software has to be approved at the PC itself. With it ticked, an install asked for from Home Assistant is refused before anything is downloaded: on MQTT and on the HA API, by the tray app and by the service. Home Assistant gets a notification saying so, and with the integration 10.13.1-beta.3 the update entity shows the new version without an Install button. Update checks, the notice in the tray and the About page work as before. With several users logged in, a tick made in one user's window holds at once in the other's app as well. Most PCs are better off without it: an update is how the built-in .NET runtime gets its security fixes, and what Home Assistant can ask for is narrow as it is (the PC fetches the installer itself, runs it only with the publisher's signature, and never goes back a version). Asked for in [#199](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/199). See [Updates only at the PC](docs/features/updates.md#updates-only-at-the-pc).
+- **A quieter log after a wake: the Sendspin player.** When the PC wakes, Music Assistant tries several connections to the player at once and one gets through; each of the others left a warning, dozens a day on a laptop. They are held back now: a debug line when a connection follows, one warning with their number when none does within two minutes. The same goes for the player's own connection, closed by the sleep, when the player is the one that dials the server. The clock sync's "convergence lost" after a wake is a debug note; the clock finds its way back by itself.
+- **A quieter log after a wake: MQTT.** One loss of a connection that had lived, as after a sleep or a restart of the broker, is an info line now; the app is back five seconds later. A connection that dies within 30 seconds of connecting is still a warning, and so is a reconnect that fails.
+- **The classic HASS.Agent's tray icon web view comes over.** Taking over the classic client's settings now brings its tray icon web view as the dashboard popup, with its page, its size and whether it loads in the background, and its Tray WebView command as a Popup window command above the tray. A WebView command whose window was smaller than 200 or bigger than 4000 pixels on a side gets the nearest size this app takes; it used to come over with a size that never opened. See [Coming from HASS.Agent](docs/getting-started/migrating.md).
+- **Fixed: many printers that do not answer held up the rest of the app.** The Print jobs sensor asks every printer at the same time; with more of them hanging than the app had threads ready, as with a print server that is not reachable, the connection to Home Assistant and the commands waited behind the questions. Each question has a thread of its own now, at most 64 are out at once, and of more than 64 printers the default and the first 64 are asked and listed.
+
+Beta.2 and beta.1, below, are in it.
+
 ## 10.13.1-beta.2
 
 > **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered the beta, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.13.0**, below.
