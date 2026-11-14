@@ -2,6 +2,16 @@
 
 Every release of HASS.Agent .NET10, newest first. The downloads are on the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases).
 
+## 10.13.1-beta.4
+
+> **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered the beta, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.13.0**, below.
+
+The fourth beta of 10.13.1 has nothing new in it. It is here so that the update itself can be tried from beta.3, with *Updates only at this PC* ticked and without. Everything from beta.1 to beta.3 is in it. Works with the Home Assistant integration **10.6.7** or newer. Signed release.
+
+- **A correction to the notes of beta.3.** Of more than 64 printers the Print jobs sensor asks and lists 64 in all, the default printer among them; the notes read as if it were the default and 64 more.
+
+Beta.3 and the ones before it, below, are in it.
+
 ## 10.13.1-beta.3
 
 > **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered the beta, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.13.0**, below.
