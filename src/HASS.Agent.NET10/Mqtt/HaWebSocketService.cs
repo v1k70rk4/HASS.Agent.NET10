@@ -922,7 +922,7 @@ internal sealed class HaWebSocketService : IDisposable
         }
     }
 
-    private void HandleEvent(JsonElement eventElement)
+    internal void HandleEvent(JsonElement eventElement)
     {
         if (!eventElement.TryGetProperty("data", out var data))
         {

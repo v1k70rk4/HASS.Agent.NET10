@@ -532,6 +532,24 @@ internal sealed class MqttCompanionService : IDisposable
     }
 
     /// <summary>
+    /// The HA API's two install requests, handed to what the MQTT topics end in: the update
+    /// entity's button, and the tray app's handover to the service.
+    /// </summary>
+    internal void WireUpdateRequests(HaWebSocketService ws)
+    {
+        ws.UpdateInstallRequested += OnUpdateInstallRequested;
+        ws.SilentInstallRequested += target =>
+        {
+            // The WebSocket counterpart of the MQTT service command topic.
+            if (_role == CompanionRuntimeRole.Service
+                && string.Equals(target, _role.Token(), StringComparison.OrdinalIgnoreCase))
+            {
+                _ = Task.Run(() => RunSilentUpdateInstallAsync());
+            }
+        };
+    }
+
+    /// <summary>
     /// The Danger Zone's "updates only at this PC": an install asked for from outside the PC
     /// stops here, before the release is looked up or anything is downloaded. The About
     /// page's own update does not come this way.
@@ -1083,17 +1101,8 @@ internal sealed class MqttCompanionService : IDisposable
                     _ = _mediaSessionService.HandleCommandAsync(command);
                 }
             };
-            _haWs.UpdateInstallRequested += OnUpdateInstallRequested;
+            WireUpdateRequests(_haWs);
             _haWs.AnnounceRequested += () => _ = Task.Run(AnnounceOverWebSocketAsync);
-            _haWs.SilentInstallRequested += target =>
-            {
-                // The WebSocket counterpart of the MQTT service command topic.
-                if (_role == CompanionRuntimeRole.Service
-                    && string.Equals(target, _role.Token(), StringComparison.OrdinalIgnoreCase))
-                {
-                    _ = Task.Run(() => RunSilentUpdateInstallAsync());
-                }
-            };
 
             _haWs.ButtonCommandReceived += (command, target) =>
             {

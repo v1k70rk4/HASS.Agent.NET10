@@ -41,6 +41,27 @@ internal sealed class CompanionSettings
     /// </summary>
     public bool RemoteUpdateInstallBlocked { get; set; }
 
+    /// <summary>
+    /// Sets <see cref="RemoteUpdateInstallBlocked"/> and saves it. The service reads the switch
+    /// from the file, so a value that could not be saved is taken back: what this app holds is
+    /// never something the file does not say. Returns what went wrong, or null.
+    /// </summary>
+    internal Exception? TrySetRemoteUpdateInstallBlocked(bool blocked, Action<CompanionSettings> save)
+    {
+        var before = RemoteUpdateInstallBlocked;
+        RemoteUpdateInstallBlocked = blocked;
+        try
+        {
+            save(this);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            RemoteUpdateInstallBlocked = before;
+            return ex;
+        }
+    }
+
     /// <summary>Danger Zone: the fast sensor interval may go below 5 seconds, down to 1.</summary>
     public bool FastSensorsUnlocked { get; set; }
 

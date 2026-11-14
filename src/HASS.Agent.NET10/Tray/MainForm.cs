@@ -2461,20 +2461,12 @@ internal sealed class MainForm : Form
                 return;
             }
 
-            var before = _settings.RemoteUpdateInstallBlocked;
-            _settings.RemoteUpdateInstallBlocked = localUpdatesCheck.Checked;
-            try
+            if (_settings.TrySetRemoteUpdateInstallBlocked(localUpdatesCheck.Checked, settings => SettingsStore.Save(_paths, settings)) is { } failure)
             {
-                SettingsStore.Save(_paths, _settings);
-            }
-            catch (Exception ex)
-            {
-                // Not in the file: the service reads it from there and would not know. Neither
-                // the tick nor this app says something the file does not.
-                _settings.RemoteUpdateInstallBlocked = before;
-                localUpdatesCheck.Checked = before;
-                _log.Warning($"Unable to save \"updates only at this PC\": {ex.Message}");
-                MessageBox.Show(string.Format(S("Danger.Error"), ex.Message), AppIdentity.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Error);
+                // Not in the file, so not set (see the method): the tick goes back with it.
+                localUpdatesCheck.Checked = _settings.RemoteUpdateInstallBlocked;
+                _log.Warning($"Unable to save \"updates only at this PC\": {failure.Message}");
+                MessageBox.Show(string.Format(S("Danger.Error"), failure.Message), AppIdentity.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return;
             }
 
