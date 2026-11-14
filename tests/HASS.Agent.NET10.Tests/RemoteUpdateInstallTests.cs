@@ -384,6 +384,96 @@ public sealed class RemoteUpdateInstallTests : IDisposable
     }
 
     [Fact]
+    public async Task On_the_broker_the_tray_apps_discovery_follows_the_switch_both_ways()
+    {
+        // No integration that builds the entity: Home Assistant's own MQTT discovery does,
+        // and its install command is there only while the switch allows it.
+        var sent = new List<(string Topic, string? Payload)>();
+        var (service, log, _, file) = NewServiceWithFile(
+            CompanionRuntimeRole.App, inMemory: false, inFile: false,
+            outbox: (topic, payload, _) => { sent.Add((topic, payload)); return Task.CompletedTask; });
+        using (log)
+        using (service)
+        {
+            // Nothing changed: the state alone, and Home Assistant may ask for the install.
+            await service.ReportUpdateStateAsync(AnUpdate);
+            var only = Assert.Single(sent);
+            Assert.Equal(StateTopic, only.Topic);
+            Assert.True(Parse(only.Payload).GetProperty("remote_install").GetBoolean());
+
+            // Ticked in another user's window.
+            sent.Clear();
+            WriteSwitch(file, true);
+            await service.ReportUpdateStateAsync(AnUpdate);
+            Assert.Equal([DiscoveryTopic, StateTopic], sent.Select(message => message.Topic));
+            Assert.False(Parse(sent[0].Payload).TryGetProperty("command_topic", out _));
+            Assert.False(Parse(sent[0].Payload).TryGetProperty("payload_install", out _));
+            Assert.False(Parse(sent[1].Payload).GetProperty("remote_install").GetBoolean());
+
+            // And unticked again: the install command is back in the discovery.
+            sent.Clear();
+            WriteSwitch(file, false);
+            await service.ReportUpdateStateAsync(AnUpdate);
+            Assert.Equal([DiscoveryTopic, StateTopic], sent.Select(message => message.Topic));
+            Assert.Equal(InstallTopic, Parse(sent[0].Payload).GetProperty("command_topic").GetString());
+            Assert.Equal("install", Parse(sent[0].Payload).GetProperty("payload_install").GetString());
+            Assert.True(Parse(sent[1].Payload).GetProperty("remote_install").GetBoolean());
+        }
+    }
+
+    [Fact]
+    public async Task On_the_broker_the_service_sends_the_state_and_never_the_discovery()
+    {
+        // The service does not know whether the integration builds the update entity: a
+        // discovery from it would put a second entity next to that one.
+        var sent = new List<(string Topic, string? Payload)>();
+        var (service, log, _, file) = NewServiceWithFile(
+            CompanionRuntimeRole.Service, inMemory: false, inFile: false,
+            outbox: (topic, payload, _) => { sent.Add((topic, payload)); return Task.CompletedTask; });
+        using (log)
+        using (service)
+        {
+            foreach (var ticked in new[] { true, false })
+            {
+                sent.Clear();
+                WriteSwitch(file, ticked);
+                await service.ReportUpdateStateAsync(AnUpdate);
+
+                var only = Assert.Single(sent);
+                Assert.Equal(StateTopic, only.Topic);
+                Assert.Equal(!ticked, Parse(only.Payload).GetProperty("remote_install").GetBoolean());
+            }
+
+            // The switch reported on its own (the path a refused install takes) is no different.
+            sent.Clear();
+            WriteSwitch(file, true);
+            Assert.True(service.RefreshRemoteInstallSwitch());
+            await service.ReportRemoteInstallSwitchAsync();
+            Assert.DoesNotContain(sent, message => message.Topic == DiscoveryTopic);
+        }
+    }
+
+    private const string StateTopic = "hass.agent/update/" + Serial + "/state";
+    private const string InstallTopic = "hass.agent/update/" + Serial + "/install";
+    private const string DiscoveryTopic = "homeassistant/update/" + Serial + "/hass_agent_net10/config";
+
+    /// <summary>What a finished check found; no check is made again within the hour.</summary>
+    private static AppUpdateState AnUpdate =>
+        AppUpdateState.Failed("10.13.1", "none") with { Error = null, UpdateAvailable = true, LatestVersion = "10.14.0" };
+
+    private static JsonElement Parse(string? payload) => JsonDocument.Parse(payload ?? "null").RootElement.Clone();
+
+    /// <summary>The switch as another user's app of the PC would leave it in the settings file.</summary>
+    private static void WriteSwitch(string file, bool ticked)
+    {
+        var folder = Path.GetDirectoryName(file)!;
+        var paths = new AppPaths(folder, file, Path.Combine(folder, "app.log"), Path.Combine(folder, "device-id"), []);
+        var theirs = new CompanionSettings { DeviceName = "pc", RemoteUpdateInstallBlocked = ticked };
+        theirs.SerialNumber = Serial;
+        SettingsStore.Save(paths, theirs, withItsRemoteInstallSwitch: true);
+    }
+
+    [Fact]
     public void The_service_takes_the_switch_up_when_it_is_changed()
     {
         var before = new CompanionSettings { MqttHost = "broker.local" };
@@ -436,7 +526,8 @@ public sealed class RemoteUpdateInstallTests : IDisposable
     }
 
     /// <summary>A service that reads the switch from a settings file of its own, as the running app does.</summary>
-    private (MqttCompanionService Service, FileLog Log, string Path, string File) NewServiceWithFile(CompanionRuntimeRole role, bool inMemory, bool inFile)
+    private (MqttCompanionService Service, FileLog Log, string Path, string File) NewServiceWithFile(
+        CompanionRuntimeRole role, bool inMemory, bool inFile, Func<string, string?, bool, Task>? outbox = null)
     {
         var folder = Path.Combine(_folder, Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(folder);
@@ -454,7 +545,8 @@ public sealed class RemoteUpdateInstallTests : IDisposable
             settings, new NullNotificationSink(), mediaSessionService: null, systemMetricsService: null,
             systemCommandService: null!, role, log)
         {
-            SettingsFile = file
+            SettingsFile = file,
+            Outbox = outbox
         };
         _settings[service] = settings;
         return (service, log, path, file);

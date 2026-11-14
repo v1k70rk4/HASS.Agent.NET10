@@ -408,7 +408,7 @@ internal sealed class MqttCompanionService : IDisposable
         _lastUpdateBeta = _settings.BetaUpdatesEnabled;
         _lastUpdateCheck = DateTimeOffset.UtcNow;
 
-        if (!(_isOnWebSocket && _haWs is not null) && _client is not { IsConnected: true })
+        if (!(_isOnWebSocket && _haWs is not null) && !OnBroker)
         {
             // Not connected right now: the state is kept, and goes out with the next connect.
             return;
@@ -598,6 +598,26 @@ internal sealed class MqttCompanionService : IDisposable
     /// </summary>
     public string? SettingsFile { get; init; }
 
+    private readonly Func<string, string?, bool, Task>? _outbox;
+
+    /// <summary>
+    /// For the tests only: what would go to the broker (topic, payload, retain) is handed
+    /// here instead, as from a connected MQTT session whose discovery went out, so a test
+    /// sees the messages themselves without a broker. The app never sets it.
+    /// </summary>
+    internal Func<string, string?, bool, Task>? Outbox
+    {
+        get => _outbox;
+        init
+        {
+            _outbox = value;
+            _discoveryPublished = value is not null;
+        }
+    }
+
+    /// <summary>A connected MQTT session (or the tests' stand-in for one).</summary>
+    private bool OnBroker => _outbox is not null || _client is { IsConnected: true };
+
     /// <summary>
     /// Takes "updates only at this PC" over from the settings file. The app that holds the
     /// connection reads the settings whole only when it takes the connection over, and another
@@ -653,7 +673,7 @@ internal sealed class MqttCompanionService : IDisposable
                 return;
             }
 
-            if (_client is not { IsConnected: true })
+            if (!OnBroker)
             {
                 // Not connected right now: both go out with the next connect.
                 return;
@@ -2236,7 +2256,7 @@ internal sealed class MqttCompanionService : IDisposable
         // discovery of the update entity carries the install command only while the switch
         // allows it, so it goes out again with the state.
         if (RefreshRemoteInstallSwitch()
-            && RepublishesUpdateDiscovery(_role, _isOnWebSocket && _haWs is not null, _discoveryPublished, _client is { IsConnected: true }))
+            && RepublishesUpdateDiscovery(_role, _isOnWebSocket && _haWs is not null, _discoveryPublished, OnBroker))
         {
             await PublishUpdateEntityDiscoveryAsync();
         }
@@ -2957,6 +2977,12 @@ internal sealed class MqttCompanionService : IDisposable
 
     private async Task PublishJsonAsync(string topic, object payload, bool retain)
     {
+        if (_outbox is not null)
+        {
+            await _outbox(topic, JsonSerializer.Serialize(payload, JsonOptions), retain);
+            return;
+        }
+
         var client = _client;
         if (client is not { IsConnected: true })
         {
@@ -3017,6 +3043,12 @@ internal sealed class MqttCompanionService : IDisposable
 
     private async Task PublishRawAsync(string topic, byte[]? payload, bool retain)
     {
+        if (_outbox is not null)
+        {
+            await _outbox(topic, payload is null ? null : System.Text.Encoding.UTF8.GetString(payload), retain);
+            return;
+        }
+
         var client = _client;
         if (client is not { IsConnected: true })
         {
