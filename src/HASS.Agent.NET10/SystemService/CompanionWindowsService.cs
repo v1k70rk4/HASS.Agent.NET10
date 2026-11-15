@@ -199,7 +199,12 @@ internal sealed class CompanionWindowsService : ServiceBase
 
                 _log.Info("Settings changed; reloading system service runtime.");
                 ApplyLanguage(settings);
-                StopRuntime();
+                // MQTT turned off: the runtime that goes still has the broker, and takes what
+                // it kept there off it; the new one would never connect to do so.
+                var leftBroker = !settings.MqttEnabled
+                    && _mqttService is not null
+                    && _mqttService.LeaveBrokerAsync().GetAwaiter().GetResult();
+                StopRuntime(publishOffline: !leftBroker);
                 _runtimeSettings = uses;
                 StartRuntime(settings);
             }
@@ -450,9 +455,9 @@ internal sealed class CompanionWindowsService : ServiceBase
         }
     }
 
-    private void StopRuntime()
+    private void StopRuntime(bool publishOffline = true)
     {
-        _mqttService?.StopAsync().GetAwaiter().GetResult();
+        _mqttService?.StopAsync(publishOffline).GetAwaiter().GetResult();
         _mqttService?.Dispose();
         _mqttService = null;
     }

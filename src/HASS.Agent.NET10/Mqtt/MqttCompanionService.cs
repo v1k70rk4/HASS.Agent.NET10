@@ -180,13 +180,7 @@ internal sealed class MqttCompanionService : IDisposable
                 // taking the PC for one on MQTT by the retained messages. With the HA API on,
                 // the runtime starts again on that alone; NeedsReconnect below does not see
                 // the switch itself, and a connected client would otherwise just carry on.
-                if (OnBroker)
-                {
-                    _log.Info("MQTT disabled, publishing offline discovery.");
-                    await PublishDiscoveryAsync(offline: true);
-                    await ClearRetainedAsync();
-                }
-
+                await LeaveBrokerAsync();
                 await StopAsync(publishOffline: false);
                 if (_settings.HaApiEnabled)
                 {
@@ -2188,8 +2182,22 @@ internal sealed class MqttCompanionService : IDisposable
     /// from it. Each side clears its own: the tray app its device topics and the update
     /// state, the service its state, and the update state too when no tray app runs, as it
     /// is the service's to publish then. Turned on again, the next connection publishes
-    /// everything anew.
+    /// everything anew. True when it was on the broker: a stop after this must announce
+    /// nothing more there, or the service's offline state would be retained again.
     /// </summary>
+    internal async Task<bool> LeaveBrokerAsync()
+    {
+        if (!OnBroker)
+        {
+            return false;
+        }
+
+        _log.Info("MQTT disabled, publishing offline discovery and clearing the retained messages.");
+        await PublishDiscoveryAsync(offline: true);
+        await ClearRetainedAsync();
+        return true;
+    }
+
     private async Task ClearRetainedAsync()
     {
         if (_role == CompanionRuntimeRole.Service)

@@ -72,6 +72,20 @@ public sealed class MqttTurnedOffTests : IDisposable
     }
 
     [Fact]
+    public async Task A_runtime_that_is_not_on_the_broker_has_nothing_to_leave()
+    {
+        var settings = new CompanionSettings { DeviceName = "pc", MqttEnabled = true, HaApiEnabled = true };
+        settings.SerialNumber = Serial;
+        // Never started and no outbox: no broker, as on the HA API. The service then stops as
+        // ever, announcing itself offline there.
+        var service = new MqttCompanionService(
+            settings, new NullNotificationSink(), mediaSessionService: null, systemMetricsService: null,
+            systemCommandService: null!, CompanionRuntimeRole.Service, new FileLog(Path.Combine(_folder, "off.log")));
+
+        Assert.False(await service.LeaveBrokerAsync());
+    }
+
+    [Fact]
     public void The_relaunch_watchdog_waits_for_the_setup_longer_than_the_service_lets_an_install_run()
     {
         var script = MqttCompanionService.RelaunchWatchdogScript(@"C:\Program Files\HASS.Agent .NET10\HASS.Agent.NET10.exe");
