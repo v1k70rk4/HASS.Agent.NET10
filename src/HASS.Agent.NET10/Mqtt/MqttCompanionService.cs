@@ -1089,8 +1089,10 @@ internal sealed class MqttCompanionService : IDisposable
     /// takes what this app keeps on the broker off it, and does that last: after the worker
     /// and its publishers have stopped, so none of them puts a retained message back, and
     /// before the connection is closed. A leave that went through replaces the offline
-    /// announcement; after one that did not (no broker, a publish that failed) the stop
-    /// goes on as it does without it, announcement included.
+    /// announcement. One that was tried and did not get through is followed by that
+    /// announcement whatever <paramref name="publishOffline"/> says: a publish can time out
+    /// on a connection that is still up, the close after it is a graceful one, so the broker
+    /// publishes no Last Will, and the PC would stay online there for good.
     /// </summary>
     public async Task StopAsync(bool publishOffline = true, bool leaveBroker = false)
     {
@@ -1123,16 +1125,19 @@ internal sealed class MqttCompanionService : IDisposable
         await _cts.CancelAsync();
 
         var left = false;
+        var leaveFailed = false;
         if (leaveBroker)
         {
             // The worker ends its publishers (the sensors, the update state, a discovery it
             // was in the middle of) and leaves the connection open; only then is it safe to
             // clear, or one of them would publish over the empty messages.
             await WorkerStoppedAsync();
+            var wasOnBroker = OnBroker;
             left = await LeaveBrokerAsync();
+            leaveFailed = wasOnBroker && !left;
         }
 
-        if (publishOffline && !left)
+        if ((publishOffline || leaveFailed) && !left)
         {
             // Availability stays after cancellation on purpose: the heartbeat would
             // otherwise race us and mark the device online again.

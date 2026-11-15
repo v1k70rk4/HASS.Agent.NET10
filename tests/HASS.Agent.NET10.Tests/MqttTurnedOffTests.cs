@@ -171,6 +171,25 @@ public sealed class MqttTurnedOffTests : IDisposable
     }
 
     [Fact]
+    public async Task A_tray_app_whose_leave_did_not_get_through_says_offline_instead()
+    {
+        var availability = $"hass.agent/devices/{Serial}/availability";
+        var sent = new List<(string Topic, string? Payload, bool Retain)>();
+        // The publish that clears the availability times out; the connection itself holds.
+        var service = NewService(CompanionRuntimeRole.App, sent, drops: (topic, payload) => topic == availability && payload is null);
+        using var cts = new CancellationTokenSource();
+        service.RunningAs(Task.CompletedTask, cts);
+
+        // As MQTT turned off in the window does it: a stop that leaves, with no offline announcement asked for.
+        await service.RestartAsync();
+
+        // The retained "online" is not left there: with the empty message lost, "offline" takes its place.
+        var last = sent.Last(m => m.Topic == availability);
+        Assert.Equal("offline", last.Payload);
+        Assert.True(last.Retain);
+    }
+
+    [Fact]
     public void The_relaunch_watchdog_waits_for_the_setup_longer_than_the_service_lets_an_install_run()
     {
         var script = MqttCompanionService.RelaunchWatchdogScript(@"C:\Program Files\HASS.Agent .NET10\HASS.Agent.NET10.exe");
