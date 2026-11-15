@@ -2,9 +2,59 @@
 
 Every release of HASS.Agent .NET10, newest first. The downloads are on the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases).
 
-## 10.13.1-beta.4
+## 10.13.1
 
-> **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered the beta, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.13.0**, below.
+A screenshot of the PC when Home Assistant asks for one, popup windows that keep their page and close by themselves or from Home Assistant, a sensor for the print queues, and a switch for PCs where an update has to be approved at the PC itself. With them a quieter log after a wake, the audio code on NAudio 3, the translations that were missing, and fixes. Built on .NET 10.0.15, as 10.13.0. Works with the Home Assistant integration **10.6.7** or newer; the screenshot, the Print jobs sensor and the update entity without its Install button need the integration **10.13.1**, out at the same time. Signed release.
+
+**New**
+
+- **A screenshot when Home Assistant asks for one.** A new command, **Take a screenshot**, on the Capabilities page under System commands, off until it is ticked at the PC. Ticked, the PC's device in Home Assistant gets a button and an image entity; a press of the button makes the PC take a picture of its screen (every monitor, no wider than 1920 pixels, at most 512 KB) and send it. The PC never takes one on its own: a picture at regular times is an automation that presses the button. The picture is not kept on the broker, over the HA API it does not go on Home Assistant's event bus, and with the MQTT debug switch on it is left out of the packet file. See [Screenshot](docs/commands/screenshot.md).
+- **A Print jobs sensor.** Off by default. Its value is the number of jobs that wait in the print queues of the PC, on whichever printer. A job stays in its queue while the printer is switched off, so an automation can switch the printer's plug on when the number leaves 0. The attributes have every printer with its own number of jobs, its state in one word and every state flag Windows keeps for it (`paper_out`, `toner_low`, `offline` and the rest), the default printer, and the first 20 jobs. On a PC with more than 64 printers the number and the attributes cover 64 of them, the default printer among them, and `printer_count` says how many there are in all. The printers are those of the user who is logged in, the ones connected from a print server too, whether the tray app or the service reads the sensor; with nobody logged in the service reports the printers installed on the PC. Asked for in [#191](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/191). Needs the integration 10.13.1. See [Built-in sensors](docs/sensors/index.md).
+- **Updates only at this PC.** A new tick on the Danger Zone page, off by default, for a PC where a change of software has to be approved at the PC itself. With it ticked, an install asked for from Home Assistant is refused before anything is downloaded: on MQTT and on the HA API, by the tray app and by the service. Home Assistant gets a notification saying so, and with the integration 10.13.1 the update entity shows the new version without an Install button. Update checks, the notice in the tray and the About page work as before. With several users logged in, a tick made in one user's window holds at once in the other's app as well. Most PCs are better off without it: an update is how the built-in .NET runtime gets its security fixes, and what Home Assistant can ask for is narrow as it is (the PC fetches the installer itself, runs it only with the publisher's signature, and never goes back a version). Asked for in [#199](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/199). See [Updates only at the PC](docs/features/updates.md#updates-only-at-the-pc).
+
+**Popup windows**
+
+- **The dashboard popup can keep its page loaded.** A new tick on the Capabilities page, *Keep the page loaded in the background*, off by default. With it the popup is hidden, not closed, when you click elsewhere, and the next click on the tray icon shows the page at once, as you left it. The page then keeps the memory of a browser tab for as long as the app runs. Asked for in [#190](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/190). See [Dashboard popup](docs/features/dashboard-popup.md).
+- **Popup window commands: fields for the window, and one window per command.** The editor has fields for the size, **Popup above the tray** (a window like the dashboard popup), **Keep the page loaded** and **Closes after** so many seconds. A command has one window now: pressed again, it is replaced with a fresh page, or, when it keeps its page, brought back as it was. Before, every press opened one more window. See [Custom commands](docs/commands/custom.md#popup-windows).
+- **A new custom command type, Close popup windows.** It closes the window of the Popup window command it names, or all of them and the dashboard popup for `*`. In Home Assistant it is a button like any other custom command.
+- **A window opened from Home Assistant comes over the other windows.** It used to open behind the program in front. It leaves the keyboard with the program you are typing into.
+
+**Coming from the classic HASS.Agent**
+
+- **The classic HASS.Agent's tray icon web view comes over.** Taking over the classic client's settings now brings its tray icon web view as the dashboard popup, with its page, its size and whether it loads in the background, and its Tray WebView command as a Popup window command above the tray. A WebView command whose window was smaller than 200 or bigger than 4000 pixels on a side gets the nearest size this app takes; it used to come over with a size that never opened. See [Coming from HASS.Agent](docs/getting-started/migrating.md).
+- **The classic HASS.Agent's printer sensors come over** to the Print jobs sensor when the classic client's settings are taken over.
+
+**A quieter log after a wake**
+
+- **A quieter log after a wake: the Sendspin player.** When the PC wakes, Music Assistant tries several connections to the player at once and one gets through; each of the others left a warning, dozens a day on a laptop. They are held back now: a debug line when a connection follows, one warning with their number when none does within two minutes. The same goes for the player's own connection, closed by the sleep, when the player is the one that dials the server. The clock sync's "convergence lost" after a wake is a debug note; the clock finds its way back by itself.
+- **A quieter log after a wake: MQTT.** One loss of a connection that had lived, as after a sleep or a restart of the broker, is an info line now; the app is back five seconds later. A connection that dies within 30 seconds of connecting is still a warning, and so is a reconnect that fails.
+
+**Fixed**
+
+- **Fixed: the tray app did not come back after an install asked for from Home Assistant, when the download took long.** The app hands the install to the service and leaves a watchdog behind that starts it again once the setup has run. The watchdog waited half a minute for the setup to start, but the service first downloads the installer: on a download of 34 seconds it gave up, and the PC was left without its tray app until the next sign-in. It waits fifteen minutes now.
+- **Fixed: turning MQTT off left the PC on the broker.** The retained messages stayed there, so the broker went on saying the PC is online, with its version and update state of that day, and a Home Assistant started later found it by them. The tray app and the service now take what they keep there off the broker when MQTT is turned off; turned on again, it all comes back with the next connection.
+- **Fixed: many printers that do not answer held up the rest of the app.** The Print jobs sensor asks every printer at the same time; with more of them hanging than the app had threads ready, as with a print server that is not reachable, the connection to Home Assistant and the commands waited behind the questions. Each question has a thread of its own now, at most 64 are out at once, and of more than 64 printers 64 are asked and listed, the default among them.
+- **Fixed: "Unable to publish media state" in the log now and then.** A media session whose app was just closing failed that round's update of the media player. When an update does fail, the log now also says what kind of failure it was and where it came from.
+- **Fixed: a custom command with two spaces before its arguments was refused.** `C:\Tools\app.exe  /x` was taken for a path with a space in it, which 10.13.0 does not run without quotes.
+- **Fixed: a settings folder made by an elevated command stayed the administrators' alone.** Where there was no settings folder yet (the app used from its zip, or the folder deleted) and `--install-service`, `--kiosk` or an approval made it, the app then started for nobody who was not elevated. Such a folder is now open to every user, as a silent first install leaves it, and the app asks who it is for. A folder that 10.13.0 left that way is opened by the next elevated command or update.
+- **Fixed: on a PC in a domain, an update could put the settings folder aside when the domain could not be asked.** A folder made by a user who is an administrator through a domain group was taken for one made by a user who is no administrator, when Windows could not tell the user's groups (a laptop away from the network). The command now stops and says so, and the folder stays as it is; with the domain in reach it goes through as before.
+- **Kiosk mode: the app is not started every minute while it would only stop again.** With a settings folder that is not the PC's, the kiosk task started the app once a minute until an administrator put the folder right.
+- **The sensors the + button makes from a sensor's attributes are ticked as the sensor is**, for the tray app, the service or both. They used to be ticked for both wherever both can read the sensor, whatever the sensor itself was ticked for.
+- **`--install-service` run without an administrator's rights says so**, and touches nothing; it used to answer that the settings folder could not be made safe.
+- **The service's approval prompt writes out every character that is not seen**, as `<U+202E>`: also the ones past the first 65 536, the spaces that are not the plain one, and the blank ones among letters and symbols. Letters written from right to left are shown as they are, with a line below the entry saying that its parts may be shown in another order.
+- **`--sendspin-token` run as SYSTEM makes a missing settings folder the way the service does**, with its rule from the first moment.
+
+**Translations and libraries**
+
+- **German, Russian and Chinese: the texts that were still in English** are translated, 95 in German, 74 in Russian and 22 in Chinese, with the words each translation already uses; they are on each file's list for its translator to check.
+- **Simplified Chinese for the texts of 10.13.0**, by @natsu-tsuki in [#188](https://github.com/v1k70rk4/HASS.Agent.NET10/pull/188), thank you!
+- **The audio code is on NAudio 3.** The Sendspin player's output, and the audio device sensors and selects, were moved to the new major version of the library under them. Nothing to set, and nothing should sound different: say so if the player, the volume or the device selects behave in another way than before.
+- **Libraries**: WebView2 1.0.4314.35, MQTTnet 5.2, and the 10.0.15 builds of the two System packages.
+
+**The betas before it**, with their notes as they were:
+
+<details markdown="1">
+<summary><b>10.13.1-beta.4</b>: nothing new, there to try an update from beta.3</summary>
 
 The fourth beta of 10.13.1 has nothing new in it. It is here so that the update itself can be tried from beta.3, with *Updates only at this PC* ticked and without. Everything from beta.1 to beta.3 is in it. Works with the Home Assistant integration **10.6.7** or newer. Signed release.
 
@@ -12,9 +62,10 @@ The fourth beta of 10.13.1 has nothing new in it. It is here so that the update 
 
 Beta.3 and the ones before it, below, are in it.
 
-## 10.13.1-beta.3
+</details>
 
-> **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered the beta, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.13.0**, below.
+<details markdown="1">
+<summary><b>10.13.1-beta.3</b>: updates only at this PC, a quieter log after a wake, the classic tray web view</summary>
 
 The third beta of 10.13.1: a switch for PCs where an update has to be approved at the PC itself, a quieter log after a wake, and the classic client's tray web view in the import. Everything from beta.1 and beta.2 is in it. Works with the Home Assistant integration **10.6.7** or newer; the update entity without its Install button needs the integration **10.13.1-beta.3**, out at the same time. Signed release.
 
@@ -26,9 +77,10 @@ The third beta of 10.13.1: a switch for PCs where an update has to be approved a
 
 Beta.2 and beta.1, below, are in it.
 
-## 10.13.1-beta.2
+</details>
 
-> **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered the beta, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.13.0**, below.
+<details markdown="1">
+<summary><b>10.13.1-beta.2</b>: popup windows that keep their page, the Print jobs sensor</summary>
 
 The second beta of 10.13.1: popup windows that keep their page, close by themselves or from Home Assistant, and a sensor for the print queues. Everything from beta.1 is in it. Works with the Home Assistant integration **10.6.7** or newer; the Print jobs sensor needs the integration **10.13.1-beta.2**, out at the same time. Signed release.
 
@@ -42,9 +94,10 @@ The second beta of 10.13.1: popup windows that keep their page, close by themsel
 
 Beta.1, below, is in it: the screenshot when Home Assistant asks for one, the audio code on NAudio 3, and the fixes around the settings folder.
 
-## 10.13.1-beta.1
+</details>
 
-> **Beta.** Out on the beta channel: tick **Beta updates** on the Danger Zone page to be offered the beta, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.13.0**, below.
+<details markdown="1">
+<summary><b>10.13.1-beta.1</b>: a screenshot when Home Assistant asks, the audio code on NAudio 3, the settings folder fixes</summary>
 
 The first beta of 10.13.1: a screenshot of the PC when Home Assistant asks for one, the audio code on NAudio 3, and fixes to what 10.13.0 changed around the settings folder. Works with the Home Assistant integration **10.6.7** or newer; the screenshot needs the integration **10.13.1-beta.1**, out at the same time. Signed release.
 
@@ -60,6 +113,8 @@ The first beta of 10.13.1: a screenshot of the PC when Home Assistant asks for o
 - **`--sendspin-token` run as SYSTEM makes a missing settings folder the way the service does**, with its rule from the first moment.
 - **Simplified Chinese for the texts of 10.13.0**, by @natsu-tsuki in [#188](https://github.com/v1k70rk4/HASS.Agent.NET10/pull/188), thank you!
 - **Libraries**: WebView2 1.0.4314.35, MQTTnet 5.2, and the 10.0.15 builds of the two System packages.
+
+</details>
 
 ## 10.13.0
 
