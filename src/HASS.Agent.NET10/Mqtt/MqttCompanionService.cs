@@ -180,10 +180,11 @@ internal sealed class MqttCompanionService : IDisposable
                 // taking the PC for one on MQTT by the retained messages. With the HA API on,
                 // the runtime starts again on that alone; NeedsReconnect below does not see
                 // the switch itself, and a connected client would otherwise just carry on.
-                if (_client is { IsConnected: true })
+                if (OnBroker)
                 {
                     _log.Info("MQTT disabled, publishing offline discovery.");
                     await PublishDiscoveryAsync(offline: true);
+                    await ClearRetainedAsync();
                 }
 
                 await StopAsync(publishOffline: false);
@@ -1045,30 +1046,44 @@ internal sealed class MqttCompanionService : IDisposable
             return;
         }
 
-        var batch = WriteBatch("relaunch.cmd",
-            "@echo off" + Environment.NewLine +
-            "setlocal" + Environment.NewLine +
-            "set /a tries=0" + Environment.NewLine +
-            ":waitappear" + Environment.NewLine +
-            "timeout /t 1 /nobreak >nul" + Environment.NewLine +
-            "tasklist 2>nul | find /i \"HASS.Agent.NET10-Setup\" >nul" + Environment.NewLine +
-            "if not errorlevel 1 goto waitgone" + Environment.NewLine +
-            "set /a tries+=1" + Environment.NewLine +
-            "if %tries% lss 30 goto waitappear" + Environment.NewLine +
-            "goto launch" + Environment.NewLine +
-            ":waitgone" + Environment.NewLine +
-            "timeout /t 2 /nobreak >nul" + Environment.NewLine +
-            "tasklist 2>nul | find /i \"HASS.Agent.NET10-Setup\" >nul" + Environment.NewLine +
-            "if not errorlevel 1 goto waitgone" + Environment.NewLine +
-            ":launch" + Environment.NewLine +
-            "timeout /t 3 /nobreak >nul" + Environment.NewLine +
-            $"start \"\" \"{executable}\" --quiet" + Environment.NewLine +
-            "endlocal" + Environment.NewLine);
+        var batch = WriteBatch("relaunch.cmd", RelaunchWatchdogScript(executable));
 
         // User task (not SYSTEM): relaunches the tray in the visible user session.
         RunDetachedTask("HASSAgentNet10Relaunch", batch, asSystem: false);
         _log.Info("Relaunch watchdog scheduled via Task Scheduler.");
     }
+
+    /// <summary>
+    /// How long the watchdog waits, in polls of about a second, for the setup to start. The
+    /// service checks for the update and downloads the installer first, and the download has
+    /// no time limit: the watchdog used to give up after half a minute, so on a slow download
+    /// it started the app while the old one still ran (that start exits at once) and the
+    /// setup ended the old one a moment later, leaving the user without the app until the
+    /// next sign-in. Fifteen minutes is longer than the service lets an install run (its
+    /// guard against a second one lets go after ten); a start after that is harmless, as
+    /// the app then still runs and the start exits.
+    /// </summary>
+    internal const int RelaunchWaitForSetupPolls = 900;
+
+    internal static string RelaunchWatchdogScript(string executable) =>
+        "@echo off" + Environment.NewLine +
+        "setlocal" + Environment.NewLine +
+        "set /a tries=0" + Environment.NewLine +
+        ":waitappear" + Environment.NewLine +
+        "timeout /t 1 /nobreak >nul" + Environment.NewLine +
+        "tasklist 2>nul | find /i \"HASS.Agent.NET10-Setup\" >nul" + Environment.NewLine +
+        "if not errorlevel 1 goto waitgone" + Environment.NewLine +
+        "set /a tries+=1" + Environment.NewLine +
+        $"if %tries% lss {RelaunchWaitForSetupPolls} goto waitappear" + Environment.NewLine +
+        "goto launch" + Environment.NewLine +
+        ":waitgone" + Environment.NewLine +
+        "timeout /t 2 /nobreak >nul" + Environment.NewLine +
+        "tasklist 2>nul | find /i \"HASS.Agent.NET10-Setup\" >nul" + Environment.NewLine +
+        "if not errorlevel 1 goto waitgone" + Environment.NewLine +
+        ":launch" + Environment.NewLine +
+        "timeout /t 3 /nobreak >nul" + Environment.NewLine +
+        $"start \"\" \"{executable}\" --quiet" + Environment.NewLine +
+        "endlocal" + Environment.NewLine;
 
     public async Task StopAsync(bool publishOffline = true)
     {
@@ -2161,6 +2176,37 @@ internal sealed class MqttCompanionService : IDisposable
             // updated or removed meanwhile, or its retained message came late.
             await PublishUpdateEntityDiscoveryAsync();
         }
+    }
+
+    /// <summary>
+    /// MQTT turned off: what this app keeps on the broker is taken off it, once whoever
+    /// listens now has had the offline discovery. Left there, the retained messages went on
+    /// saying for good that the PC is online, with the version and the update state of the
+    /// day MQTT was turned off, and a Home Assistant started later found the PC by them. An
+    /// empty retained message removes one; the integration and Home Assistant's own MQTT
+    /// discovery ignore it, and an empty discovery config removes the update entity built
+    /// from it. Each side clears its own: the tray app its device topics and the update
+    /// state, the service its state, and the update state too when no tray app runs, as it
+    /// is the service's to publish then. Turned on again, the next connection publishes
+    /// everything anew.
+    /// </summary>
+    private async Task ClearRetainedAsync()
+    {
+        if (_role == CompanionRuntimeRole.Service)
+        {
+            await PublishRawAsync(ServiceStateTopic, null, retain: true);
+            if (!IsTrayAppRunning())
+            {
+                await PublishRawAsync(UpdateStateTopic, null, retain: true);
+            }
+
+            return;
+        }
+
+        await PublishRawAsync($"hass.agent/devices/{TopicId}", null, retain: true);
+        await PublishRawAsync(AvailabilityTopic, null, retain: true);
+        await PublishRawAsync(UpdateStateTopic, null, retain: true);
+        await PublishRawAsync(UpdateDiscoveryTopic, null, retain: true);
     }
 
     private async Task PublishLegacyTopicCleanupAsync()
