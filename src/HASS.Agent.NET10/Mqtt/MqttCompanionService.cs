@@ -180,8 +180,7 @@ internal sealed class MqttCompanionService : IDisposable
                 // taking the PC for one on MQTT by the retained messages. With the HA API on,
                 // the runtime starts again on that alone; NeedsReconnect below does not see
                 // the switch itself, and a connected client would otherwise just carry on.
-                await LeaveBrokerAsync();
-                await StopAsync(publishOffline: false);
+                await StopAsync(publishOffline: false, leaveBroker: true);
                 if (_settings.HaApiEnabled)
                 {
                     _log.Info("Continuing on the HA WebSocket API.");
@@ -609,6 +608,12 @@ internal sealed class MqttCompanionService : IDisposable
             _discoveryPublished = value is not null;
         }
     }
+
+    /// <summary>
+    /// For the tests only, with <see cref="Outbox"/>: the messages (topic, payload) the
+    /// stand-in broker does not take, as when the connection drops in the middle.
+    /// </summary>
+    internal Func<string, string?, bool>? OutboxDrops { get; init; }
 
     /// <summary>A connected MQTT session (or the tests' stand-in for one).</summary>
     private bool OnBroker => _outbox is not null || _client is { IsConnected: true };
@@ -1079,10 +1084,24 @@ internal sealed class MqttCompanionService : IDisposable
         $"start \"\" \"{executable}\" --quiet" + Environment.NewLine +
         "endlocal" + Environment.NewLine;
 
-    public async Task StopAsync(bool publishOffline = true)
+    /// <summary>
+    /// Stops the runtime. With <paramref name="leaveBroker"/> (MQTT was turned off) it also
+    /// takes what this app keeps on the broker off it, and does that last: after the worker
+    /// and its publishers have stopped, so none of them puts a retained message back, and
+    /// before the connection is closed. A leave that went through replaces the offline
+    /// announcement; after one that did not (no broker, a publish that failed) the stop
+    /// goes on as it does without it, announcement included.
+    /// </summary>
+    public async Task StopAsync(bool publishOffline = true, bool leaveBroker = false)
     {
         if (_cts is null)
         {
+            if (leaveBroker)
+            {
+                // Not running: nothing publishes, and there is a broker only in the tests.
+                await LeaveBrokerAsync();
+            }
+
             return;
         }
 
@@ -1103,7 +1122,17 @@ internal sealed class MqttCompanionService : IDisposable
 
         await _cts.CancelAsync();
 
-        if (publishOffline)
+        var left = false;
+        if (leaveBroker)
+        {
+            // The worker ends its publishers (the sensors, the update state, a discovery it
+            // was in the middle of) and leaves the connection open; only then is it safe to
+            // clear, or one of them would publish over the empty messages.
+            await WorkerStoppedAsync();
+            left = await LeaveBrokerAsync();
+        }
+
+        if (publishOffline && !left)
         {
             // Availability stays after cancellation on purpose: the heartbeat would
             // otherwise race us and mark the device online again.
@@ -1134,22 +1163,36 @@ internal sealed class MqttCompanionService : IDisposable
             await _haWs.DisconnectAsync();
         }
 
-        if (_worker is not null)
-        {
-            try
-            {
-                await _worker;
-            }
-            catch (OperationCanceledException)
-            {
-                // Expected during shutdown.
-            }
-        }
+        await WorkerStoppedAsync();
 
         _cts.Dispose();
         _cts = null;
         _worker = null;
         _isOnWebSocket = false;
+    }
+
+    private async Task WorkerStoppedAsync()
+    {
+        if (_worker is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _worker;
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected during shutdown.
+        }
+    }
+
+    /// <summary>For the tests: a worker and its cancellation, as <see cref="Start"/> sets them.</summary>
+    internal void RunningAs(Task worker, CancellationTokenSource cts)
+    {
+        _worker = worker;
+        _cts = cts;
     }
 
     public void Dispose()
@@ -2182,8 +2225,11 @@ internal sealed class MqttCompanionService : IDisposable
     /// from it. Each side clears its own: the tray app its device topics and the update
     /// state, the service its state, and the update state too when no tray app runs, as it
     /// is the service's to publish then. Turned on again, the next connection publishes
-    /// everything anew. True when it was on the broker: a stop after this must announce
-    /// nothing more there, or the service's offline state would be retained again.
+    /// everything anew. True only when it was on the broker and every one of the empty
+    /// messages went out: a stop after that must announce nothing more there, or the
+    /// service's offline state would be retained again. When one did not go out (the
+    /// connection dropped meanwhile) the stop announces itself offline as it always did,
+    /// and for a connection that is gone the broker publishes the Last Will.
     /// </summary>
     internal async Task<bool> LeaveBrokerAsync()
     {
@@ -2192,29 +2238,38 @@ internal sealed class MqttCompanionService : IDisposable
             return false;
         }
 
-        _log.Info("MQTT disabled, publishing offline discovery and clearing the retained messages.");
-        await PublishDiscoveryAsync(offline: true);
-        await ClearRetainedAsync();
-        return true;
-    }
-
-    private async Task ClearRetainedAsync()
-    {
-        if (_role == CompanionRuntimeRole.Service)
+        // What still comes in must not start a publish of its own between the empty messages
+        // (the integration's announcement makes the update entity's discovery go out again).
+        if (_client is { } client)
         {
-            await PublishRawAsync(ServiceStateTopic, null, retain: true);
-            if (!IsTrayAppRunning())
-            {
-                await PublishRawAsync(UpdateStateTopic, null, retain: true);
-            }
-
-            return;
+            client.ApplicationMessageReceivedAsync -= HandleMessageAsync;
         }
 
-        await PublishRawAsync($"hass.agent/devices/{TopicId}", null, retain: true);
-        await PublishRawAsync(AvailabilityTopic, null, retain: true);
-        await PublishRawAsync(UpdateStateTopic, null, retain: true);
-        await PublishRawAsync(UpdateDiscoveryTopic, null, retain: true);
+        _log.Info("MQTT disabled, publishing offline discovery and clearing the retained messages.");
+        await PublishDiscoveryAsync(offline: true);
+        var cleared = await ClearRetainedAsync();
+        if (!cleared)
+        {
+            _log.Warning("Not every retained message could be taken off the broker: the connection to it was lost meanwhile.");
+        }
+
+        return cleared;
+    }
+
+    private async Task<bool> ClearRetainedAsync()
+    {
+        string[] topics = _role == CompanionRuntimeRole.Service
+            ? IsTrayAppRunning() ? [ServiceStateTopic] : [ServiceStateTopic, UpdateStateTopic]
+            : [$"hass.agent/devices/{TopicId}", AvailabilityTopic, UpdateStateTopic, UpdateDiscoveryTopic];
+
+        var cleared = true;
+        foreach (var topic in topics)
+        {
+            // Every one is tried, whatever became of the one before.
+            cleared &= await PublishRawAsync(topic, null, retain: true);
+        }
+
+        return cleared;
     }
 
     private async Task PublishLegacyTopicCleanupAsync()
@@ -3095,18 +3150,25 @@ internal sealed class MqttCompanionService : IDisposable
         return false;
     }
 
-    private async Task PublishRawAsync(string topic, byte[]? payload, bool retain)
+    /// <summary>Publishes the bytes as they are; false when the message did not go out.</summary>
+    private async Task<bool> PublishRawAsync(string topic, byte[]? payload, bool retain)
     {
         if (_outbox is not null)
         {
-            await _outbox(topic, payload is null ? null : System.Text.Encoding.UTF8.GetString(payload), retain);
-            return;
+            var text = payload is null ? null : System.Text.Encoding.UTF8.GetString(payload);
+            if (OutboxDrops?.Invoke(topic, text) == true)
+            {
+                return false;
+            }
+
+            await _outbox(topic, text, retain);
+            return true;
         }
 
         var client = _client;
         if (client is not { IsConnected: true })
         {
-            return;
+            return false;
         }
 
         var message = _factory.CreateApplicationMessageBuilder()
@@ -3116,7 +3178,7 @@ internal sealed class MqttCompanionService : IDisposable
             .WithRetainFlag(retain)
             .Build();
 
-        await TryPublishAsync(client, message, topic);
+        return await TryPublishAsync(client, message, topic);
     }
 
     /// <summary>

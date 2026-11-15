@@ -85,6 +85,91 @@ public sealed class MqttTurnedOffTests : IDisposable
         Assert.False(await service.LeaveBrokerAsync());
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task What_a_publisher_sends_as_it_stops_does_not_outlive_the_leave(bool asService)
+    {
+        var role = asService ? CompanionRuntimeRole.Service : CompanionRuntimeRole.App;
+        var topic = asService ? $"hass.agent/system/{Serial}/state" : $"hass.agent/devices/{Serial}/availability";
+        var sent = new List<(string Topic, string? Payload, bool Retain)>();
+        var service = NewService(role, sent);
+
+        // A publisher of the worker that is in the middle of a publish when the stop comes:
+        // its message reaches the broker a moment after the cancellation.
+        using var cts = new CancellationTokenSource();
+        var worker = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(Timeout.Infinite, cts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+            }
+
+            await Task.Delay(200, CancellationToken.None);
+            lock (sent)
+            {
+                sent.Add((topic, "online", true));
+            }
+        }, TestContext.Current.CancellationToken);
+        service.RunningAs(worker, cts);
+
+        await service.StopAsync(publishOffline: true, leaveBroker: true);
+
+        List<(string Topic, string? Payload, bool Retain)> all;
+        lock (sent)
+        {
+            all = [.. sent];
+        }
+
+        // The empty message is the last word on the topic: nothing is retained there.
+        var last = all.Last(m => m.Topic == topic);
+        Assert.Null(last.Payload);
+        Assert.True(last.Retain);
+    }
+
+    [Fact]
+    public async Task A_service_that_left_the_broker_does_not_announce_itself_offline_there_again()
+    {
+        var state = $"hass.agent/system/{Serial}/state";
+        var sent = new List<(string Topic, string? Payload, bool Retain)>();
+        var service = NewService(CompanionRuntimeRole.Service, sent);
+        using var cts = new CancellationTokenSource();
+        service.RunningAs(Task.CompletedTask, cts);
+
+        await service.StopAsync(publishOffline: true, leaveBroker: true);
+
+        // The offline state for whoever listens, then the empty one, and nothing after it.
+        var onTopic = sent.Where(m => m.Topic == state).ToList();
+        Assert.Equal(2, onTopic.Count);
+        Assert.NotNull(onTopic[0].Payload);
+        Assert.Null(onTopic[1].Payload);
+    }
+
+    [Fact]
+    public async Task A_leave_that_did_not_get_through_leaves_the_usual_offline_announcement()
+    {
+        var state = $"hass.agent/system/{Serial}/state";
+        var sent = new List<(string Topic, string? Payload, bool Retain)>();
+        // The connection drops as the empty messages go out: none of them is taken.
+        var service = NewService(CompanionRuntimeRole.Service, sent, drops: (_, payload) => payload is null);
+        using var cts = new CancellationTokenSource();
+        service.RunningAs(Task.CompletedTask, cts);
+
+        Assert.False(await service.LeaveBrokerAsync());
+
+        sent.Clear();
+        await service.StopAsync(publishOffline: true, leaveBroker: true);
+
+        // Not counted as left: the stop says offline as it always did, and that is what stays.
+        var last = sent.Last(m => m.Topic == state);
+        Assert.NotNull(last.Payload);
+        using var payload = JsonDocument.Parse(last.Payload!);
+        Assert.False(payload.RootElement.GetProperty("online").GetBoolean());
+    }
+
     [Fact]
     public void The_relaunch_watchdog_waits_for_the_setup_longer_than_the_service_lets_an_install_run()
     {
@@ -106,11 +191,23 @@ public sealed class MqttTurnedOffTests : IDisposable
     private async Task<List<(string Topic, string? Payload, bool Retain)>> TurnOff(CompanionRuntimeRole role)
     {
         var sent = new List<(string Topic, string? Payload, bool Retain)>();
+        var service = NewService(role, sent);
+
+        await service.RestartAsync();
+        lock (sent)
+        {
+            return [.. sent];
+        }
+    }
+
+    /// <summary>A runtime with MQTT turned off in its settings; the outbox stands for the broker it was connected to.</summary>
+    private MqttCompanionService NewService(
+        CompanionRuntimeRole role, List<(string Topic, string? Payload, bool Retain)> sent, Func<string, string?, bool>? drops = null)
+    {
         var settings = new CompanionSettings { DeviceName = "pc", MqttEnabled = false, HaApiEnabled = false };
         settings.SerialNumber = Serial;
         var log = new FileLog(Path.Combine(_folder, $"{Guid.NewGuid():N}.log"));
-        // Never started: the outbox stands for the broker the app was connected to.
-        var service = new MqttCompanionService(
+        return new MqttCompanionService(
             settings, new NullNotificationSink(), mediaSessionService: null, systemMetricsService: null,
             systemCommandService: null!, role, log)
         {
@@ -122,13 +219,8 @@ public sealed class MqttTurnedOffTests : IDisposable
                 }
 
                 return Task.CompletedTask;
-            }
+            },
+            OutboxDrops = drops
         };
-
-        await service.RestartAsync();
-        lock (sent)
-        {
-            return [.. sent];
-        }
     }
 }
