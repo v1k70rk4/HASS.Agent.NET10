@@ -6,6 +6,7 @@
       "zh-Hans"
     ],
     "todo": [
+      "General.NotConfiguredError",
       "Editor.UnquotedPath",
       "SvcMgr.ApprovalRightToLeft",
       "CmdHint.webview",
@@ -64,7 +65,7 @@
     "General.OpenFolder": "打开目录",
     "General.Language": "语言(language)",
     "General.HaLanguage": "HA集成使用的语言",
-    "General.NotConfiguredError": "未配置MQTT或HA API，应用无法发送数据。推荐使用MQTT或配置HA API进行连接。",
+    "General.NotConfiguredError": "未配置MQTT或HA API，应用无法发送数据。请配置MQTT或HA API连接。",
     "General.MqttDisabledWarning": "如果有MQTT服务器则建议开启并配置，以获得完整体验。",
     "General.ServiceNotInstalledWarning": "windows服务未运行，执行指令、更新传感器及静默更新等后台功能将无法正常工作，请在“服务”选项卡中安装或启动。",
     "General.OtherSessionTalks": "当前PC已有一个进行中的用户会话。此PC的其他用户的HASS.Agent正在与HomeAssistant通信，故当前会话处于等待状态，此处保存的设置将在其他用户下次启动时生效。",

@@ -5,7 +5,7 @@ description: HASS.Agent .NET10 over MQTT - the settings, the topics the app publ
 
 # MQTT
 
-The recommended transport: fast, local, with auto-discovery. The **MQTT** page takes the broker's address and port, a login, TLS, and which features go over MQTT (notifications, the media player, the buttons, the sensors), for the tray app and the service each. **Test connection** tells whether the broker answers.
+Fast and local, with auto-discovery, for a home that runs a broker anyway; [Connection modes](index.md#which-one) compares it with the HA API. The **MQTT** page takes the broker's address and port, a login, TLS, and which features go over MQTT (notifications, the media player, the buttons, the sensors), for the tray app and the service each. **Test connection** tells whether the broker answers.
 
 The **Discovery retain flag** keeps the device's discovery message on the broker, so Home Assistant sees the PC right after its own restart, before the app sends it again.
 
