@@ -4,6 +4,9 @@
 {% block htmltitle %}
   {% if page and page.is_homepage %}
   <title>{{ config.site_name }}: Windows companion for Home Assistant</title>
+  {% elif page and page.meta.lang %}
+  {# A language page (docs/hu/ and so on): the same, in its language. #}
+  <title>{{ config.site_name }}: {{ page.meta.title }}</title>
   {% else %}
   {{ super() }}
   {% endif %}
@@ -13,8 +16,7 @@
   {% if page %}
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="HASS.Agent .NET10">
-  <meta property="og:title" content="{% if page.is_homepage %}{{ config.site_name }}: Windows companion for Home Assistant{% else %}{{ page.title }} · {{ config.site_name }}{% endif %}">
-  <meta property="og:description" content="{{ page.meta.description | default(config.site_description) }}">
+  <meta property="og:title" content="{% if page.is_homepage %}{{ config.site_name }}: Windows companion for Home Assistant{% elif page.meta.lang %}{{ config.site_name }}: {{ page.meta.title }}{% else %}{{ page.title }} · {{ config.site_name }}{% endif %}">  <meta property="og:description" content="{{ page.meta.description | default(config.site_description) }}">
   <meta property="og:url" content="{{ page.canonical_url }}">
   <meta property="og:image" content="{{ config.site_url }}images/social-preview.png">
   <meta property="og:image:width" content="1280">

@@ -62,6 +62,16 @@ extra_css:
   - stylesheets/extra.css
 
 extra:
+  # The language pages: one page per language with the essentials (docs/hu/ and so on, `lang` in their front
+  # matter), the rest of the site is English. This list is the language selector of the header, and the
+  # hreflang links of the home page and of the language pages (website/overrides/main.html).
+  alternate:
+    - name: English
+      link: /
+      lang: en
+    - name: Magyar
+      link: /hu/
+      lang: hu
   social:
     - icon: fontawesome/brands/github
       link: https://github.com/v1k70rk4/HASS.Agent.NET10
