@@ -1,11 +1,14 @@
 """MkDocs hooks of the website.
 
-Two things the markdown files cannot do on their own:
+What the markdown files cannot do on their own:
 
 * ``changelog.md`` shows the repository's ``CHANGELOG.md``, so the changelog is written once.
 * The Integration pages show sections of the integration's README, which lives in the other repository
   (``<!-- integration-readme: Entities -->`` in a page is replaced with that section). The README is read
   from a checkout next to this one when there is one, otherwise it is downloaded from GitHub.
+* The sitemap gives each page the date of its last commit rather than the day of the build, so a search
+  engine sees which pages changed (the workflow checks out the full history for it).
+* The home page's structured data names the latest stable release, read from ``CHANGELOG.md``.
 """
 
 from __future__ import annotations
@@ -13,6 +16,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+import subprocess
 import urllib.request
 from pathlib import Path
 
@@ -165,8 +169,41 @@ def _integration_links(markdown: str, page_dir: str) -> str:
     return re.sub(rf"(\]\(){re.escape(AGENT_REPO)}/blob/main/docs/([^)\s]+)\)", docs, markdown)
 
 
+def _last_commit_date(path: Path) -> str | None:
+    """The day of the last commit that touched ``path`` (YYYY-MM-DD), or None outside a git checkout."""
+    try:
+        result = subprocess.run(  # noqa: S603, S607 - fixed git command, the path is one of ours
+            ["git", "log", "-1", "--format=%cs", "--", str(path)],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    date = result.stdout.strip()
+    return date if re.fullmatch(r"\d{4}-\d{2}-\d{2}", date) else None
+
+
+def on_config(config):
+    """The latest stable release (no pre-release suffix) for the home page's structured data."""
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    match = re.search(r"^## (\d+\.\d+\.\d+)\s*$", changelog, re.M)
+    config.extra["latest_version"] = match.group(1) if match else None
+    return config
+
+
 def on_page_markdown(markdown: str, page, config, files) -> str:
     page_dir = os.path.dirname(page.file.src_uri)
+
+    # A page that shows the integration's README changes with that README, which this history does not
+    # see: it keeps the build date. The changelog page dates from CHANGELOG.md.
+    if "<!-- integration-readme:" not in markdown:
+        source = ROOT / "CHANGELOG.md" if page.file.src_uri == "changelog.md" else Path(page.file.abs_src_path)
+        date = _last_commit_date(source)
+        if date:
+            page.update_date = date
 
     if page.file.src_uri == "changelog.md":
         changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
