@@ -7,14 +7,14 @@
 ![License](https://img.shields.io/badge/license-MIT-blue)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/15316/badge)](https://www.bestpractices.dev/projects/15316)
 [![OpenSSF Scorecard](https://img.shields.io/ossf-scorecard/github.com/v1k70rk4/HASS.Agent.NET10?label=openssf%20scorecard&style=flat)](https://scorecard.dev/viewer/?uri=github.com/v1k70rk4/HASS.Agent.NET10)
-[![Website](https://img.shields.io/badge/website-v1k70rk4.github.io-41bdf5?logo=github)](https://v1k70rk4.github.io/HASS.Agent.NET10/)
+[![Website](https://img.shields.io/badge/website-hass--agent.com-41bdf5)](https://hass-agent.com/)
 [![Ko-fi](https://img.shields.io/badge/Ko--fi-support%20the%20project-FF5E5B?logo=kofi&logoColor=white)](https://ko-fi.com/v1k70rk4)
 
 <img src="docs/images/hass_agent_companion_modern_icon.png" align="right" width="128" alt="HASS.Agent .NET10 icon">
 
 A modern Windows companion app for Home Assistant.
 
-🌐 **[Website & screenshots](https://v1k70rk4.github.io/HASS.Agent.NET10/)**
+🌐 **[Website & screenshots](https://hass-agent.com/)**
 
 > ⭐ **Enjoying HASS.Agent?** Please star this repo — and the [Home Assistant integration](https://github.com/v1k70rk4/HASS.Agent.NET10-Integration) too. It helps others find the project and keeps it going!
 >
@@ -117,7 +117,7 @@ During upgrades the installer stops the running tray app, stops the system servi
 
 ## Documentation
 
-The full documentation is the website, **[v1k70rk4.github.io/HASS.Agent.NET10](https://v1k70rk4.github.io/HASS.Agent.NET10/)**, built from the pages under [`docs/`](docs/):
+The full documentation is the website, **[hass-agent.com](https://hass-agent.com/)**, built from the pages under [`docs/`](docs/):
 
 - [Get started](docs/getting-started/index.md): install, the installer and winget, security and privacy, [coming from HASS.Agent](docs/getting-started/migrating.md)
 - [Features](docs/features/index.md): notifications, media player, dashboard popup, display and audio, hotkeys, Windows service, updates, who may use it, kiosk mode, Danger Zone

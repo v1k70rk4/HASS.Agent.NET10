@@ -1,6 +1,6 @@
 # Features in detail
 
-This page moved. It is on the website at <https://v1k70rk4.github.io/HASS.Agent.NET10/features/>, and its sources are the pages below.
+This page moved. It is on the website at <https://hass-agent.com/features/>, and its sources are the pages below.
 
 - [Notifications](features/notifications.md)
 - [Media player](features/media-player.md)
