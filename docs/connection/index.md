@@ -7,7 +7,7 @@ description: How HASS.Agent .NET10 connects to Home Assistant - MQTT, the WebSoc
 
 The Home Assistant side is the companion integration, [v1k70rk4/HASS.Agent.NET10-Integration](https://github.com/v1k70rk4/HASS.Agent.NET10-Integration), installed from the Marketplace (HACS in Home Assistant before 2026.11; [Get started](../getting-started/index.md)). It creates the Home Assistant entities from what the app advertises.
 
-The app supports three connection modes. MQTT and the HA API can be used together: the HA API is then the automatic failover when the MQTT broker is unreachable.
+The app supports three connection modes. MQTT and the HA API are equals: either one carries every feature, and which suits a home better is in [Which one?](#which-one) below. They can also be used together: the HA API is then the automatic failover when the MQTT broker is unreachable.
 
 | Feature | MQTT | HA API (WebSocket) | Local HTTP API |
 |---------|:----:|:------------------:|:--------------:|
@@ -19,13 +19,16 @@ The app supports three connection modes. MQTT and the HA API can be used togethe
 | Update entity | yes | yes | |
 | Auto-discovery | yes | yes | |
 | Service integration | yes | yes | |
-| Retained state on restart | yes | | |
-| Last Will (offline detection) | yes | | |
-| Remote access (Nabu Casa) | | yes | |
+| Offline detection | yes (Last Will) | yes (heartbeat) | |
+| Last values kept through a Home Assistant restart while the PC is off | yes (retained) | | |
+| A Home Assistant user of the PC's own, not an administrator | | yes | |
+| Remote access (Nabu Casa, your own domain) | | yes | |
 
-**MQTT** (recommended). The device is discovered automatically through MQTT discovery. All features work. Requires an MQTT broker on the local network (Mosquitto, for example); if you use Zigbee2MQTT, you already have one. [MQTT](mqtt.md) has the topics and the broker advice.
+**MQTT**. The device is discovered through MQTT discovery and every feature works. It needs a broker on the local network (Mosquitto, for example); if you run Zigbee2MQTT, you already have one. The broker keeps the last values (retained messages), so a PC that is off or asleep while Home Assistant restarts still shows them, and its Last Will takes the PC offline when the connection drops. Encryption is TLS on the broker, which needs a certificate there. Whoever has a broker login that may write the PC's topics can send it commands; a login of its own for HASS.Agent keeps it off other devices, but only the broker's ACLs limit who may write those topics ([Keep the broker login to yourself](mqtt.md#keep-the-broker-login-to-yourself)). [MQTT](mqtt.md) has the topics and the rest of the broker advice.
 
-**HA API (WebSocket)**. The app connects directly to Home Assistant's WebSocket API with a long-lived access token. Works remotely (through Nabu Casa, for example) without an MQTT broker. Almost all features work, with some trade-offs: no retained state (sensor values are lost until the app reconnects after a restart), no MQTT Last Will (no automatic offline detection), and media thumbnails are about a third larger (base64 encoding). HTTPS is required for remote access. [HA API](ha-api.md) has the events.
+**HA API (WebSocket)**. The app connects straight to Home Assistant's WebSocket API with a long-lived access token: no broker, and it works from away too. Every feature works. The token belongs to [a Home Assistant user of the PC's own](#a-home-assistant-user-for-the-pc), not an administrator, and the integration sends each PC only its own commands. The app sends a heartbeat; without one for 90 seconds Home Assistant shows it offline. What it does not have is a broker's memory: after a Home Assistant restart the integration asks the app to send them again, which it does at once (10.9.0 and newer); a PC that is off or asleep meanwhile is unavailable until it is back. Media thumbnails are about a third larger (base64 encoding). [HA API](ha-api.md) has the events.
+
+The HA API needs a certificate as well, once it leaves the home: from away it goes over https, and the certificate has to be one Windows trusts. Nabu Casa gives one, as does your own domain with Let's Encrypt; a self-signed certificate is refused unless its CA is in the Windows certificate store. That is also its strength: with it, the token and everything after it travel encrypted, to a server the PC has checked. At home plain http works too, but the token then crosses the network unencrypted; the page warns about it ([The address](#the-address)).
 
 **Local HTTP API**. A minimal fallback, off by default: turned on on the General page, the app runs a small HTTP server that Home Assistant connects to. Only notifications are supported. Requires manual setup (IP address, port, API key). Use MQTT or the HA API instead for full functionality. [Local HTTP API](local-api.md).
 
@@ -38,6 +41,12 @@ The app supports three connection modes. MQTT and the HA API can be used togethe
 ![The HA API page](../images/ui-ha-api.png){ width="700" }
 <figcaption>The HA API page: the address, the token and whose it is</figcaption>
 </figure>
+
+## Which one?
+
+- **MQTT**, if a broker runs anyway, or the PCs' last values should stay in Home Assistant through a restart while the PCs are off.
+- **HA API**, if there is no broker, a laptop leaves home, or each PC should have a Home Assistant user of its own with nothing else to set up.
+- **Both**, to have the HA API take over when the broker drops.
 
 ## A Home Assistant user for the PC
 

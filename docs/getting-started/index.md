@@ -11,7 +11,7 @@ Two pieces: the Home Assistant integration, from the Marketplace (HACS in Home A
 
 - Windows 11, or Windows 10 version 2004 (build 19041) or newer, on x64. The .NET runtime ships with the app, there is nothing else to install.
 - Home Assistant 2026.6 or newer with the companion integration, [v1k70rk4/HASS.Agent.NET10-Integration](https://github.com/v1k70rk4/HASS.Agent.NET10-Integration), version **10.6.7 or newer**. The app and the integration are released with matching version numbers; some sensors and entities need the integration of the same release, the [changelog](../changelog.md) says which.
-- An **MQTT broker** (recommended, Mosquitto for example) **or** the Home Assistant **WebSocket API**, which needs no broker and also works from away, through Nabu Casa. [Connection modes](../connection/index.md) compares them.
+- An **MQTT broker** (Mosquitto, for example) **or** the Home Assistant **WebSocket API**, which needs no broker and also works from away, through Nabu Casa. Both carry every feature; [Connection modes](../connection/index.md#which-one) says which suits what.
 
 Windows versions older than Windows 10 2004 are intentionally blocked: the app targets `net10.0-windows10.0.19041.0` and uses modern Windows APIs for notifications, media sessions, services, sensors and desktop state.
 

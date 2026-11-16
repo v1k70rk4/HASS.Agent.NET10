@@ -119,17 +119,17 @@ Use whichever fits your setup, or let the app fail over on its own when you are 
 
 <div class="grid cards" markdown>
 
--   **MQTT** · recommended
+-   **MQTT** · local, through a broker
 
     ---
 
-    Fast, local auto-discovery through your MQTT broker (Mosquitto, for example). The primary, full-featured transport.
+    Fast, local auto-discovery through your MQTT broker (Mosquitto, for example). Every feature, and the broker keeps the last values through a Home Assistant restart.
 
--   **HA WebSocket API** · failover and remote
+-   **HA WebSocket API** · no broker, also from away
 
     ---
 
-    Over the Home Assistant WebSocket API, with no broker at all, also from away through Nabu Casa. Fails over on its own when MQTT drops. Works with a Home Assistant user of its own, no administrator's token needed.
+    Over the Home Assistant WebSocket API, with no broker at all, also from away through Nabu Casa. Every feature, on its own or as the failover when MQTT drops. Works with a Home Assistant user of its own, no administrator's token needed.
 
 -   **Local HTTP API** · fallback
 

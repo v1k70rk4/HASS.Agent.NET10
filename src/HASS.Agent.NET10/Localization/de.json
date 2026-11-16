@@ -6,6 +6,7 @@
       "de"
     ],
     "todo": [
+      "General.NotConfiguredError",
       "Access.NowRestricted",
       "Access.Restricted",
       "Danger.KioskHint",
@@ -139,7 +140,7 @@
     "General.OpenFolder": "Ordner öffnen",
     "General.Language": "Sprache der Oberfläche",
     "General.HaLanguage": "Sprache der HA-Entitäten",
-    "General.NotConfiguredError": "Weder MQTT noch die HA-API ist eingerichtet – die Anwendung sendet keine Daten. Richte eine MQTT-Verbindung (empfohlen) oder eine HA-API-Verbindung ein.",
+    "General.NotConfiguredError": "Weder MQTT noch die HA-API ist eingerichtet – die Anwendung sendet keine Daten. Richte eine MQTT- oder eine HA-API-Verbindung ein.",
     "General.MqttDisabledWarning": "MQTT ist nicht eingerichtet. Wenn du einen MQTT-Broker hast, solltest du MQTT aktivieren.",
     "General.ServiceNotInstalledWarning": "Der Windows-Dienst ist nicht installiert oder läuft nicht, daher funktionieren dienstseitige Befehle, Sensoren und stille Updates nicht.",
     "General.OtherSessionTalks": "Die Sitzung eines anderen Benutzers steht jetzt für diesen PC: Dessen HASS.Agent spricht mit Home Assistant, und dieser wartet. Hier gespeicherte Einstellungen erreichen ihn bei seinem nächsten Start.",

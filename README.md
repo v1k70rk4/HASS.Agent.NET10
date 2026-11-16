@@ -37,7 +37,7 @@ The .NET10 line starts at **version 10.0.0**. The classic client is a separate p
 - Windows 10 version 2004 / build 19041 or newer
 - Windows 11 recommended
 - x64 Windows
-- Home Assistant with **MQTT broker** (recommended, e.g. Mosquitto) **or HA API** (WebSocket, e.g. via Nabu Casa)
+- Home Assistant with an **MQTT broker** (e.g. Mosquitto) **or the HA API** (WebSocket, no broker, also via Nabu Casa); both carry every feature
 - The companion Home Assistant integration:
   [v1k70rk4/HASS.Agent.NET10-Integration](https://github.com/v1k70rk4/HASS.Agent.NET10-Integration) —
   **version 10.6.7 or newer**; the sensors added in 10.7.1 need integration **10.7.0** to appear in
