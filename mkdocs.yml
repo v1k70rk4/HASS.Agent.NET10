@@ -1,8 +1,8 @@
-# The website, https://v1k70rk4.github.io/HASS.Agent.NET10/: MkDocs with the Material theme builds it from the
+# The website, https://hass-agent.com/: MkDocs with the Material theme builds it from the
 # markdown files under docs/ (.github/workflows/docs.yml deploys it). To build it on your PC:
 #   python -m venv .venv ; .venv\Scripts\pip install -r website\requirements.txt ; .venv\Scripts\mkdocs serve
 site_name: HASS.Agent .NET10
-site_url: https://v1k70rk4.github.io/HASS.Agent.NET10/
+site_url: https://hass-agent.com/
 site_description: A free Windows companion app for Home Assistant, with notifications, media player, sensors, commands and one-click updates.
 site_author: v1k70rk4
 repo_url: https://github.com/v1k70rk4/HASS.Agent.NET10

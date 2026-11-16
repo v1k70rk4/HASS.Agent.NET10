@@ -596,7 +596,7 @@ A bigger release than the step in the version number suggests: notifications reb
 **Around the app**
 
 - **A *Star on GitHub* button on the About page**, next to the coffee one. The only place the app asks for it.
-- **New website and documentation.** The README is short now and the details live under `docs/`: [Features](docs/features/index.md), [Commands](docs/commands/index.md), [Sensors](docs/sensors/index.md), [Connection](docs/connection/index.md) and a [Coming from HASS.Agent](docs/getting-started/migrating.md) page for people who know the classic client. The [website](https://v1k70rk4.github.io/HASS.Agent.NET10/) shows what Home Assistant sees and what the notifications look like.
+- **New website and documentation.** The README is short now and the details live under `docs/`: [Features](docs/features/index.md), [Commands](docs/commands/index.md), [Sensors](docs/sensors/index.md), [Connection](docs/connection/index.md) and a [Coming from HASS.Agent](docs/getting-started/migrating.md) page for people who know the classic client. The [website](https://hass-agent.com/) shows what Home Assistant sees and what the notifications look like.
 
 ## 10.8.0
 
