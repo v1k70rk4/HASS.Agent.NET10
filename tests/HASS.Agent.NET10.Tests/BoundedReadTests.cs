@@ -40,15 +40,19 @@ public sealed class BoundedReadTests
         // The sensor cycle asks, and while Windows is still answering, a Test button asks too.
         var cycle = Task.Run(() => bounded.Run(Slow), TestContext.Current.CancellationToken);
         Assert.True(underWay.Wait(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
-        // The button's task has started before the wait below begins: on a busy build machine a
-        // pool thread could start only after the release, and then make a read of its own.
-        using var buttonAsks = new ManualResetEventSlim();
+        // The first read is released only once the button has joined it: on a busy build machine
+        // a pool thread could start after the release, and then make a read of its own. Joined is
+        // when the button's thread waits: BoundedRead takes no other wait before the one on the
+        // read under way (its lock is free, the first caller waits outside it).
+        Thread? buttonThread = null;
         var button = Task.Run(() =>
         {
-            buttonAsks.Set();
+            Volatile.Write(ref buttonThread, Thread.CurrentThread);
             return bounded.Run(Slow);
         }, TestContext.Current.CancellationToken);
-        Assert.True(buttonAsks.Wait(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
+        Assert.True(SpinWait.SpinUntil(
+            () => Volatile.Read(ref buttonThread) is { } thread && (thread.ThreadState & System.Threading.ThreadState.WaitSleepJoin) != 0,
+            TimeSpan.FromSeconds(5)));
         var first = await Task.WhenAny(button, Task.Delay(TimeSpan.FromMilliseconds(200), TestContext.Current.CancellationToken));
         Assert.NotSame(button, first);
 
