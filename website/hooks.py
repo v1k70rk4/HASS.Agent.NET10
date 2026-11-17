@@ -9,6 +9,12 @@ What the markdown files cannot do on their own:
 * The sitemap gives each page the date of its last commit rather than the day of the build, so a search
   engine sees which pages changed (the workflow checks out the full history for it).
 * The home page's structured data names the latest stable release, read from ``CHANGELOG.md``.
+* A language page (``lang: hu`` in its front matter) says so in its ``<html lang>``; the theme knows one
+  language for the whole site.
+* The theme's ``<link rel="alternate" hreflang>`` tags are taken out of every page. The theme writes them
+  for whole translated sites: its script then downloads ``sitemap.xml`` from under each language's address
+  on every page view, and here that is a 404 per language. The language pages are single pages, so the
+  hreflang links are in the sitemap instead (``website/overrides/sitemap.xml``), on the pages they belong to.
 """
 
 from __future__ import annotations
@@ -218,3 +224,19 @@ def on_page_markdown(markdown: str, page, config, files) -> str:
         markdown = _integration_links(markdown, page_dir)
 
     return markdown
+
+
+_HEAD_ALTERNATE = re.compile(r'[ \t]*<link rel="alternate" href="[^"]*" hreflang="[^"]*">\n?')
+
+
+def on_post_page(output: str, page, config) -> str:
+    output = _HEAD_ALTERNATE.sub("", output)
+    head = output.partition("</head>")[0]
+    if 'rel="alternate"' in head and "hreflang" in head:
+        # The theme changed how it writes them: say so, a strict build then fails instead of going quiet.
+        log.warning("%s: an hreflang link is left in the <head>", page.file.src_uri)
+
+    lang = page.meta.get("lang")
+    if lang and re.fullmatch(r"[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*", lang):
+        output = output.replace('<html lang="en"', f'<html lang="{lang}"', 1)
+    return output

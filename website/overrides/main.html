@@ -4,17 +4,53 @@
 {% block htmltitle %}
   {% if page and page.is_homepage %}
   <title>{{ config.site_name }}: Windows companion for Home Assistant</title>
+  {% elif page and page.meta.lang %}
+  {# A language page (docs/hu/ and so on): the same, in its language. #}
+  <title>{{ config.site_name }}: {{ page.meta.title }}</title>
   {% else %}
   {{ super() }}
   {% endif %}
 {% endblock %}
 
 {% block extrahead %}
+  {# The language a visitor picks in the header's selector is remembered (in their browser only). #}
+  <script>
+    document.addEventListener("click", function (event) {
+      var link = event.target.closest && event.target.closest("a.md-select__link[hreflang]");
+      if (link) {
+        try { localStorage.setItem("hass-agent.language", link.getAttribute("hreflang")); } catch (e) {}
+      }
+    });
+  </script>
+  {% if page and page.is_homepage %}
+  {# Someone arriving at the home page from elsewhere gets the page in their language, when there is one:
+     the language they picked here before, otherwise the first language of their browser that has a page.
+     Moving around inside the site never redirects, so the English home page stays one click away, and
+     neither does a link to a section of this page (#three-ways-to-connect), which the other pages lack. #}
+  <script>
+    (function () {
+      try {
+        var pages = { {% for alt in config.extra.alternate if alt.lang != "en" %}"{{ alt.lang.split('-')[0] }}": "{{ alt.link }}"{{ ", " if not loop.last }}{% endfor %} };
+        if (location.hash) return;
+        if (document.referrer && new URL(document.referrer).host === location.host) return;
+        var picked = null;
+        // A browser set to block storage throws here: the browser's languages still count.
+        try { picked = localStorage.getItem("hass-agent.language"); } catch (e) {}
+        var wanted = [picked];
+        if (!wanted[0]) wanted = navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language];
+        for (var i = 0; i < wanted.length; i++) {
+          var code = String(wanted[i] || "").toLowerCase().split("-")[0];
+          if (code === "en") return;
+          if (pages[code]) { location.replace(pages[code]); return; }
+        }
+      } catch (e) {}
+    })();
+  </script>
+  {% endif %}
   {% if page %}
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="HASS.Agent .NET10">
-  <meta property="og:title" content="{% if page.is_homepage %}{{ config.site_name }}: Windows companion for Home Assistant{% else %}{{ page.title }} · {{ config.site_name }}{% endif %}">
-  <meta property="og:description" content="{{ page.meta.description | default(config.site_description) }}">
+  <meta property="og:title" content="{% if page.is_homepage %}{{ config.site_name }}: Windows companion for Home Assistant{% elif page.meta.lang %}{{ config.site_name }}: {{ page.meta.title }}{% else %}{{ page.title }} · {{ config.site_name }}{% endif %}">  <meta property="og:description" content="{{ page.meta.description | default(config.site_description) }}">
   <meta property="og:url" content="{{ page.canonical_url }}">
   <meta property="og:image" content="{{ config.site_url }}images/social-preview.png">
   <meta property="og:image:width" content="1280">
