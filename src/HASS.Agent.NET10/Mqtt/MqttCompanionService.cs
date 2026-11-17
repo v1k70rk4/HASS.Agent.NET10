@@ -2359,10 +2359,17 @@ internal sealed class MqttCompanionService : IDisposable
             || _lastUpdateProxy != UpdateProxyKey()
             || now - _lastUpdateCheck >= UpdateCheckThrottle)
         {
-            // The proxy and its key from the same moment: settings saved while the check is under
-            // way must not be recorded as the proxy this answer came through.
-            var proxyKey = UpdateProxyKey();
-            var proxy = UpdateProxy.From(_settings);
+            // The proxy and its key from the same moment, under the gate every save takes: settings
+            // saved while the check is under way must not be recorded as the proxy this answer came
+            // through. The gate is not held over the check itself.
+            string proxyKey;
+            UpdateProxy proxy;
+            lock (SettingsStore.Gate)
+            {
+                proxyKey = UpdateProxyKey();
+                proxy = UpdateProxy.From(_settings);
+            }
+
             _lastUpdateState = await AppUpdateService.CheckAsync(_settings.SoftwareVersion, _settings.BetaUpdatesEnabled, proxy);
             _lastUpdateBeta = _settings.BetaUpdatesEnabled;
             _lastUpdateProxy = proxyKey;
