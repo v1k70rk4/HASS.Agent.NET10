@@ -35,7 +35,7 @@ internal sealed class CompanionSettings
     public bool BetaUpdatesEnabled { get; set; }
 
     /// <summary>
-    /// Danger Zone: an update is installed only at this PC. An install asked for from Home
+    /// About page: an update is installed only at this PC. An install asked for from Home
     /// Assistant (the update entity's button, on either transport) is refused before anything
     /// is downloaded; the checks and the About page work as before.
     /// </summary>
@@ -60,6 +60,35 @@ internal sealed class CompanionSettings
             RemoteUpdateInstallBlocked = before;
             return ex;
         }
+    }
+
+    /// <summary>
+    /// About page: the update checks and downloads (GitHub, the app's only traffic to the
+    /// internet) go through <see cref="UpdateProxyAddress"/> instead of the proxy Windows is
+    /// set to. The address is kept when this is off, so switching back does not lose it.
+    /// </summary>
+    public bool UpdateProxyCustom { get; set; }
+
+    /// <summary>The proxy for the updates when <see cref="UpdateProxyCustom"/>: http://host:port.</summary>
+    public string UpdateProxyAddress { get; set; } = string.Empty;
+
+    /// <summary>The proxy asks for a user name and a password (either proxy: Windows' or the one set here).</summary>
+    public bool UpdateProxyLogin { get; set; }
+
+    public string UpdateProxyUser { get; set; } = string.Empty;
+
+    public string UpdateProxyPasswordProtected { get; set; } = string.Empty;
+
+    public string GetUpdateProxyPassword()
+    {
+        return ProtectedSecretStore.Unprotect(UpdateProxyPasswordProtected, SerialNumber);
+    }
+
+    public void SetUpdateProxyPassword(string password)
+    {
+        UpdateProxyPasswordProtected = string.IsNullOrEmpty(password)
+            ? string.Empty
+            : ProtectedSecretStore.Protect(password, SerialNumber);
     }
 
     /// <summary>Danger Zone: the fast sensor interval may go below 5 seconds, down to 1.</summary>
@@ -383,6 +412,8 @@ internal sealed class CompanionSettings
         MqttHost = NormalizeText(MqttHost, "homeassistant.local");
         MqttUsername = MqttUsername.Trim();
         HaApiUrl = NormalizeUrl(HaApiUrl);
+        UpdateProxyAddress = (UpdateProxyAddress ?? string.Empty).Trim();
+        UpdateProxyUser = (UpdateProxyUser ?? string.Empty).Trim();
         // Any well-formed language code stays: a language from a translator's own file is not
         // known to the service, which also loads these settings, and must not be lost there.
         // A language the app turns out not to have shows in English.

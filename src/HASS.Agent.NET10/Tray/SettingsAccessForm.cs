@@ -11,7 +11,7 @@ namespace HASS.Agent.Companion.Tray;
 
 /// <summary>
 /// "Who may use HASS.Agent on this PC?" Asked once on a PC whose settings every user can still
-/// read and change (installs from before 10.9.1), and reachable later from the Danger Zone.
+/// read and change (installs from before 10.9.1), and reachable later from the Service page.
 /// Limiting runs the app as administrator (UAC) with --settings-access.
 /// </summary>
 internal sealed class SettingsAccessForm : Form

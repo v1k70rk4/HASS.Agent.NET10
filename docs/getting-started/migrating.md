@@ -31,7 +31,7 @@ Before you switch, check that the sensors and commands you rely on have a counte
 
 ## What comes over
 
-When the app finds the classic client's settings (for the Windows user it runs as) and has no connection set up yet, it offers to take them over the first time its window opens. Later the **Import from HASS.Agent** button in the [Danger Zone](../features/danger-zone.md), under **Backup / restore**, does the same. The classic install is only read, nothing is changed there.
+When the app finds the classic client's settings (for the Windows user it runs as) and has no connection set up yet, it offers to take them over the first time its window opens. Later the **Import from HASS.Agent** button on the General page, under [Backup / restore](../features/danger-zone.md#backup-and-restore), does the same (in the Danger Zone up to 10.13.1). The classic install is only read, nothing is changed there.
 
 - **The connection:** the MQTT broker, port, TLS, user name and password, and the Home Assistant address and token for the [HA API](../connection/ha-api.md), stored protected like every secret here. The classic client's token is as a rule an administrator's: once the PC is connected, the app offers to swap it for a user of the PC's own.
 - **The device name.**

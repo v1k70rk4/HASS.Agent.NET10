@@ -5,7 +5,7 @@ namespace HASS.Agent.Companion.Configuration;
 /// <summary>
 /// Kiosk mode, for a PC where the sensors need the tray app but the person in front of the
 /// screen must not change anything. The kiosk users are the members of a local group, "HASS.Agent
-/// Kiosk", which only an administrator can change: with this app (Danger Zone, Kiosk mode,
+/// Kiosk", which only an administrator can change: with this app (Service, Kiosk mode,
 /// --kiosk) or with Windows' own tools, also from a domain's group policy. For them the tray
 /// app shows nothing but "Kiosk mode" in the tray: no window, no menu, no Exit; the settings
 /// folder denies the group every change (SettingsAccess.SetFolderRule); and a scheduled task

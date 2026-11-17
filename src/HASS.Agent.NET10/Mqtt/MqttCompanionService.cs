@@ -56,6 +56,9 @@ internal sealed class MqttCompanionService : IDisposable
     private const int ThumbnailPacketOverhead = 256;
     private uint? _brokerMaximumPacketSize;
     private bool _lastUpdateBeta;
+    // The proxy the last check went through (UpdateProxy, without the password): a new one is
+    // tried at once, not after the hour.
+    private string _lastUpdateProxy = string.Empty;
 
     internal static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -400,6 +403,7 @@ internal sealed class MqttCompanionService : IDisposable
 
         _lastUpdateState = state;
         _lastUpdateBeta = _settings.BetaUpdatesEnabled;
+        _lastUpdateProxy = UpdateProxyKey();
         _lastUpdateCheck = DateTimeOffset.UtcNow;
 
         if (!(_isOnWebSocket && _haWs is not null) && !OnBroker)
@@ -544,7 +548,7 @@ internal sealed class MqttCompanionService : IDisposable
     }
 
     /// <summary>
-    /// The Danger Zone's "updates only at this PC": an install asked for from outside the PC
+    /// The About page's "updates only at this PC": an install asked for from outside the PC
     /// stops here, before the release is looked up or anything is downloaded. The About
     /// page's own update does not come this way.
     /// </summary>
@@ -562,7 +566,7 @@ internal sealed class MqttCompanionService : IDisposable
             return false;
         }
 
-        _log.Warning("An update install was asked for from Home Assistant and refused: updates are installed only at this PC (Danger Zone).");
+        _log.Warning("An update install was asked for from Home Assistant and refused: updates are installed only at this PC (About page).");
         if (learned)
         {
             // Home Assistant offered the button on what this app last told it.
@@ -736,7 +740,7 @@ internal sealed class MqttCompanionService : IDisposable
         try
         {
             _log.Info("Update install requested from Home Assistant.");
-            var update = await AppUpdateService.CheckAsync(_settings.SoftwareVersion, _settings.BetaUpdatesEnabled);
+            var update = await AppUpdateService.CheckAsync(_settings.SoftwareVersion, _settings.BetaUpdatesEnabled, UpdateProxy.From(_settings));
             // What came of it goes into the log too, not only into Home Assistant: a failed
             // check used to say "no update" there and nothing here.
             if (!string.IsNullOrWhiteSpace(update.Error))
@@ -806,7 +810,7 @@ internal sealed class MqttCompanionService : IDisposable
                 Strings.GetHa("HaPn.UpdateTitle"),
                 string.Format(Strings.GetHa(messageKey), _settings.DeviceName, update.LatestVersion));
 
-            var installerPath = await AppUpdateService.DownloadAsync(update, GetUpdateDownloadDirectory());
+            var installerPath = await AppUpdateService.DownloadAsync(update, GetUpdateDownloadDirectory(), UpdateProxy.From(_settings));
             const string installerArguments = "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART";
             _log.Info($"Starting installer with elevation: {installerPath}");
             // Detached, not as our child: the installer closes this app with `taskkill /T`,
@@ -885,7 +889,7 @@ internal sealed class MqttCompanionService : IDisposable
         try
         {
             _log.Info("Silent update install requested (service role).");
-            var update = await AppUpdateService.CheckAsync(_settings.SoftwareVersion, _settings.BetaUpdatesEnabled);
+            var update = await AppUpdateService.CheckAsync(_settings.SoftwareVersion, _settings.BetaUpdatesEnabled, UpdateProxy.From(_settings));
             if (!string.IsNullOrWhiteSpace(update.Error))
             {
                 _log.Warning($"The update check failed, skipping silent install: {AppUpdateService.Explain(update.Error)}");
@@ -923,7 +927,7 @@ internal sealed class MqttCompanionService : IDisposable
             // rule: the installer checked here is run later by a task, and nobody else may swap
             // it (or the batch) in between.
             var directory = CreatePrivateUpdateDirectory();
-            var installerPath = await AppUpdateService.DownloadAsync(update, directory);
+            var installerPath = await AppUpdateService.DownloadAsync(update, directory, UpdateProxy.From(_settings));
             _log.Info($"Downloaded installer: {installerPath}");
 
             // Run via Task Scheduler, NOT as a child process: the installer stops
@@ -2339,6 +2343,9 @@ internal sealed class MqttCompanionService : IDisposable
         }
     }
 
+    private string UpdateProxyKey() =>
+        $"{_settings.UpdateProxyCustom}|{_settings.UpdateProxyAddress}|{_settings.UpdateProxyLogin}|{_settings.UpdateProxyUser}|{_settings.UpdateProxyPasswordProtected}";
+
     private async Task PublishUpdateStateAsync(bool forceCheck = false, CancellationToken cancellationToken = default)
     {
         var now = DateTimeOffset.UtcNow;
@@ -2349,10 +2356,23 @@ internal sealed class MqttCompanionService : IDisposable
         if (forceCheck
             || _lastUpdateState is null
             || _lastUpdateBeta != _settings.BetaUpdatesEnabled
+            || _lastUpdateProxy != UpdateProxyKey()
             || now - _lastUpdateCheck >= UpdateCheckThrottle)
         {
-            _lastUpdateState = await AppUpdateService.CheckAsync(_settings.SoftwareVersion, _settings.BetaUpdatesEnabled);
+            // The proxy and its key from the same moment, under the gate every save takes: settings
+            // saved while the check is under way must not be recorded as the proxy this answer came
+            // through. The gate is not held over the check itself.
+            string proxyKey;
+            UpdateProxy proxy;
+            lock (SettingsStore.Gate)
+            {
+                proxyKey = UpdateProxyKey();
+                proxy = UpdateProxy.From(_settings);
+            }
+
+            _lastUpdateState = await AppUpdateService.CheckAsync(_settings.SoftwareVersion, _settings.BetaUpdatesEnabled, proxy);
             _lastUpdateBeta = _settings.BetaUpdatesEnabled;
+            _lastUpdateProxy = proxyKey;
             _lastUpdateCheck = now;
             if (string.IsNullOrWhiteSpace(_lastUpdateState.Error))
             {
@@ -2402,7 +2422,7 @@ internal sealed class MqttCompanionService : IDisposable
 
     /// <summary>
     /// The update state as Home Assistant gets it: what the check found, and whether an
-    /// install may be asked for from there (the Danger Zone's "updates only at this PC").
+    /// install may be asked for from there (the About page's "updates only at this PC").
     /// </summary>
     internal static AppUpdateState ForHomeAssistant(AppUpdateState state, CompanionSettings settings) =>
         state with { RemoteInstall = !settings.RemoteUpdateInstallBlocked };
