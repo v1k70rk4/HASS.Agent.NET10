@@ -280,6 +280,7 @@ internal static class SettingsStore
         "mqttPasswordProtected",
         "haApiTokenProtected",
         "libreHardwareMonitorPasswordProtected",
+        "updateProxyPasswordProtected",
         // Plain text: whoever gets the file could send this PC notifications. Import makes a new one.
         "apiKey",
     ];

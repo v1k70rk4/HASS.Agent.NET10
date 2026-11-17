@@ -8,7 +8,7 @@ using HASS.Agent.Companion.Runtime;
 namespace HASS.Agent.Companion.Tray;
 
 /// <summary>
-/// Kiosk mode, from the Danger Zone: who the kiosk users are (KioskMode). Turning it on,
+/// Kiosk mode, from the Service page: who the kiosk users are (KioskMode). Turning it on,
 /// changing the list and turning it off run the app as administrator (UAC) with --kiosk.
 /// Whoever opened this cannot change their own tick; a note under the list says so. An
 /// administrator can be ticked, and is asked about first: kiosk mode only hides the app from

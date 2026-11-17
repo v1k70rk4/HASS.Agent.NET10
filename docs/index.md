@@ -107,7 +107,7 @@ Observe and control your Windows PCs from Home Assistant, split between an inter
 
     ---
 
-    Opt-in toolbox: MQTT cleanup, live monitor, debug log, settings backup and restore, factory reset, beta updates.
+    Opt-in toolbox: MQTT cleanup, live monitor, debug log, factory reset, fast sensors.
 
     [:octicons-arrow-right-24: Danger Zone](features/danger-zone.md)
 

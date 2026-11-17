@@ -20,11 +20,11 @@ internal static class AppUpdateService
             ? "GitHub returned no release; if that lasts, GitHub may be having trouble, see https://www.githubstatus.com"
             : error ?? string.Empty;
 
-    public static async Task<AppUpdateState> CheckAsync(string installedVersion, bool includePrereleases = false, CancellationToken cancellationToken = default)
+    public static async Task<AppUpdateState> CheckAsync(string installedVersion, bool includePrereleases = false, UpdateProxy? proxy = null, CancellationToken cancellationToken = default)
     {
         try
         {
-            using var http = new HttpClient();
+            using var http = new HttpClient((proxy ?? UpdateProxy.Windows).CreateHandler());
             http.DefaultRequestHeaders.UserAgent.ParseAdd($"{AppIdentity.ExecutableName}/{installedVersion}");
 
             // The releases/latest endpoint never returns pre-releases; the beta
@@ -167,14 +167,16 @@ internal static class AppUpdateService
         return text.ToString();
     }
 
-    public static async Task<string> DownloadAsync(AppUpdateState update, string targetDirectory, CancellationToken cancellationToken = default)
+    public static async Task<string> DownloadAsync(AppUpdateState update, string targetDirectory, UpdateProxy? proxy = null, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(update.DownloadUrl) || string.IsNullOrWhiteSpace(update.AssetName))
         {
             throw new InvalidOperationException("No downloadable update asset is available.");
         }
 
-        using var http = new HttpClient();
+        // The installer comes through the same proxy as the check; whatever a proxy hands over,
+        // the signature checks below decide whether it is run.
+        using var http = new HttpClient((proxy ?? UpdateProxy.Windows).CreateHandler());
         http.DefaultRequestHeaders.UserAgent.ParseAdd($"{AppIdentity.ExecutableName}/{update.InstalledVersion}");
 
         Directory.CreateDirectory(targetDirectory);
@@ -369,7 +371,7 @@ internal sealed record AppUpdateState(
     // Shown in the in-app update prompt only; the state published to Home
     // Assistant (MQTT / WebSocket) stays as it was.
     [property: JsonIgnore] string? ReleaseNotes = null,
-    // False when the PC installs updates only at the PC itself (Danger Zone): Home Assistant
+    // False when the PC installs updates only at the PC itself (About page): Home Assistant
     // then shows the new version without an Install button. Set when the state is published.
     [property: JsonPropertyName("remote_install")] bool RemoteInstall = true)
 {

@@ -60,10 +60,21 @@ internal sealed class MainForm : Form
     private Control? _generalDeviceCard;
     private Control? _generalNetworkCard;
     private Control? _generalFilesCard;
+    private Control? _generalBackupCard;
     private Control? _generalDangerCard;
     private readonly Label _serviceWarning = new();
     private Control? _serviceStatusCard;
     private Control? _serviceActionsCard;
+    private Control? _serviceUsersCard;
+
+    // About page, the proxy for the updates (UpdateProxy): saved with the Save button, and the
+    // Check updates button there tries what the fields say.
+    private readonly RadioButton _proxyWindows = new();
+    private readonly RadioButton _proxyCustom = new();
+    private readonly TextBox _proxyAddress = new() { PlaceholderText = "http://127.0.0.1:7890" };
+    private readonly CheckBox _proxyLogin = new();
+    private readonly TextBox _proxyUser = new();
+    private readonly TextBox _proxyPassword = new() { UseSystemPasswordChar = true };
 
     private readonly CheckBox _mqttEnabled = new();
     private readonly Label _mqttWarning = new();
@@ -153,7 +164,7 @@ internal sealed class MainForm : Form
     [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
     public Func<AppUpdateState, Task>? UpdateStateHandler { get; set; }
 
-    /// <summary>Wired by TrayApplicationContext: tells Home Assistant that the Danger Zone's "updates only at this PC" was changed.</summary>
+    /// <summary>Wired by TrayApplicationContext: tells Home Assistant that the About page's "updates only at this PC" was changed.</summary>
     [System.ComponentModel.Browsable(false)]
     [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
     public Func<Task>? RemoteInstallSwitchHandler { get; set; }
@@ -333,9 +344,8 @@ internal sealed class MainForm : Form
         };
 
         var navContainer = new Panel { Dock = DockStyle.Fill, BackColor = SidebarBg };
-        string[] navKeys = ["Nav.General", "Nav.Mqtt", "Nav.HaApi", "Nav.Capabilities", "Nav.MediaPlayer", "Nav.Sensors", "Nav.Service", "Nav.About", "Nav.DangerZone"];
-        for (var i = 0; i < navKeys.Length; i++)
-            navContainer.Controls.Add(CreateNavItem(S(navKeys[i]), i));
+        for (var i = 0; i < NavKeys.Length; i++)
+            navContainer.Controls.Add(CreateNavItem(S(NavKeys[i]), i));
 
         // The Danger Zone tab is opt-in via the General page checkbox.
         _nav[^1].Panel.Visible = _settings.DangerZoneEnabled;
@@ -345,6 +355,9 @@ internal sealed class MainForm : Form
         sidebar.Controls.Add(sep);
         sidebar.Controls.Add(header);
     }
+
+    // The pages in the order of the sidebar and of _pages.
+    private static readonly string[] NavKeys = ["Nav.General", "Nav.Mqtt", "Nav.HaApi", "Nav.Capabilities", "Nav.MediaPlayer", "Nav.Sensors", "Nav.Service", "Nav.About", "Nav.DangerZone"];
 
     private Panel CreateNavItem(string text, int index)
     {
@@ -558,6 +571,10 @@ internal sealed class MainForm : Form
         openBtn.Location = Pt(20, 82);
         openBtn.Click += (_, _) => OpenFolder(_paths.ConfigDirectory);
         card3.Controls.Add(openBtn);
+
+        // Backup / restore and the classic HASS.Agent's settings: everyday tools. They were in the
+        // Danger Zone, where the import from the classic app was hidden behind its switch.
+        _generalBackupCard = BuildBackupCard(page);
 
         var card4 = MakeCard(page, 28, 758, 720, 64, null);
         _generalDangerCard = card4;
@@ -1063,9 +1080,14 @@ internal sealed class MainForm : Form
             _generalFilesCard.Top = _generalNetworkCard.Bottom + D(20);
         }
 
-        if (_generalDangerCard is not null && _generalFilesCard is not null)
+        if (_generalBackupCard is not null && _generalFilesCard is not null)
         {
-            _generalDangerCard.Top = _generalFilesCard.Bottom + D(20);
+            _generalBackupCard.Top = _generalFilesCard.Bottom + D(20);
+        }
+
+        if (_generalDangerCard is not null && _generalBackupCard is not null)
+        {
+            _generalDangerCard.Top = _generalBackupCard.Bottom + D(20);
         }
     }
 
@@ -1088,6 +1110,11 @@ internal sealed class MainForm : Form
         if (_serviceActionsCard is not null && _serviceStatusCard is not null)
         {
             _serviceActionsCard.Top = _serviceStatusCard.Bottom + D(12);
+        }
+
+        if (_serviceUsersCard is not null && _serviceActionsCard is not null)
+        {
+            _serviceUsersCard.Top = _serviceActionsCard.Bottom + D(12);
         }
     }
 
@@ -2248,6 +2275,46 @@ internal sealed class MainForm : Form
         };
         card2.Controls.Add(uninstallBtn);
 
+        // Who may use HASS.Agent on this PC, and the kiosk: settings of the PC, not of one user,
+        // which an administrator makes, as the service. They were in the Danger Zone.
+        var card3 = MakeCard(page, 28, 380, 600, 140, S("Service.Users"));
+        _serviceUsersCard = card3;
+        var usersHints = new List<Label>();
+        Button AddUsersRow(int row, string textKey, string hintKey)
+        {
+            var y = 48 + row * 42;
+            var button = MakeSecondaryButton(S(textKey), 190, 32);
+            button.Location = Pt(20, y);
+            card3.Controls.Add(button);
+            var hint = new Label
+            {
+                Text = S(hintKey), Location = Pt(222, y - 1),
+                Size = Sz(360, 34), ForeColor = TextMuted, Font = new Font("Segoe UI", 8.5F),
+                TextAlign = ContentAlignment.MiddleLeft, AutoEllipsis = true
+            };
+            card3.Controls.Add(hint);
+            usersHints.Add(hint);
+            return button;
+        }
+
+        // The note shown to a user left out and the docs send people to "Service, Users of this PC".
+        AddUsersRow(0, "Access.Button", "Danger.UsersHint").Click += (_, _) => SettingsAccessForm.Show(this, _paths, _settings, _log);
+        var kioskBtn = AddUsersRow(1, "Kiosk.Button", "Danger.KioskHint");
+        kioskBtn.Click += (_, _) => KioskForm.Show(this, _log);
+        card3.Layout += (_, _) =>
+        {
+            foreach (var hint in usersHints)
+            {
+                hint.Width = Math.Max(D(160), card3.ClientSize.Width - hint.Left - D(20));
+            }
+
+            var height = kioskBtn.Bottom + D(20);
+            if (card3.Height != height)
+            {
+                card3.Height = height;
+            }
+        };
+
         UpdateServiceStatusMessage();
         return page;
     }
@@ -2332,8 +2399,193 @@ internal sealed class MainForm : Form
             card.Height = buttons.Bottom + D(20);
         };
 
+        var updatesCard = BuildUpdatesCard(page);
+        page.Layout += (_, _) =>
+        {
+            var top = card.Bottom + D(20);
+            if (updatesCard.Top != top)
+            {
+                updatesCard.Top = top;
+            }
+        };
+
         return page;
     }
+
+    /// <summary>
+    /// The About page's update settings, next to its Check updates button: the beta channel and
+    /// "updates only at this PC" (both saved at once, as they were in the Danger Zone), and the
+    /// proxy the checks and downloads go through (saved with the Save button).
+    /// </summary>
+    private Panel BuildUpdatesCard(Panel page)
+    {
+        var card = MakeCard(page, 28, 362, 600, 400, S("About.Updates"));
+
+        // Beta update channel — persists immediately, no Save button needed.
+        var betaCheck = new CheckBox
+        {
+            Text = S("Danger.BetaUpdates"), Location = Pt(20, 44),
+            Size = Sz(560, 26), ForeColor = TextBody, Checked = _settings.BetaUpdatesEnabled
+        };
+        betaCheck.CheckedChanged += (_, _) =>
+        {
+            if (_settings.BetaUpdatesEnabled == betaCheck.Checked)
+            {
+                return;
+            }
+
+            _settings.BetaUpdatesEnabled = betaCheck.Checked;
+            SettingsStore.Save(_paths, _settings);
+            _log.Info($"Beta update channel {(betaCheck.Checked ? "enabled" : "disabled")}.");
+        };
+        card.Controls.Add(betaCheck);
+
+        // Updates only at this PC: Home Assistant's Install button is refused. Persists
+        // immediately, and Home Assistant hears of it at once. The text wraps in the box.
+        var localUpdatesCheck = new CheckBox
+        {
+            Text = S("Danger.LocalUpdatesOnly"), Location = Pt(20, 76),
+            Size = Sz(560, 48), ForeColor = TextBody, Checked = _settings.RemoteUpdateInstallBlocked,
+            TextAlign = ContentAlignment.TopLeft, CheckAlign = ContentAlignment.TopLeft
+        };
+        localUpdatesCheck.CheckedChanged += (_, _) =>
+        {
+            if (_settings.RemoteUpdateInstallBlocked == localUpdatesCheck.Checked)
+            {
+                return;
+            }
+
+            // Under the gate, as every write from this window: a handover's reload of the
+            // settings must not come between the change and its save and put the old value back.
+            Exception? failure;
+            lock (SettingsStore.Gate)
+            {
+                failure = _settings.TrySetRemoteUpdateInstallBlocked(
+                    localUpdatesCheck.Checked,
+                    settings => SettingsStore.Save(_paths, settings, withItsRemoteInstallSwitch: true));
+            }
+
+            if (failure is not null)
+            {
+                // Not in the file, so not set (see the method): the tick goes back with it.
+                localUpdatesCheck.Checked = _settings.RemoteUpdateInstallBlocked;
+                _log.Warning($"Unable to save \"updates only at this PC\": {failure.Message}");
+                MessageBox.Show(string.Format(S("Danger.Error"), failure.Message), AppIdentity.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+
+            _log.Info($"Update installs asked for from Home Assistant are {(localUpdatesCheck.Checked ? "refused: updates only at this PC" : "allowed again")}.");
+            if (RemoteInstallSwitchHandler is not null)
+            {
+                _ = RemoteInstallSwitchHandler();
+            }
+        };
+        card.Controls.Add(localUpdatesCheck);
+
+        var proxyLabel = new Label
+        {
+            Text = S("About.Proxy"), Location = Pt(20, 132), AutoSize = true,
+            ForeColor = TextDark, Font = new Font("Segoe UI", 9.5F, FontStyle.Bold)
+        };
+        card.Controls.Add(proxyLabel);
+
+        _proxyWindows.Text = S("About.ProxyWindows");
+        _proxyWindows.ForeColor = TextBody;
+        _proxyWindows.AutoSize = true;
+        card.Controls.Add(_proxyWindows);
+
+        _proxyCustom.Text = S("About.ProxyCustom");
+        _proxyCustom.ForeColor = TextBody;
+        _proxyCustom.AutoSize = true;
+        card.Controls.Add(_proxyCustom);
+        _proxyAddress.Size = Sz(260, 28);
+        card.Controls.Add(_proxyAddress);
+
+        _proxyLogin.Text = S("About.ProxyLogin");
+        _proxyLogin.ForeColor = TextBody;
+        _proxyLogin.AutoSize = true;
+        card.Controls.Add(_proxyLogin);
+
+        var userLabel = new Label { Text = S("Mqtt.Username"), AutoSize = true, ForeColor = TextBody };
+        var passwordLabel = new Label { Text = S("Mqtt.Password"), AutoSize = true, ForeColor = TextBody };
+        card.Controls.Add(userLabel);
+        card.Controls.Add(passwordLabel);
+        _proxyUser.Size = Sz(220, 28);
+        _proxyPassword.Size = Sz(220, 28);
+        card.Controls.Add(_proxyUser);
+        card.Controls.Add(_proxyPassword);
+
+        var hint = new Label
+        {
+            Text = S("About.ProxyHint"), ForeColor = TextMuted, Font = new Font("Segoe UI", 8.5F)
+        };
+        card.Controls.Add(hint);
+
+        _proxyCustom.CheckedChanged += (_, _) => UpdateProxyControls();
+        _proxyLogin.CheckedChanged += (_, _) => UpdateProxyControls();
+
+        // One below the other, each where the one above it ends: the two update switches wrap
+        // in a narrow window or a longer language, and so does the hint.
+        card.Layout += (_, _) =>
+        {
+            var width = Math.Max(D(300), card.ClientSize.Width - D(40));
+            betaCheck.Width = width;
+            var top = betaCheck.Bottom + D(6);
+
+            localUpdatesCheck.Width = width;
+            var localHeight = Math.Max(D(26), TextRenderer.MeasureText(
+                localUpdatesCheck.Text, localUpdatesCheck.Font, new Size(width - D(24), int.MaxValue),
+                TextFormatFlags.WordBreak | TextFormatFlags.TextBoxControl).Height + D(8));
+            localUpdatesCheck.SetBounds(D(20), top, width, localHeight);
+            top = localUpdatesCheck.Bottom + D(14);
+
+            proxyLabel.Location = new Point(D(20), top);
+            top = proxyLabel.Bottom + D(6);
+            _proxyWindows.Location = new Point(D(20), top);
+            top = _proxyWindows.Bottom + D(6);
+            _proxyCustom.Location = new Point(D(20), top + D(3));
+            _proxyAddress.Location = new Point(_proxyCustom.Right + D(8), top);
+            _proxyAddress.Width = Math.Max(D(120), Math.Min(D(300), card.ClientSize.Width - _proxyAddress.Left - D(20)));
+            top = _proxyAddress.Bottom + D(8);
+            _proxyLogin.Location = new Point(D(20), top);
+            top = _proxyLogin.Bottom + D(8);
+
+            // The fields line up after the longer of the two labels, indented under the tick box.
+            var fieldLeft = D(40) + Math.Max(userLabel.PreferredWidth, passwordLabel.PreferredWidth) + D(10);
+            var fieldWidth = Math.Max(D(120), Math.Min(D(220), card.ClientSize.Width - fieldLeft - D(20)));
+            userLabel.Location = new Point(D(40), top + D(4));
+            _proxyUser.SetBounds(fieldLeft, top, fieldWidth, _proxyUser.Height);
+            top = _proxyUser.Bottom + D(6);
+            passwordLabel.Location = new Point(D(40), top + D(4));
+            _proxyPassword.SetBounds(fieldLeft, top, fieldWidth, _proxyPassword.Height);
+            top = _proxyPassword.Bottom + D(10);
+
+            var hintHeight = TextRenderer.MeasureText(
+                hint.Text, hint.Font, new Size(width, int.MaxValue),
+                TextFormatFlags.WordBreak | TextFormatFlags.TextBoxControl).Height;
+            hint.SetBounds(D(20), top, width, hintHeight + D(2));
+
+            var height = hint.Bottom + D(18);
+            if (card.Height != height)
+            {
+                card.Height = height;
+            }
+        };
+
+        return card;
+    }
+
+    /// <summary>The address only with "Other", the user name and password only when the proxy asks for them.</summary>
+    private void UpdateProxyControls()
+    {
+        _proxyAddress.Enabled = _proxyCustom.Checked;
+        _proxyUser.Enabled = _proxyLogin.Checked;
+        _proxyPassword.Enabled = _proxyLogin.Checked;
+    }
+
+    /// <summary>The proxy the About page's fields say, saved or not: what Check updates there tries.</summary>
+    private UpdateProxy ProxyFromForm() => UpdateProxy.Create(
+        _proxyCustom.Checked, _proxyAddress.Text, _proxyLogin.Checked, _proxyUser.Text, _proxyPassword.Text);
 
     // ── Settings load / save ───────────────────────────────────────
 
@@ -2405,8 +2657,10 @@ internal sealed class MainForm : Form
         var mqttCard = BuildDangerMqttCard(AddToolCard);
         var debugCard = BuildDangerDebugCard(AddToolCard);
         var monitorCard = BuildDangerMonitorCard(AddToolCard);
-        var backupCard = BuildDangerBackupCard(AddToolCard);
 
+        // Only what can do harm or is for finding faults. Backup / restore and the import from the
+        // classic app are on the General page now, the users of this PC and the kiosk on the
+        // Service page, and the update switches on the About page.
         AddToolRow(0, "Danger.MqttMaintenance", "Danger.MqttMaintenanceHint").Click += (_, _) => ShowView(mqttCard);
         var republishBtn = AddToolRow(1, "Danger.Republish", "Danger.RepublishHint");
         republishBtn.Click += (_, _) => _ = RepublishDiscoveryAsync(republishBtn);
@@ -2417,81 +2671,14 @@ internal sealed class MainForm : Form
             _debugTimer.Start();
         };
         AddToolRow(3, "Danger.Monitor", "Danger.MonitorHint").Click += (_, _) => ShowView(monitorCard);
-        AddToolRow(4, "Danger.Backup", "Danger.BackupHint").Click += (_, _) => ShowView(backupCard);
-        // A row of its own: the note shown to a user left out, the notice in Home Assistant and
-        // the docs all send people to "Danger Zone, Users of this PC". It was a button on the
-        // Backup / restore view, where nobody looked for it.
-        AddToolRow(5, "Access.Button", "Danger.UsersHint").Click += (_, _) => SettingsAccessForm.Show(this, _paths, _settings, _log);
-        AddToolRow(6, "Kiosk.Button", "Danger.KioskHint").Click += (_, _) => KioskForm.Show(this, _log);
-        var factoryBtn = AddToolRow(7, "Danger.FactoryReset", "Danger.FactoryResetHint");
+        var factoryBtn = AddToolRow(4, "Danger.FactoryReset", "Danger.FactoryResetHint");
         factoryBtn.ForeColor = Color.FromArgb(185, 28, 28);
         factoryBtn.Click += (_, _) => FactoryReset();
-
-        // Beta update channel — persists immediately, no Save button needed.
-        var betaCheck = new CheckBox
-        {
-            Text = S("Danger.BetaUpdates"), Location = Pt(20, 382),
-            Size = Sz(680, 26), ForeColor = TextBody, Checked = _settings.BetaUpdatesEnabled
-        };
-        betaCheck.CheckedChanged += (_, _) =>
-        {
-            if (_settings.BetaUpdatesEnabled == betaCheck.Checked)
-            {
-                return;
-            }
-
-            _settings.BetaUpdatesEnabled = betaCheck.Checked;
-            SettingsStore.Save(_paths, _settings);
-            _log.Info($"Beta update channel {(betaCheck.Checked ? "enabled" : "disabled")}.");
-        };
-        toolsCard.Controls.Add(betaCheck);
-
-        // Updates only at this PC: Home Assistant's Install button is refused. Persists
-        // immediately, and Home Assistant hears of it at once. The text wraps in the box.
-        var localUpdatesCheck = new CheckBox
-        {
-            Text = S("Danger.LocalUpdatesOnly"), Location = Pt(20, 414),
-            Size = Sz(680, 48), ForeColor = TextBody, Checked = _settings.RemoteUpdateInstallBlocked,
-            TextAlign = ContentAlignment.TopLeft, CheckAlign = ContentAlignment.TopLeft
-        };
-        localUpdatesCheck.CheckedChanged += (_, _) =>
-        {
-            if (_settings.RemoteUpdateInstallBlocked == localUpdatesCheck.Checked)
-            {
-                return;
-            }
-
-            // Under the gate, as every write from this window: a handover's reload of the
-            // settings must not come between the change and its save and put the old value back.
-            Exception? failure;
-            lock (SettingsStore.Gate)
-            {
-                failure = _settings.TrySetRemoteUpdateInstallBlocked(
-                    localUpdatesCheck.Checked,
-                    settings => SettingsStore.Save(_paths, settings, withItsRemoteInstallSwitch: true));
-            }
-
-            if (failure is not null)
-            {
-                // Not in the file, so not set (see the method): the tick goes back with it.
-                localUpdatesCheck.Checked = _settings.RemoteUpdateInstallBlocked;
-                _log.Warning($"Unable to save \"updates only at this PC\": {failure.Message}");
-                MessageBox.Show(string.Format(S("Danger.Error"), failure.Message), AppIdentity.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Error);
-                return;
-            }
-
-            _log.Info($"Update installs asked for from Home Assistant are {(localUpdatesCheck.Checked ? "refused: updates only at this PC" : "allowed again")}.");
-            if (RemoteInstallSwitchHandler is not null)
-            {
-                _ = RemoteInstallSwitchHandler();
-            }
-        };
-        toolsCard.Controls.Add(localUpdatesCheck);
 
         // Fast sensors below 5 seconds — persists immediately too. The text wraps in the box.
         var fastCheck = new CheckBox
         {
-            Text = S("Danger.FastSensors"), Location = Pt(20, 468),
+            Text = S("Danger.FastSensors"), Location = Pt(20, 254),
             Size = Sz(680, 48), ForeColor = TextBody, Checked = _settings.FastSensorsUnlocked,
             TextAlign = ContentAlignment.TopLeft, CheckAlign = ContentAlignment.TopLeft
         };
@@ -2520,30 +2707,22 @@ internal sealed class MainForm : Form
                 hint.Width = hintWidth;
             }
 
-            betaCheck.Width = Math.Max(D(420), toolsCard.ClientSize.Width - D(40));
-
-            // The sentences wrap at this width: each box is as tall as its text needs, the next
-            // one starts below it and the card grows with them, otherwise a narrow window cut
-            // the end of a warning off.
-            var top = betaCheck.Bottom + D(6);
-            foreach (var check in new[] { localUpdatesCheck, fastCheck })
+            // The sentence wraps at this width: the box is as tall as its text needs and the card
+            // grows with it, otherwise a narrow window cut the end of the warning off.
+            fastCheck.Width = Math.Max(D(420), toolsCard.ClientSize.Width - D(40));
+            var textHeight = TextRenderer.MeasureText(
+                fastCheck.Text, fastCheck.Font, new Size(fastCheck.Width - D(24), int.MaxValue),
+                TextFormatFlags.WordBreak | TextFormatFlags.TextBoxControl).Height;
+            var height = Math.Max(D(26), textHeight + D(8));
+            if (fastCheck.Height != height)
             {
-                check.Width = betaCheck.Width;
-                var textHeight = TextRenderer.MeasureText(
-                    check.Text, check.Font, new Size(check.Width - D(24), int.MaxValue),
-                    TextFormatFlags.WordBreak | TextFormatFlags.TextBoxControl).Height;
-                var height = Math.Max(D(26), textHeight + D(8));
-                if (check.Height != height)
-                {
-                    check.Height = height;
-                }
+                fastCheck.Height = height;
+            }
 
-                if (check.Top != top)
-                {
-                    check.Top = top;
-                }
-
-                top = check.Bottom + D(6);
+            var top = factoryBtn.Bottom + D(14);
+            if (fastCheck.Top != top)
+            {
+                fastCheck.Top = top;
             }
 
             var cardHeight = fastCheck.Bottom + D(16);
@@ -2871,13 +3050,13 @@ internal sealed class MainForm : Form
         }
     }
 
-    private Panel BuildDangerBackupCard(Func<string, Action?, Panel> addToolCard)
+    private Panel BuildBackupCard(Panel page)
     {
-        var card = addToolCard("Danger.Backup", null);
+        var card = MakeCard(page, 28, 758, 720, 140, S("Danger.Backup"));
 
         var note = new Label
         {
-            Text = S("Danger.BackupNote"), Location = Pt(20, 84),
+            Text = S("Danger.BackupNote"), Location = Pt(20, 44),
             Size = Sz(680, 36), ForeColor = TextMuted, Font = new Font("Segoe UI", 8.5F)
         };
         card.Controls.Add(note);
@@ -2919,6 +3098,13 @@ internal sealed class MainForm : Form
                 button.Location = location;
                 location = new Point(button.Right + D(8), location.Y);
             }
+
+            // As tall as what is in it: the buttons wrap in a narrow window.
+            var cardHeight = classicBtn.Bottom + D(20);
+            if (card.Height != cardHeight)
+            {
+                card.Height = cardHeight;
+            }
         };
 
         return card;
@@ -2958,7 +3144,7 @@ internal sealed class MainForm : Form
 
         var confirm = MessageBox.Show(
             S("Danger.ImportConfirm"),
-            S("Danger.Title"),
+            AppIdentity.DisplayName,
             MessageBoxButtons.YesNo,
             MessageBoxIcon.Warning,
             MessageBoxDefaultButton.Button2);
@@ -2985,7 +3171,7 @@ internal sealed class MainForm : Form
 
     /// <summary>
     /// A PC with the classic HASS.Agent's settings and no connection set up here yet: offers,
-    /// once, to take them over. Later the Danger Zone's button does the same.
+    /// once, to take them over. Later the General page's button does the same.
     /// </summary>
     /// <returns>Whether the question was asked.</returns>
     private async Task<bool> OfferClassicImportAsync()
@@ -3047,7 +3233,7 @@ internal sealed class MainForm : Form
 
         if (!confirmed && MessageBox.Show(
                 S("Classic.Confirm"),
-                S("Danger.Title"),
+                AppIdentity.DisplayName,
                 MessageBoxButtons.YesNo,
                 MessageBoxIcon.Warning,
                 MessageBoxDefaultButton.Button2) != DialogResult.Yes)
@@ -3421,6 +3607,14 @@ internal sealed class MainForm : Form
         _haApiUrl.Text = _settings.HaApiUrl;
         _haApiToken.Text = _settings.GetHaApiToken();
 
+        _proxyWindows.Checked = !_settings.UpdateProxyCustom;
+        _proxyCustom.Checked = _settings.UpdateProxyCustom;
+        _proxyAddress.Text = _settings.UpdateProxyAddress;
+        _proxyLogin.Checked = _settings.UpdateProxyLogin;
+        _proxyUser.Text = _settings.UpdateProxyUser;
+        _proxyPassword.Text = _settings.GetUpdateProxyPassword();
+        UpdateProxyControls();
+
         _webViewUrl.Text = _settings.WebViewUrl;
         _webViewWidth.Value = Math.Clamp(_settings.WebViewWidth, WebViewOptions.MinimumEdge, WebViewOptions.MaximumEdge);
         _webViewHeight.Value = Math.Clamp(_settings.WebViewHeight, WebViewOptions.MinimumEdge, WebViewOptions.MaximumEdge);
@@ -3779,11 +3973,24 @@ internal sealed class MainForm : Form
 
         try
         {
-            var update = await AppUpdateService.CheckAsync(_settings.SoftwareVersion, _settings.BetaUpdatesEnabled);
+            // What the fields say, saved or not: this button is also how a proxy is tried out.
+            var proxy = ProxyFromForm();
+            if (proxy.Problem is not null)
+            {
+                MessageBox.Show(S("About.ProxyInvalid"), AppIdentity.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            var update = await AppUpdateService.CheckAsync(_settings.SoftwareVersion, _settings.BetaUpdatesEnabled, proxy);
             if (!string.IsNullOrWhiteSpace(update.Error))
             {
-                _log.Warning($"Update check from the About page failed: {AppUpdateService.Explain(update.Error)}");
-                MessageBox.Show(S("About.UpdateCheckFailed"), AppIdentity.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                _log.Warning($"Update check from the About page failed, through {proxy}: {AppUpdateService.Explain(update.Error)}");
+                // Through a proxy set here the reason is shown: it is most likely the proxy's.
+                MessageBox.Show(
+                    proxy.Address is null
+                        ? S("About.UpdateCheckFailed")
+                        : string.Format(S("About.UpdateCheckFailedProxy"), proxy.Address.GetLeftPart(UriPartial.Authority), AppUpdateService.Explain(update.Error)),
+                    AppIdentity.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
 
@@ -3812,7 +4019,7 @@ internal sealed class MainForm : Form
 
             updateButton.Text = S("About.DownloadingUpdate");
             var downloads = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
-            var targetPath = await AppUpdateService.DownloadAsync(update, downloads);
+            var targetPath = await AppUpdateService.DownloadAsync(update, downloads, proxy);
 
             if (UpdatePromptDialog.ShowDownloaded(this, targetPath))
             {
@@ -3838,6 +4045,15 @@ internal sealed class MainForm : Form
 
     private async Task SaveSettingsAsync()
     {
+        // A proxy address that cannot be used is not saved: every update check would fail on it.
+        if (_proxyCustom.Checked && !UpdateProxy.TryParseAddress(_proxyAddress.Text, out _))
+        {
+            SelectPage(Array.IndexOf(NavKeys, "Nav.About"));
+            MessageBox.Show(S("About.ProxyInvalid"), AppIdentity.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            _proxyAddress.Focus();
+            return;
+        }
+
         bool langChanged;
         bool newHaToken;
         // Under the gate a handover's reload of the settings takes as well: the form's values
@@ -3898,6 +4114,12 @@ internal sealed class MainForm : Form
             && !string.IsNullOrWhiteSpace(_haApiToken.Text)
             && _haApiToken.Text != _settings.GetHaApiToken();
         _settings.SetHaApiToken(_haApiToken.Text);
+
+        _settings.UpdateProxyCustom = _proxyCustom.Checked;
+        _settings.UpdateProxyAddress = _proxyAddress.Text.Trim();
+        _settings.UpdateProxyLogin = _proxyLogin.Checked;
+        _settings.UpdateProxyUser = _proxyUser.Text.Trim();
+        _settings.SetUpdateProxyPassword(_proxyPassword.Text);
 
         _settings.WebViewUrl = _webViewUrl.Text.Trim();
         _settings.WebViewWidth = (int)_webViewWidth.Value;

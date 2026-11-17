@@ -1,6 +1,6 @@
 ---
 title: Danger Zone
-description: The opt-in toolbox of HASS.Agent .NET10 for maintenance and diagnostics, with MQTT cleanup, a live monitor, the debug log, backup and restore, factory reset, fast sensors, beta updates and updates only at the PC.
+description: The opt-in toolbox of HASS.Agent .NET10 for maintenance and diagnostics, with MQTT cleanup, a live monitor, the debug log, factory reset and fast sensors.
 ---
 
 # Danger Zone
@@ -13,16 +13,21 @@ An opt-in maintenance and diagnostics toolbox. Enable it with the **Danger Zone*
 | **Republish discovery** | Re-sends the device discovery on the active connection (MQTT or HA API) without restarting the app. |
 | **Debug log** | Live log viewer with filtering, plus a verbose toggle that enables DEBUG-level logging (including every sent and received MQTT message) until the next restart. |
 | **Live MQTT monitor** | Watches the `hass.agent/#` topics in real time with a payload preview: exactly what the app sends and receives. |
-| **Backup / restore** | Exports the settings to a portable JSON file and restores them from one. The secrets are left out: the DPAPI-protected MQTT password, HA API token and LibreHardwareMonitor password are machine-bound, and the local API key is made anew by the import when the API is on. **Import from HASS.Agent** takes over the settings of the classic client, see [Coming from HASS.Agent](../getting-started/migrating.md#what-comes-over). |
-| **Users of this PC** | Who may use HASS.Agent on this PC: every user, or the ticked ones and the administrators. See [Who may use it on this PC](users.md). |
-| **Kiosk mode** | The tray app runs for the ticked users, who cannot open, change or close it. See [Kiosk mode](kiosk.md). |
 | **Factory reset** | Deletes all settings after a double confirmation and restarts the app with a fresh serial number. |
 
-Three switches live here as well:
+One switch lives here as well:
 
-- **Beta updates**: the update checks include GitHub pre-releases, so you can follow the beta channel. Stable users are never offered a pre-release. See [Updates from Home Assistant](updates.md).
-- **Updates only at this PC** (10.13.1+): an install asked for from Home Assistant is refused, and the update entity there has no Install button; update checks and the About page work as before. Not for most PCs: an update also brings the security fixes of the built-in .NET runtime, and a PC updated by hand stays behind longer. See [Updates only at the PC](updates.md#updates-only-at-the-pc).
 - **Fast sensors below 5 seconds** (10.10.0+): the fast [polling profile](../sensors/profiles.md) may go down to 1 second, with a note on what that means for the traffic and for Home Assistant's recorder, which writes a row at every change; a sensor you want every second but not in the history goes on the recorder's exclude list.
+
+## What moved out
+
+Up to 10.13.1 the Danger Zone also held the everyday settings below. They are on the pages where you would look for them now, and no longer need the Danger Zone switched on:
+
+| Setting | Now on | See |
+|---------|--------|-----|
+| **Backup / restore**, **Import from HASS.Agent** | General | [Backup and restore](#backup-and-restore) below |
+| **Users of this PC**, **Kiosk mode** | Service | [Who may use it on this PC](users.md), [Kiosk mode](kiosk.md) |
+| **Beta updates**, **Updates only at this PC** | About | [Updates from Home Assistant](updates.md) |
 
 <figure class="shot" markdown>
 ![The Danger Zone page](../images/ui-dangerzone-menu.png){ width="700" }
@@ -44,7 +49,11 @@ Three switches live here as well:
 <figcaption>The live debug log</figcaption>
 </figure>
 
+## Backup and restore
+
+On the General page, **Export settings** writes the settings to a portable JSON file and **Import settings** restores them from one. The secrets are left out: the DPAPI-protected MQTT password, HA API token, LibreHardwareMonitor password and update proxy password are machine-bound, and the local API key is made anew by the import when the API is on. **Import from HASS.Agent** takes over the settings of the classic client, see [Coming from HASS.Agent](../getting-started/migrating.md#what-comes-over).
+
 <figure class="shot" markdown>
-![Backup and restore](../images/ui-dangerzone-backup-restore.png){ width="700" }
-<figcaption>Backup and restore: the export leaves the secrets out</figcaption>
+![Backup and restore on the General page](../images/ui-general-backup.png){ width="700" }
+<figcaption>Backup and restore on the General page: the export leaves the secrets out</figcaption>
 </figure>
