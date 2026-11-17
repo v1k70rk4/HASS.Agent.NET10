@@ -25,13 +25,18 @@
   {% if page and page.is_homepage %}
   {# Someone arriving at the home page from elsewhere gets the page in their language, when there is one:
      the language they picked here before, otherwise the first language of their browser that has a page.
-     Moving around inside the site never redirects, so the English home page stays one click away. #}
+     Moving around inside the site never redirects, so the English home page stays one click away, and
+     neither does a link to a section of this page (#three-ways-to-connect), which the other pages lack. #}
   <script>
     (function () {
       try {
         var pages = { {% for alt in config.extra.alternate if alt.lang != "en" %}"{{ alt.lang.split('-')[0] }}": "{{ alt.link }}"{{ ", " if not loop.last }}{% endfor %} };
+        if (location.hash) return;
         if (document.referrer && new URL(document.referrer).host === location.host) return;
-        var wanted = [localStorage.getItem("hass-agent.language")];
+        var picked = null;
+        // A browser set to block storage throws here: the browser's languages still count.
+        try { picked = localStorage.getItem("hass-agent.language"); } catch (e) {}
+        var wanted = [picked];
         if (!wanted[0]) wanted = navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language];
         for (var i = 0; i < wanted.length; i++) {
           var code = String(wanted[i] || "").toLowerCase().split("-")[0];
