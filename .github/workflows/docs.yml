@@ -1,7 +1,8 @@
 # The website, https://hass-agent.com/: MkDocs builds it from docs/ and GitHub Pages serves
 # the result. A push to main that touches the documentation or the changelog deploys it; a pull request only
 # builds it, to show that it still does. The weekly run picks up changes of the integration's README, which the
-# Integration pages show (website/hooks.py).
+# Integration pages show (website/hooks.py). After a deploy, the pages that changed go to IndexNow (Bing, Yandex,
+# Seznam, Naver); a manual run can send every page.
 name: Website
 
 on:
@@ -23,6 +24,11 @@ on:
   schedule:
     - cron: "41 5 * * 1"
   workflow_dispatch:
+    inputs:
+      all_pages:
+        description: Send every page to IndexNow, not only the changed ones
+        type: boolean
+        default: false
 
 permissions: {}
 
@@ -36,6 +42,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    outputs:
+      changed: ${{ steps.changed.outputs.urls }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -57,6 +65,19 @@ jobs:
       - name: Build
         run: mkdocs build --strict
 
+      # Compared with the live site before the deploy replaces it.
+      - name: Pages that changed
+        id: changed
+        if: github.event_name != 'pull_request'
+        env:
+          ALL_PAGES: ${{ inputs.all_pages }}
+        run: |
+          if [ "$ALL_PAGES" = "true" ]; then
+            python website/indexnow.py site --all >> "$GITHUB_OUTPUT"
+          else
+            python website/indexnow.py site >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Keep the site as the Pages artifact
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
@@ -77,3 +98,22 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
+
+  indexnow:
+    name: IndexNow
+    if: github.event_name != 'pull_request' && needs.build.outputs.changed != '' && needs.build.outputs.changed != '[]'
+    needs: [build, deploy]
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      # The key is public by design: search engines check it against docs/<key>.txt on the site.
+      - name: Send the changed pages
+        env:
+          URLS: ${{ needs.build.outputs.changed }}
+        run: |
+          jq -n --argjson urls "$URLS" \
+            '{host: "hass-agent.com", key: "d662a231f964e7e6e9fd4ab6fdc0abb0", urlList: $urls}' > body.json
+          curl --silent --show-error --fail-with-body --max-time 60 \
+            -H "Content-Type: application/json; charset=utf-8" \
+            --data @body.json https://api.indexnow.org/indexnow
+          echo "Sent $(jq '.urlList | length' body.json) page(s)."
