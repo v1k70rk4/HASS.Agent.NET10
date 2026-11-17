@@ -85,6 +85,19 @@ public class UpdateProxyTests
     }
 
     [Fact]
+    public async Task An_address_with_a_password_in_it_is_refused_without_showing_the_password()
+    {
+        var proxy = UpdateProxy.Create(true, "http://anna:very-secret@proxy.lan:3128", false, null, null);
+
+        var state = await AppUpdateService.CheckAsync("10.13.1", false, proxy, TestContext.Current.CancellationToken);
+
+        Assert.NotNull(state.Error);
+        Assert.Contains("cannot be used", state.Error);
+        Assert.DoesNotContain("very-secret", state.Error);
+        Assert.DoesNotContain("very-secret", proxy.ToString());
+    }
+
+    [Fact]
     public void The_log_line_never_has_the_password()
     {
         var text = UpdateProxy.Create(true, "http://127.0.0.1:7890", true, "anna", "very-secret").ToString();

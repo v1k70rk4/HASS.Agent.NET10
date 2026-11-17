@@ -40,7 +40,15 @@ public sealed class BoundedReadTests
         // The sensor cycle asks, and while Windows is still answering, a Test button asks too.
         var cycle = Task.Run(() => bounded.Run(Slow), TestContext.Current.CancellationToken);
         Assert.True(underWay.Wait(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
-        var button = Task.Run(() => bounded.Run(Slow), TestContext.Current.CancellationToken);
+        // The button's task has started before the wait below begins: on a busy build machine a
+        // pool thread could start only after the release, and then make a read of its own.
+        using var buttonAsks = new ManualResetEventSlim();
+        var button = Task.Run(() =>
+        {
+            buttonAsks.Set();
+            return bounded.Run(Slow);
+        }, TestContext.Current.CancellationToken);
+        Assert.True(buttonAsks.Wait(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
         var first = await Task.WhenAny(button, Task.Delay(TimeSpan.FromMilliseconds(200), TestContext.Current.CancellationToken));
         Assert.NotSame(button, first);
 

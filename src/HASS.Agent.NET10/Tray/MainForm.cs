@@ -4119,7 +4119,12 @@ internal sealed class MainForm : Form
         _settings.UpdateProxyAddress = _proxyAddress.Text.Trim();
         _settings.UpdateProxyLogin = _proxyLogin.Checked;
         _settings.UpdateProxyUser = _proxyUser.Text.Trim();
-        _settings.SetUpdateProxyPassword(_proxyPassword.Text);
+        // Protected again only when it changed: DPAPI makes another text of the same password each
+        // time, and the update check takes a new protected text for a new proxy.
+        if (_proxyPassword.Text != _settings.GetUpdateProxyPassword())
+        {
+            _settings.SetUpdateProxyPassword(_proxyPassword.Text);
+        }
 
         _settings.WebViewUrl = _webViewUrl.Text.Trim();
         _settings.WebViewWidth = (int)_webViewWidth.Value;

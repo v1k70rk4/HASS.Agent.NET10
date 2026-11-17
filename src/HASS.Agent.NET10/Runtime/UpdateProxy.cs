@@ -54,7 +54,9 @@ internal sealed class UpdateProxy
 
         return TryParseAddress(address, out var uri)
             ? new UpdateProxy(uri, credential)
-            : new UpdateProxy(null, null, $"the proxy address \"{address}\" cannot be used; it looks like http://127.0.0.1:7890");
+            // Not the address itself: one with a user name and password in it is refused, and the
+            // problem goes to the log and to Home Assistant.
+            : new UpdateProxy(null, null, "the proxy address set for the updates cannot be used; it looks like http://127.0.0.1:7890");
     }
 
     /// <summary>
