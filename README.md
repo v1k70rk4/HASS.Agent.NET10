@@ -2,7 +2,7 @@
 
 ![Windows](https://img.shields.io/badge/Windows-10%202004%2B%20%7C%2011-0078D4?logo=windows&logoColor=white)
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet&logoColor=white)
-![Version](https://img.shields.io/badge/version-10.13.1-brightgreen)
+![Version](https://img.shields.io/badge/version-10.14.0--beta.1-orange)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-MQTT%20%7C%20WebSocket%20API-41BDF5?logo=homeassistant&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/15316/badge)](https://www.bestpractices.dev/projects/15316)
@@ -26,7 +26,7 @@ It is designed for Windows PCs you want to observe and control from Home Assista
 
 The .NET10 line starts at **version 10.0.0**. The classic client is a separate program: if you want to stay with it, it is still available from its own project, and the integration keeps a [`legacy` branch](https://github.com/v1k70rk4/HASS.Agent.NET10-Integration/tree/legacy) for it. Thinking about switching? See [Coming from HASS.Agent](docs/getting-started/migrating.md).
 
-> **Stable:** [10.13.1](https://github.com/v1k70rk4/HASS.Agent.NET10/releases/latest) &nbsp;·&nbsp; [What changed](#what-changed) &nbsp;·&nbsp; [Full changelog](CHANGELOG.md)
+> **Stable:** [10.13.1](https://github.com/v1k70rk4/HASS.Agent.NET10/releases/latest) &nbsp;·&nbsp; **Beta:** [10.14.0-beta.1](https://github.com/v1k70rk4/HASS.Agent.NET10/releases/tag/v10.14.0-beta.1) &nbsp;·&nbsp; [What changed](#what-changed) &nbsp;·&nbsp; [Full changelog](CHANGELOG.md)
 
 ---
 
@@ -175,6 +175,19 @@ No telemetry, analytics, or usage data is collected or transmitted.
 ---
 
 ## What Changed
+
+### 10.14.0-beta.1
+
+> **Beta.** Out on the beta channel: tick **Beta updates** under **About → Update settings** (on the Danger Zone page up to 10.13.1) to be offered the beta, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.13.1**, below.
+
+The first beta of 10.14.0: the everyday settings out of the Danger Zone, a proxy for the update checks, and an About page with the update settings in dialogs of their own. Built on .NET 10.0.15, as 10.13.1. Works with the Home Assistant integration **10.6.7** or newer; the integration **10.14.0-beta.1** is out at the same time. Signed release.
+
+- **The everyday settings are out of the Danger Zone.** They are where you would look for them, and no longer need the Danger Zone switched on: backup and restore (export, import, import from HASS.Agent) on the General page; Users of this PC and Kiosk mode on the Service page; the beta channel and *Updates only at this PC* on the About page. The Danger Zone keeps its tools: MQTT maintenance, republishing the discovery, the debug log, the live MQTT monitor, factory reset and fast sensors. See [Danger Zone](docs/features/danger-zone.md).
+- **A proxy for the updates.** The update checks and downloads (GitHub, the only place on the internet the app talks to) go through the proxy Windows is set to, as before, or through one set under **About → Proxy settings**: `http://`, `https://` or `socks5://`, for a proxy app such as Clash or v2rayN that is not set as Windows' proxy. A proxy that asks for a login gets the user name and password typed in there, kept like the MQTT password and left out of a settings export. **Test** tries what is filled in before it is saved. Home Assistant and everything else on the home network never go through it, and an installer still runs only with the publisher's signature. Asked for in [#205](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/205). See [A proxy for the updates](docs/features/updates.md#a-proxy-for-the-updates).
+- **The About page, tidied up.** A **Website** button opens [hass-agent.com](https://hass-agent.com/). Below it an **Updates** box laid out like the Service page: **Check updates**, **Update settings...** (the beta channel, updates only at this PC) and **Proxy settings...**, the last with the proxy in use next to it. Each dialog saves with its own Save button. While a check or a download runs, the two settings buttons wait.
+- **Home Assistant follows a change of channel or proxy at once.** Saved in the dialogs, the update entity is checked anew and sent. An answer checked with the old channel or proxy never goes out for the new one, and an earlier check's answer never replaces a later one's.
+- **The documentation has a website of its own**, [hass-agent.com](https://hass-agent.com/), with a short page in Hungarian, German, Russian and Simplified Chinese. Thank you to @natsu-tsuki for going over the Chinese one in [#213](https://github.com/v1k70rk4/HASS.Agent.NET10/pull/213).
+- **Simplified Chinese for the texts of 10.13.1**, by @natsu-tsuki in [#214](https://github.com/v1k70rk4/HASS.Agent.NET10/pull/214), thank you!
 
 ### 10.13.1
 

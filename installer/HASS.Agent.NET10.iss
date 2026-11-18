@@ -1,5 +1,5 @@
 ﻿#ifndef MyAppVersion
-#define MyAppVersion "10.13.1"
+#define MyAppVersion "10.14.0-beta.1"
 #endif
 
 ; The file version resource takes numbers only: a pre-release ("10.9.0-beta.1") keeps its
@@ -62,11 +62,11 @@ english.TaskGroupAccess=Who will use HASS.Agent on this PC? (its settings hold t
 english.TaskAccessMe=Only me
 english.TaskAccessAll=Every user of this PC
 english.UninstallSettings=Remove the settings too?%n%nThey hold the Home Assistant token, the MQTT password and the API key. Keep them only if you will install HASS.Agent .NET10 again.
-english.AccessUserUnknown=Setup could not find out which user started it, so HASS.Agent .NET10 was limited to %1 only.%n%nIf that is not you, an administrator can add you in HASS.Agent: Danger Zone, Users of this PC.
-english.AccessFailed=HASS.Agent .NET10 could not be limited to the chosen users; every user of this PC can use it for now.%n%nIt can be set in HASS.Agent: Danger Zone, Users of this PC.
+english.AccessUserUnknown=Setup could not find out which user started it, so HASS.Agent .NET10 was limited to %1 only.%n%nIf that is not you, an administrator can add you in HASS.Agent: Service, Users of this PC.
+english.AccessFailed=HASS.Agent .NET10 could not be limited to the chosen users; every user of this PC can use it for now.%n%nIt can be set in HASS.Agent: Service, Users of this PC.
 english.SettingsFolderNotSafe=The files of HASS.Agent .NET10 are installed, but its settings folder (in ProgramData) could not be made safe to use: another user of this PC made it and has it open. HASS.Agent was not started, and its service was not installed or started.%n%nSign the other users out, or restart the PC, and run this Setup again.
 english.KioskTaskNotDisabled=The kiosk mode task (HASS.Agent.NET10\Kiosk) could not be paused, so the files cannot be replaced safely. Nothing was changed. Try again, or turn kiosk mode off first.
-english.KioskTaskNotEnabled=The kiosk mode task (HASS.Agent.NET10\Kiosk) could not be turned back on. Until it is, the app does not come back for the kiosk users when it is closed.%n%nTurn it on in Task Scheduler, or save kiosk mode again in HASS.Agent: Danger Zone, Kiosk mode.
+english.KioskTaskNotEnabled=The kiosk mode task (HASS.Agent.NET10\Kiosk) could not be turned back on. Until it is, the app does not come back for the kiosk users when it is closed.%n%nTurn it on in Task Scheduler, or save kiosk mode again in HASS.Agent: Service, Kiosk mode.
 
 hungarian.TaskAutostart=Automatikus indítás bejelentkezéskor
 hungarian.TaskGroupStartup=Indítás:
@@ -79,11 +79,11 @@ hungarian.TaskGroupAccess=Ki fogja használni a HASS.Agentet ezen a gépen? (a b
 hungarian.TaskAccessMe=Csak én
 hungarian.TaskAccessAll=A gép minden felhasználója
 hungarian.UninstallSettings=A beállításokat is törlöd?%n%nBennük van a Home Assistant token, az MQTT jelszó és az API kulcs. Csak akkor tartsd meg őket, ha újra telepíted a HASS.Agent .NET10-et.
-hungarian.AccessUserUnknown=A telepítő nem tudta megállapítani, melyik felhasználó indította, ezért a HASS.Agent .NET10 csak %1 számára lett korlátozva.%n%nHa ez nem te vagy, egy rendszergazda felvehet a HASS.Agentben: Danger Zone, A gép felhasználói.
-hungarian.AccessFailed=A HASS.Agent .NET10-et nem sikerült a választott felhasználókra korlátozni; egyelőre a gép minden felhasználója használhatja.%n%nA HASS.Agentben beállítható: Danger Zone, A gép felhasználói.
+hungarian.AccessUserUnknown=A telepítő nem tudta megállapítani, melyik felhasználó indította, ezért a HASS.Agent .NET10 csak %1 számára lett korlátozva.%n%nHa ez nem te vagy, egy rendszergazda felvehet a HASS.Agentben: Szolgáltatás, A gép felhasználói.
+hungarian.AccessFailed=A HASS.Agent .NET10-et nem sikerült a választott felhasználókra korlátozni; egyelőre a gép minden felhasználója használhatja.%n%nA HASS.Agentben beállítható: Szolgáltatás, A gép felhasználói.
 hungarian.SettingsFolderNotSafe=A HASS.Agent .NET10 fájljai települtek, de a beállításmappáját (a ProgramData alatt) nem sikerült biztonságosan használhatóvá tenni: a gép egy másik felhasználója hozta létre, és nyitva tartja. A HASS.Agent nem indult el, a szolgáltatása pedig nem lett telepítve, illetve elindítva.%n%nJelentkeztesd ki a többi felhasználót, vagy indítsd újra a gépet, és futtasd újra ezt a telepítőt.
 hungarian.KioskTaskNotDisabled=A kioszk mód feladatát (HASS.Agent.NET10\Kiosk) nem sikerült szüneteltetni, ezért a fájlokat nem lehet biztonságosan lecserélni. Nem változott semmi. Próbáld újra, vagy előbb kapcsold ki a kioszk módot.
-hungarian.KioskTaskNotEnabled=A kioszk mód feladatát (HASS.Agent.NET10\Kiosk) nem sikerült visszakapcsolni. Amíg nincs bekapcsolva, a kioszk-felhasználóknál bezárás után nem jön vissza az alkalmazás.%n%nKapcsold be a Feladatütemezőben, vagy mentsd el újra a kioszk módot a HASS.Agentben: Danger Zone, Kioszk mód.
+hungarian.KioskTaskNotEnabled=A kioszk mód feladatát (HASS.Agent.NET10\Kiosk) nem sikerült visszakapcsolni. Amíg nincs bekapcsolva, a kioszk-felhasználóknál bezárás után nem jön vissza az alkalmazás.%n%nKapcsold be a Feladatütemezőben, vagy mentsd el újra a kioszk módot a HASS.Agentben: Szolgáltatás, Kioszk mód.
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
