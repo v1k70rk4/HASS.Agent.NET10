@@ -396,7 +396,7 @@ public sealed class RemoteUpdateInstallTests : IDisposable
         using (service)
         {
             // Nothing changed: the state alone, and Home Assistant may ask for the install.
-            await service.ReportUpdateStateAsync(AnUpdate);
+            await service.ReportUpdateStateAsync(AnUpdate, new CompanionSettings().UpdateCheckOrigin());
             var only = Assert.Single(sent);
             Assert.Equal(StateTopic, only.Topic);
             Assert.True(Parse(only.Payload).GetProperty("remote_install").GetBoolean());
@@ -404,7 +404,7 @@ public sealed class RemoteUpdateInstallTests : IDisposable
             // Ticked in another user's window.
             sent.Clear();
             WriteSwitch(file, true);
-            await service.ReportUpdateStateAsync(AnUpdate);
+            await service.ReportUpdateStateAsync(AnUpdate, new CompanionSettings().UpdateCheckOrigin());
             Assert.Equal([DiscoveryTopic, StateTopic], sent.Select(message => message.Topic));
             Assert.False(Parse(sent[0].Payload).TryGetProperty("command_topic", out _));
             Assert.False(Parse(sent[0].Payload).TryGetProperty("payload_install", out _));
@@ -413,7 +413,7 @@ public sealed class RemoteUpdateInstallTests : IDisposable
             // And unticked again: the install command is back in the discovery.
             sent.Clear();
             WriteSwitch(file, false);
-            await service.ReportUpdateStateAsync(AnUpdate);
+            await service.ReportUpdateStateAsync(AnUpdate, new CompanionSettings().UpdateCheckOrigin());
             Assert.Equal([DiscoveryTopic, StateTopic], sent.Select(message => message.Topic));
             Assert.Equal(InstallTopic, Parse(sent[0].Payload).GetProperty("command_topic").GetString());
             Assert.Equal("install", Parse(sent[0].Payload).GetProperty("payload_install").GetString());
@@ -437,7 +437,7 @@ public sealed class RemoteUpdateInstallTests : IDisposable
             {
                 sent.Clear();
                 WriteSwitch(file, ticked);
-                await service.ReportUpdateStateAsync(AnUpdate);
+                await service.ReportUpdateStateAsync(AnUpdate, new CompanionSettings().UpdateCheckOrigin());
 
                 var only = Assert.Single(sent);
                 Assert.Equal(StateTopic, only.Topic);
@@ -450,6 +450,212 @@ public sealed class RemoteUpdateInstallTests : IDisposable
             Assert.True(service.RefreshRemoteInstallSwitch());
             await service.ReportRemoteInstallSwitchAsync();
             Assert.DoesNotContain(sent, message => message.Topic == DiscoveryTopic);
+        }
+    }
+
+    [Fact]
+    public async Task An_older_check_that_ends_last_does_not_replace_a_newer_result()
+    {
+        var sent = new List<(string Topic, string? Payload)>();
+        var (service, log, _, _) = NewServiceWithFile(
+            CompanionRuntimeRole.App, inMemory: false, inFile: false,
+            outbox: (topic, payload, _) => { sent.Add((topic, payload)); return Task.CompletedTask; });
+        using (log)
+        using (service)
+        {
+            var older = Settings(service).UpdateCheckOrigin();
+            var newer = Settings(service).UpdateCheckOrigin() with { StartedAt = older.StartedAt + 1 };
+
+            await service.ReportUpdateStateAsync(AnUpdate with { LatestVersion = "10.15.0" }, newer);
+            await service.ReportUpdateStateAsync(AnUpdate, older);
+
+            var only = Assert.Single(sent, message => message.Topic == StateTopic);
+            Assert.Equal("10.15.0", Parse(only.Payload).GetProperty("latest_version").GetString());
+        }
+    }
+
+    [Fact]
+    public void A_publisher_waiting_its_turn_never_sends_a_result_checked_with_other_settings()
+    {
+        // A stable check is kept and its publisher waits for its turn. Meanwhile a beta check,
+        // started later while beta was on, is kept, and beta is switched off again. In its turn
+        // the waiting publisher must not send the beta result: it is not for the settings now.
+        var (service, log, _, _) = NewServiceWithFile(CompanionRuntimeRole.App, inMemory: false, inFile: false);
+        using (log)
+        using (service)
+        {
+            var settings = Settings(service);
+            var stable = settings.UpdateCheckOrigin();
+            Assert.True(service.TryKeepUpdateResult(AnUpdate, stable, DateTimeOffset.UtcNow));
+            Assert.Equal("10.14.0", service.KeptUpdateStateForSettingsNow()?.LatestVersion);
+
+            var betaResult = AnUpdate with { LatestVersion = "10.15.0-beta.1" };
+            var beta = stable with { Beta = true, StartedAt = stable.StartedAt + 1 };
+            Assert.True(service.TryKeepUpdateResult(betaResult, beta, DateTimeOffset.UtcNow));
+
+            Assert.Null(service.KeptUpdateStateForSettingsNow());
+
+            // With beta on, the same result is the one to send.
+            settings.BetaUpdatesEnabled = true;
+            Assert.Equal("10.15.0-beta.1", service.KeptUpdateStateForSettingsNow()?.LatestVersion);
+        }
+    }
+
+    [Fact]
+    public async Task A_publisher_waiting_its_turn_sends_the_newest_result_kept_by_then()
+    {
+        // The first publisher is held while it sends; the second queues behind it with its own
+        // result, and a newer one is kept while it waits. In its turn it sends the newest.
+        var firstSent = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var versions = new List<string?>();
+        var (service, log, _, _) = NewServiceWithFile(
+            CompanionRuntimeRole.App, inMemory: false, inFile: false,
+            outbox: async (topic, payload, _) =>
+            {
+                if (topic != StateTopic)
+                {
+                    return;
+                }
+
+                lock (versions)
+                {
+                    versions.Add(Parse(payload).GetProperty("latest_version").GetString());
+                    if (versions.Count > 1)
+                    {
+                        return;
+                    }
+                }
+
+                firstSent.SetResult();
+                await release.Task;
+            });
+        using (log)
+        using (service)
+        {
+            var origin = Settings(service).UpdateCheckOrigin();
+            var first = service.ReportUpdateStateAsync(AnUpdate, origin);
+            await firstSent.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+
+            var second = service.ReportUpdateStateAsync(AnUpdate with { LatestVersion = "10.15.0" }, origin with { StartedAt = origin.StartedAt + 1 });
+            Assert.True(service.TryKeepUpdateResult(AnUpdate with { LatestVersion = "10.16.0" }, origin with { StartedAt = origin.StartedAt + 2 }, DateTimeOffset.UtcNow));
+            Assert.False(second.IsCompleted);
+
+            release.SetResult();
+            await Task.WhenAll(first, second).WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+
+            Assert.Equal(["10.14.0", "10.16.0"], versions);
+        }
+    }
+
+    [Fact]
+    public async Task A_retry_waiting_its_turn_looks_nothing_up_once_a_check_succeeded()
+    {
+        // A proxy that cannot be used: a lookup, were one made, fails at once without the network.
+        var firstSent = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var versions = new List<string?>();
+        var (service, log, _, _) = NewServiceWithFile(
+            CompanionRuntimeRole.App, inMemory: false, inFile: false,
+            outbox: async (topic, payload, _) =>
+            {
+                if (topic != StateTopic)
+                {
+                    return;
+                }
+
+                lock (versions)
+                {
+                    versions.Add(Parse(payload).GetProperty("latest_version").GetString());
+                    if (versions.Count > 1)
+                    {
+                        return;
+                    }
+                }
+
+                firstSent.SetResult();
+                await release.Task;
+            });
+        using (log)
+        using (service)
+        {
+            Settings(service).UpdateProxyCustom = true;
+            Settings(service).UpdateProxyAddress = "not a proxy";
+            var origin = Settings(service).UpdateCheckOrigin();
+            var first = service.ReportUpdateStateAsync(AnUpdate, origin);
+            await firstSent.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+
+            var retry = service.PublishUpdateRetryAsync(TestContext.Current.CancellationToken);
+            Assert.True(service.TryKeepUpdateResult(AnUpdate with { LatestVersion = "10.16.0" }, origin with { StartedAt = origin.StartedAt + 1 }, DateTimeOffset.UtcNow));
+
+            release.SetResult();
+            await Task.WhenAll(first, retry).WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+
+            Assert.Equal(["10.14.0", "10.16.0"], versions);
+        }
+    }
+
+    [Fact]
+    public async Task Settings_saved_while_the_discovery_is_on_its_way_are_the_ones_the_state_is_for()
+    {
+        var discoveryOut = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var versions = new List<string?>();
+        var (service, log, _, file) = NewServiceWithFile(
+            CompanionRuntimeRole.App, inMemory: false, inFile: false,
+            outbox: async (topic, payload, _) =>
+            {
+                if (topic == DiscoveryTopic)
+                {
+                    discoveryOut.TrySetResult();
+                    await release.Task;
+                }
+                else if (topic == StateTopic)
+                {
+                    versions.Add(Parse(payload).GetProperty("latest_version").GetString());
+                }
+            });
+        using (log)
+        using (service)
+        {
+            // The switch ticked elsewhere: the discovery goes out again before the state.
+            WriteSwitch(file, true);
+            var report = service.ReportUpdateStateAsync(AnUpdate, Settings(service).UpdateCheckOrigin());
+            await discoveryOut.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+
+            // Saved while the discovery is held: another proxy (one that cannot be used, so the
+            // check it causes fails at once, without the network).
+            Settings(service).UpdateProxyCustom = true;
+            Settings(service).UpdateProxyAddress = "not a proxy";
+
+            release.SetResult();
+            await report.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+
+            Assert.NotEqual("10.14.0", Assert.Single(versions));
+        }
+    }
+
+    [Fact]
+    public async Task A_result_is_kept_with_the_proxy_it_was_checked_with_not_the_one_saved_since()
+    {
+        // Checked through the Windows proxy; saved since: another proxy (one that cannot be
+        // used, so the new check it causes fails at once, without the network). Were the result
+        // taken as the new proxy's, it would go out as found; it is checked again instead.
+        var sent = new List<(string Topic, string? Payload)>();
+        var (service, log, _, _) = NewServiceWithFile(
+            CompanionRuntimeRole.App, inMemory: false, inFile: false,
+            outbox: (topic, payload, _) => { sent.Add((topic, payload)); return Task.CompletedTask; });
+        using (log)
+        using (service)
+        {
+            var origin = Settings(service).UpdateCheckOrigin();
+            Settings(service).UpdateProxyCustom = true;
+            Settings(service).UpdateProxyAddress = "not a proxy";
+
+            await service.ReportUpdateStateAsync(AnUpdate, origin);
+
+            var only = Assert.Single(sent, message => message.Topic == StateTopic);
+            Assert.NotEqual("10.14.0", Parse(only.Payload).GetProperty("latest_version").GetString());
         }
     }
 

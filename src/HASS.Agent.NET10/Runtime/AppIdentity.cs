@@ -13,4 +13,7 @@ internal static class AppIdentity
     public const string GitHubRepository = "v1k70rk4/HASS.Agent.NET10";
     public const string GitHubRepositoryUrl = "https://github.com/v1k70rk4/HASS.Agent.NET10";
     public const string SupportUrl = "https://ko-fi.com/v1k70rk4";
+
+    /// <summary>The website: the docs, the changelog, the language pages.</summary>
+    public const string WebsiteUrl = "https://hass-agent.com/";
 }

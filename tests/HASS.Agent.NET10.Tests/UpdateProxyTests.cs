@@ -46,6 +46,30 @@ public class UpdateProxyTests
     }
 
     [Fact]
+    public void Two_proxy_settings_that_differ_never_count_as_the_same_proxy()
+    {
+        // Joined into one text these two would read alike; the update check's cache must tell
+        // them apart (the first goes with the Windows login, the second with one typed in).
+        var first = new CompanionSettings { UpdateProxyAddress = "unused", UpdateProxyLogin = false, UpdateProxyUser = "True|alice" };
+        var second = new CompanionSettings { UpdateProxyAddress = "unused|False", UpdateProxyLogin = true, UpdateProxyUser = "alice" };
+
+        Assert.NotEqual(first.UpdateProxyKey(), second.UpdateProxyKey());
+        Assert.Equal(first.UpdateProxyKey(), new CompanionSettings { UpdateProxyAddress = "unused", UpdateProxyUser = "True|alice" }.UpdateProxyKey());
+        Assert.DoesNotContain("alice", first.UpdateProxyKey().ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_new_proxy_password_is_a_new_proxy_and_never_printed()
+    {
+        var before = new CompanionSettings { UpdateProxyLogin = true, UpdateProxyUser = "anna", UpdateProxyPasswordProtected = "machine:AAAA" };
+        var after = new CompanionSettings { UpdateProxyLogin = true, UpdateProxyUser = "anna", UpdateProxyPasswordProtected = "machine:BBBB" };
+
+        Assert.NotEqual(before.UpdateProxyKey(), after.UpdateProxyKey());
+        Assert.DoesNotContain("AAAA", before.UpdateProxyKey().ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain("AAAA", before.UpdateCheckOrigin().ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void The_windows_proxy_gets_the_login_typed_in()
     {
         using var handler = UpdateProxy.Create(false, "ignored", true, "office\\anna", "pw").CreateHandler();
