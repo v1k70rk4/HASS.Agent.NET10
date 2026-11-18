@@ -2363,7 +2363,7 @@ internal sealed class MqttCompanionService : IDisposable
     /// Keeps an update check's result, with what it was checked with, unless a check that started
     /// later has already given its own. A success also ends the one-minute retries.
     /// </summary>
-    private bool TryKeepUpdateResult(AppUpdateState result, UpdateCheckOrigin origin, DateTimeOffset checkedAt)
+    internal bool TryKeepUpdateResult(AppUpdateState result, UpdateCheckOrigin origin, DateTimeOffset checkedAt)
     {
         lock (_updateResultGate)
         {
@@ -2447,11 +2447,13 @@ internal sealed class MqttCompanionService : IDisposable
                 await PublishUpdateEntityDiscoveryAsync();
             }
 
-            // Read now, in this publisher's turn: the newest result kept so far.
-            AppUpdateState kept;
-            lock (_updateResultGate)
+            // Read now, in this publisher's turn: the newest result kept so far, and only if it was
+            // checked with the channel and proxy saved now. One that was not has a new check of its
+            // own coming (whoever kept it sees the difference), which publishes in its turn.
+            if (KeptUpdateStateForSettingsNow() is not { } kept)
             {
-                kept = _lastUpdateState!;
+                _log.Debug("Update state not sent: the result kept was checked with other settings; a new check follows.");
+                return;
             }
 
             var state = ForHomeAssistant(kept, _settings);
@@ -2470,6 +2472,28 @@ internal sealed class MqttCompanionService : IDisposable
         finally
         {
             _updatePublishLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// The update check result kept, when it was checked with the channel and proxy saved now;
+    /// otherwise null, and it must not go to Home Assistant.
+    /// </summary>
+    internal AppUpdateState? KeptUpdateStateForSettingsNow()
+    {
+        bool beta;
+        UpdateProxyFields proxy;
+        lock (SettingsStore.Gate)
+        {
+            beta = _settings.BetaUpdatesEnabled;
+            proxy = _settings.UpdateProxyKey();
+        }
+
+        lock (_updateResultGate)
+        {
+            return _lastUpdateState is not null && _lastUpdateBeta == beta && _lastUpdateProxy == proxy
+                ? _lastUpdateState
+                : null;
         }
     }
 

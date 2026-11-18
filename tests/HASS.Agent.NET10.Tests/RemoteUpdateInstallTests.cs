@@ -475,6 +475,33 @@ public sealed class RemoteUpdateInstallTests : IDisposable
     }
 
     [Fact]
+    public void A_publisher_waiting_its_turn_never_sends_a_result_checked_with_other_settings()
+    {
+        // A stable check is kept and its publisher waits for its turn. Meanwhile a beta check,
+        // started later while beta was on, is kept, and beta is switched off again. In its turn
+        // the waiting publisher must not send the beta result: it is not for the settings now.
+        var (service, log, _, _) = NewServiceWithFile(CompanionRuntimeRole.App, inMemory: false, inFile: false);
+        using (log)
+        using (service)
+        {
+            var settings = Settings(service);
+            var stable = settings.UpdateCheckOrigin();
+            Assert.True(service.TryKeepUpdateResult(AnUpdate, stable, DateTimeOffset.UtcNow));
+            Assert.Equal("10.14.0", service.KeptUpdateStateForSettingsNow()?.LatestVersion);
+
+            var betaResult = AnUpdate with { LatestVersion = "10.15.0-beta.1" };
+            var beta = stable with { Beta = true, StartedAt = stable.StartedAt + 1 };
+            Assert.True(service.TryKeepUpdateResult(betaResult, beta, DateTimeOffset.UtcNow));
+
+            Assert.Null(service.KeptUpdateStateForSettingsNow());
+
+            // With beta on, the same result is the one to send.
+            settings.BetaUpdatesEnabled = true;
+            Assert.Equal("10.15.0-beta.1", service.KeptUpdateStateForSettingsNow()?.LatestVersion);
+        }
+    }
+
+    [Fact]
     public async Task A_result_is_kept_with_the_proxy_it_was_checked_with_not_the_one_saved_since()
     {
         // Checked through the Windows proxy; saved since: another proxy (one that cannot be
