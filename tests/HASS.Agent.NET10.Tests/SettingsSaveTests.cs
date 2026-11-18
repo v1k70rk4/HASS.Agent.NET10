@@ -182,6 +182,49 @@ public sealed class SettingsSaveTests : IDisposable
     }
 
     [Fact]
+    public async Task A_start_waits_for_another_apps_save_to_end()
+    {
+        SettingsStore.Save(_paths, new CompanionSettings { DeviceName = "pc" });
+        var held = new ManualResetEventSlim();
+        var letGo = new ManualResetEventSlim();
+        var other = new Thread(() =>
+        {
+            using var turn = SettingsStore.TakeSaveTurn(_paths);
+            held.Set();
+            letGo.Wait(TimeSpan.FromSeconds(10));
+        });
+        other.Start();
+        Assert.True(held.Wait(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+
+        var load = Task.Run(() => SettingsStore.LoadOrCreate(_paths, _log), TestContext.Current.CancellationToken);
+        await Task.Delay(300, TestContext.Current.CancellationToken);
+        Assert.False(load.IsCompleted);
+
+        letGo.Set();
+        Assert.Equal("pc", (await load.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken)).DeviceName);
+        other.Join();
+    }
+
+    [Fact]
+    public void A_save_fails_rather_than_write_without_the_file_it_cannot_read()
+    {
+        SettingsStore.Save(_paths, new CompanionSettings { DeviceName = "pc", MqttHost = "old.local" });
+        var inUse = SettingsStore.LoadOrCreate(_paths, _log);
+        var before = File.ReadAllText(_paths.SettingsFile);
+        inUse.DeviceName = "desk";
+
+        using (new FileStream(_paths.SettingsFile, FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            Assert.Throws<IOException>(() => SettingsStore.Save(_paths, inUse));
+        }
+
+        Assert.Equal(before, File.ReadAllText(_paths.SettingsFile));
+        // And once it can be read again, the save goes through.
+        SettingsStore.Save(_paths, inUse);
+        Assert.Equal("desk", InFile().DeviceName);
+    }
+
+    [Fact]
     public void A_file_that_cannot_be_replaced_is_written_in_place_with_the_old_one_kept()
     {
         SettingsStore.Save(_paths, new CompanionSettings { DeviceName = "pc", MqttHost = "old.local" });

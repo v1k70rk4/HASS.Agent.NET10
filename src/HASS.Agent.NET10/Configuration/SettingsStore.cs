@@ -87,6 +87,10 @@ internal static class SettingsStore
 
     public static CompanionSettings LoadOrCreate(AppPaths paths, FileLog log)
     {
+        // The read and the write-back below are one step among the apps of the PC, as a save
+        // is: after an update every app's first start writes the file back (the version in
+        // it), and a save of another app in between would be undone by it.
+        using var turn = SaveTurn.Take(paths);
         CompanionSettings settings;
         string? originalJson = null;
         var restoredFromBackup = false;
@@ -274,15 +278,23 @@ internal static class SettingsStore
     /// <summary>The turn a save takes among the apps of the PC; for a test to hold it as another app would.</summary>
     internal static IDisposable? TakeSaveTurn(AppPaths paths) => SaveTurn.Take(paths);
 
+    /// <summary>
+    /// The file's text, or null when there is no file. A file that is there and cannot be read
+    /// (held by another program for a moment) is tried again, and then the save fails: written
+    /// without it, the save would put back every setting another app changed.
+    /// </summary>
     private static string? ReadFileOrNull(string file)
     {
-        try
+        for (var attempt = 0; ; attempt++)
         {
-            return File.Exists(file) ? File.ReadAllText(file) : null;
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            return null;
+            try
+            {
+                return File.Exists(file) ? File.ReadAllText(file) : null;
+            }
+            catch (IOException) when (attempt < 2)
+            {
+                Thread.Sleep(50);
+            }
         }
     }
 
