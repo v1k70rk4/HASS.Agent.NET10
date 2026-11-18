@@ -549,6 +549,93 @@ public sealed class RemoteUpdateInstallTests : IDisposable
     }
 
     [Fact]
+    public async Task A_retry_waiting_its_turn_looks_nothing_up_once_a_check_succeeded()
+    {
+        // A proxy that cannot be used: a lookup, were one made, fails at once without the network.
+        var firstSent = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var versions = new List<string?>();
+        var (service, log, _, _) = NewServiceWithFile(
+            CompanionRuntimeRole.App, inMemory: false, inFile: false,
+            outbox: async (topic, payload, _) =>
+            {
+                if (topic != StateTopic)
+                {
+                    return;
+                }
+
+                lock (versions)
+                {
+                    versions.Add(Parse(payload).GetProperty("latest_version").GetString());
+                    if (versions.Count > 1)
+                    {
+                        return;
+                    }
+                }
+
+                firstSent.SetResult();
+                await release.Task;
+            });
+        using (log)
+        using (service)
+        {
+            Settings(service).UpdateProxyCustom = true;
+            Settings(service).UpdateProxyAddress = "not a proxy";
+            var origin = Settings(service).UpdateCheckOrigin();
+            var first = service.ReportUpdateStateAsync(AnUpdate, origin);
+            await firstSent.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+
+            var retry = service.PublishUpdateRetryAsync(TestContext.Current.CancellationToken);
+            Assert.True(service.TryKeepUpdateResult(AnUpdate with { LatestVersion = "10.16.0" }, origin with { StartedAt = origin.StartedAt + 1 }, DateTimeOffset.UtcNow));
+
+            release.SetResult();
+            await Task.WhenAll(first, retry).WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+
+            Assert.Equal(["10.14.0", "10.16.0"], versions);
+        }
+    }
+
+    [Fact]
+    public async Task Settings_saved_while_the_discovery_is_on_its_way_are_the_ones_the_state_is_for()
+    {
+        var discoveryOut = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var versions = new List<string?>();
+        var (service, log, _, file) = NewServiceWithFile(
+            CompanionRuntimeRole.App, inMemory: false, inFile: false,
+            outbox: async (topic, payload, _) =>
+            {
+                if (topic == DiscoveryTopic)
+                {
+                    discoveryOut.TrySetResult();
+                    await release.Task;
+                }
+                else if (topic == StateTopic)
+                {
+                    versions.Add(Parse(payload).GetProperty("latest_version").GetString());
+                }
+            });
+        using (log)
+        using (service)
+        {
+            // The switch ticked elsewhere: the discovery goes out again before the state.
+            WriteSwitch(file, true);
+            var report = service.ReportUpdateStateAsync(AnUpdate, Settings(service).UpdateCheckOrigin());
+            await discoveryOut.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+
+            // Saved while the discovery is held: another proxy (one that cannot be used, so the
+            // check it causes fails at once, without the network).
+            Settings(service).UpdateProxyCustom = true;
+            Settings(service).UpdateProxyAddress = "not a proxy";
+
+            release.SetResult();
+            await report.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+
+            Assert.NotEqual("10.14.0", Assert.Single(versions));
+        }
+    }
+
+    [Fact]
     public async Task A_result_is_kept_with_the_proxy_it_was_checked_with_not_the_one_saved_since()
     {
         // Checked through the Windows proxy; saved since: another proxy (one that cannot be

@@ -103,7 +103,8 @@
       "About.ProxyTestOk",
       "About.ProxyTestFailed",
       "About.ProxyNotUsable",
-      "About.ProxyChangedMeanwhile"
+      "About.ProxyChangedMeanwhile",
+      "About.SettingsChangedCheckAgain"
     ]
   },
   "strings": {
@@ -587,6 +588,7 @@
     "About.ProxySettingsHint": "Как проверка обновлений достигает GitHub. Сейчас: {0}",
     "About.ProxyNotUsable": "Другой, но его адрес непригоден",
     "About.ProxyChangedMeanwhile": "Настройки прокси изменились, пока это окно было открыто (получены из сеанса другого пользователя). Ничего не сохранено; окно откроется снова с текущими сохранёнными настройками.",
+    "About.SettingsChangedCheckAgain": "Настройки обновлений изменились во время проверки. Проверьте ещё раз.",
     "About.ProxyTest": "Проверить",
     "About.ProxyTestOk": "GitHub доступен этим способом. Последний выпуск: {0}.",
     "About.ProxyTestFailed": "Так GitHub недоступен:\n{0}",

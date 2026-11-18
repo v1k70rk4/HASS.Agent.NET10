@@ -69,6 +69,9 @@ internal sealed class MainForm : Form
 
     // About page: what the Proxy settings row says the update check goes through now.
     private Label? _proxyHint;
+    // About page: the two settings buttons, off while a check or download runs, so what it
+    // was started with stays what is saved.
+    private readonly List<Button> _updateSettingsButtons = [];
 
     private readonly CheckBox _mqttEnabled = new();
     private readonly Label _mqttWarning = new();
@@ -2433,10 +2436,12 @@ internal sealed class MainForm : Form
 
         var checkBtn = AddRow(0, MakePrimaryButton(S("About.CheckUpdates"), 190, 32), S("About.CheckUpdatesHint"));
         checkBtn.Click += async (_, _) => await CheckForUpdatesAsync(checkBtn);
-        AddRow(1, MakeSecondaryButton(S("About.UpdateSettings"), 190, 32), S("About.UpdateSettingsHint"))
-            .Click += (_, _) => ShowUpdateSettings();
+        var settingsBtn = AddRow(1, MakeSecondaryButton(S("About.UpdateSettings"), 190, 32), S("About.UpdateSettingsHint"));
+        settingsBtn.Click += (_, _) => ShowUpdateSettings();
         var proxyBtn = AddRow(2, MakeSecondaryButton(S("About.ProxySettings"), 190, 32), string.Empty);
         proxyBtn.Click += (_, _) => ShowProxySettings();
+        _updateSettingsButtons.Clear();
+        _updateSettingsButtons.AddRange([settingsBtn, proxyBtn]);
         _proxyHint = hints[^1];
         UpdateProxyHint();
 
@@ -4039,14 +4044,17 @@ internal sealed class MainForm : Form
         var originalText = updateButton.Text;
         updateButton.Enabled = false;
         updateButton.Text = S("About.CheckingUpdates");
+        // The channel and the proxy are not changed from here while the check, the offer and the
+        // download run: what is offered and installed is what was asked for.
+        _updateSettingsButtons.ForEach(button => button.Enabled = false);
 
         try
         {
             // The proxy that is saved; the Proxy settings dialog has a Test button of its own.
             // Taken with the channel and the proxy's key at one moment: Home Assistant is told
             // which proxy and channel this answer came through, even if they are saved anew meanwhile.
-            // Checked again when the channel or the proxy was changed while it ran (Update
-            // settings saved meanwhile): a beta is never offered once the channel is stable.
+            // Checked again when the channel or the proxy was changed while it ran (settings
+            // taken over at a handover): a beta is never offered once the channel is stable.
             UpdateProxy proxy;
             UpdateCheckOrigin origin;
             AppUpdateState update;
@@ -4086,6 +4094,7 @@ internal sealed class MainForm : Form
             if (checks == 3)
             {
                 // The settings kept changing: nothing is offered that may not be theirs.
+                MessageBox.Show(S("About.SettingsChangedCheckAgain"), AppIdentity.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
 
@@ -4147,6 +4156,7 @@ internal sealed class MainForm : Form
         {
             updateButton.Text = originalText;
             updateButton.Enabled = true;
+            _updateSettingsButtons.ForEach(button => button.Enabled = true);
         }
     }
 

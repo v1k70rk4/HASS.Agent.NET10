@@ -2344,17 +2344,10 @@ internal sealed class MqttCompanionService : IDisposable
                 continue;
             }
 
-            if (retry && KeptUpdateStateForSettingsNow() is { } kept && string.IsNullOrWhiteSpace(kept.Error))
-            {
-                // A check with the settings now succeeded during the wait (the About page's
-                // button, a reconnect): the failures are over, so no retry is used up and the
-                // usual wait follows. A success for other settings ends nothing.
-                continue;
-            }
-
             if (retry)
             {
-                _updateRetries++;
+                await PublishUpdateRetryAsync(cancellationToken);
+                continue;
             }
 
             await PublishUpdateStateAsync(forceCheck: true, cancellationToken);
@@ -2389,23 +2382,45 @@ internal sealed class MqttCompanionService : IDisposable
         }
     }
 
-    private async Task PublishUpdateStateAsync(bool forceCheck = false, CancellationToken cancellationToken = default)
+    /// <summary>
+    /// The one-minute retry after a failed check. Decided in its turn, not before the wait for
+    /// it: a check with the settings now that succeeded meanwhile (the About page's button, a
+    /// reconnect) ends the failures, so nothing is looked up, no retry is used up, and the
+    /// success goes out again. A success for other settings ends nothing.
+    /// </summary>
+    internal Task PublishUpdateRetryAsync(CancellationToken cancellationToken) =>
+        PublishUpdateStateAsync(forceCheck: true, cancellationToken, isRetry: true);
+
+    private async Task PublishUpdateStateAsync(bool forceCheck = false, CancellationToken cancellationToken = default, bool isRetry = false)
     {
         await _updatePublishLock.WaitAsync(cancellationToken);
         try
         {
-            if (await CurrentUpdateStateAsync(forceCheck, cancellationToken) is not { } kept)
+            if (isRetry)
             {
-                return;
+                if (KeptUpdateStateForSettingsNow() is { } succeeded && string.IsNullOrWhiteSpace(succeeded.Error))
+                {
+                    forceCheck = false;
+                }
+                else
+                {
+                    _updateRetries++;
+                }
             }
 
             // The switch as the file has it: another user's app may have changed it. The MQTT
             // discovery of the update entity carries the install command only while the switch
-            // allows it, so it goes out again with the state.
+            // allows it, so it goes out again with the state. Before the state is chosen: the
+            // settings may be saved anew while the discovery is on its way.
             if (RefreshRemoteInstallSwitch()
                 && RepublishesUpdateDiscovery(_role, _isOnWebSocket && _haWs is not null, _discoveryPublished, OnBroker))
             {
                 await PublishUpdateEntityDiscoveryAsync();
+            }
+
+            if (await CurrentUpdateStateAsync(forceCheck, cancellationToken) is not { } kept)
+            {
+                return;
             }
 
             var state = ForHomeAssistant(kept, _settings);
@@ -2471,7 +2486,8 @@ internal sealed class MqttCompanionService : IDisposable
             var result = await AppUpdateService.CheckAsync(_settings.SoftwareVersion, origin.Beta, proxy, cancellationToken);
             // A check cut short by the app stopping comes back as a failure: not a result.
             cancellationToken.ThrowIfCancellationRequested();
-            TryKeepUpdateResult(result, origin, now);
+            // Stamped when it ended (the throttle counts from the answer); ordered by its start.
+            TryKeepUpdateResult(result, origin, DateTimeOffset.UtcNow);
             if (!string.IsNullOrWhiteSpace(result.Error))
             {
                 // The state still goes out, with the error in it; only the check failed.
