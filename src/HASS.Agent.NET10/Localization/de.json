@@ -610,7 +610,7 @@
     "About.ProxySettingsHint": "Wie die Updateprüfung GitHub erreicht. Jetzt: {0}",
     "About.ProxyNotUsable": "Andere, aber die Adresse ist nicht verwendbar",
     "About.ProxyTest": "Testen",
-    "About.ProxyTestOk": "GitHub hat über diesen Proxy geantwortet. Neueste Version: {0}.",
+    "About.ProxyTestOk": "GitHub ist so erreichbar. Neueste Version: {0}.",
     "About.ProxyTestFailed": "GitHub ist so nicht erreichbar:\n{0}",
     "Msg.SettingsSaved": "Einstellungen gespeichert.",
     "Msg.RestartRequired": "Bitte starte die Anwendung neu, um die Sprachänderung zu übernehmen.",

@@ -487,7 +487,7 @@
     "About.ProxySettingsHint": "Hogyan éri el a frissítéskeresés a GitHubot. Most: {0}",
     "About.ProxyNotUsable": "Egyéb, de a címe nem használható",
     "About.ProxyTest": "Kipróbálás",
-    "About.ProxyTestOk": "A GitHub válaszolt ezen a proxyn át. Legújabb kiadás: {0}.",
+    "About.ProxyTestOk": "A GitHub így elérhető. Legújabb kiadás: {0}.",
     "About.ProxyTestFailed": "A GitHub így nem érhető el:\n{0}",
     "Msg.SettingsSaved": "Beállítások mentve.",
     "Msg.RestartRequired": "A nyelv megváltoztatásához indítsd újra az alkalmazást.",

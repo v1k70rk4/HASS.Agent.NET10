@@ -586,7 +586,7 @@
     "About.ProxySettingsHint": "Как проверка обновлений достигает GitHub. Сейчас: {0}",
     "About.ProxyNotUsable": "Другой, но его адрес непригоден",
     "About.ProxyTest": "Проверить",
-    "About.ProxyTestOk": "GitHub ответил через этот прокси. Последний выпуск: {0}.",
+    "About.ProxyTestOk": "GitHub доступен этим способом. Последний выпуск: {0}.",
     "About.ProxyTestFailed": "Так GitHub недоступен:\n{0}",
     "Msg.SettingsSaved": "Настройки сохранены.",
     "Msg.RestartRequired": "Перезапустите приложение, чтобы применить новый язык.",

@@ -59,6 +59,17 @@ public class UpdateProxyTests
     }
 
     [Fact]
+    public void A_new_proxy_password_is_a_new_proxy_and_never_printed()
+    {
+        var before = new CompanionSettings { UpdateProxyLogin = true, UpdateProxyUser = "anna", UpdateProxyPasswordProtected = "machine:AAAA" };
+        var after = new CompanionSettings { UpdateProxyLogin = true, UpdateProxyUser = "anna", UpdateProxyPasswordProtected = "machine:BBBB" };
+
+        Assert.NotEqual(before.UpdateProxyKey(), after.UpdateProxyKey());
+        Assert.DoesNotContain("AAAA", before.UpdateProxyKey().ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain("AAAA", before.UpdateCheckOrigin().ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void The_windows_proxy_gets_the_login_typed_in()
     {
         using var handler = UpdateProxy.Create(false, "ignored", true, "office\\anna", "pw").CreateHandler();

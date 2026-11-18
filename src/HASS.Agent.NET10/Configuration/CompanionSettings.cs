@@ -19,6 +19,12 @@ internal readonly record struct UpdateProxyFields(bool Custom, string Address, b
     public override string ToString() => nameof(UpdateProxyFields);
 }
 
+/// <summary>
+/// What an update check is made with, taken when it starts: the channel, the proxy, and the
+/// moment (a Stopwatch timestamp), so of two checks the one started later wins whichever ends first.
+/// </summary>
+internal readonly record struct UpdateCheckOrigin(bool Beta, UpdateProxyFields Proxy, long StartedAt);
+
 internal sealed class CompanionSettings
 {
     public string DeviceName { get; set; } = Environment.MachineName;
@@ -109,6 +115,10 @@ internal sealed class CompanionSettings
     /// </summary>
     internal UpdateProxyFields UpdateProxyKey() =>
         new(UpdateProxyCustom, UpdateProxyAddress, UpdateProxyLogin, UpdateProxyUser, UpdateProxyPasswordProtected);
+
+    /// <summary>An update check that starts now; taken under <see cref="SettingsStore.Gate"/> with the proxy.</summary>
+    internal UpdateCheckOrigin UpdateCheckOrigin() =>
+        new(BetaUpdatesEnabled, UpdateProxyKey(), System.Diagnostics.Stopwatch.GetTimestamp());
 
     /// <summary>Danger Zone: the fast sensor interval may go below 5 seconds, down to 1.</summary>
     public bool FastSensorsUnlocked { get; set; }

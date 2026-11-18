@@ -156,7 +156,7 @@ internal sealed class MainForm : Form
     /// <summary>Wired by TrayApplicationContext: tells Home Assistant what a manual update check found.</summary>
     [System.ComponentModel.Browsable(false)]
     [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
-    public Func<AppUpdateState, bool, UpdateProxyFields, Task>? UpdateStateHandler { get; set; }
+    public Func<AppUpdateState, UpdateCheckOrigin, Task>? UpdateStateHandler { get; set; }
 
     /// <summary>Wired by TrayApplicationContext: tells Home Assistant that the About page's "updates only at this PC" was changed.</summary>
     [System.ComponentModel.Browsable(false)]
@@ -2549,22 +2549,39 @@ internal sealed class MainForm : Form
     /// <summary>The proxy for the updates, saved as the dialog is closed with Save.</summary>
     private void ShowProxySettings()
     {
-        var current = new UpdateProxyChoice(
-            _settings.UpdateProxyCustom, _settings.UpdateProxyAddress, _settings.UpdateProxyLogin,
-            _settings.UpdateProxyUser, _settings.GetUpdateProxyPassword());
-        if (UpdateProxyForm.Ask(this, current, _settings.SoftwareVersion, _settings.BetaUpdatesEnabled) is not { } chosen)
+        // All five from one moment: a handover's reload must not give the dialog one proxy's
+        // address and another one's password.
+        UpdateProxyChoice current;
+        bool beta;
+        lock (SettingsStore.Gate)
+        {
+            current = new UpdateProxyChoice(
+                _settings.UpdateProxyCustom, _settings.UpdateProxyAddress, _settings.UpdateProxyLogin,
+                _settings.UpdateProxyUser, _settings.GetUpdateProxyPassword());
+            beta = _settings.BetaUpdatesEnabled;
+        }
+
+        if (UpdateProxyForm.Ask(this, current, _settings.SoftwareVersion, beta) is not { } chosen)
         {
             return;
         }
 
         Exception? failure = null;
+        UpdateProxy saved = UpdateProxy.Windows;
         lock (SettingsStore.Gate)
         {
-            // Protected again only when it changed: DPAPI makes another text of the same
+            // Only what was changed in the dialog is written: settings taken over at a handover
+            // while it was open keep the fields left as they were.
+            var custom = chosen.Custom != current.Custom ? chosen.Custom : _settings.UpdateProxyCustom;
+            var address = chosen.Address != current.Address ? chosen.Address : _settings.UpdateProxyAddress;
+            var login = chosen.Login != current.Login ? chosen.Login : _settings.UpdateProxyLogin;
+            var user = chosen.User != current.User ? chosen.User : _settings.UpdateProxyUser;
+
+            // Protected again only when it was changed: DPAPI makes another text of the same
             // password each time, and the update check takes a new protected text for a new proxy.
             // Before anything is changed: a protection that fails leaves the proxy as it was.
             var passwordProtected = _settings.UpdateProxyPasswordProtected;
-            if (chosen.Password != _settings.GetUpdateProxyPassword())
+            if (chosen.Password != current.Password)
             {
                 try
                 {
@@ -2582,7 +2599,7 @@ internal sealed class MainForm : Form
                     _settings.UpdateProxyUser, _settings.UpdateProxyPasswordProtected);
                 (_settings.UpdateProxyCustom, _settings.UpdateProxyAddress, _settings.UpdateProxyLogin,
                     _settings.UpdateProxyUser, _settings.UpdateProxyPasswordProtected) =
-                    (chosen.Custom, chosen.Address, chosen.Login, chosen.User, passwordProtected);
+                    (custom, address, login, user, passwordProtected);
 
                 failure = TrySaveSettings();
                 if (failure is not null)
@@ -2591,12 +2608,16 @@ internal sealed class MainForm : Form
                     (_settings.UpdateProxyCustom, _settings.UpdateProxyAddress, _settings.UpdateProxyLogin,
                         _settings.UpdateProxyUser, _settings.UpdateProxyPasswordProtected) = before;
                 }
+                else
+                {
+                    saved = UpdateProxy.From(_settings);
+                }
             }
         }
 
         if (failure is null)
         {
-            _log.Info($"The update checks go through {chosen}.");
+            _log.Info($"The update checks go through {saved}.");
         }
         else
         {
@@ -4003,13 +4024,11 @@ internal sealed class MainForm : Form
             // Taken with the channel and the proxy's key at one moment: Home Assistant is told
             // which proxy and channel this answer came through, even if they are saved anew meanwhile.
             UpdateProxy proxy;
-            bool beta;
-            UpdateProxyFields proxyKey;
+            UpdateCheckOrigin origin;
             lock (SettingsStore.Gate)
             {
                 proxy = UpdateProxy.From(_settings);
-                beta = _settings.BetaUpdatesEnabled;
-                proxyKey = _settings.UpdateProxyKey();
+                origin = _settings.UpdateCheckOrigin();
             }
 
             if (proxy.Problem is not null)
@@ -4018,7 +4037,7 @@ internal sealed class MainForm : Form
                 return;
             }
 
-            var update = await AppUpdateService.CheckAsync(_settings.SoftwareVersion, beta, proxy);
+            var update = await AppUpdateService.CheckAsync(_settings.SoftwareVersion, origin.Beta, proxy);
             if (!string.IsNullOrWhiteSpace(update.Error))
             {
                 _log.Warning($"Update check from the About page failed, through {proxy}: {AppUpdateService.Explain(update.Error)}");
@@ -4034,7 +4053,7 @@ internal sealed class MainForm : Form
             // Before the dialogs below: Home Assistant should not have to wait for them.
             if (UpdateStateHandler is not null)
             {
-                _ = UpdateStateHandler(update, beta, proxyKey);
+                _ = UpdateStateHandler(update, origin);
             }
 
             if (!update.UpdateAvailable)

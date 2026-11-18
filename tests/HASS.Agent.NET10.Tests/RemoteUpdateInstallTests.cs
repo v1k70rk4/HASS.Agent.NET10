@@ -396,7 +396,7 @@ public sealed class RemoteUpdateInstallTests : IDisposable
         using (service)
         {
             // Nothing changed: the state alone, and Home Assistant may ask for the install.
-            await service.ReportUpdateStateAsync(AnUpdate, false, new CompanionSettings().UpdateProxyKey());
+            await service.ReportUpdateStateAsync(AnUpdate, new CompanionSettings().UpdateCheckOrigin());
             var only = Assert.Single(sent);
             Assert.Equal(StateTopic, only.Topic);
             Assert.True(Parse(only.Payload).GetProperty("remote_install").GetBoolean());
@@ -404,7 +404,7 @@ public sealed class RemoteUpdateInstallTests : IDisposable
             // Ticked in another user's window.
             sent.Clear();
             WriteSwitch(file, true);
-            await service.ReportUpdateStateAsync(AnUpdate, false, new CompanionSettings().UpdateProxyKey());
+            await service.ReportUpdateStateAsync(AnUpdate, new CompanionSettings().UpdateCheckOrigin());
             Assert.Equal([DiscoveryTopic, StateTopic], sent.Select(message => message.Topic));
             Assert.False(Parse(sent[0].Payload).TryGetProperty("command_topic", out _));
             Assert.False(Parse(sent[0].Payload).TryGetProperty("payload_install", out _));
@@ -413,7 +413,7 @@ public sealed class RemoteUpdateInstallTests : IDisposable
             // And unticked again: the install command is back in the discovery.
             sent.Clear();
             WriteSwitch(file, false);
-            await service.ReportUpdateStateAsync(AnUpdate, false, new CompanionSettings().UpdateProxyKey());
+            await service.ReportUpdateStateAsync(AnUpdate, new CompanionSettings().UpdateCheckOrigin());
             Assert.Equal([DiscoveryTopic, StateTopic], sent.Select(message => message.Topic));
             Assert.Equal(InstallTopic, Parse(sent[0].Payload).GetProperty("command_topic").GetString());
             Assert.Equal("install", Parse(sent[0].Payload).GetProperty("payload_install").GetString());
@@ -437,7 +437,7 @@ public sealed class RemoteUpdateInstallTests : IDisposable
             {
                 sent.Clear();
                 WriteSwitch(file, ticked);
-                await service.ReportUpdateStateAsync(AnUpdate, false, new CompanionSettings().UpdateProxyKey());
+                await service.ReportUpdateStateAsync(AnUpdate, new CompanionSettings().UpdateCheckOrigin());
 
                 var only = Assert.Single(sent);
                 Assert.Equal(StateTopic, only.Topic);
@@ -450,6 +450,51 @@ public sealed class RemoteUpdateInstallTests : IDisposable
             Assert.True(service.RefreshRemoteInstallSwitch());
             await service.ReportRemoteInstallSwitchAsync();
             Assert.DoesNotContain(sent, message => message.Topic == DiscoveryTopic);
+        }
+    }
+
+    [Fact]
+    public async Task An_older_check_that_ends_last_does_not_replace_a_newer_result()
+    {
+        var sent = new List<(string Topic, string? Payload)>();
+        var (service, log, _, _) = NewServiceWithFile(
+            CompanionRuntimeRole.App, inMemory: false, inFile: false,
+            outbox: (topic, payload, _) => { sent.Add((topic, payload)); return Task.CompletedTask; });
+        using (log)
+        using (service)
+        {
+            var older = Settings(service).UpdateCheckOrigin();
+            var newer = Settings(service).UpdateCheckOrigin() with { StartedAt = older.StartedAt + 1 };
+
+            await service.ReportUpdateStateAsync(AnUpdate with { LatestVersion = "10.15.0" }, newer);
+            await service.ReportUpdateStateAsync(AnUpdate, older);
+
+            var only = Assert.Single(sent, message => message.Topic == StateTopic);
+            Assert.Equal("10.15.0", Parse(only.Payload).GetProperty("latest_version").GetString());
+        }
+    }
+
+    [Fact]
+    public async Task A_result_is_kept_with_the_proxy_it_was_checked_with_not_the_one_saved_since()
+    {
+        // Checked through the Windows proxy; saved since: another proxy (one that cannot be
+        // used, so the new check it causes fails at once, without the network). Were the result
+        // taken as the new proxy's, it would go out as found; it is checked again instead.
+        var sent = new List<(string Topic, string? Payload)>();
+        var (service, log, _, _) = NewServiceWithFile(
+            CompanionRuntimeRole.App, inMemory: false, inFile: false,
+            outbox: (topic, payload, _) => { sent.Add((topic, payload)); return Task.CompletedTask; });
+        using (log)
+        using (service)
+        {
+            var origin = Settings(service).UpdateCheckOrigin();
+            Settings(service).UpdateProxyCustom = true;
+            Settings(service).UpdateProxyAddress = "not a proxy";
+
+            await service.ReportUpdateStateAsync(AnUpdate, origin);
+
+            var only = Assert.Single(sent, message => message.Topic == StateTopic);
+            Assert.NotEqual("10.14.0", Parse(only.Payload).GetProperty("latest_version").GetString());
         }
     }
 
