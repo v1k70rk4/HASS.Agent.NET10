@@ -9,6 +9,16 @@ using HASS.Agent.Companion.SystemStatus;
 
 namespace HASS.Agent.Companion.Configuration;
 
+/// <summary>
+/// The update proxy's settings field by field, compared as such (two different proxies never
+/// look alike). The password only as its protected text.
+/// </summary>
+internal readonly record struct UpdateProxyFields(bool Custom, string Address, bool Login, string User, string PasswordProtected)
+{
+    /// <summary>Not the fields: it would print the protected password.</summary>
+    public override string ToString() => nameof(UpdateProxyFields);
+}
+
 internal sealed class CompanionSettings
 {
     public string DeviceName { get; set; } = Environment.MachineName;
@@ -86,17 +96,19 @@ internal sealed class CompanionSettings
 
     public void SetUpdateProxyPassword(string password)
     {
-        UpdateProxyPasswordProtected = string.IsNullOrEmpty(password)
-            ? string.Empty
-            : ProtectedSecretStore.Protect(password, SerialNumber);
+        UpdateProxyPasswordProtected = ProtectUpdateProxyPassword(password);
     }
 
+    /// <summary>The text <see cref="UpdateProxyPasswordProtected"/> would hold; DPAPI may throw.</summary>
+    internal string ProtectUpdateProxyPassword(string password) =>
+        string.IsNullOrEmpty(password) ? string.Empty : ProtectedSecretStore.Protect(password, SerialNumber);
+
     /// <summary>
-    /// The proxy settings as one text, to tell whether an update check's answer came through the
-    /// proxy set now. Taken under <see cref="SettingsStore.Gate"/> together with the proxy itself.
+    /// The proxy settings, to tell whether an update check's answer came through the proxy set
+    /// now. Taken under <see cref="SettingsStore.Gate"/> together with the proxy itself.
     /// </summary>
-    internal string UpdateProxyKey() =>
-        $"{UpdateProxyCustom}|{UpdateProxyAddress}|{UpdateProxyLogin}|{UpdateProxyUser}|{UpdateProxyPasswordProtected}";
+    internal UpdateProxyFields UpdateProxyKey() =>
+        new(UpdateProxyCustom, UpdateProxyAddress, UpdateProxyLogin, UpdateProxyUser, UpdateProxyPasswordProtected);
 
     /// <summary>Danger Zone: the fast sensor interval may go below 5 seconds, down to 1.</summary>
     public bool FastSensorsUnlocked { get; set; }

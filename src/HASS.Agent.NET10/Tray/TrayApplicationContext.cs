@@ -75,8 +75,16 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
             }
 
             var load = MessageBox.Show(form, Strings.Get("General.SettingsReloaded"), AppIdentity.DisplayName, MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes;
-            if (!load || form.IsDisposed)
+            if (form.IsDisposed)
             {
+                return;
+            }
+
+            if (!load)
+            {
+                // The window stays as it is, but the About page's update buttons already use the
+                // proxy taken over (it is saved at once, not with the window), so its hint follows.
+                form.UpdateProxyHint();
                 return;
             }
 
@@ -93,7 +101,7 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
     public Func<Task<bool>>? DiscoveryRepublishHandler { get; set; }
 
     /// <summary>Set by Program to the MQTT service: reports a manual update check to Home Assistant.</summary>
-    public Func<AppUpdateState, bool, string, Task>? UpdateStateHandler { get; set; }
+    public Func<AppUpdateState, bool, UpdateProxyFields, Task>? UpdateStateHandler { get; set; }
 
     /// <summary>Set by Program to the MQTT service: tells Home Assistant that "updates only at this PC" was changed.</summary>
     public Func<Task>? RemoteInstallSwitchHandler { get; set; }

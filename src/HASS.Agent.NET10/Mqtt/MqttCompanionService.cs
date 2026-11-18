@@ -56,9 +56,12 @@ internal sealed class MqttCompanionService : IDisposable
     private const int ThumbnailPacketOverhead = 256;
     private uint? _brokerMaximumPacketSize;
     private bool _lastUpdateBeta;
-    // The proxy the last check went through (UpdateProxy, without the password): a new one is
-    // tried at once, not after the hour.
-    private string _lastUpdateProxy = string.Empty;
+    // The proxy the last check went through: a new one is tried at once, not after the hour.
+    private UpdateProxyFields? _lastUpdateProxy;
+    // The four above change together under this lock, and each change counts: a check that
+    // finishes after a newer result came in is not taken over it.
+    private readonly object _updateResultGate = new();
+    private long _updateResultVersion;
 
     internal static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -396,17 +399,21 @@ internal sealed class MqttCompanionService : IDisposable
     /// <paramref name="beta"/> and <paramref name="proxyKey"/> are what the check was made with,
     /// not what is saved by now: an answer through the old proxy must not pass for the new one's.
     /// </summary>
-    public async Task ReportUpdateStateAsync(AppUpdateState state, bool beta, string proxyKey)
+    public async Task ReportUpdateStateAsync(AppUpdateState state, bool beta, UpdateProxyFields proxyKey)
     {
         if (!string.IsNullOrWhiteSpace(state.Error))
         {
             return;
         }
 
-        _lastUpdateState = state;
-        _lastUpdateBeta = beta;
-        _lastUpdateProxy = proxyKey;
-        _lastUpdateCheck = DateTimeOffset.UtcNow;
+        lock (_updateResultGate)
+        {
+            _lastUpdateState = state;
+            _lastUpdateBeta = beta;
+            _lastUpdateProxy = proxyKey;
+            _lastUpdateCheck = DateTimeOffset.UtcNow;
+            _updateResultVersion++;
+        }
 
         if (!(_isOnWebSocket && _haWs is not null) && !OnBroker)
         {
@@ -2358,22 +2365,44 @@ internal sealed class MqttCompanionService : IDisposable
             || _lastUpdateProxy != _settings.UpdateProxyKey()
             || now - _lastUpdateCheck >= UpdateCheckThrottle)
         {
-            // The proxy and its key from the same moment, under the gate every save takes: settings
-            // saved while the check is under way must not be recorded as the proxy this answer came
-            // through. The gate is not held over the check itself.
-            string proxyKey;
+            // The proxy, its key and the channel from the same moment, under the gate every save
+            // takes: settings saved while the check is under way must not be recorded as what this
+            // answer came through. The gate is not held over the check itself.
+            UpdateProxyFields proxyKey;
             UpdateProxy proxy;
+            bool beta;
             lock (SettingsStore.Gate)
             {
                 proxyKey = _settings.UpdateProxyKey();
                 proxy = UpdateProxy.From(_settings);
+                beta = _settings.BetaUpdatesEnabled;
             }
 
-            _lastUpdateState = await AppUpdateService.CheckAsync(_settings.SoftwareVersion, _settings.BetaUpdatesEnabled, proxy);
-            _lastUpdateBeta = _settings.BetaUpdatesEnabled;
-            _lastUpdateProxy = proxyKey;
-            _lastUpdateCheck = now;
-            if (string.IsNullOrWhiteSpace(_lastUpdateState.Error))
+            long startedAt;
+            lock (_updateResultGate)
+            {
+                startedAt = _updateResultVersion;
+            }
+
+            var result = await AppUpdateService.CheckAsync(_settings.SoftwareVersion, beta, proxy);
+            lock (_updateResultGate)
+            {
+                if (_updateResultVersion != startedAt)
+                {
+                    // A newer result came in meanwhile (the About page's button, another check),
+                    // and went out with its own publish: this older one does not replace it.
+                    _log.Debug("Update check result dropped: a newer one came in while it ran.");
+                    return;
+                }
+
+                _lastUpdateState = result;
+                _lastUpdateBeta = beta;
+                _lastUpdateProxy = proxyKey;
+                _lastUpdateCheck = now;
+                _updateResultVersion++;
+            }
+
+            if (string.IsNullOrWhiteSpace(result.Error))
             {
                 _updateRetries = 0;
             }
@@ -2381,7 +2410,7 @@ internal sealed class MqttCompanionService : IDisposable
             {
                 // The state still goes out, with the error in it; only the check failed.
                 var again = _updateRetries < MaxUpdateRetries ? "; trying again in a minute" : string.Empty;
-                _log.Warning($"Update check failed: {AppUpdateService.Explain(_lastUpdateState.Error)}{again}");
+                _log.Warning($"Update check failed: {AppUpdateService.Explain(result.Error)}{again}");
             }
         }
 

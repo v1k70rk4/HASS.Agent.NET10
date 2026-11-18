@@ -156,7 +156,7 @@ internal sealed class MainForm : Form
     /// <summary>Wired by TrayApplicationContext: tells Home Assistant what a manual update check found.</summary>
     [System.ComponentModel.Browsable(false)]
     [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
-    public Func<AppUpdateState, bool, string, Task>? UpdateStateHandler { get; set; }
+    public Func<AppUpdateState, bool, UpdateProxyFields, Task>? UpdateStateHandler { get; set; }
 
     /// <summary>Wired by TrayApplicationContext: tells Home Assistant that the About page's "updates only at this PC" was changed.</summary>
     [System.ComponentModel.Browsable(false)]
@@ -2457,8 +2457,11 @@ internal sealed class MainForm : Form
         return card;
     }
 
-    /// <summary>The Proxy settings row says what the update check goes through now.</summary>
-    private void UpdateProxyHint()
+    /// <summary>
+    /// The Proxy settings row says what the update check goes through now. Also called when
+    /// settings taken over at a handover are kept under this window (TrayApplicationContext).
+    /// </summary>
+    internal void UpdateProxyHint()
     {
         if (_proxyHint is null)
         {
@@ -2480,7 +2483,17 @@ internal sealed class MainForm : Form
     /// </summary>
     private void ShowUpdateSettings()
     {
-        if (UpdateSettingsForm.Ask(this, _settings.BetaUpdatesEnabled, _settings.RemoteUpdateInstallBlocked) is not { } chosen)
+        var opened = (Beta: _settings.BetaUpdatesEnabled, LocalOnly: _settings.RemoteUpdateInstallBlocked);
+        if (UpdateSettingsForm.Ask(this, opened.Beta, opened.LocalOnly) is not { } chosen)
+        {
+            return;
+        }
+
+        // Only what was changed in the dialog is written: another user's app may have ticked
+        // "updates only at this PC" while it was open, and a box left as it was must not untick it.
+        var betaChanged = chosen.Beta != opened.Beta;
+        var localChanged = chosen.LocalOnly != opened.LocalOnly;
+        if (!betaChanged && !localChanged)
         {
             return;
         }
@@ -2488,19 +2501,16 @@ internal sealed class MainForm : Form
         // Both in one save, under the gate as every write from this window: a handover's reload
         // of the settings must not come between the change and its save and put the old value
         // back. A save that fails takes both back, so the app never holds what the file does not say.
-        bool betaChanged, localChanged;
+        // Without a change of its own the switch is the file's (SettingsStore.Save keeps it).
         Exception? failure;
         lock (SettingsStore.Gate)
         {
             var betaBefore = _settings.BetaUpdatesEnabled;
-            betaChanged = betaBefore != chosen.Beta;
-            localChanged = _settings.RemoteUpdateInstallBlocked != chosen.LocalOnly;
-            if (!betaChanged && !localChanged)
+            if (betaChanged)
             {
-                return;
+                _settings.BetaUpdatesEnabled = chosen.Beta;
             }
 
-            _settings.BetaUpdatesEnabled = chosen.Beta;
             failure = localChanged
                 ? _settings.TrySetRemoteUpdateInstallBlocked(
                     chosen.LocalOnly,
@@ -2547,28 +2557,40 @@ internal sealed class MainForm : Form
             return;
         }
 
-        Exception? failure;
+        Exception? failure = null;
         lock (SettingsStore.Gate)
         {
-            var before = (_settings.UpdateProxyCustom, _settings.UpdateProxyAddress, _settings.UpdateProxyLogin,
-                _settings.UpdateProxyUser, _settings.UpdateProxyPasswordProtected);
-            _settings.UpdateProxyCustom = chosen.Custom;
-            _settings.UpdateProxyAddress = chosen.Address;
-            _settings.UpdateProxyLogin = chosen.Login;
-            _settings.UpdateProxyUser = chosen.User;
             // Protected again only when it changed: DPAPI makes another text of the same
             // password each time, and the update check takes a new protected text for a new proxy.
+            // Before anything is changed: a protection that fails leaves the proxy as it was.
+            var passwordProtected = _settings.UpdateProxyPasswordProtected;
             if (chosen.Password != _settings.GetUpdateProxyPassword())
             {
-                _settings.SetUpdateProxyPassword(chosen.Password);
+                try
+                {
+                    passwordProtected = _settings.ProtectUpdateProxyPassword(chosen.Password);
+                }
+                catch (System.Security.Cryptography.CryptographicException ex)
+                {
+                    failure = ex;
+                }
             }
 
-            failure = TrySaveSettings();
-            if (failure is not null)
+            if (failure is null)
             {
-                // Not in the file, so not in use either: the next check or save keeps the old one.
+                var before = (_settings.UpdateProxyCustom, _settings.UpdateProxyAddress, _settings.UpdateProxyLogin,
+                    _settings.UpdateProxyUser, _settings.UpdateProxyPasswordProtected);
                 (_settings.UpdateProxyCustom, _settings.UpdateProxyAddress, _settings.UpdateProxyLogin,
-                    _settings.UpdateProxyUser, _settings.UpdateProxyPasswordProtected) = before;
+                    _settings.UpdateProxyUser, _settings.UpdateProxyPasswordProtected) =
+                    (chosen.Custom, chosen.Address, chosen.Login, chosen.User, passwordProtected);
+
+                failure = TrySaveSettings();
+                if (failure is not null)
+                {
+                    // Not in the file, so not in use either: the next check or save keeps the old one.
+                    (_settings.UpdateProxyCustom, _settings.UpdateProxyAddress, _settings.UpdateProxyLogin,
+                        _settings.UpdateProxyUser, _settings.UpdateProxyPasswordProtected) = before;
+                }
             }
         }
 
@@ -3982,7 +4004,7 @@ internal sealed class MainForm : Form
             // which proxy and channel this answer came through, even if they are saved anew meanwhile.
             UpdateProxy proxy;
             bool beta;
-            string proxyKey;
+            UpdateProxyFields proxyKey;
             lock (SettingsStore.Gate)
             {
                 proxy = UpdateProxy.From(_settings);
