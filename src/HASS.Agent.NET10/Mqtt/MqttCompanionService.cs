@@ -837,12 +837,12 @@ internal sealed class MqttCompanionService : IDisposable
         }
         catch (Exception ex)
         {
-            _log.Warning($"Update install failed: {ex.Message}");
+            _log.Warning($"Update install failed: {AppUpdateService.Reason(ex)}");
             try
             {
                 await PublishPersistentNotificationAsync(
                     Strings.GetHa("HaPn.UpdateTitle"),
-                    string.Format(Strings.GetHa("HaPn.UpdateFailed"), _settings.DeviceName, ex.Message));
+                    string.Format(Strings.GetHa("HaPn.UpdateFailed"), _settings.DeviceName, AppUpdateService.Reason(ex)));
             }
             catch
             {
@@ -962,10 +962,10 @@ internal sealed class MqttCompanionService : IDisposable
         }
         catch (Exception ex)
         {
-            _log.Warning($"Silent update install failed: {ex.Message}");
+            _log.Warning($"Silent update install failed: {AppUpdateService.Reason(ex)}");
             if (announce)
             {
-                await AnnounceAsync(string.Format(Strings.GetHa("HaPn.UpdateFailed"), _settings.DeviceName, ex.Message));
+                await AnnounceAsync(string.Format(Strings.GetHa("HaPn.UpdateFailed"), _settings.DeviceName, AppUpdateService.Reason(ex)));
             }
         }
         finally

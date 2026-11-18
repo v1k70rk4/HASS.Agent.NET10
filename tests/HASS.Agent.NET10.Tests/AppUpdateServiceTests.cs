@@ -222,3 +222,31 @@ public class UpdateCheckErrorTests
         Assert.Equal(string.Empty, AppUpdateService.Explain(null));
     }
 }
+
+public class UpdateErrorReasonTests
+{
+    [Fact]
+    public void The_reasons_under_an_error_are_said_too()
+    {
+        var error = new HttpRequestException(
+            "The SSL connection could not be established, see inner exception.",
+            new System.Security.Authentication.AuthenticationException(
+                "The remote certificate is invalid because of errors in the certificate chain: UntrustedRoot"));
+
+        Assert.Equal(
+            "The SSL connection could not be established: The remote certificate is invalid because of errors in the certificate chain: UntrustedRoot.",
+            AppUpdateService.Reason(error));
+    }
+
+    [Fact]
+    public void A_message_said_already_is_not_said_again()
+    {
+        var error = new HttpRequestException("Connection refused (127.0.0.1:8099)",
+            new System.Net.Sockets.SocketException(10061));
+        var reason = AppUpdateService.Reason(error);
+
+        Assert.StartsWith("Connection refused (127.0.0.1:8099)", reason, StringComparison.Ordinal);
+        Assert.Equal(reason.IndexOf("127.0.0.1:8099", StringComparison.Ordinal), reason.LastIndexOf("127.0.0.1:8099", StringComparison.Ordinal));
+        Assert.Equal("Plain.", AppUpdateService.Reason(new InvalidOperationException("Plain")));
+    }
+}

@@ -4,7 +4,6 @@
 - Do not comment on code style, formatting or naming. The build treats warnings as errors and CodeQL scans every pull request; what they let through is fine.
 - Flag comments that over-explain straightforward code, narrate the obvious, or read like AI commentary (multi-sentence justifications for a single line).
 - A pull request with a dependency version bump should only contain changes required for the version bump. If the PR includes other changes, request that they are removed from the PR. Dependabot PRs are identifiable by "Dependabot commands and options" in their description.
-- The version numbers (`<Version>` in `src/HASS.Agent.NET10/HASS.Agent.NET10.csproj`, `MyAppVersion` in `installer/HASS.Agent.NET10.iss`, the badge and status line of `README.md`) and the changelog (`CHANGELOG.md`, the `## What Changed` section of `README.md`) change only in a release pull request. In any other pull request, ask for them to be left alone.
 - Text a user sees comes from the language files under `src/HASS.Agent.NET10/Localization/` (`en.json`, `hu.json` and the others), under the same key in every file; `LocalizationTests` fail when a language lacks a key. A language the author does not speak may carry the English text, with a note in the PR. In a translation PR, check keys and `{0}`-style placeholders against `en.json`; grammar and tone in that language are the translator's.
 - A bug fix comes with a test that fails without the fix; new logic with an input and an output gets tests in the same pull request. What only Windows itself can show (windows, the tray icon, audio and display devices, the service) is tested by hand: the PR should say what was tried and on which Windows. Ask for the test, or for that note, when it is missing.
 - A new feature is documented under `docs/` (its own page or section) with one line in the README's feature table. The docs are built with MkDocs in `--strict` mode: a relative link that does not resolve, or a new page missing from the `nav` of `mkdocs.yml`, fails the build. The `<a id="...">` anchors in the README keep old links alive; do not let a change remove them.
@@ -23,7 +22,6 @@ This repository is HASS.Agent .NET10, a Windows client for Home Assistant: one e
 ## Pull Requests
 
 - One change per pull request, against `main`. Say what it changes and why; for a bug, how to reproduce it; for what was tested by hand, what and on which Windows.
-- Leave the version numbers and the changelog alone; they are updated when a release is made.
 
 ## Development Commands
 
