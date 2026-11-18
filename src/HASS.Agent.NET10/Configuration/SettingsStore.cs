@@ -1,3 +1,7 @@
+using System.Runtime.CompilerServices;
+using System.Security.AccessControl;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.Json.Nodes;
@@ -33,6 +37,19 @@ internal static class SettingsStore
     public static readonly object Gate = new();
 
     /// <summary>
+    /// What each settings object looked like when it was last read from the file or written to
+    /// it. A save writes only what was changed since then over the file as it is now
+    /// (<see cref="MergeUnchangedFromFile"/>): several users' apps and the service share one
+    /// settings file, each holding the settings as it read them, and a save of the whole would
+    /// put back the old value of every setting another app changed meanwhile. An object that
+    /// was never read from the file (an import, new settings) is written whole.
+    /// </summary>
+    private static readonly ConditionalWeakTable<CompanionSettings, StrongBox<string>> AsLastSeen = new();
+
+    private static void Remember(CompanionSettings settings, string json) =>
+        AsLastSeen.AddOrUpdate(settings, new StrongBox<string>(json));
+
+    /// <summary>
     /// The settings from the file into the instance the services hold: another app of the PC
     /// (another user's session) may have saved them since this one read them. A file that
     /// cannot be read leaves the instance as it is, and says so (<see cref="SettingsReload.Failed"/>).
@@ -62,12 +79,18 @@ internal static class SettingsStore
                 }
             }
 
-            return JsonSerializer.Serialize(target, JsonOptions) != before ? SettingsReload.Changed : SettingsReload.Unchanged;
+            var after = JsonSerializer.Serialize(target, JsonOptions);
+            Remember(target, after);
+            return after != before ? SettingsReload.Changed : SettingsReload.Unchanged;
         }
     }
 
     public static CompanionSettings LoadOrCreate(AppPaths paths, FileLog log)
     {
+        // The read and the write-back below are one step among the apps of the PC, as a save
+        // is: after an update every app's first start writes the file back (the version in
+        // it), and a save of another app in between would be undone by it.
+        using var turn = SaveTurn.Take(paths);
         CompanionSettings settings;
         string? originalJson = null;
         var restoredFromBackup = false;
@@ -137,6 +160,7 @@ internal static class SettingsStore
             }
         }
 
+        Remember(settings, normalizedJson);
         log.Info($"Loaded settings from {paths.SettingsFile}.");
         if (notWritten is not null)
         {
@@ -205,8 +229,15 @@ internal static class SettingsStore
     /// <summary>A copy to change, so a failed change leaves the settings in use as they were.</summary>
     public static CompanionSettings Clone(CompanionSettings settings)
     {
-        return JsonSerializer.Deserialize<CompanionSettings>(Serialize(settings), JsonOptions)
+        var copy = JsonSerializer.Deserialize<CompanionSettings>(Serialize(settings), JsonOptions)
             ?? throw new InvalidDataException("The settings could not be copied.");
+        // What is changed on the copy counts as changed since the original was read.
+        if (AsLastSeen.TryGetValue(settings, out var seen))
+        {
+            Remember(copy, seen.Value!);
+        }
+
+        return copy;
     }
 
     /// <summary>
@@ -216,20 +247,174 @@ internal static class SettingsStore
     /// its next save of anything, and Home Assistant could install again. The file's value is
     /// kept, and taken into <paramref name="settings"/>, unless the save is the one that sets
     /// the switch: the tick itself, or an import of other settings
-    /// (<paramref name="withItsRemoteInstallSwitch"/>).
+    /// (<paramref name="withItsRemoteInstallSwitch"/>). Every other setting another app changed
+    /// since these were read stays as the file has it, unless it was changed here too
+    /// (<see cref="AsLastSeen"/>); it is not taken into <paramref name="settings"/>, which the
+    /// running app goes on using as they are until it reads the file again.
     /// </summary>
     public static void Save(AppPaths paths, CompanionSettings settings, bool withItsRemoteInstallSwitch = false)
     {
-        // The read and the write are one step for this app's threads.
+        // The read and the write are one step: for this app's threads (the gate), and for the
+        // other apps of the PC (the turn), so two saves never read the same file and write
+        // over each other.
         lock (Gate)
         {
+            using var turn = SaveTurn.Take(paths);
             if (!withItsRemoteInstallSwitch && SavedRemoteUpdateInstallBlocked(paths.SettingsFile) is { } saved)
             {
                 settings.RemoteUpdateInstallBlocked = saved;
             }
 
             settings.Normalize();
-            Write(paths, Serialize(settings));
+            var ours = Serialize(settings);
+            var json = AsLastSeen.TryGetValue(settings, out var seen)
+                ? MergeUnchangedFromFile(ours, seen.Value!, ReadFileOrNull(paths.SettingsFile), withItsRemoteInstallSwitch)
+                : ours;
+            Write(paths, json);
+            Remember(settings, ours);
+        }
+    }
+
+    /// <summary>The turn a save takes among the apps of the PC; for a test to hold it as another app would.</summary>
+    internal static IDisposable? TakeSaveTurn(AppPaths paths) => SaveTurn.Take(paths);
+
+    /// <summary>
+    /// The file's text, or null when there is no file. A file that is there and cannot be read
+    /// (held by another program for a moment) is tried again, and then the save fails: written
+    /// without it, the save would put back every setting another app changed.
+    /// </summary>
+    private static string? ReadFileOrNull(string file)
+    {
+        for (var attempt = 0; ; attempt++)
+        {
+            try
+            {
+                return File.Exists(file) ? File.ReadAllText(file) : null;
+            }
+            catch (IOException) when (attempt < 2)
+            {
+                Thread.Sleep(50);
+            }
+        }
+    }
+
+    /// <summary>
+    /// <paramref name="ours"/> with every setting that was not changed since
+    /// <paramref name="asLastSeen"/> taken from <paramref name="inFile"/>: what another app
+    /// saved meanwhile stays. A setting changed here is ours, as is one the file does not have
+    /// (a file from an older version) or one new since the last read. With nothing to merge,
+    /// or a file that would not read as settings afterwards, ours as they are.
+    /// </summary>
+    internal static string MergeUnchangedFromFile(string ours, string asLastSeen, string? inFile, bool keepOurRemoteInstallSwitch = false)
+    {
+        if (inFile is null)
+        {
+            return ours;
+        }
+
+        try
+        {
+            if (JsonNode.Parse(ours) is not JsonObject mine
+                || JsonNode.Parse(asLastSeen) is not JsonObject before
+                || JsonNode.Parse(inFile) is not JsonObject theirs)
+            {
+                return ours;
+            }
+
+            var taken = false;
+            foreach (var name in mine.Select(property => property.Key).ToList())
+            {
+                if (keepOurRemoteInstallSwitch && string.Equals(name, nameof(CompanionSettings.RemoteUpdateInstallBlocked), StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                if (!theirs.TryGetPropertyValue(name, out var theirValue) || !before.TryGetPropertyValue(name, out var beforeValue))
+                {
+                    continue;
+                }
+
+                if (JsonNode.DeepEquals(mine[name], beforeValue) && !JsonNode.DeepEquals(mine[name], theirValue))
+                {
+                    mine[name] = theirValue?.DeepClone();
+                    taken = true;
+                }
+            }
+
+            if (!taken)
+            {
+                return ours;
+            }
+
+            var merged = mine.ToJsonString(JsonOptions);
+            // A value in the file that is no setting (a file edited by hand) is not carried on.
+            return JsonSerializer.Deserialize<CompanionSettings>(merged, JsonOptions) is null ? ours : merged;
+        }
+        catch (JsonException)
+        {
+            return ours;
+        }
+    }
+
+    /// <summary>
+    /// The turn to save, among the apps of the PC: a named mutex, open to the users who may use
+    /// the settings (the settings folder's rule), made for the save and gone with it. A save
+    /// that cannot make or take it within a few seconds goes on without, as before this class.
+    /// </summary>
+    private sealed class SaveTurn : IDisposable
+    {
+        private static readonly TimeSpan Wait = TimeSpan.FromSeconds(5);
+        private readonly Mutex _mutex;
+        private readonly bool _taken;
+
+        private SaveTurn(Mutex mutex, bool taken)
+        {
+            _mutex = mutex;
+            _taken = taken;
+        }
+
+        public static SaveTurn? Take(AppPaths paths)
+        {
+            Mutex? mutex = null;
+            try
+            {
+                var security = new MutexSecurity();
+                foreach (var participant in SystemStatus.HomeAssistantLink.Participants(paths.ConfigDirectory))
+                {
+                    security.AddAccessRule(new MutexAccessRule(participant, MutexRights.FullControl, AccessControlType.Allow));
+                }
+
+                // One name per settings file: the PC's apps share theirs, a test has its own.
+                var file = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(Path.GetFullPath(paths.SettingsFile).ToUpperInvariant())), 0, 8);
+                mutex = MutexAcl.Create(initiallyOwned: false, $@"Global\HASS.Agent.NET10.SettingsSave.{file}", out _, security);
+                bool taken;
+                try
+                {
+                    taken = mutex.WaitOne(Wait);
+                }
+                catch (AbandonedMutexException)
+                {
+                    // The app that had it died in its save: the turn is this one's.
+                    taken = true;
+                }
+
+                return new SaveTurn(mutex, taken);
+            }
+            catch (Exception ex) when (ex is UnauthorizedAccessException or IOException or WaitHandleCannotBeOpenedException or System.Security.SecurityException)
+            {
+                mutex?.Dispose();
+                return null;
+            }
+        }
+
+        public void Dispose()
+        {
+            if (_taken)
+            {
+                _mutex.ReleaseMutex();
+            }
+
+            _mutex.Dispose();
         }
     }
 
@@ -412,7 +597,10 @@ internal static class SettingsStore
     /// Writes the settings atomically. A plain write truncates the file first, so a process
     /// kill at the wrong moment (the installer force-closes the app during an update) could
     /// leave it empty. Writing to a temp file and replacing keeps the previous content as a
-    /// backup and never leaves a half-written settings file behind.
+    /// backup and never leaves a half-written settings file behind. Where the replace cannot
+    /// be done (another process has the file open in a way that forbids it), the file is
+    /// written in place: with what it had kept in the backup first, and put back if that
+    /// write fails, so a write cut short loses nothing that was saved before.
     /// </summary>
     private static void Write(AppPaths paths, string json, bool rotateBackup = true)
     {
@@ -427,18 +615,29 @@ internal static class SettingsStore
             // Through SafeFiles, as every write into the shared folder: a link put under the
             // temp file's name beforehand is not followed.
             SafeFiles.WriteAllText(temp, json);
-            if (File.Exists(target))
+            for (var attempt = 0; ; attempt++)
             {
-                // rotateBackup is off when recovering from the backup: the file we are
-                // replacing is the unreadable one, and it must not overwrite the good copy.
-                File.Replace(temp, target, rotateBackup ? BackupFile(paths) : null, ignoreMetadataErrors: true);
-            }
-            else
-            {
-                File.Move(temp, target);
-            }
+                try
+                {
+                    if (File.Exists(target))
+                    {
+                        // rotateBackup is off when recovering from the backup: the file we are
+                        // replacing is the unreadable one, and it must not overwrite the good copy.
+                        File.Replace(temp, target, rotateBackup ? BackupFile(paths) : null, ignoreMetadataErrors: true);
+                    }
+                    else
+                    {
+                        File.Move(temp, target);
+                    }
 
-            return;
+                    return;
+                }
+                catch (IOException) when (attempt < 2)
+                {
+                    // Most often another app reading the file this moment: gone in a blink.
+                    Thread.Sleep(50);
+                }
+            }
         }
         catch
         {
@@ -455,9 +654,43 @@ internal static class SettingsStore
             }
         }
 
-        // Fall back to a direct write so a locked file or a failed replace can never stop
-        // settings from being saved at all.
-        SafeFiles.WriteAllText(target, json);
+        // Fall back to a direct write so a failed replace can never stop settings from being
+        // saved at all. It truncates the file first, so what is there is kept before: in the
+        // backup, where a start finds it if the file ends up cut short, and in hand, to put back.
+        byte[]? before = null;
+        try
+        {
+            if (File.Exists(target))
+            {
+                before = File.ReadAllBytes(target);
+                if (rotateBackup)
+                {
+                    SafeFiles.WriteAllBytes(BackupFile(paths), before);
+                }
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception)
+        {
+            // Not kept: the write below goes on, as it always has.
+        }
+
+        try
+        {
+            SafeFiles.WriteAllText(target, json);
+        }
+        catch (Exception) when (before is not null)
+        {
+            try
+            {
+                SafeFiles.WriteAllBytes(target, before);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception)
+            {
+                // The file could not be opened at all, so it is as it was; or the backup has it.
+            }
+
+            throw;
+        }
     }
 
     private static string Serialize(CompanionSettings settings)
