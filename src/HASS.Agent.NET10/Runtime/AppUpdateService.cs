@@ -20,6 +20,27 @@ internal static class AppUpdateService
             ? "GitHub returned no release; if that lasts, GitHub may be having trouble, see https://www.githubstatus.com"
             : error ?? string.Empty;
 
+    /// <summary>
+    /// What went wrong, with the reasons under it: "The SSL connection could not be established,
+    /// see inner exception" alone does not say that a proxy showed a certificate nobody trusts,
+    /// nor "An error occurred while establishing a connection to the proxy tunnel" that the
+    /// SOCKS proxy refused the login. Each message once, joined by colons.
+    /// </summary>
+    public static string Reason(Exception error)
+    {
+        var parts = new List<string>();
+        for (Exception? current = error; current is not null; current = current.InnerException)
+        {
+            var text = current.Message.Replace(", see inner exception", string.Empty, StringComparison.OrdinalIgnoreCase).Trim().TrimEnd('.').Trim();
+            if (text.Length > 0 && !parts.Any(part => part.Contains(text, StringComparison.Ordinal)))
+            {
+                parts.Add(text);
+            }
+        }
+
+        return parts.Count == 0 ? error.GetType().Name : string.Join(": ", parts) + ".";
+    }
+
     public static async Task<AppUpdateState> CheckAsync(string installedVersion, bool includePrereleases = false, UpdateProxy? proxy = null, CancellationToken cancellationToken = default)
     {
         try
@@ -62,7 +83,7 @@ internal static class AppUpdateService
         }
         catch (Exception ex)
         {
-            return AppUpdateState.Failed(installedVersion, ex.Message);
+            return AppUpdateState.Failed(installedVersion, Reason(ex));
         }
     }
 

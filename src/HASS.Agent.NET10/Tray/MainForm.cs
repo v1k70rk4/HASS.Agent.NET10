@@ -4150,7 +4150,7 @@ internal sealed class MainForm : Form
         }
         catch (Exception ex)
         {
-            MessageBox.Show(string.Format(S("About.UpdateError"), ex.Message), AppIdentity.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            MessageBox.Show(string.Format(S("About.UpdateError"), AppUpdateService.Reason(ex)), AppIdentity.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
         finally
         {

@@ -222,3 +222,33 @@ public class UpdateCheckErrorTests
         Assert.Equal(string.Empty, AppUpdateService.Explain(null));
     }
 }
+
+public class UpdateErrorReasonTests
+{
+    [Fact]
+    public void The_reasons_under_an_error_are_said_too()
+    {
+        var error = new HttpRequestException(
+            "The SSL connection could not be established, see inner exception.",
+            new System.Security.Authentication.AuthenticationException(
+                "The remote certificate is invalid because of errors in the certificate chain: UntrustedRoot"));
+
+        Assert.Equal(
+            "The SSL connection could not be established: The remote certificate is invalid because of errors in the certificate chain: UntrustedRoot.",
+            AppUpdateService.Reason(error));
+    }
+
+    [Fact]
+    public void A_message_said_already_is_not_said_again()
+    {
+        // The same text twice (HttpClient often wraps a SocketException in its own words).
+        Assert.Equal("Repeated.", AppUpdateService.Reason(new HttpRequestException("Repeated.", new IOException("Repeated."))));
+
+        // An inner message the outer one already holds: once.
+        Assert.Equal(
+            "No connection could be made (127.0.0.1:8099).",
+            AppUpdateService.Reason(new HttpRequestException("No connection could be made (127.0.0.1:8099)", new IOException("No connection could be made"))));
+
+        Assert.Equal("Plain.", AppUpdateService.Reason(new InvalidOperationException("Plain")));
+    }
+}
