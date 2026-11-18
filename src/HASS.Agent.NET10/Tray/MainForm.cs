@@ -2552,12 +2552,14 @@ internal sealed class MainForm : Form
         // All five from one moment: a handover's reload must not give the dialog one proxy's
         // address and another one's password.
         UpdateProxyChoice current;
+        UpdateProxyFields opened;
         bool beta;
         lock (SettingsStore.Gate)
         {
             current = new UpdateProxyChoice(
                 _settings.UpdateProxyCustom, _settings.UpdateProxyAddress, _settings.UpdateProxyLogin,
                 _settings.UpdateProxyUser, _settings.GetUpdateProxyPassword());
+            opened = _settings.UpdateProxyKey();
             beta = _settings.BetaUpdatesEnabled;
         }
 
@@ -2567,21 +2569,20 @@ internal sealed class MainForm : Form
         }
 
         Exception? failure = null;
+        var changedMeanwhile = false;
         UpdateProxy saved = UpdateProxy.Windows;
         lock (SettingsStore.Gate)
         {
-            // Only what was changed in the dialog is written: settings taken over at a handover
-            // while it was open keep the fields left as they were.
-            var custom = chosen.Custom != current.Custom ? chosen.Custom : _settings.UpdateProxyCustom;
-            var address = chosen.Address != current.Address ? chosen.Address : _settings.UpdateProxyAddress;
-            var login = chosen.Login != current.Login ? chosen.Login : _settings.UpdateProxyLogin;
-            var user = chosen.User != current.User ? chosen.User : _settings.UpdateProxyUser;
+            // Settings taken over at a handover while the dialog was open: what it shows is not
+            // what is saved any more, and a password typed for one proxy must not go to another.
+            // Nothing is mixed; the dialog opens again with the proxy saved now.
+            changedMeanwhile = _settings.UpdateProxyKey() != opened;
 
             // Protected again only when it was changed: DPAPI makes another text of the same
             // password each time, and the update check takes a new protected text for a new proxy.
             // Before anything is changed: a protection that fails leaves the proxy as it was.
             var passwordProtected = _settings.UpdateProxyPasswordProtected;
-            if (chosen.Password != current.Password)
+            if (!changedMeanwhile && chosen.Password != current.Password)
             {
                 try
                 {
@@ -2593,13 +2594,13 @@ internal sealed class MainForm : Form
                 }
             }
 
-            if (failure is null)
+            if (!changedMeanwhile && failure is null)
             {
                 var before = (_settings.UpdateProxyCustom, _settings.UpdateProxyAddress, _settings.UpdateProxyLogin,
                     _settings.UpdateProxyUser, _settings.UpdateProxyPasswordProtected);
                 (_settings.UpdateProxyCustom, _settings.UpdateProxyAddress, _settings.UpdateProxyLogin,
                     _settings.UpdateProxyUser, _settings.UpdateProxyPasswordProtected) =
-                    (custom, address, login, user, passwordProtected);
+                    (chosen.Custom, chosen.Address, chosen.Login, chosen.User, passwordProtected);
 
                 failure = TrySaveSettings();
                 if (failure is not null)
@@ -2613,6 +2614,15 @@ internal sealed class MainForm : Form
                     saved = UpdateProxy.From(_settings);
                 }
             }
+        }
+
+        if (changedMeanwhile)
+        {
+            _log.Info("The proxy for the updates was changed elsewhere while its dialog was open; it opens again.");
+            MessageBox.Show(S("About.ProxyChangedMeanwhile"), AppIdentity.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Information);
+            UpdateProxyHint();
+            ShowProxySettings();
+            return;
         }
 
         if (failure is null)

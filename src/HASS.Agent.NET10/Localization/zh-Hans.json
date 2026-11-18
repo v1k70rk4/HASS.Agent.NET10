@@ -29,7 +29,8 @@
       "About.ProxyTest",
       "About.ProxyTestOk",
       "About.ProxyTestFailed",
-      "About.ProxyNotUsable"
+      "About.ProxyNotUsable",
+      "About.ProxyChangedMeanwhile"
     ]
   },
   "strings": {
@@ -512,6 +513,7 @@
     "About.ProxySettings": "代理设置...",
     "About.ProxySettingsHint": "检查更新连接GitHub的方式。当前：{0}",
     "About.ProxyNotUsable": "其他，但地址无法使用",
+    "About.ProxyChangedMeanwhile": "此窗口打开期间代理设置已被更改（从其他用户的会话接管）。未保存任何内容；窗口将以当前已保存的设置重新打开。",
     "About.ProxyTest": "测试",
     "About.ProxyTestOk": "可以通过此方式连接GitHub。最新版本：{0}。",
     "About.ProxyTestFailed": "无法通过此方式连接GitHub：\n{0}",

@@ -121,6 +121,9 @@ internal sealed class MqttCompanionService : IDisposable
     // Serializes publishes so the push extra-publish never races the media/sensor
     // publish on the shared MQTT client (a likely cause of the dimmed-state freeze).
     private readonly SemaphoreSlim _publishLock = new(1, 1);
+    // One update state on its way at a time, read when its turn comes: of two publishers the
+    // later one sends the newer kept result, so an older one never ends up the retained message.
+    private readonly SemaphoreSlim _updatePublishLock = new(1, 1);
     private readonly object _pushDebounceLock = new();
     private System.Threading.Timer? _pushDebounceTimer;
 
@@ -1220,6 +1223,7 @@ internal sealed class MqttCompanionService : IDisposable
         }
         _pushSignal.Dispose();
         _publishLock.Dispose();
+        _updatePublishLock.Dispose();
     }
 
     private async Task RunAsync(CancellationToken cancellationToken)
@@ -2339,6 +2343,13 @@ internal sealed class MqttCompanionService : IDisposable
                 continue;
             }
 
+            if (retry && string.IsNullOrWhiteSpace(_lastUpdateState?.Error))
+            {
+                // A check succeeded during the wait (the About page's button, a reconnect): the
+                // failures are over, so no retry is used up and the usual wait follows.
+                continue;
+            }
+
             if (retry)
             {
                 _updateRetries++;
@@ -2408,6 +2419,14 @@ internal sealed class MqttCompanionService : IDisposable
                 return;
             }
 
+            if (UpdateSettingsChangedSince(origin))
+            {
+                // The channel or the proxy was changed while it ran: its answer is not for the
+                // settings now, so it is not sent. The call below sees the difference and checks again.
+                await PublishUpdateStateAsync(cancellationToken: cancellationToken);
+                return;
+            }
+
             if (!string.IsNullOrWhiteSpace(result.Error))
             {
                 // The state still goes out, with the error in it; only the check failed.
@@ -2416,27 +2435,51 @@ internal sealed class MqttCompanionService : IDisposable
             }
         }
 
-        // The switch as the file has it: another user's app may have changed it. The MQTT
-        // discovery of the update entity carries the install command only while the switch
-        // allows it, so it goes out again with the state.
-        if (RefreshRemoteInstallSwitch()
-            && RepublishesUpdateDiscovery(_role, _isOnWebSocket && _haWs is not null, _discoveryPublished, OnBroker))
+        await _updatePublishLock.WaitAsync(cancellationToken);
+        try
         {
-            await PublishUpdateEntityDiscoveryAsync();
-        }
-
-        var state = ForHomeAssistant(_lastUpdateState!, _settings);
-        if (_isOnWebSocket && _haWs is not null)
-        {
-            await _haWs.PublishUpdateStateAsync(new
+            // The switch as the file has it: another user's app may have changed it. The MQTT
+            // discovery of the update entity carries the install command only while the switch
+            // allows it, so it goes out again with the state.
+            if (RefreshRemoteInstallSwitch()
+                && RepublishesUpdateDiscovery(_role, _isOnWebSocket && _haWs is not null, _discoveryPublished, OnBroker))
             {
-                serial_number = _settings.SerialNumber,
-                state
-            }, cancellationToken);
-            return;
-        }
+                await PublishUpdateEntityDiscoveryAsync();
+            }
 
-        await PublishJsonAsync(UpdateStateTopic, state, retain: true);
+            // Read now, in this publisher's turn: the newest result kept so far.
+            AppUpdateState kept;
+            lock (_updateResultGate)
+            {
+                kept = _lastUpdateState!;
+            }
+
+            var state = ForHomeAssistant(kept, _settings);
+            if (_isOnWebSocket && _haWs is not null)
+            {
+                await _haWs.PublishUpdateStateAsync(new
+                {
+                    serial_number = _settings.SerialNumber,
+                    state
+                }, cancellationToken);
+                return;
+            }
+
+            await PublishJsonAsync(UpdateStateTopic, state, retain: true);
+        }
+        finally
+        {
+            _updatePublishLock.Release();
+        }
+    }
+
+    /// <summary>Whether the channel or the proxy saved now differs from what a check was made with.</summary>
+    private bool UpdateSettingsChangedSince(UpdateCheckOrigin origin)
+    {
+        lock (SettingsStore.Gate)
+        {
+            return origin.Beta != _settings.BetaUpdatesEnabled || origin.Proxy != _settings.UpdateProxyKey();
+        }
     }
 
     /// <summary>

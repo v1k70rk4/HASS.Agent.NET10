@@ -486,6 +486,7 @@
     "About.ProxySettings": "Proxybeállítások...",
     "About.ProxySettingsHint": "Hogyan éri el a frissítéskeresés a GitHubot. Most: {0}",
     "About.ProxyNotUsable": "Egyéb, de a címe nem használható",
+    "About.ProxyChangedMeanwhile": "A proxybeállítások megváltoztak, amíg ez az ablak nyitva volt (egy másik felhasználó munkamenetéből vette át őket). Semmi nem lett mentve; az ablak újra megnyílik a most mentett beállításokkal.",
     "About.ProxyTest": "Kipróbálás",
     "About.ProxyTestOk": "A GitHub így elérhető. Legújabb kiadás: {0}.",
     "About.ProxyTestFailed": "A GitHub így nem érhető el:\n{0}",

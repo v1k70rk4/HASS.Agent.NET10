@@ -486,6 +486,7 @@
     "About.ProxySettings": "Proxy settings...",
     "About.ProxySettingsHint": "How the update check reaches GitHub. Now: {0}",
     "About.ProxyNotUsable": "Other, but its address cannot be used",
+    "About.ProxyChangedMeanwhile": "The proxy settings were changed while this window was open (taken over from another user's session). Nothing was saved; the window opens again with the settings saved now.",
     "About.ProxyTest": "Test",
     "About.ProxyTestOk": "GitHub is reachable this way. Latest release: {0}.",
     "About.ProxyTestFailed": "GitHub cannot be reached this way:\n{0}",

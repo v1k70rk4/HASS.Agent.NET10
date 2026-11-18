@@ -126,7 +126,8 @@
       "About.ProxyTest",
       "About.ProxyTestOk",
       "About.ProxyTestFailed",
-      "About.ProxyNotUsable"
+      "About.ProxyNotUsable",
+      "About.ProxyChangedMeanwhile"
     ]
   },
   "strings": {
@@ -609,6 +610,7 @@
     "About.ProxySettings": "Proxy-Einstellungen...",
     "About.ProxySettingsHint": "Wie die Updateprüfung GitHub erreicht. Jetzt: {0}",
     "About.ProxyNotUsable": "Andere, aber die Adresse ist nicht verwendbar",
+    "About.ProxyChangedMeanwhile": "Die Proxy-Einstellungen wurden geändert, während dieses Fenster offen war (aus der Sitzung eines anderen Benutzers übernommen). Nichts wurde gespeichert; das Fenster öffnet sich erneut mit den jetzt gespeicherten Einstellungen.",
     "About.ProxyTest": "Testen",
     "About.ProxyTestOk": "GitHub ist so erreichbar. Neueste Version: {0}.",
     "About.ProxyTestFailed": "GitHub ist so nicht erreichbar:\n{0}",
