@@ -396,7 +396,7 @@ public sealed class RemoteUpdateInstallTests : IDisposable
         using (service)
         {
             // Nothing changed: the state alone, and Home Assistant may ask for the install.
-            await service.ReportUpdateStateAsync(AnUpdate);
+            await service.ReportUpdateStateAsync(AnUpdate, false, new CompanionSettings().UpdateProxyKey());
             var only = Assert.Single(sent);
             Assert.Equal(StateTopic, only.Topic);
             Assert.True(Parse(only.Payload).GetProperty("remote_install").GetBoolean());
@@ -404,7 +404,7 @@ public sealed class RemoteUpdateInstallTests : IDisposable
             // Ticked in another user's window.
             sent.Clear();
             WriteSwitch(file, true);
-            await service.ReportUpdateStateAsync(AnUpdate);
+            await service.ReportUpdateStateAsync(AnUpdate, false, new CompanionSettings().UpdateProxyKey());
             Assert.Equal([DiscoveryTopic, StateTopic], sent.Select(message => message.Topic));
             Assert.False(Parse(sent[0].Payload).TryGetProperty("command_topic", out _));
             Assert.False(Parse(sent[0].Payload).TryGetProperty("payload_install", out _));
@@ -413,7 +413,7 @@ public sealed class RemoteUpdateInstallTests : IDisposable
             // And unticked again: the install command is back in the discovery.
             sent.Clear();
             WriteSwitch(file, false);
-            await service.ReportUpdateStateAsync(AnUpdate);
+            await service.ReportUpdateStateAsync(AnUpdate, false, new CompanionSettings().UpdateProxyKey());
             Assert.Equal([DiscoveryTopic, StateTopic], sent.Select(message => message.Topic));
             Assert.Equal(InstallTopic, Parse(sent[0].Payload).GetProperty("command_topic").GetString());
             Assert.Equal("install", Parse(sent[0].Payload).GetProperty("payload_install").GetString());
@@ -437,7 +437,7 @@ public sealed class RemoteUpdateInstallTests : IDisposable
             {
                 sent.Clear();
                 WriteSwitch(file, ticked);
-                await service.ReportUpdateStateAsync(AnUpdate);
+                await service.ReportUpdateStateAsync(AnUpdate, false, new CompanionSettings().UpdateProxyKey());
 
                 var only = Assert.Single(sent);
                 Assert.Equal(StateTopic, only.Topic);

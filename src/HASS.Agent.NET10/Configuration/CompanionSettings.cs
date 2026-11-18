@@ -91,6 +91,13 @@ internal sealed class CompanionSettings
             : ProtectedSecretStore.Protect(password, SerialNumber);
     }
 
+    /// <summary>
+    /// The proxy settings as one text, to tell whether an update check's answer came through the
+    /// proxy set now. Taken under <see cref="SettingsStore.Gate"/> together with the proxy itself.
+    /// </summary>
+    internal string UpdateProxyKey() =>
+        $"{UpdateProxyCustom}|{UpdateProxyAddress}|{UpdateProxyLogin}|{UpdateProxyUser}|{UpdateProxyPasswordProtected}";
+
     /// <summary>Danger Zone: the fast sensor interval may go below 5 seconds, down to 1.</summary>
     public bool FastSensorsUnlocked { get; set; }
 

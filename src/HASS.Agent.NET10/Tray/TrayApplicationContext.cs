@@ -93,7 +93,7 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
     public Func<Task<bool>>? DiscoveryRepublishHandler { get; set; }
 
     /// <summary>Set by Program to the MQTT service: reports a manual update check to Home Assistant.</summary>
-    public Func<AppUpdateState, Task>? UpdateStateHandler { get; set; }
+    public Func<AppUpdateState, bool, string, Task>? UpdateStateHandler { get; set; }
 
     /// <summary>Set by Program to the MQTT service: tells Home Assistant that "updates only at this PC" was changed.</summary>
     public Func<Task>? RemoteInstallSwitchHandler { get; set; }
@@ -399,7 +399,7 @@ internal sealed class TrayApplicationContext : ApplicationContext, INotification
 
         _mainForm = new MainForm(_settings, _paths, _log, page);
         _mainForm.DiscoveryRepublishHandler = () => DiscoveryRepublishHandler?.Invoke() ?? Task.FromResult(false);
-        _mainForm.UpdateStateHandler = state => UpdateStateHandler?.Invoke(state) ?? Task.CompletedTask;
+        _mainForm.UpdateStateHandler = (state, beta, proxyKey) => UpdateStateHandler?.Invoke(state, beta, proxyKey) ?? Task.CompletedTask;
         _mainForm.RemoteInstallSwitchHandler = () => RemoteInstallSwitchHandler?.Invoke() ?? Task.CompletedTask;
         // "Open now" shows what is in the fields, saved or not. With the tick for keeping the
         // page it is the dashboard itself, which then comes up as it was the next time; without

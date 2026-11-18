@@ -67,14 +67,8 @@ internal sealed class MainForm : Form
     private Control? _serviceActionsCard;
     private Control? _serviceUsersCard;
 
-    // About page, the proxy for the updates (UpdateProxy): saved with the Save button, and the
-    // Check updates button there tries what the fields say.
-    private readonly RadioButton _proxyWindows = new();
-    private readonly RadioButton _proxyCustom = new();
-    private readonly TextBox _proxyAddress = new() { PlaceholderText = "http://127.0.0.1:7890" };
-    private readonly CheckBox _proxyLogin = new();
-    private readonly TextBox _proxyUser = new();
-    private readonly TextBox _proxyPassword = new() { UseSystemPasswordChar = true };
+    // About page: what the Proxy settings row says the update check goes through now.
+    private Label? _proxyHint;
 
     private readonly CheckBox _mqttEnabled = new();
     private readonly Label _mqttWarning = new();
@@ -162,7 +156,7 @@ internal sealed class MainForm : Form
     /// <summary>Wired by TrayApplicationContext: tells Home Assistant what a manual update check found.</summary>
     [System.ComponentModel.Browsable(false)]
     [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
-    public Func<AppUpdateState, Task>? UpdateStateHandler { get; set; }
+    public Func<AppUpdateState, bool, string, Task>? UpdateStateHandler { get; set; }
 
     /// <summary>Wired by TrayApplicationContext: tells Home Assistant that the About page's "updates only at this PC" was changed.</summary>
     [System.ComponentModel.Browsable(false)]
@@ -2358,6 +2352,9 @@ internal sealed class MainForm : Form
             ForeColor = TextMuted, Location = Pt(122, 120), AutoSize = true
         });
 
+        var websiteBtn = MakeSecondaryButton(S("About.Website"), 110, 32);
+        websiteBtn.Click += (_, _) => OpenUrl(AppIdentity.WebsiteUrl);
+
         var githubBtn = MakeSecondaryButton("GitHub", 110, 32);
         githubBtn.Click += (_, _) => OpenUrl(AppIdentity.GitHubRepositoryUrl);
 
@@ -2375,9 +2372,6 @@ internal sealed class MainForm : Form
         var starBtn = MakeSecondaryButton(S("About.Star"), 170, 32);
         starBtn.Click += (_, _) => OpenUrl(AppIdentity.GitHubRepositoryUrl);
 
-        var updateBtn = MakePrimaryButton(S("About.CheckUpdates"), 160, 32);
-        updateBtn.Click += async (_, _) => await CheckForUpdatesAsync(updateBtn);
-
         // The buttons flow and wrap with the card: in a narrow window or a language with
         // longer words the last one ran past the card's edge when each had a fixed place.
         var buttons = new FlowLayoutPanel
@@ -2385,7 +2379,7 @@ internal sealed class MainForm : Form
             Location = Pt(28, 174), Size = Sz(544, 72),
             FlowDirection = FlowDirection.LeftToRight, WrapContents = true, BackColor = Color.Transparent
         };
-        foreach (var button in new[] { githubBtn, issueBtn, notesBtn, supportBtn, starBtn, updateBtn })
+        foreach (var button in new[] { websiteBtn, githubBtn, issueBtn, notesBtn, supportBtn, starBtn })
         {
             button.Margin = new Padding(0, 0, D(8), D(8));
             buttons.Controls.Add(button);
@@ -2413,159 +2407,47 @@ internal sealed class MainForm : Form
     }
 
     /// <summary>
-    /// The About page's update settings, next to its Check updates button: the beta channel and
-    /// "updates only at this PC" (both saved at once, as they were in the Danger Zone), and the
-    /// proxy the checks and downloads go through (saved with the Save button).
+    /// The About page's Updates card, laid out like the Service page's: Check updates, and the
+    /// two dialogs with the update settings (UpdateSettingsForm) and the proxy (UpdateProxyForm).
+    /// Each saves what it was closed with at once; the window's Save button is not needed.
     /// </summary>
     private Panel BuildUpdatesCard(Panel page)
     {
-        var card = MakeCard(page, 28, 362, 600, 400, S("About.Updates"));
-
-        // Beta update channel — persists immediately, no Save button needed.
-        var betaCheck = new CheckBox
+        var card = MakeCard(page, 28, 362, 600, 200, S("About.Updates"));
+        var hints = new List<Label>();
+        Button AddRow(int row, Button button, string hintText)
         {
-            Text = S("Danger.BetaUpdates"), Location = Pt(20, 44),
-            Size = Sz(560, 26), ForeColor = TextBody, Checked = _settings.BetaUpdatesEnabled
-        };
-        betaCheck.CheckedChanged += (_, _) =>
-        {
-            if (_settings.BetaUpdatesEnabled == betaCheck.Checked)
+            var y = 48 + row * 46;
+            button.Location = Pt(20, y);
+            card.Controls.Add(button);
+            var hint = new Label
             {
-                return;
-            }
+                Text = hintText, Location = Pt(222, y - 1),
+                Size = Sz(360, 34), ForeColor = TextMuted, Font = new Font("Segoe UI", 8.5F),
+                TextAlign = ContentAlignment.MiddleLeft, AutoEllipsis = true
+            };
+            card.Controls.Add(hint);
+            hints.Add(hint);
+            return button;
+        }
 
-            _settings.BetaUpdatesEnabled = betaCheck.Checked;
-            SettingsStore.Save(_paths, _settings);
-            _log.Info($"Beta update channel {(betaCheck.Checked ? "enabled" : "disabled")}.");
-        };
-        card.Controls.Add(betaCheck);
+        var checkBtn = AddRow(0, MakePrimaryButton(S("About.CheckUpdates"), 190, 32), S("About.CheckUpdatesHint"));
+        checkBtn.Click += async (_, _) => await CheckForUpdatesAsync(checkBtn);
+        AddRow(1, MakeSecondaryButton(S("About.UpdateSettings"), 190, 32), S("About.UpdateSettingsHint"))
+            .Click += (_, _) => ShowUpdateSettings();
+        var proxyBtn = AddRow(2, MakeSecondaryButton(S("About.ProxySettings"), 190, 32), string.Empty);
+        proxyBtn.Click += (_, _) => ShowProxySettings();
+        _proxyHint = hints[^1];
+        UpdateProxyHint();
 
-        // Updates only at this PC: Home Assistant's Install button is refused. Persists
-        // immediately, and Home Assistant hears of it at once. The text wraps in the box.
-        var localUpdatesCheck = new CheckBox
-        {
-            Text = S("Danger.LocalUpdatesOnly"), Location = Pt(20, 76),
-            Size = Sz(560, 48), ForeColor = TextBody, Checked = _settings.RemoteUpdateInstallBlocked,
-            TextAlign = ContentAlignment.TopLeft, CheckAlign = ContentAlignment.TopLeft
-        };
-        localUpdatesCheck.CheckedChanged += (_, _) =>
-        {
-            if (_settings.RemoteUpdateInstallBlocked == localUpdatesCheck.Checked)
-            {
-                return;
-            }
-
-            // Under the gate, as every write from this window: a handover's reload of the
-            // settings must not come between the change and its save and put the old value back.
-            Exception? failure;
-            lock (SettingsStore.Gate)
-            {
-                failure = _settings.TrySetRemoteUpdateInstallBlocked(
-                    localUpdatesCheck.Checked,
-                    settings => SettingsStore.Save(_paths, settings, withItsRemoteInstallSwitch: true));
-            }
-
-            if (failure is not null)
-            {
-                // Not in the file, so not set (see the method): the tick goes back with it.
-                localUpdatesCheck.Checked = _settings.RemoteUpdateInstallBlocked;
-                _log.Warning($"Unable to save \"updates only at this PC\": {failure.Message}");
-                MessageBox.Show(string.Format(S("Danger.Error"), failure.Message), AppIdentity.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Error);
-                return;
-            }
-
-            _log.Info($"Update installs asked for from Home Assistant are {(localUpdatesCheck.Checked ? "refused: updates only at this PC" : "allowed again")}.");
-            if (RemoteInstallSwitchHandler is not null)
-            {
-                _ = RemoteInstallSwitchHandler();
-            }
-        };
-        card.Controls.Add(localUpdatesCheck);
-
-        var proxyLabel = new Label
-        {
-            Text = S("About.Proxy"), Location = Pt(20, 132), AutoSize = true,
-            ForeColor = TextDark, Font = new Font("Segoe UI", 9.5F, FontStyle.Bold)
-        };
-        card.Controls.Add(proxyLabel);
-
-        _proxyWindows.Text = S("About.ProxyWindows");
-        _proxyWindows.ForeColor = TextBody;
-        _proxyWindows.AutoSize = true;
-        card.Controls.Add(_proxyWindows);
-
-        _proxyCustom.Text = S("About.ProxyCustom");
-        _proxyCustom.ForeColor = TextBody;
-        _proxyCustom.AutoSize = true;
-        card.Controls.Add(_proxyCustom);
-        _proxyAddress.Size = Sz(260, 28);
-        card.Controls.Add(_proxyAddress);
-
-        _proxyLogin.Text = S("About.ProxyLogin");
-        _proxyLogin.ForeColor = TextBody;
-        _proxyLogin.AutoSize = true;
-        card.Controls.Add(_proxyLogin);
-
-        var userLabel = new Label { Text = S("Mqtt.Username"), AutoSize = true, ForeColor = TextBody };
-        var passwordLabel = new Label { Text = S("Mqtt.Password"), AutoSize = true, ForeColor = TextBody };
-        card.Controls.Add(userLabel);
-        card.Controls.Add(passwordLabel);
-        _proxyUser.Size = Sz(220, 28);
-        _proxyPassword.Size = Sz(220, 28);
-        card.Controls.Add(_proxyUser);
-        card.Controls.Add(_proxyPassword);
-
-        var hint = new Label
-        {
-            Text = S("About.ProxyHint"), ForeColor = TextMuted, Font = new Font("Segoe UI", 8.5F)
-        };
-        card.Controls.Add(hint);
-
-        _proxyCustom.CheckedChanged += (_, _) => UpdateProxyControls();
-        _proxyLogin.CheckedChanged += (_, _) => UpdateProxyControls();
-
-        // One below the other, each where the one above it ends: the two update switches wrap
-        // in a narrow window or a longer language, and so does the hint.
         card.Layout += (_, _) =>
         {
-            var width = Math.Max(D(300), card.ClientSize.Width - D(40));
-            betaCheck.Width = width;
-            var top = betaCheck.Bottom + D(6);
+            foreach (var hint in hints)
+            {
+                hint.Width = Math.Max(D(160), card.ClientSize.Width - hint.Left - D(20));
+            }
 
-            localUpdatesCheck.Width = width;
-            var localHeight = Math.Max(D(26), TextRenderer.MeasureText(
-                localUpdatesCheck.Text, localUpdatesCheck.Font, new Size(width - D(24), int.MaxValue),
-                TextFormatFlags.WordBreak | TextFormatFlags.TextBoxControl).Height + D(8));
-            localUpdatesCheck.SetBounds(D(20), top, width, localHeight);
-            top = localUpdatesCheck.Bottom + D(14);
-
-            proxyLabel.Location = new Point(D(20), top);
-            top = proxyLabel.Bottom + D(6);
-            _proxyWindows.Location = new Point(D(20), top);
-            top = _proxyWindows.Bottom + D(6);
-            _proxyCustom.Location = new Point(D(20), top + D(3));
-            _proxyAddress.Location = new Point(_proxyCustom.Right + D(8), top);
-            _proxyAddress.Width = Math.Max(D(120), Math.Min(D(300), card.ClientSize.Width - _proxyAddress.Left - D(20)));
-            top = _proxyAddress.Bottom + D(8);
-            _proxyLogin.Location = new Point(D(20), top);
-            top = _proxyLogin.Bottom + D(8);
-
-            // The fields line up after the longer of the two labels, indented under the tick box.
-            var fieldLeft = D(40) + Math.Max(userLabel.PreferredWidth, passwordLabel.PreferredWidth) + D(10);
-            var fieldWidth = Math.Max(D(120), Math.Min(D(220), card.ClientSize.Width - fieldLeft - D(20)));
-            userLabel.Location = new Point(D(40), top + D(4));
-            _proxyUser.SetBounds(fieldLeft, top, fieldWidth, _proxyUser.Height);
-            top = _proxyUser.Bottom + D(6);
-            passwordLabel.Location = new Point(D(40), top + D(4));
-            _proxyPassword.SetBounds(fieldLeft, top, fieldWidth, _proxyPassword.Height);
-            top = _proxyPassword.Bottom + D(10);
-
-            var hintHeight = TextRenderer.MeasureText(
-                hint.Text, hint.Font, new Size(width, int.MaxValue),
-                TextFormatFlags.WordBreak | TextFormatFlags.TextBoxControl).Height;
-            hint.SetBounds(D(20), top, width, hintHeight + D(2));
-
-            var height = hint.Bottom + D(18);
+            var height = proxyBtn.Bottom + D(20);
             if (card.Height != height)
             {
                 card.Height = height;
@@ -2575,17 +2457,147 @@ internal sealed class MainForm : Form
         return card;
     }
 
-    /// <summary>The address only with "Other", the user name and password only when the proxy asks for them.</summary>
-    private void UpdateProxyControls()
+    /// <summary>The Proxy settings row says what the update check goes through now.</summary>
+    private void UpdateProxyHint()
     {
-        _proxyAddress.Enabled = _proxyCustom.Checked;
-        _proxyUser.Enabled = _proxyLogin.Checked;
-        _proxyPassword.Enabled = _proxyLogin.Checked;
+        if (_proxyHint is null)
+        {
+            return;
+        }
+
+        var now = !_settings.UpdateProxyCustom
+            ? S("About.ProxyWindows")
+            : UpdateProxy.TryParseAddress(_settings.UpdateProxyAddress, out var address)
+                ? address.GetLeftPart(UriPartial.Authority)
+                // A settings file edited or imported by hand: the update check refuses it.
+                : S("About.ProxyNotUsable");
+        _proxyHint.Text = string.Format(S("About.ProxySettingsHint"), now);
     }
 
-    /// <summary>The proxy the About page's fields say, saved or not: what Check updates there tries.</summary>
-    private UpdateProxy ProxyFromForm() => UpdateProxy.Create(
-        _proxyCustom.Checked, _proxyAddress.Text, _proxyLogin.Checked, _proxyUser.Text, _proxyPassword.Text);
+    /// <summary>
+    /// The beta channel and "updates only at this PC", saved as the dialog is closed with Save;
+    /// Home Assistant hears of the second at once.
+    /// </summary>
+    private void ShowUpdateSettings()
+    {
+        if (UpdateSettingsForm.Ask(this, _settings.BetaUpdatesEnabled, _settings.RemoteUpdateInstallBlocked) is not { } chosen)
+        {
+            return;
+        }
+
+        // Both in one save, under the gate as every write from this window: a handover's reload
+        // of the settings must not come between the change and its save and put the old value
+        // back. A save that fails takes both back, so the app never holds what the file does not say.
+        bool betaChanged, localChanged;
+        Exception? failure;
+        lock (SettingsStore.Gate)
+        {
+            var betaBefore = _settings.BetaUpdatesEnabled;
+            betaChanged = betaBefore != chosen.Beta;
+            localChanged = _settings.RemoteUpdateInstallBlocked != chosen.LocalOnly;
+            if (!betaChanged && !localChanged)
+            {
+                return;
+            }
+
+            _settings.BetaUpdatesEnabled = chosen.Beta;
+            failure = localChanged
+                ? _settings.TrySetRemoteUpdateInstallBlocked(
+                    chosen.LocalOnly,
+                    settings => SettingsStore.Save(_paths, settings, withItsRemoteInstallSwitch: true))
+                : TrySaveSettings();
+            if (failure is not null)
+            {
+                _settings.BetaUpdatesEnabled = betaBefore;
+            }
+        }
+
+        if (failure is not null)
+        {
+            _log.Warning($"Unable to save the update settings: {failure.Message}");
+            MessageBox.Show(string.Format(S("Danger.Error"), failure.Message), AppIdentity.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Error);
+            return;
+        }
+
+        if (betaChanged)
+        {
+            _log.Info($"Beta update channel {(chosen.Beta ? "enabled" : "disabled")}.");
+        }
+
+        if (!localChanged)
+        {
+            return;
+        }
+
+        _log.Info($"Update installs asked for from Home Assistant are {(chosen.LocalOnly ? "refused: updates only at this PC" : "allowed again")}.");
+        if (RemoteInstallSwitchHandler is not null)
+        {
+            _ = RemoteInstallSwitchHandler();
+        }
+    }
+
+    /// <summary>The proxy for the updates, saved as the dialog is closed with Save.</summary>
+    private void ShowProxySettings()
+    {
+        var current = new UpdateProxyChoice(
+            _settings.UpdateProxyCustom, _settings.UpdateProxyAddress, _settings.UpdateProxyLogin,
+            _settings.UpdateProxyUser, _settings.GetUpdateProxyPassword());
+        if (UpdateProxyForm.Ask(this, current, _settings.SoftwareVersion, _settings.BetaUpdatesEnabled) is not { } chosen)
+        {
+            return;
+        }
+
+        Exception? failure;
+        lock (SettingsStore.Gate)
+        {
+            var before = (_settings.UpdateProxyCustom, _settings.UpdateProxyAddress, _settings.UpdateProxyLogin,
+                _settings.UpdateProxyUser, _settings.UpdateProxyPasswordProtected);
+            _settings.UpdateProxyCustom = chosen.Custom;
+            _settings.UpdateProxyAddress = chosen.Address;
+            _settings.UpdateProxyLogin = chosen.Login;
+            _settings.UpdateProxyUser = chosen.User;
+            // Protected again only when it changed: DPAPI makes another text of the same
+            // password each time, and the update check takes a new protected text for a new proxy.
+            if (chosen.Password != _settings.GetUpdateProxyPassword())
+            {
+                _settings.SetUpdateProxyPassword(chosen.Password);
+            }
+
+            failure = TrySaveSettings();
+            if (failure is not null)
+            {
+                // Not in the file, so not in use either: the next check or save keeps the old one.
+                (_settings.UpdateProxyCustom, _settings.UpdateProxyAddress, _settings.UpdateProxyLogin,
+                    _settings.UpdateProxyUser, _settings.UpdateProxyPasswordProtected) = before;
+            }
+        }
+
+        if (failure is null)
+        {
+            _log.Info($"The update checks go through {chosen}.");
+        }
+        else
+        {
+            _log.Warning($"Unable to save the proxy for the updates: {failure.Message}");
+            MessageBox.Show(string.Format(S("Danger.Error"), failure.Message), AppIdentity.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+
+        UpdateProxyHint();
+    }
+
+    /// <summary>Saves the settings; what went wrong in writing the file, or null.</summary>
+    private Exception? TrySaveSettings()
+    {
+        try
+        {
+            SettingsStore.Save(_paths, _settings);
+            return null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception)
+        {
+            return ex;
+        }
+    }
 
     // ── Settings load / save ───────────────────────────────────────
 
@@ -3607,14 +3619,6 @@ internal sealed class MainForm : Form
         _haApiUrl.Text = _settings.HaApiUrl;
         _haApiToken.Text = _settings.GetHaApiToken();
 
-        _proxyWindows.Checked = !_settings.UpdateProxyCustom;
-        _proxyCustom.Checked = _settings.UpdateProxyCustom;
-        _proxyAddress.Text = _settings.UpdateProxyAddress;
-        _proxyLogin.Checked = _settings.UpdateProxyLogin;
-        _proxyUser.Text = _settings.UpdateProxyUser;
-        _proxyPassword.Text = _settings.GetUpdateProxyPassword();
-        UpdateProxyControls();
-
         _webViewUrl.Text = _settings.WebViewUrl;
         _webViewWidth.Value = Math.Clamp(_settings.WebViewWidth, WebViewOptions.MinimumEdge, WebViewOptions.MaximumEdge);
         _webViewHeight.Value = Math.Clamp(_settings.WebViewHeight, WebViewOptions.MinimumEdge, WebViewOptions.MaximumEdge);
@@ -3973,15 +3977,26 @@ internal sealed class MainForm : Form
 
         try
         {
-            // What the fields say, saved or not: this button is also how a proxy is tried out.
-            var proxy = ProxyFromForm();
+            // The proxy that is saved; the Proxy settings dialog has a Test button of its own.
+            // Taken with the channel and the proxy's key at one moment: Home Assistant is told
+            // which proxy and channel this answer came through, even if they are saved anew meanwhile.
+            UpdateProxy proxy;
+            bool beta;
+            string proxyKey;
+            lock (SettingsStore.Gate)
+            {
+                proxy = UpdateProxy.From(_settings);
+                beta = _settings.BetaUpdatesEnabled;
+                proxyKey = _settings.UpdateProxyKey();
+            }
+
             if (proxy.Problem is not null)
             {
                 MessageBox.Show(S("About.ProxyInvalid"), AppIdentity.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
 
-            var update = await AppUpdateService.CheckAsync(_settings.SoftwareVersion, _settings.BetaUpdatesEnabled, proxy);
+            var update = await AppUpdateService.CheckAsync(_settings.SoftwareVersion, beta, proxy);
             if (!string.IsNullOrWhiteSpace(update.Error))
             {
                 _log.Warning($"Update check from the About page failed, through {proxy}: {AppUpdateService.Explain(update.Error)}");
@@ -3997,7 +4012,7 @@ internal sealed class MainForm : Form
             // Before the dialogs below: Home Assistant should not have to wait for them.
             if (UpdateStateHandler is not null)
             {
-                _ = UpdateStateHandler(update);
+                _ = UpdateStateHandler(update, beta, proxyKey);
             }
 
             if (!update.UpdateAvailable)
@@ -4045,15 +4060,6 @@ internal sealed class MainForm : Form
 
     private async Task SaveSettingsAsync()
     {
-        // A proxy address that cannot be used is not saved: every update check would fail on it.
-        if (_proxyCustom.Checked && !UpdateProxy.TryParseAddress(_proxyAddress.Text, out _))
-        {
-            SelectPage(Array.IndexOf(NavKeys, "Nav.About"));
-            MessageBox.Show(S("About.ProxyInvalid"), AppIdentity.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            _proxyAddress.Focus();
-            return;
-        }
-
         bool langChanged;
         bool newHaToken;
         // Under the gate a handover's reload of the settings takes as well: the form's values
@@ -4114,17 +4120,6 @@ internal sealed class MainForm : Form
             && !string.IsNullOrWhiteSpace(_haApiToken.Text)
             && _haApiToken.Text != _settings.GetHaApiToken();
         _settings.SetHaApiToken(_haApiToken.Text);
-
-        _settings.UpdateProxyCustom = _proxyCustom.Checked;
-        _settings.UpdateProxyAddress = _proxyAddress.Text.Trim();
-        _settings.UpdateProxyLogin = _proxyLogin.Checked;
-        _settings.UpdateProxyUser = _proxyUser.Text.Trim();
-        // Protected again only when it changed: DPAPI makes another text of the same password each
-        // time, and the update check takes a new protected text for a new proxy.
-        if (_proxyPassword.Text != _settings.GetUpdateProxyPassword())
-        {
-            _settings.SetUpdateProxyPassword(_proxyPassword.Text);
-        }
 
         _settings.WebViewUrl = _webViewUrl.Text.Trim();
         _settings.WebViewWidth = (int)_webViewWidth.Value;

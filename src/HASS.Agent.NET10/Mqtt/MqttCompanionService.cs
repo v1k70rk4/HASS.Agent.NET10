@@ -393,8 +393,10 @@ internal sealed class MqttCompanionService : IDisposable
     /// Reports the result of an update check made outside the six-hour loop (the About page's
     /// "Check for updates" button). Without this the app knew about a new release while Home
     /// Assistant kept showing "up to date" until the next scheduled check or a tray restart.
+    /// <paramref name="beta"/> and <paramref name="proxyKey"/> are what the check was made with,
+    /// not what is saved by now: an answer through the old proxy must not pass for the new one's.
     /// </summary>
-    public async Task ReportUpdateStateAsync(AppUpdateState state)
+    public async Task ReportUpdateStateAsync(AppUpdateState state, bool beta, string proxyKey)
     {
         if (!string.IsNullOrWhiteSpace(state.Error))
         {
@@ -402,8 +404,8 @@ internal sealed class MqttCompanionService : IDisposable
         }
 
         _lastUpdateState = state;
-        _lastUpdateBeta = _settings.BetaUpdatesEnabled;
-        _lastUpdateProxy = UpdateProxyKey();
+        _lastUpdateBeta = beta;
+        _lastUpdateProxy = proxyKey;
         _lastUpdateCheck = DateTimeOffset.UtcNow;
 
         if (!(_isOnWebSocket && _haWs is not null) && !OnBroker)
@@ -2343,9 +2345,6 @@ internal sealed class MqttCompanionService : IDisposable
         }
     }
 
-    private string UpdateProxyKey() =>
-        $"{_settings.UpdateProxyCustom}|{_settings.UpdateProxyAddress}|{_settings.UpdateProxyLogin}|{_settings.UpdateProxyUser}|{_settings.UpdateProxyPasswordProtected}";
-
     private async Task PublishUpdateStateAsync(bool forceCheck = false, CancellationToken cancellationToken = default)
     {
         var now = DateTimeOffset.UtcNow;
@@ -2356,7 +2355,7 @@ internal sealed class MqttCompanionService : IDisposable
         if (forceCheck
             || _lastUpdateState is null
             || _lastUpdateBeta != _settings.BetaUpdatesEnabled
-            || _lastUpdateProxy != UpdateProxyKey()
+            || _lastUpdateProxy != _settings.UpdateProxyKey()
             || now - _lastUpdateCheck >= UpdateCheckThrottle)
         {
             // The proxy and its key from the same moment, under the gate every save takes: settings
@@ -2366,7 +2365,7 @@ internal sealed class MqttCompanionService : IDisposable
             UpdateProxy proxy;
             lock (SettingsStore.Gate)
             {
-                proxyKey = UpdateProxyKey();
+                proxyKey = _settings.UpdateProxyKey();
                 proxy = UpdateProxy.From(_settings);
             }
 
