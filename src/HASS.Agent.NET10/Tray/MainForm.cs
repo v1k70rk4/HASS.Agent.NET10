@@ -2534,12 +2534,13 @@ internal sealed class MainForm : Form
             _log.Info($"Beta update channel {(chosen.Beta ? "enabled" : "disabled")}.");
         }
 
-        if (!localChanged)
+        if (localChanged)
         {
-            return;
+            _log.Info($"Update installs asked for from Home Assistant are {(chosen.LocalOnly ? "refused: updates only at this PC" : "allowed again")}.");
         }
 
-        _log.Info($"Update installs asked for from Home Assistant are {(chosen.LocalOnly ? "refused: updates only at this PC" : "allowed again")}.");
+        // Home Assistant hears at once: the switch with the state, and for another channel the
+        // state is checked anew (the kept result was for the old one).
         if (RemoteInstallSwitchHandler is not null)
         {
             _ = RemoteInstallSwitchHandler();
@@ -2620,6 +2621,12 @@ internal sealed class MainForm : Form
         {
             _log.Info("The proxy for the updates was changed elsewhere while its dialog was open; it opens again.");
             MessageBox.Show(S("About.ProxyChangedMeanwhile"), AppIdentity.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Information);
+            if (IsDisposed)
+            {
+                // Closed by another handover while the notice was open.
+                return;
+            }
+
             UpdateProxyHint();
             ShowProxySettings();
             return;
@@ -2628,6 +2635,11 @@ internal sealed class MainForm : Form
         if (failure is null)
         {
             _log.Info($"The update checks go through {saved}.");
+            // Home Assistant hears at once: the state is checked anew through the new proxy.
+            if (RemoteInstallSwitchHandler is not null)
+            {
+                _ = RemoteInstallSwitchHandler();
+            }
         }
         else
         {
@@ -4033,21 +4045,50 @@ internal sealed class MainForm : Form
             // The proxy that is saved; the Proxy settings dialog has a Test button of its own.
             // Taken with the channel and the proxy's key at one moment: Home Assistant is told
             // which proxy and channel this answer came through, even if they are saved anew meanwhile.
+            // Checked again when the channel or the proxy was changed while it ran (Update
+            // settings saved meanwhile): a beta is never offered once the channel is stable.
             UpdateProxy proxy;
             UpdateCheckOrigin origin;
-            lock (SettingsStore.Gate)
+            AppUpdateState update;
+            var checks = 0;
+            while (true)
             {
-                proxy = UpdateProxy.From(_settings);
-                origin = _settings.UpdateCheckOrigin();
+                lock (SettingsStore.Gate)
+                {
+                    proxy = UpdateProxy.From(_settings);
+                    origin = _settings.UpdateCheckOrigin();
+                }
+
+                if (proxy.Problem is not null)
+                {
+                    MessageBox.Show(S("About.ProxyInvalid"), AppIdentity.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                update = await AppUpdateService.CheckAsync(_settings.SoftwareVersion, origin.Beta, proxy);
+                if (IsDisposed)
+                {
+                    return;
+                }
+
+                bool changed;
+                lock (SettingsStore.Gate)
+                {
+                    changed = origin.Beta != _settings.BetaUpdatesEnabled || origin.Proxy != _settings.UpdateProxyKey();
+                }
+
+                if (!changed || ++checks == 3)
+                {
+                    break;
+                }
             }
 
-            if (proxy.Problem is not null)
+            if (checks == 3)
             {
-                MessageBox.Show(S("About.ProxyInvalid"), AppIdentity.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                // The settings kept changing: nothing is offered that may not be theirs.
                 return;
             }
 
-            var update = await AppUpdateService.CheckAsync(_settings.SoftwareVersion, origin.Beta, proxy);
             if (!string.IsNullOrWhiteSpace(update.Error))
             {
                 _log.Warning($"Update check from the About page failed, through {proxy}: {AppUpdateService.Explain(update.Error)}");

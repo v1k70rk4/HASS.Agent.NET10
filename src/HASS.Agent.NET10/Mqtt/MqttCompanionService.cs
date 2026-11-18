@@ -121,8 +121,9 @@ internal sealed class MqttCompanionService : IDisposable
     // Serializes publishes so the push extra-publish never races the media/sensor
     // publish on the shared MQTT client (a likely cause of the dimmed-state freeze).
     private readonly SemaphoreSlim _publishLock = new(1, 1);
-    // One update state on its way at a time, read when its turn comes: of two publishers the
-    // later one sends the newer kept result, so an older one never ends up the retained message.
+    // One update check and send at a time: each in its turn decides, with the settings saved
+    // then, whether the kept result will do or a check is due, so of two the later one sends
+    // the newer result, and no two checks ask GitHub at once.
     private readonly SemaphoreSlim _updatePublishLock = new(1, 1);
     private readonly object _pushDebounceLock = new();
     private System.Threading.Timer? _pushDebounceTimer;
@@ -1342,7 +1343,7 @@ internal sealed class MqttCompanionService : IDisposable
                 if (_role == CompanionRuntimeRole.App)
                 {
                     await PublishAvailabilityAsync(online: true);
-                    await PublishUpdateStateAsync();
+                    await PublishUpdateStateAsync(cancellationToken: _cts?.Token ?? CancellationToken.None);
                     await PublishPendingUpdateNotificationAsync();
                     await PublishSettingsAccessNoticeAsync();
                 }
@@ -1352,7 +1353,7 @@ internal sealed class MqttCompanionService : IDisposable
                     // is the service's to report either way.
                     if (!IsTrayAppRunning())
                     {
-                        await PublishUpdateStateAsync();
+                        await PublishUpdateStateAsync(cancellationToken: _cts?.Token ?? CancellationToken.None);
                     }
 
                     await PublishPendingUpdateNotificationAsync();
@@ -2343,10 +2344,11 @@ internal sealed class MqttCompanionService : IDisposable
                 continue;
             }
 
-            if (retry && string.IsNullOrWhiteSpace(_lastUpdateState?.Error))
+            if (retry && KeptUpdateStateForSettingsNow() is { } kept && string.IsNullOrWhiteSpace(kept.Error))
             {
-                // A check succeeded during the wait (the About page's button, a reconnect): the
-                // failures are over, so no retry is used up and the usual wait follows.
+                // A check with the settings now succeeded during the wait (the About page's
+                // button, a reconnect): the failures are over, so no retry is used up and the
+                // usual wait follows. A success for other settings ends nothing.
                 continue;
             }
 
@@ -2389,55 +2391,14 @@ internal sealed class MqttCompanionService : IDisposable
 
     private async Task PublishUpdateStateAsync(bool forceCheck = false, CancellationToken cancellationToken = default)
     {
-        var now = DateTimeOffset.UtcNow;
-
-        // Only hit the GitHub API when forced (the 6-hour loop) or once the throttle window
-        // has elapsed; otherwise re-publish the cached result. This keeps frequent reconnects
-        // from exhausting the unauthenticated GitHub rate limit (403).
-        if (forceCheck
-            || _lastUpdateState is null
-            || _lastUpdateBeta != _settings.BetaUpdatesEnabled
-            || _lastUpdateProxy != _settings.UpdateProxyKey()
-            || now - _lastUpdateCheck >= UpdateCheckThrottle)
-        {
-            // The proxy, its key and the channel from the same moment, under the gate every save
-            // takes: settings saved while the check is under way must not be recorded as what this
-            // answer came through. The gate is not held over the check itself.
-            UpdateCheckOrigin origin;
-            UpdateProxy proxy;
-            lock (SettingsStore.Gate)
-            {
-                origin = _settings.UpdateCheckOrigin();
-                proxy = UpdateProxy.From(_settings);
-            }
-
-            var result = await AppUpdateService.CheckAsync(_settings.SoftwareVersion, origin.Beta, proxy);
-            if (!TryKeepUpdateResult(result, origin, now))
-            {
-                // A check started later already gave its result, and published it: this one
-                // does not replace it.
-                return;
-            }
-
-            if (UpdateSettingsChangedSince(origin))
-            {
-                // The channel or the proxy was changed while it ran: its answer is not for the
-                // settings now, so it is not sent. The call below sees the difference and checks again.
-                await PublishUpdateStateAsync(cancellationToken: cancellationToken);
-                return;
-            }
-
-            if (!string.IsNullOrWhiteSpace(result.Error))
-            {
-                // The state still goes out, with the error in it; only the check failed.
-                var again = _updateRetries < MaxUpdateRetries ? "; trying again in a minute" : string.Empty;
-                _log.Warning($"Update check failed: {AppUpdateService.Explain(result.Error)}{again}");
-            }
-        }
-
         await _updatePublishLock.WaitAsync(cancellationToken);
         try
         {
+            if (await CurrentUpdateStateAsync(forceCheck, cancellationToken) is not { } kept)
+            {
+                return;
+            }
+
             // The switch as the file has it: another user's app may have changed it. The MQTT
             // discovery of the update entity carries the install command only while the switch
             // allows it, so it goes out again with the state.
@@ -2445,15 +2406,6 @@ internal sealed class MqttCompanionService : IDisposable
                 && RepublishesUpdateDiscovery(_role, _isOnWebSocket && _haWs is not null, _discoveryPublished, OnBroker))
             {
                 await PublishUpdateEntityDiscoveryAsync();
-            }
-
-            // Read now, in this publisher's turn: the newest result kept so far, and only if it was
-            // checked with the channel and proxy saved now. One that was not has a new check of its
-            // own coming (whoever kept it sees the difference), which publishes in its turn.
-            if (KeptUpdateStateForSettingsNow() is not { } kept)
-            {
-                _log.Debug("Update state not sent: the result kept was checked with other settings; a new check follows.");
-                return;
             }
 
             var state = ForHomeAssistant(kept, _settings);
@@ -2476,33 +2428,79 @@ internal sealed class MqttCompanionService : IDisposable
     }
 
     /// <summary>
+    /// In the publisher's turn: the kept result when it was checked with the channel and proxy
+    /// saved now and is fresh enough, otherwise a check with them. A check during which they were
+    /// changed again is followed by another; null when they keep changing (the next publish
+    /// catches up).
+    /// </summary>
+    private async Task<AppUpdateState?> CurrentUpdateStateAsync(bool forceCheck, CancellationToken cancellationToken)
+    {
+        const int MaxChecks = 3;
+        for (var checks = 0; ; checks++)
+        {
+            var now = DateTimeOffset.UtcNow;
+            UpdateCheckOrigin origin;
+            UpdateProxy proxy;
+            // Only hit the GitHub API when forced (the 6-hour loop), for other settings, or once
+            // the throttle window has elapsed; otherwise the cached result goes out again. This
+            // keeps frequent reconnects from exhausting the unauthenticated GitHub rate limit (403).
+            lock (SettingsStore.Gate)
+            {
+                origin = _settings.UpdateCheckOrigin();
+                proxy = UpdateProxy.From(_settings);
+                lock (_updateResultGate)
+                {
+                    if (!forceCheck
+                        && _lastUpdateState is not null
+                        && _lastUpdateBeta == origin.Beta
+                        && _lastUpdateProxy == origin.Proxy
+                        && now - _lastUpdateCheck < UpdateCheckThrottle)
+                    {
+                        return _lastUpdateState;
+                    }
+                }
+            }
+
+            if (checks == MaxChecks)
+            {
+                _log.Debug("Update state not sent: the channel or the proxy kept changing during the checks.");
+                return null;
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+            var result = await AppUpdateService.CheckAsync(_settings.SoftwareVersion, origin.Beta, proxy, cancellationToken);
+            // A check cut short by the app stopping comes back as a failure: not a result.
+            cancellationToken.ThrowIfCancellationRequested();
+            TryKeepUpdateResult(result, origin, now);
+            if (!string.IsNullOrWhiteSpace(result.Error))
+            {
+                // The state still goes out, with the error in it; only the check failed.
+                var again = _updateRetries < MaxUpdateRetries ? "; trying again in a minute" : string.Empty;
+                _log.Warning($"Update check failed: {AppUpdateService.Explain(result.Error)}{again}");
+            }
+
+            // Round again: the kept result goes out if the settings are still the ones it was
+            // checked with; otherwise it is checked again with the ones saved now.
+            forceCheck = false;
+        }
+    }
+
+    /// <summary>
     /// The update check result kept, when it was checked with the channel and proxy saved now;
     /// otherwise null, and it must not go to Home Assistant.
     /// </summary>
     internal AppUpdateState? KeptUpdateStateForSettingsNow()
     {
-        bool beta;
-        UpdateProxyFields proxy;
         lock (SettingsStore.Gate)
         {
-            beta = _settings.BetaUpdatesEnabled;
-            proxy = _settings.UpdateProxyKey();
-        }
-
-        lock (_updateResultGate)
-        {
-            return _lastUpdateState is not null && _lastUpdateBeta == beta && _lastUpdateProxy == proxy
-                ? _lastUpdateState
-                : null;
-        }
-    }
-
-    /// <summary>Whether the channel or the proxy saved now differs from what a check was made with.</summary>
-    private bool UpdateSettingsChangedSince(UpdateCheckOrigin origin)
-    {
-        lock (SettingsStore.Gate)
-        {
-            return origin.Beta != _settings.BetaUpdatesEnabled || origin.Proxy != _settings.UpdateProxyKey();
+            var beta = _settings.BetaUpdatesEnabled;
+            var proxy = _settings.UpdateProxyKey();
+            lock (_updateResultGate)
+            {
+                return _lastUpdateState is not null && _lastUpdateBeta == beta && _lastUpdateProxy == proxy
+                    ? _lastUpdateState
+                    : null;
+            }
         }
     }
 

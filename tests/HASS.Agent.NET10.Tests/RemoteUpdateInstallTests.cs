@@ -502,6 +502,53 @@ public sealed class RemoteUpdateInstallTests : IDisposable
     }
 
     [Fact]
+    public async Task A_publisher_waiting_its_turn_sends_the_newest_result_kept_by_then()
+    {
+        // The first publisher is held while it sends; the second queues behind it with its own
+        // result, and a newer one is kept while it waits. In its turn it sends the newest.
+        var firstSent = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var versions = new List<string?>();
+        var (service, log, _, _) = NewServiceWithFile(
+            CompanionRuntimeRole.App, inMemory: false, inFile: false,
+            outbox: async (topic, payload, _) =>
+            {
+                if (topic != StateTopic)
+                {
+                    return;
+                }
+
+                lock (versions)
+                {
+                    versions.Add(Parse(payload).GetProperty("latest_version").GetString());
+                    if (versions.Count > 1)
+                    {
+                        return;
+                    }
+                }
+
+                firstSent.SetResult();
+                await release.Task;
+            });
+        using (log)
+        using (service)
+        {
+            var origin = Settings(service).UpdateCheckOrigin();
+            var first = service.ReportUpdateStateAsync(AnUpdate, origin);
+            await firstSent.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+
+            var second = service.ReportUpdateStateAsync(AnUpdate with { LatestVersion = "10.15.0" }, origin with { StartedAt = origin.StartedAt + 1 });
+            Assert.True(service.TryKeepUpdateResult(AnUpdate with { LatestVersion = "10.16.0" }, origin with { StartedAt = origin.StartedAt + 2 }, DateTimeOffset.UtcNow));
+            Assert.False(second.IsCompleted);
+
+            release.SetResult();
+            await Task.WhenAll(first, second).WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+
+            Assert.Equal(["10.14.0", "10.16.0"], versions);
+        }
+    }
+
+    [Fact]
     public async Task A_result_is_kept_with_the_proxy_it_was_checked_with_not_the_one_saved_since()
     {
         // Checked through the Windows proxy; saved since: another proxy (one that cannot be
