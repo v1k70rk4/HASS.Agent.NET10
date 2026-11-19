@@ -2,6 +2,17 @@
 
 Every release of HASS.Agent .NET10, newest first. The downloads are on the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases).
 
+## 10.14.0-beta.2
+
+> **Beta.** Out on the beta channel: tick **Beta updates** under **About → Update settings** (on the Danger Zone page up to 10.13.1) to be offered the beta, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.13.1**, below.
+
+The second beta of 10.14.0: media covers and screenshots over MQTT with a broker that sets no packet limit, and update errors that say why. Everything from beta.1 is in it. Built on .NET 10.0.15, as 10.13.1. Works with the Home Assistant integration **10.6.7** or newer; the integration **10.14.0-beta.1** is still the one for this beta. Signed release.
+
+- **Fixed: media covers and screenshots were dropped over MQTT when the broker sets no packet limit.** A broker that sends no Maximum Packet Size came through as a limit of 0, so every cover was "over the 0 KB limit" and the media player in Home Assistant had no picture; a screenshot asked for over MQTT was dropped too. No limit now means the app's own 512 KB. When the broker does set a limit, the log says so at connect, and a cover too large for it says so too. Reported in [#221](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/221) by @RockJesus, thank you!
+- **Update errors say why.** A failed update check, download or install said only "The SSL connection could not be established" or "An error occurred while establishing a connection to the proxy tunnel". The reason under it comes too now, such as a certificate the proxy showed that is not trusted, or a SOCKS proxy that refused the login: on the About page, in the proxy dialog's Test, in the log and in Home Assistant.
+
+Beta.1, below, is in it: the everyday settings out of the Danger Zone, a proxy for the updates, the About page with the update settings in dialogs, and settings saves that keep what another app changed.
+
 ## 10.14.0-beta.1
 
 > **Beta.** Out on the beta channel: tick **Beta updates** under **About → Update settings** (on the Danger Zone page up to 10.13.1) to be offered the beta, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.13.1**, below.
