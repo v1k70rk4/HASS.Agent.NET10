@@ -155,6 +155,19 @@ public sealed class ScreenshotTests
     }
 
     [Fact]
+    public void A_broker_packet_limit_of_0_is_no_limit()
+    {
+        // Issue 221: a CONNACK with 0 left every thumbnail "over the 0 KB limit".
+        Assert.Null(MqttCompanionService.BrokerPacketLimit(0));
+        Assert.Null(MqttCompanionService.BrokerPacketLimit(null));
+        Assert.Equal(512 * 1024, MqttCompanionService.PayloadLimit(MqttCompanionService.BrokerPacketLimit(0)));
+
+        // A real limit still counts, a small one too.
+        Assert.Equal(1000u, MqttCompanionService.BrokerPacketLimit(1000));
+        Assert.Equal(1000 - 256, MqttCompanionService.PayloadLimit(MqttCompanionService.BrokerPacketLimit(1000)));
+    }
+
+    [Fact]
     public void A_picture_goes_out_only_on_the_connection_it_was_asked_on()
     {
         using var run = new CancellationTokenSource();

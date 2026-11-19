@@ -1331,7 +1331,11 @@ internal sealed class MqttCompanionService : IDisposable
                 }
 
                 _log.Info("MQTT connected.");
-                _brokerMaximumPacketSize = connectResult.MaximumPacketSize;
+                _brokerMaximumPacketSize = BrokerPacketLimit(connectResult.MaximumPacketSize);
+                if (_brokerMaximumPacketSize is { } brokerLimit)
+                {
+                    _log.Info($"The MQTT broker takes packets of up to {brokerLimit} bytes.");
+                }
                 var connectedAt = DateTime.UtcNow;
                 _forceReconnect = false;
                 _discoveryPublished = false;
@@ -3249,6 +3253,14 @@ internal sealed class MqttCompanionService : IDisposable
     }
 
     /// <summary>
+    /// The broker's Maximum Packet Size from its MQTT 5 CONNACK, or null when it set none.
+    /// MQTTnet reports a CONNACK without the property as 0 (its packet field is a plain uint),
+    /// and MQTT 5 does not allow 0 as a value (3.2.2.3.6): 0 is "no limit". Taken as a limit,
+    /// it left no room for any picture with every broker that sets none.
+    /// </summary>
+    internal static uint? BrokerPacketLimit(uint? fromConnAck) => fromConnAck is null or 0 ? null : fromConnAck;
+
+    /// <summary>
     /// How large a picture may be to be sent: the app's own limit, or the broker's when that
     /// is lower (MQTT 5 CONNACK), less the room for the topic and the packet header.
     /// </summary>
@@ -3282,7 +3294,10 @@ internal sealed class MqttCompanionService : IDisposable
             return true;
         }
 
-        _log.Warning($"Media thumbnail skipped: {thumbnail.Length / 1024} KB is over the {limit / 1024} KB limit.");
+        var whose = brokerMaximumPacketSize is { } broker && limit < MaxThumbnailBytes
+            ? $"the {limit} bytes the MQTT broker's packet limit of {broker} bytes leaves"
+            : $"the {limit / 1024} KB limit";
+        _log.Warning($"Media thumbnail skipped: {thumbnail.Length / 1024} KB is over {whose}.");
         return false;
     }
 
