@@ -104,7 +104,7 @@ Kell hozzá Windows 11 vagy Windows 10 (2004-es vagy újabb, x64), Home Assistan
     winget install v1k70rk4.HASSAgentNET10
     ```
 
-    A program a tálcán lakik: az ikonjára kattintva nyílnak a beállítások.
+    A program a tálcán lakik: az ikonjára duplán kattintva nyílnak a beállítások.
 
 3. **Az összekötés.** Az **MQTT** oldalon add meg a bróker címét és egy belépést, vagy a **HA API** oldalon a Home Assistant címét és egy hosszú életű hozzáférési tokent. MQTT-n a gép magától megjelenik a Home Assistant **Eszközök és szolgáltatások** oldalán, a felfedezett eszközök között. A HA API-n az első gépet az integráció hozzáadásával kell felvenni (**HASS.Agent → HA API (WebSocket)**), a többit már a Home Assistant találja meg.
 
