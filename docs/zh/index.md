@@ -59,7 +59,7 @@ hide:
 
     ---
 
-    点击托盘图标，Home Assistant 仪表盘即可显示在托盘上方弹出的小窗口中。也可自定义任意页面将其显示在此独立窗口里，比如门铃响起时弹出摄像头画面。
+    点击托盘图标（需勾选 **点击托盘图标以打开弹窗**），Home Assistant 仪表盘即可显示在托盘上方弹出的小窗口中。也可自定义任意页面将其显示在此独立窗口里，比如门铃响起时弹出摄像头画面。
 
 -   :material-keyboard:{ .lg .middle } **组合键**
 
@@ -92,7 +92,7 @@ hide:
 
 ## 三步完成安装
 
-系统要求：x64架构，Windows 11 或 Windows 102004 或更高版本
+系统要求：x64架构，Windows 11 或 Windows 10（2004 或更高版本）
 
 Home Assistant：2026.6 或更高版本
 
@@ -108,7 +108,7 @@ Home Assistant：2026.6 或更高版本
     winget install v1k70rk4.HASSAgentNET10
     ```
 
-    应用常驻系统托盘，点击图标即可打开设置。
+    应用常驻系统托盘，双击图标即可打开设置。
 
 3. **连接。** 在 **MQTT** 页面填写代理服务器地址和登录信息，或者在 **HA API** 页面填写 Home Assistant 地址和长期访问令牌。使用 MQTT 时，电脑会自动出现在 Home Assistant 的 **设备与服务** 页面的已发现设备中。使用 HA API 时，第一台电脑需要通过添加集成来加入（**HASS.Agent → HA API (WebSocket)**），之后的设备则会被 Home Assistant 自动发现。
 
