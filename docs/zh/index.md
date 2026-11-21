@@ -15,7 +15,7 @@ hide:
 
 # HASS.Agent .NET10
 
-<p class="tag">现代、轻量的 Home Assistant 联动 Windows 客户端：通知、媒体控制、传感器、指令和一键更新。</p>
+<p class="tag">现代、轻量的 Home Assistant 联动 Windows 客户端：发送通知、媒体播放控制、状态上报、命令行指令和一键更新客户端。</p>
 
 [:material-download: 下载](https://github.com/v1k70rk4/HASS.Agent.NET10/releases/latest){ .md-button .md-button--primary }
 [:material-rocket-launch: 快速入门（英文）](../getting-started/index.md){ .md-button }
@@ -35,31 +35,31 @@ hide:
 
     ---
 
-    Home Assistant 的通知可以转发至 Windows 原生通知，也可显示在独立、始终可见的窗口中。支持图片、按钮和文字回复，回复将传回 Home Assistant。
+    Home Assistant 的通知可以以 Windows 原生通知的形式发布到设备，也可显示在独立、始终可见的窗口中。支持图片、按钮和文字互动，动作和内容可传回 Home Assistant。
 
 -   :material-music:{ .lg .middle } **媒体播放**
 
     ---
 
-    设备上播放媒体的状态会同步到 Home Assistant 中。可控制设备播放、暂停、切歌、进度条、音量，可显示标题、封面。即使设备静音，也可临时调整音量使用户听到 TTS 语音播报。
+    设备中播放媒体的状态会同步到 Home Assistant 中。可控制设备播放、暂停、切歌、进度条、音量，可显示标题、封面。即使设备静音，也可临时调整音量使用户听到 TTS 语音播报。
 
 -   :material-chart-line:{ .lg .middle } **传感器**
 
     ---
 
-    拥有内置的系统状态传感器，也可添加自定义进程、服务、磁盘、脚本输出，以及外部 LibreHardwareMonitor 的数值。
+    内置有丰富的系统状态传感器，也可添加自定义进程、服务、磁盘状态、脚本输出，甚至外部 LibreHardwareMonitor 的数值。
 
 -   :material-lightning-bolt:{ .lg .middle } **指令**
 
     ---
 
-    锁屏、睡眠、关机、重启，以及自定义按钮：程序、PowerShell 脚本、按键、链接。可接入自动化或仪表盘使用。
+    锁屏、睡眠、关机、重启，以及可自定义的按钮：程序、PowerShell 脚本、按键、链接。可接入自动化或仪表盘使用。
 
 -   :material-dock-window:{ .lg .middle } **仪表盘**
 
     ---
 
-    点击一下，Home Assistant 仪表盘就会显示在托盘上方的小窗口中。也可把任意页面显示在此独立窗口里，比如门铃响起时弹出摄像头画面。
+    点击托盘图标，Home Assistant 仪表盘即可显示在托盘上方弹出的小窗口中。也可自定义任意页面将其显示在此独立窗口里，比如门铃响起时弹出摄像头画面。
 
 -   :material-keyboard:{ .lg .middle } **组合键**
 
@@ -71,13 +71,13 @@ hide:
 
     ---
 
-    更新实体可直接点击 **安装** 按钮。在设备安装系统服务后，点击 Home Assistant 中的安装按钮，客户端更新就会在后台静默完成，并且只运行带有发布者签名的安装包。
+    update 实体提供 **安装** 按钮。在设备安装系统服务后，点击 Home Assistant 对应实体的安装按钮，客户端更新就会在后台静默完成，且只运行带有发布者签名的安装包。
 
 -   :material-shield-check:{ .lg .middle } **安全**
 
     ---
 
-    设备与Home Assistant连接，无需管理员账号下的令牌：它使用自行创建的、非管理员的 Home Assistant 用户。客户端每个版本都经过签名，不含任何遥测。
+    设备与Home Assistant连接，无需管理员账号下的令牌。它使用自行创建的、非管理员的 Home Assistant 用户。客户端每个版本都经过签名，不含任何遥测。
 
 </div>
 
@@ -92,7 +92,11 @@ hide:
 
 ## 三步完成安装
 
-需要 Windows 11 或 Windows 10（2004 或更高版本，x64）、Home Assistant 2026.6 或更高版本，以及 MQTT 代理服务器 **或** Home Assistant 的 WebSocket API。使用 API 则不需要代理服务器，在公网也可访问，例如通过 Nabu Casa。
+系统要求：x64架构，Windows 11 或 Windows 102004 或更高版本
+
+Home Assistant：2026.6 或更高版本
+
+连接：MQTT 代理服务器 **或** Home Assistant 的 WebSocket API。 使用 WebSocket API 可通过 Nabu Casa 等服务在公网远程访问实例。
 
 1. **集成。** 在 Home Assistant 的 **设置** 中打开 **Marketplace**（2026.11 之前的 Home Assistant 中是 HACS），搜索 **HASS.Agent** 集成，下载并重启 Home Assistant。
 
