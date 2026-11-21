@@ -104,7 +104,7 @@ Du brauchst Windows 11 oder Windows 10 (Version 2004 oder neuer, x64), Home Assi
     winget install v1k70rk4.HASSAgentNET10
     ```
 
-    Die App wohnt im Infobereich: Ein Klick auf ihr Symbol öffnet die Einstellungen.
+    Die App wohnt im Infobereich: Ein Doppelklick auf ihr Symbol öffnet die Einstellungen.
 
 3. **Die Verbindung.** Trage auf der Seite **MQTT** die Adresse des Brokers und eine Anmeldung ein, oder auf der Seite **HA-API** die Adresse von Home Assistant und ein langlebiges Zugriffstoken. Über MQTT erscheint der PC von selbst in Home Assistant unter **Geräte & Dienste**, bei den entdeckten Geräten. Über die HA-API wird der erste PC durch Hinzufügen der Integration aufgenommen (**HASS.Agent → HA API (WebSocket)**), alle weiteren findet Home Assistant selbst.
 

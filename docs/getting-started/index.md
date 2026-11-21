@@ -33,7 +33,7 @@ winget install v1k70rk4.HASSAgentNET10
 
 Or download the signed installer from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases/latest) and run it. [The installer and winget](installer.md) lists its options; [Security and privacy](security.md) says how to check the signature. You can also [build it from source](../development.md).
 
-The installer starts the app when it is done. It lives in the tray: a click on its icon opens the settings.
+The installer starts the app when it is done. It lives in the tray: a double click on its icon opens the settings.
 
 ## 3. Connect
 
