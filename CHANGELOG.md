@@ -2,9 +2,41 @@
 
 Every release of HASS.Agent .NET10, newest first. The downloads are on the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases).
 
-## 10.14.0-beta.2
+## 10.14.0
 
-> **Beta.** Out on the beta channel: tick **Beta updates** under **About → Update settings** (on the Danger Zone page up to 10.13.1) to be offered the beta, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.13.1**, below.
+The everyday settings out of the Danger Zone, a proxy for the updates, an About page with the update settings in dialogs of their own, and settings saves that keep what another user's app changed. With them update errors that say why, media covers over MQTT with a broker that sets no packet limit, the app in Italian, and a log that says which part of the app wrote each line. Built on .NET 10.0.15, as 10.13.1. Works with the Home Assistant integration **10.6.7** or newer; the integration **10.14.0** is out at the same time. Signed release.
+
+**Settings and the About page**
+
+- **The everyday settings are out of the Danger Zone.** They are where you would look for them, and no longer need the Danger Zone switched on: backup and restore (export, import, import from HASS.Agent) on the General page; Users of this PC and Kiosk mode on the Service page; the beta channel and *Updates only at this PC* on the About page. The Danger Zone keeps its tools: MQTT maintenance, republishing the discovery, the debug log, the live MQTT monitor, factory reset and fast sensors. See [Danger Zone](docs/features/danger-zone.md).
+- **The About page, tidied up.** A **Website** button opens [hass-agent.com](https://hass-agent.com/). Below it an **Updates** box laid out like the Service page: **Check updates**, **Update settings...** (the beta channel, updates only at this PC) and **Proxy settings...**, the last with the proxy in use next to it. Each dialog saves with its own Save button. While a check or a download runs, the two settings buttons wait.
+- **Two users' apps no longer undo each other's settings.** Every user's app of a PC, and the service, share one settings file, and each wrote it whole: a save put back the old value of whatever another one had changed meanwhile. A save now writes only what was changed in it, over the file as it is, and the apps take turns saving. A save that cannot replace the settings file keeps what was in it, so a write cut short loses nothing.
+
+**Updates**
+
+- **A proxy for the updates.** The update checks and downloads (GitHub, the only place on the internet the app talks to) go through the proxy Windows is set to, as before, or through one set under **About → Proxy settings**: `http://`, `https://` or `socks5://`, for a proxy app such as Clash or v2rayN that is not set as Windows' proxy. A proxy that asks for a login gets the user name and password typed in there, kept like the MQTT password and left out of a settings export. **Test** tries what is filled in before it is saved. Home Assistant and everything else on the home network never go through it, and an installer still runs only with the publisher's signature. Asked for in [#205](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/205). See [A proxy for the updates](docs/features/updates.md#a-proxy-for-the-updates).
+- **Update errors say why.** A failed update check, download or install said only "The SSL connection could not be established" or "An error occurred while establishing a connection to the proxy tunnel". The reason under it comes too now, such as a certificate the proxy showed that is not trusted, or a SOCKS proxy that refused the login: on the About page, in the proxy dialog's Test, in the log and in Home Assistant.
+- **Home Assistant follows a change of channel or proxy at once.** Saved in the dialogs, the update entity is checked anew and sent. An answer checked with the old channel or proxy never goes out for the new one, and an earlier check's answer never replaces a later one's.
+
+**Fixed**
+
+- **Fixed: media covers and screenshots were dropped over MQTT when the broker sets no packet limit.** A broker that sends no Maximum Packet Size came through as a limit of 0, so every cover was "over the 0 KB limit" and the media player in Home Assistant had no picture; a screenshot asked for over MQTT was dropped too. No limit now means the app's own 512 KB. When the broker does set a limit, the log says so at connect, and a cover too large for it says so too. Reported in [#221](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/221) by @RockJesus, thank you!
+
+**The log**
+
+- **The log says which part of the app wrote each line.** The tray app, the service and the setup steps write one file, so the same warning from the tray app and the service looked like one line written twice. Each line now has `[tray]`, `[service]` or `[setup]` after its level. A system command says how it came from Home Assistant, as `Executing system command: shutdown (from Home Assistant over MQTT)`. A connection from Music Assistant that a sleep dropped is no longer an error with its whole stack trace: like the other connections that closed, it is one warning line, and only when Music Assistant does not connect again.
+
+**Translations and documentation**
+
+- **Italian**, by @lollox80 in [#225](https://github.com/v1k70rk4/HASS.Agent.NET10/pull/225), thank you! It is on the General page, for the app and for the names of the entities in Home Assistant.
+- **Simplified Chinese**: the texts of 10.13.1 in [#214](https://github.com/v1k70rk4/HASS.Agent.NET10/pull/214), then the whole translation gone over again in [#224](https://github.com/v1k70rk4/HASS.Agent.NET10/pull/224) and [#227](https://github.com/v1k70rk4/HASS.Agent.NET10/pull/227), with the Chinese page of the website, all by @natsu-tsuki, thank you!
+- **The documentation has a website of its own**, [hass-agent.com](https://hass-agent.com/), with a short page in Hungarian, German, Russian and Simplified Chinese. Thank you to @natsu-tsuki for going over the Chinese one in [#213](https://github.com/v1k70rk4/HASS.Agent.NET10/pull/213).
+- **The documentation says a double click on the tray icon opens the settings.** It said a click; a single click opens the dashboard popup, and only with **A click on the tray icon opens it** ticked on the Capabilities page.
+
+**The betas before it**, with their notes as they were:
+
+<details markdown="1">
+<summary><b>10.14.0-beta.2</b>: media covers over MQTT with a broker that sets no packet limit, update errors that say why</summary>
 
 The second beta of 10.14.0: media covers and screenshots over MQTT with a broker that sets no packet limit, and update errors that say why. Everything from beta.1 is in it. Built on .NET 10.0.15, as 10.13.1. Works with the Home Assistant integration **10.6.7** or newer; the integration **10.14.0-beta.1** is still the one for this beta. Signed release.
 
@@ -13,9 +45,10 @@ The second beta of 10.14.0: media covers and screenshots over MQTT with a broker
 
 Beta.1, below, is in it: the everyday settings out of the Danger Zone, a proxy for the updates, the About page with the update settings in dialogs, and settings saves that keep what another app changed.
 
-## 10.14.0-beta.1
+</details>
 
-> **Beta.** Out on the beta channel: tick **Beta updates** under **About → Update settings** (on the Danger Zone page up to 10.13.1) to be offered the beta, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.13.1**, below.
+<details markdown="1">
+<summary><b>10.14.0-beta.1</b>: the everyday settings out of the Danger Zone, a proxy for the updates, the About page, settings saves</summary>
 
 The first beta of 10.14.0: the everyday settings out of the Danger Zone, a proxy for the update checks, and an About page with the update settings in dialogs of their own. Built on .NET 10.0.15, as 10.13.1. Works with the Home Assistant integration **10.6.7** or newer; the integration **10.14.0-beta.1** is out at the same time. Signed release.
 
@@ -26,6 +59,8 @@ The first beta of 10.14.0: the everyday settings out of the Danger Zone, a proxy
 - **Home Assistant follows a change of channel or proxy at once.** Saved in the dialogs, the update entity is checked anew and sent. An answer checked with the old channel or proxy never goes out for the new one, and an earlier check's answer never replaces a later one's.
 - **The documentation has a website of its own**, [hass-agent.com](https://hass-agent.com/), with a short page in Hungarian, German, Russian and Simplified Chinese. Thank you to @natsu-tsuki for going over the Chinese one in [#213](https://github.com/v1k70rk4/HASS.Agent.NET10/pull/213).
 - **Simplified Chinese for the texts of 10.13.1**, by @natsu-tsuki in [#214](https://github.com/v1k70rk4/HASS.Agent.NET10/pull/214), thank you!
+
+</details>
 
 ## 10.13.1
 

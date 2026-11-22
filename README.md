@@ -2,7 +2,7 @@
 
 ![Windows](https://img.shields.io/badge/Windows-10%202004%2B%20%7C%2011-0078D4?logo=windows&logoColor=white)
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet&logoColor=white)
-![Version](https://img.shields.io/badge/version-10.14.0--beta.2-orange)
+![Version](https://img.shields.io/badge/version-10.14.0-brightgreen)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-MQTT%20%7C%20WebSocket%20API-41BDF5?logo=homeassistant&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/15316/badge)](https://www.bestpractices.dev/projects/15316)
@@ -26,7 +26,7 @@ It is designed for Windows PCs you want to observe and control from Home Assista
 
 The .NET10 line starts at **version 10.0.0**. The classic client is a separate program: if you want to stay with it, it is still available from its own project, and the integration keeps a [`legacy` branch](https://github.com/v1k70rk4/HASS.Agent.NET10-Integration/tree/legacy) for it. Thinking about switching? See [Coming from HASS.Agent](docs/getting-started/migrating.md).
 
-> **Stable:** [10.13.1](https://github.com/v1k70rk4/HASS.Agent.NET10/releases/latest) &nbsp;·&nbsp; **Beta:** [10.14.0-beta.2](https://github.com/v1k70rk4/HASS.Agent.NET10/releases/tag/v10.14.0-beta.2) &nbsp;·&nbsp; [What changed](#what-changed) &nbsp;·&nbsp; [Full changelog](CHANGELOG.md)
+> **Stable:** [10.14.0](https://github.com/v1k70rk4/HASS.Agent.NET10/releases/latest) &nbsp;·&nbsp; [What changed](#what-changed) &nbsp;·&nbsp; [Full changelog](CHANGELOG.md)
 
 ---
 
@@ -176,28 +176,39 @@ No telemetry, analytics, or usage data is collected or transmitted.
 
 ## What Changed
 
-### 10.14.0-beta.2
+### 10.14.0
 
-> **Beta.** Out on the beta channel: tick **Beta updates** under **About → Update settings** (on the Danger Zone page up to 10.13.1) to be offered the beta, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.13.1**, below.
+The everyday settings out of the Danger Zone, a proxy for the updates, an About page with the update settings in dialogs of their own, and settings saves that keep what another user's app changed. With them update errors that say why, media covers over MQTT with a broker that sets no packet limit, the app in Italian, and a log that says which part of the app wrote each line. Built on .NET 10.0.15, as 10.13.1. Works with the Home Assistant integration **10.6.7** or newer; the integration **10.14.0** is out at the same time. Signed release.
 
-The second beta of 10.14.0: media covers and screenshots over MQTT with a broker that sets no packet limit, and update errors that say why. Everything from beta.1 is in it. Built on .NET 10.0.15, as 10.13.1. Works with the Home Assistant integration **10.6.7** or newer; the integration **10.14.0-beta.1** is still the one for this beta. Signed release.
-
-**New since beta.1**
-
-- **Fixed: media covers and screenshots were dropped over MQTT when the broker sets no packet limit.** A broker that sends no Maximum Packet Size came through as a limit of 0, so every cover was "over the 0 KB limit" and the media player in Home Assistant had no picture; a screenshot asked for over MQTT was dropped too. No limit now means the app's own 512 KB. When the broker does set a limit, the log says so at connect, and a cover too large for it says so too. Reported in [#221](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/221) by @RockJesus, thank you!
-- **Update errors say why.** A failed update check, download or install said only "The SSL connection could not be established" or "An error occurred while establishing a connection to the proxy tunnel". The reason under it comes too now, such as a certificate the proxy showed that is not trusted, or a SOCKS proxy that refused the login: on the About page, in the proxy dialog's Test, in the log and in Home Assistant.
-
-**From beta.1**
+**Settings and the About page**
 
 - **The everyday settings are out of the Danger Zone.** They are where you would look for them, and no longer need the Danger Zone switched on: backup and restore (export, import, import from HASS.Agent) on the General page; Users of this PC and Kiosk mode on the Service page; the beta channel and *Updates only at this PC* on the About page. The Danger Zone keeps its tools: MQTT maintenance, republishing the discovery, the debug log, the live MQTT monitor, factory reset and fast sensors. See [Danger Zone](docs/features/danger-zone.md).
-- **A proxy for the updates.** The update checks and downloads (GitHub, the only place on the internet the app talks to) go through the proxy Windows is set to, as before, or through one set under **About → Proxy settings**: `http://`, `https://` or `socks5://`, for a proxy app such as Clash or v2rayN that is not set as Windows' proxy. A proxy that asks for a login gets the user name and password typed in there, kept like the MQTT password and left out of a settings export. **Test** tries what is filled in before it is saved. Home Assistant and everything else on the home network never go through it, and an installer still runs only with the publisher's signature. Asked for in [#205](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/205). See [A proxy for the updates](docs/features/updates.md#a-proxy-for-the-updates).
 - **The About page, tidied up.** A **Website** button opens [hass-agent.com](https://hass-agent.com/). Below it an **Updates** box laid out like the Service page: **Check updates**, **Update settings...** (the beta channel, updates only at this PC) and **Proxy settings...**, the last with the proxy in use next to it. Each dialog saves with its own Save button. While a check or a download runs, the two settings buttons wait.
 - **Two users' apps no longer undo each other's settings.** Every user's app of a PC, and the service, share one settings file, and each wrote it whole: a save put back the old value of whatever another one had changed meanwhile. A save now writes only what was changed in it, over the file as it is, and the apps take turns saving. A save that cannot replace the settings file keeps what was in it, so a write cut short loses nothing.
-- **Home Assistant follows a change of channel or proxy at once.** Saved in the dialogs, the update entity is checked anew and sent. An answer checked with the old channel or proxy never goes out for the new one, and an earlier check's answer never replaces a later one's.
-- **The documentation has a website of its own**, [hass-agent.com](https://hass-agent.com/), with a short page in Hungarian, German, Russian and Simplified Chinese. Thank you to @natsu-tsuki for going over the Chinese one in [#213](https://github.com/v1k70rk4/HASS.Agent.NET10/pull/213).
-- **Simplified Chinese for the texts of 10.13.1**, by @natsu-tsuki in [#214](https://github.com/v1k70rk4/HASS.Agent.NET10/pull/214), thank you!
 
-### 10.13.1
+**Updates**
+
+- **A proxy for the updates.** The update checks and downloads (GitHub, the only place on the internet the app talks to) go through the proxy Windows is set to, as before, or through one set under **About → Proxy settings**: `http://`, `https://` or `socks5://`, for a proxy app such as Clash or v2rayN that is not set as Windows' proxy. A proxy that asks for a login gets the user name and password typed in there, kept like the MQTT password and left out of a settings export. **Test** tries what is filled in before it is saved. Home Assistant and everything else on the home network never go through it, and an installer still runs only with the publisher's signature. Asked for in [#205](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/205). See [A proxy for the updates](docs/features/updates.md#a-proxy-for-the-updates).
+- **Update errors say why.** A failed update check, download or install said only "The SSL connection could not be established" or "An error occurred while establishing a connection to the proxy tunnel". The reason under it comes too now, such as a certificate the proxy showed that is not trusted, or a SOCKS proxy that refused the login: on the About page, in the proxy dialog's Test, in the log and in Home Assistant.
+- **Home Assistant follows a change of channel or proxy at once.** Saved in the dialogs, the update entity is checked anew and sent. An answer checked with the old channel or proxy never goes out for the new one, and an earlier check's answer never replaces a later one's.
+
+**Fixed**
+
+- **Fixed: media covers and screenshots were dropped over MQTT when the broker sets no packet limit.** A broker that sends no Maximum Packet Size came through as a limit of 0, so every cover was "over the 0 KB limit" and the media player in Home Assistant had no picture; a screenshot asked for over MQTT was dropped too. No limit now means the app's own 512 KB. When the broker does set a limit, the log says so at connect, and a cover too large for it says so too. Reported in [#221](https://github.com/v1k70rk4/HASS.Agent.NET10/issues/221) by @RockJesus, thank you!
+
+**The log**
+
+- **The log says which part of the app wrote each line.** The tray app, the service and the setup steps write one file, so the same warning from the tray app and the service looked like one line written twice. Each line now has `[tray]`, `[service]` or `[setup]` after its level. A system command says how it came from Home Assistant, as `Executing system command: shutdown (from Home Assistant over MQTT)`. A connection from Music Assistant that a sleep dropped is no longer an error with its whole stack trace: like the other connections that closed, it is one warning line, and only when Music Assistant does not connect again.
+
+**Translations and documentation**
+
+- **Italian**, by @lollox80 in [#225](https://github.com/v1k70rk4/HASS.Agent.NET10/pull/225), thank you! It is on the General page, for the app and for the names of the entities in Home Assistant.
+- **Simplified Chinese**: the texts of 10.13.1 in [#214](https://github.com/v1k70rk4/HASS.Agent.NET10/pull/214), then the whole translation gone over again in [#224](https://github.com/v1k70rk4/HASS.Agent.NET10/pull/224) and [#227](https://github.com/v1k70rk4/HASS.Agent.NET10/pull/227), with the Chinese page of the website, all by @natsu-tsuki, thank you!
+- **The documentation has a website of its own**, [hass-agent.com](https://hass-agent.com/), with a short page in Hungarian, German, Russian and Simplified Chinese. Thank you to @natsu-tsuki for going over the Chinese one in [#213](https://github.com/v1k70rk4/HASS.Agent.NET10/pull/213).
+- **The documentation says a double click on the tray icon opens the settings.** It said a click; a single click opens the dashboard popup, and only with **A click on the tray icon opens it** ticked on the Capabilities page.
+
+<details>
+<summary><b>10.13.1</b></summary>
 
 A screenshot of the PC when Home Assistant asks for one, popup windows that keep their page and close by themselves or from Home Assistant, a sensor for the print queues, and a switch for PCs where an update has to be approved at the PC itself. With them a quieter log after a wake, the audio code on NAudio 3, the translations that were missing, and fixes. Built on .NET 10.0.15, as 10.13.0. Works with the Home Assistant integration **10.6.7** or newer; the screenshot, the Print jobs sensor and the update entity without its Install button need the integration **10.13.1**, out at the same time. Signed release.
 
@@ -245,41 +256,6 @@ A screenshot of the PC when Home Assistant asks for one, popup windows that keep
 - **Simplified Chinese for the texts of 10.13.0**, by @natsu-tsuki in [#188](https://github.com/v1k70rk4/HASS.Agent.NET10/pull/188), thank you!
 - **The audio code is on NAudio 3.** The Sendspin player's output, and the audio device sensors and selects, were moved to the new major version of the library under them. Nothing to set, and nothing should sound different: say so if the player, the volume or the device selects behave in another way than before.
 - **Libraries**: WebView2 1.0.4314.35, MQTTnet 5.2, and the 10.0.15 builds of the two System packages.
-
-<details>
-<summary><b>10.13.0</b></summary>
-
-A bigger release: the PC as a Sendspin player of Music Assistant; two users signed in at once share the connection instead of taking it from each other; and a security round on what a Windows user who is not an administrator can do through the app on a PC shared with others. Built on .NET 10.0.15, the .NET security update of November. Works with the Home Assistant integration **10.6.7** or newer; the integration **10.13.0** is out at the same time. Signed release.
-
-**Sendspin player**
-
-- **The PC as a Sendspin player of Music Assistant.** A new card on the Media player page: turn it on, and the PC plays what [Music Assistant](https://music-assistant.io/) sends it, in sync with the other players of its group, in another room, on a speaker, on another PC. Music Assistant finds the PC on the network and asks for a pairing token, which the page copies to the clipboard; for a network where it is not found, the PC connects to an address you give. The sound goes to the Windows default output or to a device you choose, and an output that goes away (a headset unplugged, a TV that drops its HDMI audio) is replaced by whatever is there, with the PC staying in its group. An announcement of the app silences the player meanwhile. The PC is the player, whoever is signed in at its screen: a user switch hands the player over within a few seconds, and so does an update of the app. For a PC set up by a script or by Intune, or a kiosk PC with no window, `HASS.Agent.NET10.exe --sendspin-token` gives the pairing token on the command line. Needs Music Assistant 2.10.7 or newer; the player's entity in Home Assistant comes from Music Assistant's own integration. See [Sendspin player](docs/features/media-player.md#sendspin-player-music-assistant).
-- **Setup lets the app through the Windows firewall for the player** (TCP 8928 and UDP 5353, private networks only, the same way as the Local API) and removes the rule at uninstall.
-- **The library the player brings along (libsodium) is signed with the program**; the other libraries beside the program carry Microsoft's signature. See [Signed releases](docs/getting-started/security.md#signed-releases).
-- **The program is 3 MB larger than 10.12.0, not 58.** A library of the Sendspin SDK asks for WPF, which this app does not use; it is kept out of the program.
-
-**Several users on one PC**
-
-- **Two users signed in at once no longer take turns on MQTT.** Every signed-in user has a tray app, and both connected with the PC's client id, so the broker closed one for the other every few seconds and the PC flickered in Home Assistant. One app talks now, the one in the session at the PC's screen (on a PC used over Remote Desktop only, the active session's); the other waits and says so on its General page, and a switch of users hands the connection over. See [Several users signed in at once](docs/features/users.md#several-users-signed-in-at-once).
-
-**Security**
-
-- **A security review of the app on a shared PC.** On a PC that several people use, a Windows user who is not an administrator could get more than they should through the optional service and the shared settings folder: while the service ran, at a first install, and at an update. The ways that were found are closed in this release, and each fix was tried against what it fixes.
-- **The service runs only what was approved for it.** It listens on its own MQTT topics alone, and a command marked for the tray app is not the service's to run.
-- **An update is installed only when the downloaded file says it is the installer of that release**, by its own version information; the publisher's signature alone is not enough any more. See [Updates](docs/features/updates.md#only-signed-installers).
-- **Kiosk mode cannot be switched off from a kiosk user's own environment.**
-- **The service's approval prompt shows what kind of command it asks about**, keeps a name on one line, and warns when the program or script behind a command can be changed without an administrator's rights.
-- **Smaller ones**: `--sendspin-token` and the Sendspin player's lock files refuse a folder that is a link; the picture of a notification is not fetched from the PC's own IPv6 link-local address; an update check asked for over MQTT goes to GitHub at most once in five minutes.
-- **How a release is made**: the build runs with a read-only token, and a separate last step makes the draft release; the packages are locked by hash; a release is published, and gets its Sigstore signature, only when it holds its installer and its zip and nothing else. The Sigstore check under [Signed releases](docs/getting-started/security.md#signed-releases) names the release's tag now.
-- **Built on .NET 10.0.15** (SDK 10.0.404), the .NET security update of November. Windows Update does not patch the runtime inside the app, so this release is how its fixes reach it.
-
-**What the security fixes change in use**
-
-- **The settings folder holds a file named `folder-….anchor`.** It is empty, only administrators can touch it, and it keeps the folder a folder: leave it there. An update makes a new one and removes the old.
-- **A settings folder that a user who is not an administrator made is not used.** Every user can make a folder in `ProgramData`, so one could be there before the app was installed, or after the folder was deleted. Setup, and every command an administrator runs, renames it to `HASS.Agent.NET10.made-by-another-user-…` beside where it was, with everything in it, and the app starts from new settings; an administrator can take back from it what is theirs. When it cannot be renamed because a program has it open, Setup says so and starts neither the service nor the app until the other users are signed out and Setup is run again. Where the app was used without the installer by two users who are not administrators, it now starts only for the one who made the folder; installing it puts that right. See [Users of this PC](docs/features/users.md).
-- **A command the broker kept is not run again.** A command published with MQTT's retain flag stays on the broker, which hands it to the PC again at every connect. That replay is ignored now; a command that arrives while the PC is connected runs as before. The integration publishes none with retain, and an automation of your own that publishes to a command topic should not either.
-- **A custom command with arguments needs quotes around a program path that has a space in it.** `C:\Program Files\Tool\tool.exe /x` is not run, the log says why, and the editor refuses it when it is saved; `"C:\Program Files\Tool\tool.exe" /x` is. A path with nothing after it runs as before. See [Custom commands](docs/commands/custom.md).
-- **Worth a look after the update: what the service was approved to run.** An approval covers the text of a command, not the file that text names. A program or script that someone who is not an administrator can change, a script under `C:\Scripts` for one, is theirs to change after the approval as well. The prompt warns about such a file from now on, but what was approved before stays approved: keep those files where only administrators can write. See [Windows service](docs/features/windows-service.md).
 
 </details>
 
