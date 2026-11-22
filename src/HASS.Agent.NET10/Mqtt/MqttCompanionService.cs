@@ -2917,7 +2917,7 @@ internal sealed class MqttCompanionService : IDisposable
                 return;
             }
 
-            await _systemCommandService.HandleCommandAsync(command);
+            await _systemCommandService.HandleCommandAsync(command, transport);
         }
         catch (Exception ex)
         {
@@ -3098,7 +3098,7 @@ internal sealed class MqttCompanionService : IDisposable
         if (commandName == "display_off")
         {
             // The light's own "off": it does not depend on the Monitor off button being enabled.
-            await _systemCommandService.HandleCommandAsync(new SystemCommandMessage("monitor_off", Force: false, Time: 0, Comment: null, RestartCancel: false));
+            await _systemCommandService.HandleCommandAsync(new SystemCommandMessage("monitor_off", Force: false, Time: 0, Comment: null, RestartCancel: false), transport);
             TriggerPushUpdate();
             return;
         }

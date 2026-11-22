@@ -27,11 +27,17 @@ internal sealed class SystemCommandService : IDisposable
         _ownsAudioEndpoint = audioEndpointService is null;
     }
 
-    public Task HandleCommandAsync(SystemCommandMessage message)
+    internal static string ExecutingLine(string command, string? transport) => transport is null
+        ? $"Executing system command: {command}"
+        : $"Executing system command: {command} (from Home Assistant over {transport})";
+
+    /// <param name="transport">The way the command came from Home Assistant, for the log: a
+    /// shutdown or a restart in the log should say where it came from.</param>
+    public Task HandleCommandAsync(SystemCommandMessage message, string? transport = null)
     {
         if (message.RestartCancel)
         {
-            _log.Info("Executing system command: restart_cancel");
+            _log.Info(ExecutingLine("restart_cancel", transport));
             CancelShutdownOrRestart();
             return Task.CompletedTask;
         }
@@ -42,7 +48,7 @@ internal sealed class SystemCommandService : IDisposable
             return Task.CompletedTask;
         }
 
-        _log.Info($"Executing system command: {command}");
+        _log.Info(ExecutingLine(command, transport));
 
         switch (command)
         {

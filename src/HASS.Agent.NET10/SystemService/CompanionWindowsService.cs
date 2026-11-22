@@ -63,7 +63,7 @@ internal sealed class CompanionWindowsService : ServiceBase
         }
 
         _paths = AppPaths.Create();
-        _log = new FileLog(_paths.LogFile);
+        _log = new FileLog(_paths.LogFile, "service");
         _log.Info($"Starting {AppIdentity.DisplayName} system service.");
 
         try

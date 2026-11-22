@@ -5,6 +5,7 @@ using HASS.Agent.Companion.Configuration;
 using HASS.Agent.Companion.Security;
 using HASS.Agent.Companion.Logging;
 using HASS.Agent.Companion.Runtime;
+using HASS.Agent.Companion.SystemCommands;
 using HASS.Agent.Companion.SystemStatus;
 using HASS.Agent.Companion.Tray;
 
@@ -253,6 +254,40 @@ public class LogRecordTests
         Assert.Equal($"2026-10-07T18:00:00.0000000+02:00 [INFO] Hello{Environment.NewLine}", FileLog.FormatRecord(Time, "INFO", "Hello"));
     }
 
+    [Fact]
+    public void The_source_follows_the_level()
+    {
+        Assert.Equal($"2026-10-07T18:00:00.0000000+02:00 [INFO] [service] Hello{Environment.NewLine}", FileLog.FormatRecord(Time, "INFO", "Hello", "service"));
+    }
+
+    // The tray app and the service write the same file: each line says which one wrote it.
+    [Fact]
+    public void Two_processes_on_one_file_can_be_told_apart()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "hass-agent-test-" + Guid.NewGuid().ToString("N"));
+        var path = Path.Combine(folder, "shared.log");
+        try
+        {
+            using (var tray = new FileLog(path, "tray"))
+            using (var service = new FileLog(path, "service"))
+            {
+                tray.Warning("HA WebSocket connection failed");
+                service.Warning("HA WebSocket connection failed");
+            }
+
+            var records = File.ReadAllLines(path).Where(line => !line.Contains("Log rotated", StringComparison.Ordinal))
+                .Select(line => line[(line.IndexOf(' ') + 1)..]).ToArray();
+            Assert.Equal(["[WARN] [tray] HA WebSocket connection failed", "[WARN] [service] HA WebSocket connection failed"], records);
+        }
+        finally
+        {
+            if (Directory.Exists(folder))
+            {
+                Directory.Delete(folder, recursive: true);
+            }
+        }
+    }
+
     [Theory]
     [InlineData("title\r\n2026-10-07T18:00:01.0000000+02:00 [ERROR] fake record")]
     [InlineData("title\n2026-10-07T18:00:01.0000000+02:00 [ERROR] fake record")]
@@ -413,5 +448,18 @@ public class LibreHardwareMonitorLimitTests
         var json = string.Concat(Enumerable.Repeat("""{"Text":"n","Children":[""", 40)) + """{"Text":"s","Value":"1 V"}""" + string.Concat(Enumerable.Repeat("]}", 40));
 
         Assert.ThrowsAny<System.Text.Json.JsonException>(() => LibreHardwareMonitorClient.Parse(json));
+    }
+}
+
+public class SystemCommandLogTests
+{
+    // A shutdown or a restart in the log says where it came from.
+    [Theory]
+    [InlineData("shutdown", "MQTT", "Executing system command: shutdown (from Home Assistant over MQTT)")]
+    [InlineData("restart", "the HA API WebSocket", "Executing system command: restart (from Home Assistant over the HA API WebSocket)")]
+    [InlineData("lock", null, "Executing system command: lock")]
+    public void The_line_names_the_way_the_command_came(string command, string? transport, string line)
+    {
+        Assert.Equal(line, SystemCommandService.ExecutingLine(command, transport));
     }
 }

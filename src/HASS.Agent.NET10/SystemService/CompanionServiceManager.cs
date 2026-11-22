@@ -129,7 +129,7 @@ internal static class CompanionServiceManager
                 return null;
             }
 
-            using var log = new FileLog(AppPaths.Create().LogFile);
+            using var log = new FileLog(AppPaths.Create().LogFile, "setup");
             if (putAside is not null)
             {
                 log.Warning($"The settings folder was made by a user who is no administrator. It was put aside as {putAside}, with what it held{(made ? ", and a new one made" : string.Empty)}: nothing in it is used.");
@@ -240,7 +240,7 @@ internal static class CompanionServiceManager
         try
         {
             var paths = AppPaths.Create();
-            using var log = new FileLog(paths.LogFile);
+            using var log = new FileLog(paths.LogFile, "setup");
             var settings = SettingsStore.LoadOrCreate(paths, log);
             var current = ServicePolicy.Load(ServicePolicy.DefaultPath);
             ServicePolicy policy;
@@ -314,7 +314,7 @@ internal static class CompanionServiceManager
         }
 
         var paths = AppPaths.Create();
-        using var log = new FileLog(paths.LogFile);
+        using var log = new FileLog(paths.LogFile, "setup");
         PrepareLastRunRecord(log);
         try
         {
@@ -375,7 +375,7 @@ internal static class CompanionServiceManager
         }
 
         var paths = AppPaths.Create();
-        using var log = new FileLog(paths.LogFile);
+        using var log = new FileLog(paths.LogFile, "setup");
         var by = $"{Environment.UserDomainName}\\{Environment.UserName}";
         try
         {

@@ -30,6 +30,30 @@ internal sealed class FileLogLoggerProvider(FileLog log, ConnectionFailures? fai
     /// </summary>
     internal static bool IsClockNote(string message) => message.StartsWith("[ClockSync]", StringComparison.Ordinal);
 
+    /// <summary>
+    /// A connection from Music Assistant that the network dropped while the player wrote to it
+    /// (the PC went to sleep, the Wi-Fi changed). The SDK calls it an error, with the whole stack
+    /// trace; it is a connection that closed, like the ones <see cref="ConnectionFailures"/> holds
+    /// back, and Music Assistant connects again by itself.
+    /// </summary>
+    internal static bool IsDroppedConnection(string category, string message, Exception exception)
+    {
+        if (category != "SendspinHostService" || !message.StartsWith("Error handling server connection", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        for (var inner = exception; inner is not null; inner = inner.InnerException)
+        {
+            if (inner is System.Net.WebSockets.WebSocketException or System.Net.Sockets.SocketException or IOException)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private sealed class FileLogLogger(FileLog log, string category, ConnectionFailures? failures) : ILogger
     {
         public IDisposable? BeginScope<TState>(TState state)
@@ -67,6 +91,18 @@ internal sealed class FileLogLoggerProvider(FileLog log, ConnectionFailures? fai
                     break;
                 case LogLevel.Warning:
                     log.Warning(exception is null ? message : $"{message} ({exception.Message})");
+                    break;
+                case LogLevel.Error when exception is not null && IsDroppedConnection(category, text, exception):
+                    var dropped = $"{message} ({exception.Message})";
+                    if (failures is not null)
+                    {
+                        failures.Failed(dropped);
+                    }
+                    else
+                    {
+                        log.Warning(dropped);
+                    }
+
                     break;
                 case LogLevel.Error or LogLevel.Critical:
                     if (exception is null)
