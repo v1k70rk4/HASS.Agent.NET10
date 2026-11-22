@@ -487,7 +487,7 @@ public sealed class RemoteUpdateInstallTests : IDisposable
             var settings = Settings(service);
             var stable = settings.UpdateCheckOrigin();
             Assert.True(service.TryKeepUpdateResult(AnUpdate, stable, DateTimeOffset.UtcNow));
-            Assert.Equal("10.14.0", service.KeptUpdateStateForSettingsNow()?.LatestVersion);
+            Assert.Equal("10.99.0", service.KeptUpdateStateForSettingsNow()?.LatestVersion);
 
             var betaResult = AnUpdate with { LatestVersion = "10.15.0-beta.1" };
             var beta = stable with { Beta = true, StartedAt = stable.StartedAt + 1 };
@@ -544,7 +544,7 @@ public sealed class RemoteUpdateInstallTests : IDisposable
             release.SetResult();
             await Task.WhenAll(first, second).WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
 
-            Assert.Equal(["10.14.0", "10.16.0"], versions);
+            Assert.Equal(["10.99.0", "10.16.0"], versions);
         }
     }
 
@@ -591,7 +591,7 @@ public sealed class RemoteUpdateInstallTests : IDisposable
             release.SetResult();
             await Task.WhenAll(first, retry).WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
 
-            Assert.Equal(["10.14.0", "10.16.0"], versions);
+            Assert.Equal(["10.99.0", "10.16.0"], versions);
         }
     }
 
@@ -631,7 +631,7 @@ public sealed class RemoteUpdateInstallTests : IDisposable
             release.SetResult();
             await report.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
 
-            Assert.NotEqual("10.14.0", Assert.Single(versions));
+            Assert.NotEqual("10.99.0", Assert.Single(versions));
         }
     }
 
@@ -655,7 +655,7 @@ public sealed class RemoteUpdateInstallTests : IDisposable
             await service.ReportUpdateStateAsync(AnUpdate, origin);
 
             var only = Assert.Single(sent, message => message.Topic == StateTopic);
-            Assert.NotEqual("10.14.0", Parse(only.Payload).GetProperty("latest_version").GetString());
+            Assert.NotEqual("10.99.0", Parse(only.Payload).GetProperty("latest_version").GetString());
         }
     }
 
@@ -663,9 +663,12 @@ public sealed class RemoteUpdateInstallTests : IDisposable
     private const string InstallTopic = "hass.agent/update/" + Serial + "/install";
     private const string DiscoveryTopic = "homeassistant/update/" + Serial + "/hass_agent_net10/config";
 
-    /// <summary>What a finished check found; no check is made again within the hour.</summary>
+    /// <summary>
+    /// What a finished check found; no check is made again within the hour. Its version is one
+    /// the app never has: a failed check sends the app's own version, and the tests tell the two apart.
+    /// </summary>
     private static AppUpdateState AnUpdate =>
-        AppUpdateState.Failed("10.13.1", "none") with { Error = null, UpdateAvailable = true, LatestVersion = "10.14.0" };
+        AppUpdateState.Failed("10.13.1", "none") with { Error = null, UpdateAvailable = true, LatestVersion = "10.99.0" };
 
     private static JsonElement Parse(string? payload) => JsonDocument.Parse(payload ?? "null").RootElement.Clone();
 
