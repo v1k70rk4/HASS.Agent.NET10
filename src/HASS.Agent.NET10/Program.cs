@@ -179,7 +179,7 @@ internal static class Program
             };
         }
 
-        using var log = new FileLog(paths.LogFile);
+        using var log = new FileLog(paths.LogFile, "tray");
         log.Info($"Starting {AppIdentity.DisplayName}{(kiosk ? " in kiosk mode" : string.Empty)}.");
         var sessionEnding = false;
         if (kiosk)

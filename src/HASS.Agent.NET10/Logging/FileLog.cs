@@ -14,13 +14,19 @@ internal sealed class FileLog : IDisposable
     private static readonly TimeSpan MaintenanceInterval = TimeSpan.FromMinutes(1);
 
     private readonly string _path;
+    private readonly string? _source;
     private readonly object _gate = new();
     private DateTime _nextMaintenanceUtc = DateTime.MinValue;
     private bool _disposed;
 
-    public FileLog(string path)
+    /// <param name="source">
+    /// Which process writes: the tray app, the service and the setup steps share the file, and
+    /// without it the same line from two of them cannot be told apart. Null leaves it out.
+    /// </param>
+    public FileLog(string path, string? source = null)
     {
         _path = path;
+        _source = source;
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
     }
 
@@ -70,7 +76,7 @@ internal sealed class FileLog : IDisposable
             return;
         }
 
-        var line = FormatRecord(DateTimeOffset.Now, level, message);
+        var line = FormatRecord(DateTimeOffset.Now, level, message, _source);
         lock (_gate)
         {
             try
@@ -93,12 +99,13 @@ internal sealed class FileLog : IDisposable
     /// (a stack trace, or a line break in text that came from outside, such as a notification
     /// or an MQTT payload) are indented, so no line of a message can pass for a record of its own.
     /// </summary>
-    internal static string FormatRecord(DateTimeOffset time, string level, string message)
+    internal static string FormatRecord(DateTimeOffset time, string level, string message, string? source = null)
     {
         var text = (message ?? string.Empty).Replace("\r\n", "\n")
             .Replace('\r', '\n').Replace('\u0085', '\n').Replace('\u2028', '\n').Replace('\u2029', '\n')
             .Replace("\n", Environment.NewLine + "    ");
-        return $"{time:O} [{level}] {text}{Environment.NewLine}";
+        var from = string.IsNullOrEmpty(source) ? string.Empty : $"[{source}] ";
+        return $"{time:O} [{level}] {from}{text}{Environment.NewLine}";
     }
 
     private void Maintain()
@@ -120,7 +127,7 @@ internal sealed class FileLog : IDisposable
                 var outcome = File.Exists(rotatedTo)
                     ? $"the previous file is {Path.GetFileName(rotatedTo)}"
                     : $"the previous file was over the {MaxArchiveBytes / (1024 * 1024)} MB archive cap and was removed";
-                SafeFiles.AppendAllText(_path, $"{DateTimeOffset.Now:O} [INFO] Log rotated; {outcome}. Archives are kept for {ArchiveRetention.Days} days.{Environment.NewLine}");
+                SafeFiles.AppendAllText(_path, FormatRecord(DateTimeOffset.Now, "INFO", $"Log rotated; {outcome}. Archives are kept for {ArchiveRetention.Days} days.", _source));
             }
         }
         catch

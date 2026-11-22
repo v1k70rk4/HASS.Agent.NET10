@@ -53,7 +53,7 @@ internal static class SendspinTokenCommand
                 throw new IOException(string.Format(Strings.Get("Access.FolderNotOfThePc"), AppPaths.ConfigDirectoryPath));
             }
 
-            using var log = new FileLog(Path.Combine(AppPaths.ConfigDirectoryPath, "hass-agent-net10.log"));
+            using var log = new FileLog(Path.Combine(AppPaths.ConfigDirectoryPath, "hass-agent-net10.log"), "command line");
             log.Info($"Sendspin: the pairing token was asked for on the command line{(rotate ? ", a new one" : string.Empty)}.");
             var player = new SendspinPlayerService(new CompanionSettings(), log);
             var token = rotate ? player.RotatePairingToken() : player.GetPairingToken();

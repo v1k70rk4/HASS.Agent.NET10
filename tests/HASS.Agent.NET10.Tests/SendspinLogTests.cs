@@ -162,6 +162,93 @@ public class SendspinLogTests
         }
     }
 
+    // As the SDK throws it when the PC goes to sleep while it writes to Music Assistant.
+    private static Exception DroppedByTheNetwork() => new System.Net.WebSockets.WebSocketException(
+        "The remote party closed the WebSocket connection without completing the close handshake.",
+        new IOException("Unable to write data to the transport connection.", new System.Net.Sockets.SocketException(10053)));
+
+    [Fact]
+    public void A_connection_the_network_dropped_is_held_back_in_one_line()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "hass-agent-test-" + Guid.NewGuid().ToString("N"));
+        var path = Path.Combine(folder, "sendspin.log");
+        try
+        {
+            using var log = new FileLog(path);
+            using var failures = new ConnectionFailures(log.Warning, log.Debug, TimeSpan.FromHours(1));
+            using var provider = new FileLogLoggerProvider(log, failures);
+
+            provider.CreateLogger("Sendspin.SDK.Client.SendspinHostService")
+                .LogError(DroppedByTheNetwork(), "Error handling server connection 60582c75");
+
+            Assert.False(File.Exists(path) && File.ReadAllText(path).Contains("60582c75", StringComparison.Ordinal));
+
+            // No connection followed: one warning, with no stack trace.
+            failures.GiveUp();
+            var records = File.ReadAllLines(path).Where(line => !line.Contains("Log rotated", StringComparison.Ordinal))
+                .Select(line => line[(line.IndexOf(' ') + 1)..]).ToArray();
+            Assert.Equal(
+                ["[WARN] Sendspin: 1 connection(s) failed or closed, and none got through in 3600 s. The last: Sendspin SendspinHostService: Error handling server connection 60582c75 (The remote party closed the WebSocket connection without completing the close handshake.)"],
+                records);
+        }
+        finally
+        {
+            if (Directory.Exists(folder))
+            {
+                Directory.Delete(folder, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void Any_other_error_of_a_connection_stays_an_error_with_its_stack_trace()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "hass-agent-test-" + Guid.NewGuid().ToString("N"));
+        var path = Path.Combine(folder, "sendspin.log");
+        try
+        {
+            using var log = new FileLog(path);
+            using var failures = new ConnectionFailures(log.Warning, log.Debug, TimeSpan.FromHours(1));
+            using var provider = new FileLogLoggerProvider(log, failures);
+            Exception bug;
+            try
+            {
+                throw new InvalidOperationException("Unexpected message type");
+            }
+            catch (InvalidOperationException ex)
+            {
+                bug = ex;
+            }
+
+            provider.CreateLogger("Sendspin.SDK.Client.SendspinHostService")
+                .LogError(bug, "Error handling server connection 51c3f07b");
+
+            var text = File.ReadAllText(path);
+            Assert.Contains("[ERROR] Sendspin SendspinHostService: Error handling server connection 51c3f07b", text, StringComparison.Ordinal);
+            Assert.Contains("System.InvalidOperationException: Unexpected message type", text, StringComparison.Ordinal);
+            Assert.Contains(" at ", text, StringComparison.Ordinal);
+        }
+        finally
+        {
+            if (Directory.Exists(folder))
+            {
+                Directory.Delete(folder, recursive: true);
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData("SendspinHostService", "Error handling server connection 60582c75", true, true)]
+    [InlineData("SendspinHostService", "Error handling server connection 60582c75", false, false)]
+    [InlineData("SendspinHostService", "Port 8928 is in use", true, false)]
+    [InlineData("SendspinClientService", "Error handling server connection 60582c75", true, false)]
+    public void Only_a_server_connection_the_network_dropped_counts(string category, string message, bool network, bool dropped)
+    {
+        var exception = network ? DroppedByTheNetwork() : new InvalidOperationException("Unexpected message type");
+
+        Assert.Equal(dropped, FileLogLoggerProvider.IsDroppedConnection(category, message, exception));
+    }
+
     [Fact]
     public void A_connection_before_any_failure_says_nothing()
     {
