@@ -158,13 +158,15 @@ A custom attribute sensor can only be ticked for a role that reads its built-in 
 
 ## `lhm` (LibreHardwareMonitor)
 
-Reads a hardware value from a running [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor): CPU and GPU temperature, fan speed, voltage, load. The app has no vendor-specific hardware code of its own; LibreHardwareMonitor does the reading and the app asks it.
+Reads a hardware value from a running [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor): CPU and GPU temperature, fan speed, voltage, load, the upload and download speed of a network adapter. The app has no vendor-specific hardware code of its own; LibreHardwareMonitor does the reading and the app asks it.
 
 1. Run LibreHardwareMonitor and turn on **Options > Remote Web Server > Run** (port 8085 by default). Let it start with Windows if the sensor should always work.
 2. Add a custom sensor of the type **LibreHardwareMonitor**. The **Sensor** field lists everything LibreHardwareMonitor reports, with the current value; picking one fills in the unit, and the name when it is empty.
 
 - The parameter is LibreHardwareMonitor's own sensor id (e.g. `/amdcpu/0/temperature/2`).
 - The value is null while LibreHardwareMonitor is not running.
+- A speed (a network adapter's upload and download, a drive's read and write rate) is reported in the unit of the sensor, `MB/s` for a new one (10.14.1+). LibreHardwareMonitor itself shows a speed in KB/s below 1 MB/s and in MB/s above it; before 10.14.1 the number it showed was passed on without the unit, so a sensor made while the adapter was idle reported a download of 43 MB/s as 43. Such a sensor keeps its unit and reports the right number now. The number is counted as Home Assistant counts, 1 MB/s is 1 000 000 B/s, so it is about 5% above what LibreHardwareMonitor shows, which counts in 1024s. The unit can be changed on the entity in Home Assistant when it is `B/s`, `kB/s`, `MB/s` or another one Home Assistant knows; `KB/s`, as LibreHardwareMonitor writes it, is not one.
+- LibreHardwareMonitor lists a network adapter once for every filter driver on it too (`Wi-Fi-QoS Packet Scheduler-0000`), all with the same speed: pick the one with the plain name.
 - The **Connection...** button next to the field sets a different address or port (default `http://localhost:8085`), and the user name and password when LibreHardwareMonitor's web server is set to ask for them.
 - No Home Assistant integration update is required.
 

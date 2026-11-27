@@ -2390,13 +2390,9 @@ internal sealed class SystemMetricsService : IDisposable
             {
                 // Null while LibreHardwareMonitor is not running, or has no such sensor.
                 var reading = LibreHardwareMonitorClient.Find(LibreHardwareMonitorClient.ParseSensorId(sensor.Parameter));
-                // A value that is not a number ("NaN %") is only passed on as text when the
-                // sensor has no unit; Home Assistant refuses text from a sensor that has one.
                 return new CustomSensorState(
                     sensor.Id,
-                    reading is null ? null
-                        : reading.Value is { } number ? number
-                        : string.IsNullOrWhiteSpace(sensor.Unit) ? reading.Text : null);
+                    reading is null ? null : LibreHardwareMonitorClient.ValueFor(reading, sensor.Unit));
             }
         }
         catch

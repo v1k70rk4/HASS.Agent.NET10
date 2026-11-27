@@ -60,7 +60,11 @@ internal static class LibreHardwareMonitorClient
     /// <param name="Id">LibreHardwareMonitor's own sensor id ("/intelcpu/0/temperature/0"), or the path of names when an old version does not send one.</param>
     /// <param name="Value">The number, when the value is one.</param>
     /// <param name="Text">The value as LibreHardwareMonitor shows it ("45,0 °C").</param>
-    internal sealed record Reading(string Id, string Hardware, string Name, double? Value, string Unit, string Text);
+    /// <param name="BytesPerSecond">A speed (network, drive) in bytes per second; null for everything else. See <see cref="SpeedInBytes"/>.</param>
+    internal sealed record Reading(string Id, string Hardware, string Name, double? Value, string Unit, string Text, double? BytesPerSecond = null);
+
+    /// <summary>The unit a new sensor of a speed gets: one Home Assistant knows as a data rate, whichever unit LibreHardwareMonitor shows at the moment.</summary>
+    internal const string SpeedUnit = "MB/s";
 
     /// <summary>Every sensor LibreHardwareMonitor reports right now. Throws when it cannot be reached.</summary>
     public static IReadOnlyList<Reading> ReadAll()
@@ -209,7 +213,8 @@ internal static class LibreHardwareMonitorClient
                 text,
                 number,
                 unit,
-                value));
+                value,
+                SpeedInBytes(GetString(node, "Type"), text, value, Shorten(GetString(node, "RawValue")))));
             return;
         }
 
@@ -242,6 +247,59 @@ internal static class LibreHardwareMonitorClient
         return double.TryParse(trimmed[..end].Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out var number)
             ? (number, unit)
             : (null, unit);
+    }
+
+    /// <summary>
+    /// A speed in bytes per second. LibreHardwareMonitor shows a speed in the unit that suits
+    /// it at the moment, "516,0 KB/s" and then "43,3 MB/s" for the same sensor, so the number
+    /// shown means nothing without the unit beside it. Its raw value is always in B/s; a
+    /// version that sends none has its shown value counted back, in the 1024s it was made with.
+    /// </summary>
+    internal static double? SpeedInBytes(string type, string name, string value, string rawValue)
+    {
+        // The link speed of an adapter is in bits, shown as "1Gbps", and its raw value says
+        // B/s for bits: left as LibreHardwareMonitor shows it.
+        if ((type.Length > 0 && type != "Throughput") || name == "Connection Speed")
+        {
+            return null;
+        }
+
+        var (raw, rawUnit) = SplitValue(rawValue);
+        if (type == "Throughput" && raw is { } bytes && rawUnit == "B/s")
+        {
+            return bytes;
+        }
+
+        var (shown, unit) = SplitValue(value);
+        return shown is not { } number ? null : unit switch
+        {
+            "B/s" => number,
+            "KB/s" => number * 1024,
+            "MB/s" => number * 1024 * 1024,
+            "GB/s" => number * 1024 * 1024 * 1024,
+            _ => null
+        };
+    }
+
+    /// <summary>The unit the editor fills in for a reading.</summary>
+    public static string UnitFor(Reading reading) => reading.BytesPerSecond is null ? reading.Unit : SpeedUnit;
+
+    /// <summary>
+    /// What a sensor of this reading reports, given the unit the sensor has. A speed is
+    /// counted into that unit, as Home Assistant understands it (1 MB/s is 1 000 000 B/s);
+    /// with no unit, or one that is not a data rate, it is in bytes per second.
+    /// </summary>
+    public static object? ValueFor(Reading reading, string? unit)
+    {
+        if (reading.BytesPerSecond is { } rate)
+        {
+            return Math.Round(rate / (CustomSensorUnits.BytesPerSecondIn(unit) ?? 1), 3);
+        }
+
+        // A value that is not a number ("NaN %") is only passed on as text when the
+        // sensor has no unit; Home Assistant refuses text from a sensor that has one.
+        return reading.Value is { } number ? number
+            : string.IsNullOrWhiteSpace(unit) ? reading.Text : null;
     }
 
     private static string Shorten(string text, int max = MaxNameLength) => text.Length > max ? text[..max] : text;
