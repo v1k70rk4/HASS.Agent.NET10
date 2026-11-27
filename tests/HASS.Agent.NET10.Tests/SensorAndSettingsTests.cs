@@ -137,6 +137,21 @@ public class LibreHardwareMonitorTests
         Assert.Equal("data_rate", CustomSensorUnits.DeviceClassFor(LibreHardwareMonitorClient.UnitFor(idle)));
     }
 
+    // An adapter with no value at the moment shows "-", with no unit beside it, and a raw
+    // value of " B/s". Taken for no speed, a sensor made of it then would get no unit, and
+    // report bytes per second once the adapter is back.
+    [Fact]
+    public void A_speed_with_no_value_at_the_moment_is_still_a_speed()
+    {
+        var away = Speed("-", " B/s");
+
+        Assert.True(away.IsSpeed);
+        Assert.Null(away.BytesPerSecond);
+        Assert.Equal("MB/s", LibreHardwareMonitorClient.UnitFor(away));
+        Assert.Null(LibreHardwareMonitorClient.ValueFor(away, "MB/s"));
+        Assert.Null(LibreHardwareMonitorClient.ValueFor(away, ""));
+    }
+
     // The raw value is not the better one everywhere: with LibreHardwareMonitor set to
     // Fahrenheit it stays in Celsius, and a °F sensor would report Celsius numbers.
     [Fact]
@@ -144,6 +159,7 @@ public class LibreHardwareMonitorTests
     {
         var fahrenheit = Speed("129,2 °F", "54,0 °C", name: "CPU Package", type: "Temperature");
 
+        Assert.False(fahrenheit.IsSpeed);
         Assert.Null(fahrenheit.BytesPerSecond);
         Assert.Equal("°F", LibreHardwareMonitorClient.UnitFor(fahrenheit));
         Assert.Equal(129.2, LibreHardwareMonitorClient.ValueFor(fahrenheit, "°F"));
@@ -155,6 +171,7 @@ public class LibreHardwareMonitorTests
     {
         var link = Speed("1Gbps", "1000000000,0 B/s", name: "Connection Speed");
 
+        Assert.False(link.IsSpeed);
         Assert.Null(link.BytesPerSecond);
         Assert.Equal(1.0, LibreHardwareMonitorClient.ValueFor(link, "Gbps"));
     }
