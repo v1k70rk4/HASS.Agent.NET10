@@ -180,7 +180,7 @@ No telemetry, analytics, or usage data is collected or transmitted.
 
 > **Beta.** Out on the beta channel: tick **Beta updates** under **About → Update settings** to be offered the beta, or take it from the [releases page](https://github.com/v1k70rk4/HASS.Agent.NET10/releases). The current stable release is **10.14.0**, below.
 
-The first beta of 10.14.1: a fix for the network and drive speeds read from LibreHardwareMonitor. Built on .NET 10.0.15, as 10.14.0. Works with the Home Assistant integration **10.6.7** or newer; the integration **10.14.1-beta.1** goes with it and has nothing new. Signed release.
+The first beta of 10.14.1: a fix for the network and drive speeds read from LibreHardwareMonitor. Built on .NET 10.0.15, as 10.14.0. Works with the Home Assistant integration **10.6.7** or newer; the integration **10.14.0** is still the one for it. Signed release.
 
 - **Fixed: a network or drive speed read from LibreHardwareMonitor.** LibreHardwareMonitor shows a speed in KB/s below 1 MB/s and in MB/s above it, and the custom sensor passed on the number without the unit: a sensor made while the adapter was idle reported a download of 43 MB/s as 43, less than a slow one. The sensor now reports the speed in its own unit. A sensor made before keeps its unit and reports the right number; a new one gets `MB/s`, which Home Assistant knows as a data rate, so the unit can be changed on the entity. The number is counted as Home Assistant counts it (1 MB/s is 1 000 000 B/s), about 5% above what LibreHardwareMonitor shows, which counts in 1024s. More in [Custom sensors](docs/sensors/custom.md#lhm-librehardwaremonitor).
 - **Libraries**: WebView2 1.0.4370.26.
