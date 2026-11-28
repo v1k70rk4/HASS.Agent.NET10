@@ -105,6 +105,27 @@ internal static class CustomSensorUnits
         // accumulates is not known here.
         _ => null
     };
+
+    /// <summary>
+    /// How many bytes per second one of a data rate unit is, as Home Assistant counts it:
+    /// kB and MB in 1000s, KiB and MiB in 1024s. "KB/s" is none of Home Assistant's units;
+    /// it is what LibreHardwareMonitor writes, and the unit an older sensor of a speed may have.
+    /// </summary>
+    public static double? BytesPerSecondIn(string? unit) => unit?.Trim() switch
+    {
+        "B/s" => 1,
+        "kB/s" or "KB/s" => 1e3,
+        "MB/s" => 1e6,
+        "GB/s" => 1e9,
+        "KiB/s" => 1024,
+        "MiB/s" => 1024 * 1024,
+        "GiB/s" => 1024 * 1024 * 1024,
+        "bit/s" => 1.0 / 8,
+        "kbit/s" => 1e3 / 8,
+        "Mbit/s" => 1e6 / 8,
+        "Gbit/s" => 1e9 / 8,
+        _ => null
+    };
 }
 
 internal sealed record CustomSensorDescriptor(

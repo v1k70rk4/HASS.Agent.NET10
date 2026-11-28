@@ -76,6 +76,132 @@ public class LibreHardwareMonitorTests
         Assert.Equal("°C", core.Unit);
         Assert.Equal("%", readings[2].Unit);
     }
+
+    // One sensor of a network adapter, as LibreHardwareMonitor 0.9.6 sends it.
+    private static LibreHardwareMonitorClient.Reading Speed(string value, string? rawValue, string name = "Download Speed", string? type = "Throughput")
+    {
+        var raw = rawValue is null ? string.Empty : $",\"RawValue\":\"{rawValue}\"";
+        var kind = type is null ? string.Empty : $",\"Type\":\"{type}\"";
+        var json = $$"""
+            {"Text":"Sensor","Children":[
+              {"Text":"MY-PC","Children":[
+                {"Text":"Wi-Fi","Children":[
+                  {"Text":"Throughput","Children":[
+                    {"Text":"{{name}}","Value":"{{value}}","SensorId":"/nic/0/throughput/8"{{kind}}{{raw}},"Children":[]}]}]}]}]}
+            """;
+        return Assert.Single(LibreHardwareMonitorClient.Parse(json));
+    }
+
+    // The same Wi-Fi adapter, measured while idle, on a slow download and on a fast one:
+    // LibreHardwareMonitor changes the unit it shows the speed in at 1 MB/s. Passing the
+    // number shown on (3.8, 516, 43.3) would make the fast download the slowest of the three.
+    [Theory]
+    [InlineData("3,8 KB/s", "3936,0 B/s", "MB/s", 0.004)]
+    [InlineData("516,0 KB/s", "528397,1 B/s", "MB/s", 0.528)]
+    [InlineData("43,3 MB/s", "45441232,0 B/s", "MB/s", 45.441)]
+    // A sensor made while the adapter was idle has the unit LibreHardwareMonitor showed then.
+    [InlineData("3,8 KB/s", "3936,0 B/s", "KB/s", 3.936)]
+    [InlineData("43,3 MB/s", "45441232,0 B/s", "KB/s", 45441.232)]
+    [InlineData("43,3 MB/s", "45441232,0 B/s", "kB/s", 45441.232)]
+    [InlineData("43,3 MB/s", "45441232,0 B/s", "B/s", 45441232.0)]
+    [InlineData("43,3 MB/s", "45441232,0 B/s", "MiB/s", 43.336)]
+    [InlineData("43,3 MB/s", "45441232,0 B/s", "Mbit/s", 363.53)]
+    // No unit, or one that is no data rate: bytes per second, whatever is shown.
+    [InlineData("43,3 MB/s", "45441232,0 B/s", "", 45441232.0)]
+    [InlineData("3,8 KB/s", "3936,0 B/s", "RPM", 3936.0)]
+    public void A_speed_is_reported_in_the_unit_of_the_sensor(string shown, string raw, string unit, double expected)
+    {
+        Assert.Equal(expected, LibreHardwareMonitorClient.ValueFor(Speed(shown, raw), unit));
+    }
+
+    // An older LibreHardwareMonitor sends neither the type nor the raw value: what it shows is
+    // counted back, in the 1024s it was made with.
+    [Theory]
+    [InlineData("516,0 KB/s", 528384.0)]
+    [InlineData("43,3 MB/s", 45403340.8)]
+    [InlineData("1,5 GB/s", 1610612736.0)]
+    public void A_speed_with_no_raw_value_is_counted_back_from_what_is_shown(string shown, double bytes)
+    {
+        Assert.Equal(bytes, Speed(shown, rawValue: null, type: null).BytesPerSecond!.Value, precision: 1);
+        Assert.Equal(bytes, Speed(shown, rawValue: null).BytesPerSecond!.Value, precision: 1);
+    }
+
+    [Fact]
+    public void A_new_sensor_of_a_speed_gets_a_unit_home_assistant_knows()
+    {
+        // "KB/s" is what the adapter shows while idle, and no data rate unit of Home Assistant.
+        var idle = Speed("3,8 KB/s", "3936,0 B/s");
+
+        Assert.Equal("KB/s", idle.Unit);
+        Assert.Equal("MB/s", LibreHardwareMonitorClient.UnitFor(idle));
+        Assert.Equal("data_rate", CustomSensorUnits.DeviceClassFor(LibreHardwareMonitorClient.UnitFor(idle)));
+    }
+
+    // An adapter with no value at the moment shows "-", with no unit beside it, and a raw
+    // value of " B/s". Taken for no speed, a sensor made of it then would get no unit, and
+    // report bytes per second once the adapter is back.
+    [Fact]
+    public void A_speed_with_no_value_at_the_moment_is_still_a_speed()
+    {
+        var away = Speed("-", " B/s");
+
+        Assert.True(away.IsSpeed);
+        Assert.Null(away.BytesPerSecond);
+        Assert.Equal("MB/s", LibreHardwareMonitorClient.UnitFor(away));
+        Assert.Null(LibreHardwareMonitorClient.ValueFor(away, "MB/s"));
+        Assert.Null(LibreHardwareMonitorClient.ValueFor(away, ""));
+    }
+
+    // The raw value is not the better one everywhere: with LibreHardwareMonitor set to
+    // Fahrenheit it stays in Celsius, and a °F sensor would report Celsius numbers.
+    [Fact]
+    public void Anything_but_a_speed_is_reported_as_it_is_shown()
+    {
+        var fahrenheit = Speed("129,2 °F", "54,0 °C", name: "CPU Package", type: "Temperature");
+
+        Assert.False(fahrenheit.IsSpeed);
+        Assert.Null(fahrenheit.BytesPerSecond);
+        Assert.Equal("°F", LibreHardwareMonitorClient.UnitFor(fahrenheit));
+        Assert.Equal(129.2, LibreHardwareMonitorClient.ValueFor(fahrenheit, "°F"));
+    }
+
+    // The link speed is in bits and its raw value says B/s for them.
+    [Fact]
+    public void The_link_speed_of_an_adapter_is_left_as_it_is_shown()
+    {
+        var link = Speed("1Gbps", "1000000000,0 B/s", name: "Connection Speed");
+
+        Assert.False(link.IsSpeed);
+        Assert.Null(link.BytesPerSecond);
+        Assert.Equal(1.0, LibreHardwareMonitorClient.ValueFor(link, "Gbps"));
+    }
+
+    [Theory]
+    [InlineData("NaN %", "", "NaN %")]
+    [InlineData("NaN %", "%", null)]
+    public void Text_is_passed_on_only_by_a_sensor_with_no_unit(string shown, string unit, string? expected)
+    {
+        Assert.Equal(expected, LibreHardwareMonitorClient.ValueFor(Speed(shown, rawValue: null, name: "Fan", type: "Load"), unit));
+    }
+
+    // Every unit that makes a sensor a data rate in Home Assistant has to be one a speed can be counted into.
+    [Theory]
+    [InlineData("bit/s")]
+    [InlineData("kbit/s")]
+    [InlineData("Mbit/s")]
+    [InlineData("Gbit/s")]
+    [InlineData("B/s")]
+    [InlineData("kB/s")]
+    [InlineData("MB/s")]
+    [InlineData("GB/s")]
+    [InlineData("KiB/s")]
+    [InlineData("MiB/s")]
+    [InlineData("GiB/s")]
+    public void A_data_rate_unit_has_its_size_in_bytes(string unit)
+    {
+        Assert.Equal("data_rate", CustomSensorUnits.DeviceClassFor(unit));
+        Assert.NotNull(CustomSensorUnits.BytesPerSecondIn(unit));
+    }
 }
 
 public class GpuAdapterTests

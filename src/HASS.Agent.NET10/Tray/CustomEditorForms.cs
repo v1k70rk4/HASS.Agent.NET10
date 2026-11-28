@@ -857,7 +857,7 @@ internal sealed class CustomSensorEditorForm : CustomEditorForm
             return;
         }
 
-        _unit.Text = reading.Unit;
+        _unit.Text = LibreHardwareMonitorClient.UnitFor(reading);
         if (string.IsNullOrWhiteSpace(_name.Text))
         {
             _name.Text = HardwareSensorTitle(reading);
