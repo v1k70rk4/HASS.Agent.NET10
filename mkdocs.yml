@@ -73,6 +73,9 @@ extra:
     - name: Deutsch
       link: /de/
       lang: de
+    - name: Italiano
+      link: /it/
+      lang: it
     - name: Magyar
       link: /hu/
       lang: hu
